@@ -1,8 +1,11 @@
 import { NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
+import { requireTenantSession } from '@/lib/api-auth';
 
 // GET /api/payment-methods
 export async function GET() {
+  const tenantSession = await requireTenantSession();
+  if (tenantSession instanceof NextResponse) return tenantSession;
   try {
     const db = await getPool();
 

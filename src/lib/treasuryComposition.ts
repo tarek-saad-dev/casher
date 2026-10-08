@@ -4,7 +4,7 @@ import type { MoneyMovementPort } from '@/apps/treasury/public/moneyMovement';
 import type { OperationalCalendarPort } from '@/shared/operational-calendar/public/ports';
 import { createLegacyMoneyMovementAdapter } from '@/apps/treasury/public';
 import { buildOperationalCalendarPort } from '@/lib/operationalCalendarComposition';
-import { resolveBootstrapTenantId } from '@/lib/bookingSchedulingComposition';
+import { requireActorTenantId } from '@/platform/tenant/tenantContext';
 
 export type TreasuryWritePorts = {
   tenantId: string;
@@ -14,7 +14,7 @@ export type TreasuryWritePorts = {
 };
 
 export async function buildTreasuryWritePorts(actor: ActorContext): Promise<TreasuryWritePorts> {
-  const tenantId = actor.tenantId ?? (await resolveBootstrapTenantId());
+  const tenantId = requireActorTenantId(actor, 'buildTreasuryWritePorts');
   return {
     tenantId,
     actor: { ...actor, tenantId },

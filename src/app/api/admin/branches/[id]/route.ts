@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getActiveBranchContext, requireBranchAdminAccess } from '@/lib/branch/context';
+import {
+  branchAdminTenantScopeResponse,
+  getActiveBranchContext,
+  requireBranchAdminAccess,
+} from '@/lib/branch/context';
 import { getBranchById } from '@/lib/branch/repository';
 import { serializeBranch } from '@/lib/branch/serializeBranch';
 import { updateBranchSetupFields } from '@/lib/branch/updateBranchSetup';
@@ -28,6 +32,8 @@ export async function GET(_req: NextRequest, ctx: Ctx) {
     if (branchId == null) {
       return NextResponse.json({ ok: false, error: 'معرف فرع غير صالح' }, { status: 400 });
     }
+    const outOfTenant = await branchAdminTenantScopeResponse(admin, branchId);
+    if (outOfTenant) return outOfTenant;
     const [branch, active] = await Promise.all([getBranchById(branchId), getActiveBranchContext()]);
     if (!branch) {
       return NextResponse.json({ ok: false, error: 'الفرع غير موجود' }, { status: 404 });
@@ -65,6 +71,8 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
       return NextResponse.json({ ok: false, error: 'معرف فرع غير صالح' }, { status: 400 });
     }
 
+    const outOfTenant = await branchAdminTenantScopeResponse(admin, branchId);
+    if (outOfTenant) return outOfTenant;
     const body = (await req.json()) as Record<string, unknown>;
     const updated = await updateBranchSetupFields({
       branchId,

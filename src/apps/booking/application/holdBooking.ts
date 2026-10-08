@@ -21,8 +21,12 @@ export type HoldBookingInput = {
 
 export function namespacedHoldKey(tenantId: string, holdKey: string): string {
   const base = holdKey.trim();
-  const prefix = `t:${tenantId}:`;
-  return base.startsWith(prefix) ? base : `${prefix}${base}`;
+  const tenant = String(tenantId ?? '').trim().toLowerCase();
+  if (!tenant) throw new Error('namespacedHoldKey requires an authoritative tenantId');
+  const prefix = `t:${tenant}:`;
+  return base.toLowerCase().startsWith(prefix)
+    ? `${prefix}${base.slice(prefix.length)}`
+    : `${prefix}${base}`;
 }
 
 export async function holdBooking(input: HoldBookingInput): Promise<BookingHoldRecord> {

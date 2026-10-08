@@ -8,6 +8,9 @@ const sendWhatsAppMessage = vi.fn();
 const sendQuickWhatsAppMessage = vi.fn();
 const getWhatsAppConfig = vi.fn();
 
+vi.mock('@/lib/api-auth', async (importOriginal) =>
+  (await import('@/lib/__tests__/helpers/tenantSessionAuthMock')).tenantSessionAuthMock(await importOriginal()),
+);
 vi.mock('@/lib/session', () => ({
   getSession: (...args: unknown[]) => getSession(...args),
 }));

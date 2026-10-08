@@ -1,8 +1,11 @@
 import { NextResponse } from 'next/server';
 import { getPool } from '@/lib/db';
+import { requireTenantSession } from '@/lib/api-auth';
 
 // GET /api/shift/definitions — Get all shift definitions from TblShift
 export async function GET() {
+  const tenantSession = await requireTenantSession();
+  if (tenantSession instanceof NextResponse) return tenantSession;
   try {
     const db = await getPool();
     const result = await db.request().query(`

@@ -17,8 +17,8 @@ import {
   buildCustomerActorContext,
   buildStaffActorContext,
   buildSchedulingPortHooksForActor,
-  resolveBootstrapTenantId,
 } from '@/lib/bookingSchedulingComposition';
+import { resolvePublicTenantForBranchCode } from '@/lib/booking/publicBookingTenant';
 import { PublicBookingSelectionError } from '@/lib/booking/publicBookingSelectionEvaluator';
 import {
   gatePublicBookingRoute,
@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
 
     let branchCode = extractPublicBranchCode(searchParams, body);
     let purpose: 'public_booking' | 'internal_preview' | undefined;
-    let auth: { userId: number; canOperate?: boolean } | null = null;
+    let auth: { userId: number; canOperate?: boolean; tenantId?: string } | null = null;
     let bookingSource: 'online' | 'operations' | 'admin' = 'online';
 
     if (internalSource) {
@@ -130,19 +130,30 @@ export async function POST(req: NextRequest) {
       leadSource,
     };
 
-    const result = isBookingSchedulingPortEnabled()
+    if (isBookingSchedulingPortEnabled() && !branchCode) {
+      return finalizePublicBookingError(req, gate, 'BRANCH_REQUIRED');
+    }
+    const publicTenant = isBookingSchedulingPortEnabled()
+      ? await resolvePublicTenantForBranchCode(branchCode, 'public/booking/create', {
+          staffTenantId: isInternalOps ? (auth?.tenantId ?? null) : null,
+        })
+      : null;
+    if (isBookingSchedulingPortEnabled() && (!publicTenant || (isInternalOps && !auth?.tenantId))) {
+      return finalizePublicBookingError(req, gate, 'BRANCH_NOT_FOUND');
+    }
+
+    const result = publicTenant
       ? await (async () => {
-          const tenantId = await resolveBootstrapTenantId();
-          // Operations/admin must carry staff tenant membership semantics.
-          // Public website remains a customer actor on the bootstrap tenant.
+          // Operations/admin carry staff membership semantics in the staff tenant; the public
+          // website is a customer actor of the tenant that owns the requested branch.
           const actor =
             isInternalOps && auth?.userId
-              ? await buildStaffActorContext(auth.userId)
-              : await buildCustomerActorContext(tenantId);
+              ? await buildStaffActorContext(auth.userId, auth.tenantId)
+              : await buildCustomerActorContext(publicTenant.tenantId);
           const schedulingPortHooks = await buildSchedulingPortHooksForActor(actor);
           return createBooking({
             ...createInput,
-            tenantId: actor.tenantId ?? tenantId,
+            tenantId: publicTenant.tenantId,
             schedulingPortHooks,
           });
         })()

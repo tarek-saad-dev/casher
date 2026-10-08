@@ -16,8 +16,8 @@ import { cancelBooking, isBookingSchedulingPortEnabled } from '@/apps/booking/pu
 import {
   buildCustomerActorContext,
   buildSchedulingPortHooksForActor,
-  resolveBootstrapTenantId,
 } from '@/lib/bookingSchedulingComposition';
+import { resolvePublicTenantForBookingCode } from '@/lib/booking/publicBookingTenant';
 import {
   describePlatformBootstrapFailure,
   isPlatformBootstrapFailure,
@@ -88,10 +88,19 @@ export async function POST(req: NextRequest) {
 
     const result = isBookingSchedulingPortEnabled()
       ? await (async () => {
-          const tenantId = await resolveBootstrapTenantId();
-          const actor = await buildCustomerActorContext(tenantId);
+          const owner = await resolvePublicTenantForBookingCode(cancelInput.code, 'public/booking/cancel');
+          if (!owner.ok) {
+            throw new PublicBookingCancelError(
+              owner.reason === 'invalid_code' ? 'INVALID_BOOKING_CODE' : 'BOOKING_NOT_FOUND_OR_UNAUTHORIZED',
+            );
+          }
+          const actor = await buildCustomerActorContext(owner.tenant.tenantId);
           const schedulingPortHooks = await buildSchedulingPortHooksForActor(actor);
-          return cancelBooking({ ...cancelInput, schedulingPortHooks });
+          return cancelBooking({
+            ...cancelInput,
+            tenantId: owner.tenant.tenantId,
+            schedulingPortHooks,
+          });
         })()
       : await cancelPublicBooking(cancelInput);
 

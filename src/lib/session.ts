@@ -110,6 +110,16 @@ export function decodeSessionToken(
   if (raw.BranchSessionVersion !== BRANCH_SESSION_VERSION) {
     return { ok: false, reason: 'unsupported_version' };
   }
+  // DRVO-013: the active branch is only meaningful inside a tenant. A session issued without an
+  // authoritative tenant binding is treated like a legacy cookie and must re-login.
+  if (
+    typeof raw.TenantId !== 'string' ||
+    !raw.TenantId ||
+    typeof raw.MembershipId !== 'string' ||
+    !raw.MembershipId
+  ) {
+    return { ok: false, reason: 'legacy' };
+  }
 
   return {
     ok: true,
@@ -121,10 +131,8 @@ export function decodeSessionToken(
       ActiveBranchCode: String(raw.ActiveBranchCode),
       BranchSessionVersion: BRANCH_SESSION_VERSION,
       iat: raw.iat as number,
-      ...(typeof raw.TenantId === 'string' ? { TenantId: raw.TenantId } : {}),
-      ...(typeof raw.MembershipId === 'string'
-        ? { MembershipId: raw.MembershipId }
-        : {}),
+      TenantId: raw.TenantId,
+      MembershipId: raw.MembershipId,
     },
   };
 }
@@ -157,6 +165,9 @@ export async function createSession(user: SessionUser): Promise<void> {
   ) {
     throw new Error('createSession requires Phase 1B branch claims');
   }
+  if (!user.TenantId || !user.MembershipId) {
+    throw new Error('createSession requires an authoritative tenant binding (DRVO-013)');
+  }
   const payload: SessionPayload = {
     UserID: user.UserID,
     UserName: user.UserName,
@@ -165,8 +176,8 @@ export async function createSession(user: SessionUser): Promise<void> {
     ActiveBranchCode: user.ActiveBranchCode,
     BranchSessionVersion: BRANCH_SESSION_VERSION,
     iat: Math.floor(Date.now() / 1000),
-    ...(user.TenantId ? { TenantId: user.TenantId } : {}),
-    ...(user.MembershipId ? { MembershipId: user.MembershipId } : {}),
+    TenantId: user.TenantId,
+    MembershipId: user.MembershipId,
   };
   const token = encodeSessionPayload(payload);
   await setSessionCookie(token);

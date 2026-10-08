@@ -9,14 +9,15 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
-import { getSession } from '@/lib/session';
 import { getCairoBusinessDate } from '@/lib/businessDate';
+import { requireTenantSession } from '@/lib/api-auth';
 
 export const runtime = 'nodejs';
 
 export async function POST(req: NextRequest) {
   try {
-    const session = await getSession();
+    const session = await requireTenantSession();
+    if (session instanceof NextResponse) return session;
     const userID = session?.UserID ?? 0;
     const body = await req.json().catch(() => ({}));
     const date = (body as any).date || getCairoBusinessDate();

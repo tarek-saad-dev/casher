@@ -9,17 +9,17 @@ import {
   createLegacyWorkforceOccupancyAdapter,
   createLegacyOperationalCalendarAdapter,
 } from '@/legacy/index';
-import {
-  buildStaffActorContext,
-  resolveBootstrapTenantId,
-} from '@/lib/bookingSchedulingComposition';
+import { buildStaffActorContext } from '@/lib/bookingSchedulingComposition';
+import { requireActorTenantId } from '@/platform/tenant/tenantContext';
+import { assertTenantAppInstalled } from '@/platform/commercial/tenantAccessGate';
 
 export type { QueuePortHooks } from '@/apps/queue/internal/queuePortAdapter';
 
 export async function buildQueueSchedulingPorts(
   actor: ActorContext,
 ): Promise<QueueSchedulingPorts> {
-  const tenantId = actor.tenantId ?? (await resolveBootstrapTenantId());
+  const tenantId = requireActorTenantId(actor, 'buildQueueSchedulingPorts');
+  await assertTenantAppInstalled(tenantId, 'queue');
   return {
     tenantId,
     actor: { ...actor, tenantId },
@@ -47,4 +47,4 @@ export async function buildQueuePortHooksForActor(
   return createQueuePortHooks(deps);
 }
 
-export { buildStaffActorContext, resolveBootstrapTenantId };
+export { buildStaffActorContext };

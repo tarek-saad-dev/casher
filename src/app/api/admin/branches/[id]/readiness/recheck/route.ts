@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireBranchAdminAccess } from '@/lib/branch/context';
+import { branchAdminTenantScopeResponse, requireBranchAdminAccess } from '@/lib/branch/context';
 import { evaluateBranchReadiness } from '@/lib/branch/branchReadinessService';
 import { BranchDomainError } from '@/lib/branch/types';
 
@@ -18,6 +18,8 @@ export async function POST(_req: NextRequest, ctx: Ctx) {
     if (!Number.isFinite(branchId) || branchId <= 0) {
       return NextResponse.json({ ok: false, error: 'معرف فرع غير صالح' }, { status: 400 });
     }
+    const outOfTenant = await branchAdminTenantScopeResponse(admin, branchId);
+    if (outOfTenant) return outOfTenant;
     const readiness = await evaluateBranchReadiness(branchId);
     return NextResponse.json({ ok: true, rechecked: true, readiness });
   } catch (err) {

@@ -98,6 +98,8 @@ vi.mock('@/lib/db', () => ({
 const listActiveBranches = vi.fn();
 vi.mock('@/lib/branch', () => ({
   listActiveBranches: (...args: unknown[]) => listActiveBranches(...args),
+  listActiveBranchesIn: async (ids: readonly number[]) =>
+    ((await listActiveBranches()) as { branchId: number }[]).filter((b) => ids.includes(b.branchId)),
 }));
 
 describe('runNightlyClose orchestration', () => {
@@ -198,7 +200,7 @@ describe('runNightlyClose orchestration', () => {
 
   it('runs D → payroll → targets → employee WA → owner WA and verifies', async () => {
     const { runNightlyClose } = await import('@/lib/hr/nightly-close.service');
-    const result = await runNightlyClose({ workDate: '2026-07-14' });
+    const result = await runNightlyClose({ workDate: '2026-07-14', branchIds: [1] });
 
     expect(finalizeIncompleteAttendanceAsDayOff).toHaveBeenCalledWith('2026-07-14', {
       branchId: 1,
@@ -242,7 +244,7 @@ describe('runNightlyClose orchestration', () => {
     });
 
     const { runNightlyClose } = await import('@/lib/hr/nightly-close.service');
-    const result = await runNightlyClose({ workDate: '2026-07-14' });
+    const result = await runNightlyClose({ workDate: '2026-07-14', branchIds: [1] });
     expect(result.ok).toBe(false);
     expect(result.delivery.ok).toBe(false);
     expect(result.delivery.error).toMatch(/المدير/);

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireBranchAdminAccess } from '@/lib/branch/context';
 import { provisionBranch } from '@/lib/branch/branchProvisioningService';
 import { BranchDomainError } from '@/lib/branch/types';
+import { CommercialError } from '@/platform/commercial/errors';
 
 export const runtime = 'nodejs';
 
@@ -15,7 +16,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const result = await provisionBranch(body, { userId: admin.userId });
+    const result = await provisionBranch(body, { userId: admin.userId, tenantId: admin.tenantId });
     return NextResponse.json({
       ok: true,
       message: 'تم إنشاء الفرع في وضع الإعداد (SETUP)',
@@ -32,6 +33,12 @@ export async function POST(req: NextRequest) {
       actorAccessGranted: result.actorAccessGranted,
     });
   } catch (err) {
+    if (err instanceof CommercialError) {
+      return NextResponse.json(
+        { ok: false, error: err.message, code: err.code },
+        { status: err.status },
+      );
+    }
     if (err instanceof BranchDomainError) {
       return NextResponse.json(
         { ok: false, error: err.message, code: err.code },

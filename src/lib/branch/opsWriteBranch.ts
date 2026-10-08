@@ -9,6 +9,7 @@ import { BranchDomainError, type BranchRecord } from './types';
 import { isEmployeeEligibleForBranchBookings } from './bookingQueueOwnership';
 import { resolveEmployeeGlobalSchedule } from '@/lib/hr/employeeBranchScheduleResolver';
 import { getCairoBusinessDate } from '@/lib/businessDate';
+import { listTenantLegacyBranchIds } from '@/platform/tenant/tenantContext';
 
 export type OpsWriteBranchResult = {
   branchId: number;
@@ -23,21 +24,42 @@ function parseRequestedBranchId(raw: unknown): number | null {
   return Math.trunc(n);
 }
 
+/**
+ * Legacy TblUserBranchAccess rows may still point at branches of other tenants (pre-DRVO-013
+ * grants were global), so every ops decision is intersected with the session tenant's Locations.
+ */
+async function sessionTenantBranchIds(tenantId: string | null | undefined): Promise<Set<number>> {
+  if (!tenantId) return new Set();
+  return listTenantLegacyBranchIds(tenantId);
+}
+
 /** Same visibility set as flow-board for multi-branch ops. */
-export async function listUserOpsVisibleBranchIds(userId: number): Promise<Set<number>> {
-  const access = await listUserValidBranchAccess(userId);
+export async function listUserOpsVisibleBranchIds(
+  userId: number,
+  tenantId: string | null | undefined,
+): Promise<Set<number>> {
+  const [access, tenantBranches] = await Promise.all([
+    listUserValidBranchAccess(userId),
+    sessionTenantBranchIds(tenantId),
+  ]);
   return new Set(
     access
       .filter((a) => a.canOperate || a.canSwitch || a.canViewReports || a.isDefault)
-      .map((a) => a.branchId),
+      .map((a) => a.branchId)
+      .filter((id) => tenantBranches.has(id)),
   );
 }
 
 export async function userCanWriteOpsOnBranch(
   userId: number,
   branchId: number,
+  tenantId: string | null | undefined,
 ): Promise<boolean> {
-  const access = await listUserValidBranchAccess(userId);
+  const [access, tenantBranches] = await Promise.all([
+    listUserValidBranchAccess(userId),
+    sessionTenantBranchIds(tenantId),
+  ]);
+  if (!tenantBranches.has(branchId)) return false;
   return access.some(
     (a) => a.branchId === branchId && (a.canOperate || a.canSwitch),
   );
@@ -68,6 +90,8 @@ export async function resolveEmployeeWorkingBranchId(
 export async function resolveOpsWriteBranch(args: {
   userId: number;
   sessionBranchId: number;
+  /** Session tenant; candidates outside its Locations are never written to. */
+  tenantId: string | null | undefined;
   empId: number;
   workDate?: string | null;
   requestedBranchId?: unknown;
@@ -89,8 +113,10 @@ export async function resolveOpsWriteBranch(args: {
     candidates.push(args.sessionBranchId);
   }
 
+  const tenantBranches = await sessionTenantBranchIds(args.tenantId);
   for (const branchId of candidates) {
-    const canWrite = await userCanWriteOpsOnBranch(args.userId, branchId);
+    if (!tenantBranches.has(branchId)) continue;
+    const canWrite = await userCanWriteOpsOnBranch(args.userId, branchId, args.tenantId);
     if (!canWrite && branchId !== args.sessionBranchId) continue;
 
     const eligible = await isEmployeeEligibleForBranchBookings({
@@ -133,13 +159,15 @@ export function opsWriteBranchErrorResponse(err: unknown): NextResponse | null {
 export async function userCanManageOpsBranchRecord(args: {
   userId: number;
   sessionBranchId: number;
+  tenantId: string | null | undefined;
   recordBranchId: number | null | undefined;
 }): Promise<boolean> {
   if (args.recordBranchId == null || !Number.isFinite(args.recordBranchId)) {
     return false;
   }
+  if (!(await sessionTenantBranchIds(args.tenantId)).has(args.recordBranchId)) return false;
   if (args.recordBranchId === args.sessionBranchId) return true;
-  return userCanWriteOpsOnBranch(args.userId, args.recordBranchId);
+  return userCanWriteOpsOnBranch(args.userId, args.recordBranchId, args.tenantId);
 }
 
 export async function loadBranchRecordOrThrow(branchId: number): Promise<BranchRecord> {

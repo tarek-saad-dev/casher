@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { hasPermission } from '@/lib/permissions';
-import { getSession } from '@/lib/session';
 import { branchErrorResponse } from '@/lib/branch/operationalGates';
 import { handoffShift } from '@/lib/branch/shiftSession';
 import { loadOperationalBootstrap } from '@/modules/operations/application/loadOperationalBootstrap';
+import { requireTenantSession } from '@/lib/api-auth';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -16,8 +16,9 @@ export const dynamic = 'force-dynamic';
  */
 export async function POST(req: NextRequest) {
   try {
-    const user = await getSession();
-    if (!user || !hasPermission(user.UserLevel, 'shift.open')) {
+    const user = await requireTenantSession();
+    if (user instanceof NextResponse) return user;
+    if (!hasPermission(user.UserLevel, 'shift.open')) {
       return NextResponse.json(
         { error: 'غير مصرح — لا تملك صلاحية نقل الوردية', code: 'FORBIDDEN' },
         { status: 403 },

@@ -114,6 +114,16 @@ export async function listActiveBranches(): Promise<BranchRecord[]> {
   return result.recordset.map(mapBranch);
 }
 
+/**
+ * Active branches limited to an explicit set — system jobs pass one tenant's Location branch ids.
+ * An empty set yields no branches (never "all").
+ */
+export async function listActiveBranchesIn(branchIds: readonly number[]): Promise<BranchRecord[]> {
+  if (branchIds.length === 0) return [];
+  const allowed = new Set(branchIds);
+  return (await listActiveBranches()).filter((b) => allowed.has(b.branchId));
+}
+
 /** Admin hub — all branches including SETUP / inactive. */
 export async function listAllBranches(): Promise<BranchRecord[]> {
   const db = await getPool();
@@ -155,6 +165,19 @@ const ACCESS_SELECT = `
   uba.IsActive, uba.ValidFrom, uba.ValidTo, b.IsActive AS BranchIsActive
 `;
 
+/**
+ * DRVO-013: pre-tenant grants were global, so an access row only counts when its branch is a
+ * Location of a tenant the user is a member of. Rows pointing at other tenants are ignored.
+ */
+const ACCESS_TENANT_SCOPE = `
+  EXISTS (
+    SELECT 1
+    FROM dbo.Location l
+    INNER JOIN dbo.TenantMembership m ON m.TenantId = l.TenantId
+    WHERE l.LegacyBranchId = uba.BranchID AND m.LegacyUserId = uba.UserID
+  )
+`;
+
 export async function listUserBranchAccessRows(
   userId: number,
 ): Promise<UserBranchAccessRecord[]> {
@@ -166,7 +189,7 @@ export async function listUserBranchAccessRows(
       SELECT ${ACCESS_SELECT}
       FROM dbo.TblUserBranchAccess uba
       INNER JOIN dbo.TblBranch b ON b.BranchID = uba.BranchID
-      WHERE uba.UserID = @userId
+      WHERE uba.UserID = @userId AND ${ACCESS_TENANT_SCOPE}
       ORDER BY uba.IsDefault DESC, b.BranchCode
     `);
   return result.recordset.map(mapAccess);
@@ -226,7 +249,7 @@ export async function getUserBranchAccess(
       SELECT ${ACCESS_SELECT}
       FROM dbo.TblUserBranchAccess uba
       INNER JOIN dbo.TblBranch b ON b.BranchID = uba.BranchID
-      WHERE uba.UserID = @userId AND uba.BranchID = @branchId
+      WHERE uba.UserID = @userId AND uba.BranchID = @branchId AND ${ACCESS_TENANT_SCOPE}
     `);
   if (!result.recordset[0]) return null;
   return mapAccess(result.recordset[0]);

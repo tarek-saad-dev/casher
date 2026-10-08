@@ -62,14 +62,19 @@ async function main() {
     if (dbName !== STAGING_DB) throw new Error(`Expected ${STAGING_DB}, got ${dbName}`);
     if (loginName !== STAGING_USER) throw new Error(`Expected ${STAGING_USER}, got ${loginName}`);
 
+    // DRVO-013: target CASHER_BOOT by name (casher-boot-staging-smoke seam), never "first tenant".
     const tenantRes = await pool.request().query(`
-      SELECT TOP 1 TenantId FROM dbo.Tenant WHERE Status = N'active';
+      SELECT TenantId FROM dbo.Tenant WHERE Code = N'CASHER_BOOT' AND Status = N'active';
     `);
     const tenantId = String(tenantRes.recordset[0]?.TenantId ?? '');
-    if (!tenantId) throw new Error('No active tenant');
+    if (!tenantId) throw new Error('CASHER_BOOT tenant is not active');
 
-    const branchRes = await pool.request().query(`
-      SELECT TOP 1 BranchID FROM dbo.TblBranch WHERE isActive = 1 ORDER BY BranchID;
+    const branchRes = await pool.request().input('tenantId', sql.UniqueIdentifier, tenantId).query(`
+      SELECT TOP 1 b.BranchID
+      FROM dbo.TblBranch b
+      INNER JOIN dbo.Location l ON l.LegacyBranchId = b.BranchID
+      WHERE b.isActive = 1 AND l.TenantId = @tenantId AND l.Status = N'active'
+      ORDER BY b.BranchID;
     `);
     const branchId = Number(branchRes.recordset[0]?.BranchID ?? 0);
     if (!branchId) throw new Error('No active branch');

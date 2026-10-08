@@ -1,15 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
-import { getSession } from "@/lib/session";
+import { requireTenantSession } from '@/lib/api-auth';
 
 // POST /api/admin/employees/auto-revenue-map
 // Automatically maps revenue categories to unmapped employees
 export async function POST(req: NextRequest) {
   try {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
-    }
+    const session = await requireTenantSession();
+    if (session instanceof NextResponse) return session;
 
     const db = await getPool();
     const transaction = new sql.Transaction(db);
@@ -190,10 +188,8 @@ export async function POST(req: NextRequest) {
 // Preview what would be mapped without actually mapping
 export async function GET() {
   try {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
-    }
+    const session = await requireTenantSession();
+    if (session instanceof NextResponse) return session;
 
     const db = await getPool();
 

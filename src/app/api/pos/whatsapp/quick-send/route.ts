@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSession } from '@/lib/session';
 import { getWhatsAppConfig } from '@/lib/integrations/whatsapp';
 import { sendMessage } from '@/modules/messaging';
+import { requireTenantSession } from '@/lib/api-auth';
 
 export const runtime = 'nodejs';
 
@@ -29,9 +29,11 @@ const FAIL_MESSAGES: Record<string, string> = {
  */
 export async function POST(req: NextRequest) {
   try {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
+    const session = await requireTenantSession();
+    if (session instanceof NextResponse) {
+      return session.status === 401
+        ? NextResponse.json({ error: 'غير مصرح' }, { status: 401 })
+        : session;
     }
 
     const body = (await req.json()) as {

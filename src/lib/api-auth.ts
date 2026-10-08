@@ -10,6 +10,21 @@ import {
   extractBearerToken,
   isCronBearerAuthorized,
 } from '@/lib/proxyPublicRoutes';
+import type { SessionUser } from '@/lib/session-types';
+import {
+  assertLegacyUserInTenant,
+  isTenantContextError,
+  resolveStaffTenantContextForRequest,
+  type StaffTenantContext,
+} from '@/platform/tenant/tenantContext';
+import { resolveLegacyBootstrapTenantId } from '@/platform/tenant/legacyBootstrapSeam';
+import {
+  assertRouteAppEntitlement,
+  assertTenantAppInstalled,
+  assertTenantSubscriptionActive,
+  TenantAccessDeniedError,
+} from '@/platform/commercial/tenantAccessGate';
+import type { AppRegistryCode } from '@/platform/registry/constants';
 
 export interface AuthResult {
   ok: true;
@@ -20,19 +35,38 @@ export interface AuthResult {
   isSuperAdmin: boolean;
   activeBranchId: number;
   activeBranchCode: string;
-  /** DRVO-003 bootstrap tenant context (null when platform tables are not seeded). */
-  tenantId: string | null;
-  membershipId: string | null;
+  /** DRVO-013 authoritative tenant (membership -> tenant -> active location). Never defaulted. */
+  tenantId: string;
+  membershipId: string;
+  tenant: StaffTenantContext;
 }
 
 export type AuthFailure = NextResponse;
 
-export type SystemJobAuthResult = AuthResult & {
+/** Machine callers have no staff tenant; tenant-owned work must carry TenantId explicitly. */
+export type SystemJobAuthResult = Omit<AuthResult, 'tenantId' | 'membershipId' | 'tenant'> & {
+  tenantId: string | null;
+  membershipId: string | null;
+  tenant: StaffTenantContext | null;
   via: 'cron_bearer' | 'session';
 };
 
-/** Authenticate the current request. Returns AuthResult or a NextResponse 401/403. */
-export async function authenticate(): Promise<AuthResult | NextResponse> {
+/** Platform operator identity — deliberately carries no tenant/active-branch context. */
+export interface PlatformOperatorAuth {
+  ok: true;
+  kind: 'platform_operator';
+  userId: number;
+  userName: string;
+  roles: string[];
+}
+
+type IdentityResult = {
+  session: SessionUser;
+  roles: string[];
+  isSuperAdmin: boolean;
+};
+
+async function authenticateIdentity(): Promise<IdentityResult | NextResponse> {
   const session = await getSession();
   if (!session) {
     return NextResponse.json(
@@ -66,20 +100,61 @@ export async function authenticate(): Promise<AuthResult | NextResponse> {
   }
 
   const access = await getUserAccess(session.UserID, session.UserName, session.UserLevel);
+  return { session, roles: access.roles, isSuperAdmin: access.isSuperAdmin };
+}
 
-  let tenantId = session.TenantId ?? null;
-  let membershipId = session.MembershipId ?? null;
-  if (!tenantId || !membershipId) {
-    try {
-      const { resolveStaffTenantContext } = await import(
-        '@/platform/session/staffTenantContext'
+/** Fail-closed mapping for tenant resolution / commercial gate denials. */
+export async function tenantDenialResponse(
+  err: unknown,
+  details: Record<string, unknown>,
+): Promise<NextResponse | null> {
+  if (isTenantContextError(err)) {
+    logSecurityEvent('tenant_context_denied', { ...details, code: err.code, detail: err.detail });
+    if (err.code === 'TENANT_MEMBERSHIP_MISMATCH' || err.code === 'LOCATION_NOT_IN_TENANT') {
+      await destroySession();
+      return NextResponse.json(
+        { error: 'يلزم إعادة تسجيل الدخول', code: 'SESSION_TENANT_INVALID' },
+        { status: 401 },
       );
-      const tenantCtx = await resolveStaffTenantContext(session);
-      tenantId = tenantCtx?.tenantId ?? null;
-      membershipId = tenantCtx?.membershipId ?? null;
-    } catch {
-      /* platform tables may be absent in dev without migration */
     }
+    return NextResponse.json({ error: err.publicMessage, code: err.publicCode }, { status: err.status });
+  }
+  if (err instanceof TenantAccessDeniedError) {
+    logSecurityEvent('tenant_access_denied', { ...details, code: err.code, reason: err.reason });
+    return NextResponse.json(
+      { error: err.message, code: err.code, ...(err.reason ? { reason: err.reason } : {}) },
+      { status: err.status },
+    );
+  }
+  return null;
+}
+
+/**
+ * Authenticate a staff request. Tenant identity is authoritative:
+ * user -> TenantMembership -> Tenant -> active Location (session branch), plus the DRVO-012
+ * subscription gate evaluated for that tenant. Any failure is fail-closed.
+ */
+export async function authenticate(): Promise<AuthResult | NextResponse> {
+  const identity = await authenticateIdentity();
+  if (identity instanceof NextResponse) return identity;
+  const { session } = identity;
+
+  let tenant: StaffTenantContext;
+  try {
+    tenant = await resolveStaffTenantContextForRequest({
+      userId: session.UserID,
+      activeBranchId: session.ActiveBranchID,
+      preferredTenantId: session.TenantId ?? null,
+    });
+    await assertTenantSubscriptionActive(tenant.tenantId);
+    await assertRouteAppEntitlement(tenant.tenantId);
+  } catch (err) {
+    const denied = await tenantDenialResponse(err, {
+      userId: session.UserID,
+      activeBranchId: session.ActiveBranchID,
+    });
+    if (denied) return denied;
+    throw err;
   }
 
   return {
@@ -87,18 +162,101 @@ export async function authenticate(): Promise<AuthResult | NextResponse> {
     userId: session.UserID,
     userName: session.UserName,
     userLevel: session.UserLevel,
-    roles: access.roles,
-    isSuperAdmin: access.isSuperAdmin,
+    roles: identity.roles,
+    isSuperAdmin: identity.isSuperAdmin,
     activeBranchId: session.ActiveBranchID,
     activeBranchCode: session.ActiveBranchCode,
-    tenantId,
-    membershipId,
+    tenantId: tenant.tenantId,
+    membershipId: tenant.membershipId,
+    tenant,
   };
+}
+
+/**
+ * Tenant-owned product routes for an installable app: authoritative tenant first, then the
+ * DRVO-012 installed-app check for THAT tenant.
+ */
+export async function requireTenantApp(appCode: AppRegistryCode): Promise<AuthResult | NextResponse> {
+  return withTenantApp(appCode, authenticate());
+}
+
+/**
+ * App entitlement for any tenant-checked auth result (AuthResult, ActiveBranchContext, ...):
+ * `await withTenantApp('payroll', requireRole([...]))`. A result without an authoritative
+ * tenant (cron bearer) is denied — system jobs fan out per tenant instead.
+ */
+export async function withTenantApp<T extends { tenantId: string | null }>(
+  appCode: AppRegistryCode,
+  pending: Promise<T | NextResponse>,
+): Promise<T | NextResponse> {
+  const auth = await pending;
+  if (auth instanceof NextResponse) return auth;
+  if (!auth.tenantId) {
+    return NextResponse.json(
+      { error: 'تعذر تحديد المنشأة لهذا الطلب', code: 'TENANT_CONTEXT_REQUIRED' },
+      { status: 403 },
+    );
+  }
+  try {
+    await assertTenantAppInstalled(auth.tenantId, appCode);
+  } catch (err) {
+    const denied = await tenantDenialResponse(err, { tenantId: auth.tenantId, appCode });
+    if (denied) return denied;
+    throw err;
+  }
+  return auth;
 }
 
 /** Alias: any authenticated POS session. */
 export async function requireSession(): Promise<AuthResult | NextResponse> {
   return authenticate();
+}
+
+/** Session shape whose tenant binding has been re-verified by `authenticate()`. */
+export type TenantSessionUser = SessionUser & { TenantId: string; MembershipId: string };
+
+function toTenantSessionUser(auth: AuthResult): TenantSessionUser {
+  return {
+    UserID: auth.userId,
+    UserName: auth.userName,
+    UserLevel: auth.userLevel === 'admin' ? 'admin' : 'user',
+    ActiveBranchID: auth.activeBranchId,
+    ActiveBranchCode: auth.activeBranchCode,
+    BranchSessionVersion: 1,
+    TenantId: auth.tenantId,
+    MembershipId: auth.membershipId,
+  };
+}
+
+/**
+ * Tenant-checked replacement for `getSession()` in staff handlers: membership, tenant, active
+ * location, subscription and route-family app gates all pass before the session is returned.
+ * `app` additionally requires that installable app for the session tenant.
+ */
+export async function requireTenantSession(
+  opts: { app?: AppRegistryCode } = {},
+): Promise<TenantSessionUser | NextResponse> {
+  const auth = opts.app ? await requireTenantApp(opts.app) : await authenticate();
+  if (!isAuthResult(auth)) return auth;
+  return toTenantSessionUser(auth);
+}
+
+/**
+ * Features backed by global legacy tables that have neither TenantId nor BranchID stay limited to
+ * the CASHER_BOOT tenant (named seam) until their data is tenant-owned. Other tenants get a
+ * non-disclosing 404.
+ */
+export async function requireLegacyGlobalDataSession(
+  feature: string,
+): Promise<TenantSessionUser | NextResponse> {
+  const auth = await authenticate();
+  if (!isAuthResult(auth)) return auth;
+  const legacyTenantId = await resolveLegacyBootstrapTenantId('legacy-global-data');
+  if (auth.tenantId !== legacyTenantId) {
+    logSecurityEvent('legacy_global_data_denied', { userId: auth.userId, tenantId: auth.tenantId, feature });
+    return NextResponse.json({ error: 'غير موجود', code: 'NOT_FOUND' }, { status: 404 });
+  }
+  return toTenantSessionUser(auth);
 }
 
 /** Require the caller to have at least one of the given roles. */
@@ -121,28 +279,47 @@ export async function requireRole(
 }
 
 /**
- * Platform operator gate for tenant onboarding/control-plane routes.
- * Temporary boundary: super_admin (or legacy super admin flag) until a dedicated
- * platform-admin role exists. Normal branch admins must not provision tenants.
+ * Platform operator gate for control-plane routes. Separate from tenant staff semantics:
+ * requires super_admin AND membership in the platform-owner tenant (CASHER_BOOT seam), so a
+ * tenant admin granted super_admin inside their own tenant is not a platform operator.
+ * The result carries no tenant / active-branch context.
  */
-export async function requirePlatformOperator(): Promise<AuthResult | NextResponse> {
-  const auth = await authenticate();
-  if (!isAuthResult(auth)) return auth;
+export async function requirePlatformOperator(): Promise<PlatformOperatorAuth | NextResponse> {
+  const identity = await authenticateIdentity();
+  if (identity instanceof NextResponse) return identity;
+  const { session } = identity;
 
-  if (auth.isSuperAdmin || auth.roles.includes('super_admin')) {
-    return auth;
+  const deny = (reason: string) => {
+    logSecurityEvent('platform_operator_denied', {
+      userId: session.UserID,
+      userName: session.UserName,
+      roles: identity.roles,
+      reason,
+    });
+    return NextResponse.json(
+      { error: 'غير مصرح — هذه العملية تتطلب صلاحية مشغل المنصة (super_admin)' },
+      { status: 403 },
+    );
+  };
+
+  if (!(identity.isSuperAdmin || identity.roles.includes('super_admin'))) {
+    return deny('not_super_admin');
+  }
+  try {
+    const platformTenantId = await resolveLegacyBootstrapTenantId('platform-operator-tenant');
+    await assertLegacyUserInTenant(platformTenantId, session.UserID);
+  } catch (err) {
+    if (isTenantContextError(err)) return deny('not_platform_owner_member');
+    throw err;
   }
 
-  logSecurityEvent('platform_operator_denied', {
-    userId: auth.userId,
-    userName: auth.userName,
-    roles: auth.roles,
-  });
-
-  return NextResponse.json(
-    { error: 'غير مصرح — هذه العملية تتطلب صلاحية مشغل المنصة (super_admin)' },
-    { status: 403 },
-  );
+  return {
+    ok: true,
+    kind: 'platform_operator',
+    userId: session.UserID,
+    userName: session.UserName,
+    roles: identity.roles,
+  };
 }
 
 /** Require admin or super_admin role (or legacy UserLevel admin). */
@@ -239,6 +416,7 @@ export async function requireSystemJobAuth(
       activeBranchCode: 'SYSTEM',
       tenantId: null,
       membershipId: null,
+      tenant: null,
       via: 'cron_bearer',
     };
   }
@@ -269,8 +447,8 @@ export function logSecurityEvent(
 }
 
 /** Type guard */
-export function isAuthResult(v: AuthResult | NextResponse): v is AuthResult {
-  return (v as AuthResult).ok === true;
+export function isAuthResult<T extends { ok: true }>(v: T | NextResponse): v is T {
+  return !(v instanceof NextResponse) && (v as T).ok === true;
 }
 
 export function isSystemJobAuthResult(

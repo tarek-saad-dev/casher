@@ -75,6 +75,7 @@ export async function GET(req: NextRequest) {
         const { resolveOpsWriteBranch } = await import('@/lib/branch/opsWriteBranch');
         try {
           const target = await resolveOpsWriteBranch({
+            tenantId: branchCtx.tenantId,
             userId: branchCtx.userId,
             sessionBranchId: branchCtx.branchId,
             empId,

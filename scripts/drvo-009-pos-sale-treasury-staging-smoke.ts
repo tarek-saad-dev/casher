@@ -71,7 +71,8 @@ async function main() {
   const sql = mssql.default;
   const { getPool, closePool, allocateInvID } = await import('../src/lib/db');
   const { runDrvoMigrations } = await import('./drvo/runner');
-  const { resolveBootstrapTenantId } = await import('../src/lib/bookingSchedulingComposition');
+  const { resolveLegacyBootstrapTenantId } = await import('../src/platform/tenant/legacyBootstrapSeam');
+  const resolveBootstrapTenantId = () => resolveLegacyBootstrapTenantId('casher-boot-staging-smoke');
   const { insertSaleCashMoveResolvingConflict, postSaleCashMove } = await import(
     '../src/apps/treasury/internal/postSaleCashMove'
   );

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
 import { ensureTblCatSortOrderColumn } from '@/lib/migrations/ensureCategorySortOrder';
 import { invalidatePublicBookingServicesCache } from '@/lib/booking/publicBookingServices';
+import { requireTenantSession } from '@/lib/api-auth';
 
 export const runtime = 'nodejs';
 
@@ -11,6 +12,8 @@ export const runtime = 'nodejs';
  * Assigns SortOrder = 10, 20, 30, ...
  */
 export async function PUT(req: NextRequest) {
+  const tenantSession = await requireTenantSession();
+  if (tenantSession instanceof NextResponse) return tenantSession;
   try {
     const body = await req.json();
     const categoryIds = body?.categoryIds;

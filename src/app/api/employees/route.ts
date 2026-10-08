@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
-import { getSession } from '@/lib/session';
 import { getCairoBusinessDate } from '@/lib/businessDate';
 import {
   usesHrModelPayload,
@@ -37,10 +36,13 @@ import {
   syncHrRatesToActiveBranchPlans,
   type BranchPayrollPayType,
 } from '@/lib/payroll/branchPayrollPlan';
+import { requireTenantSession } from '@/lib/api-auth';
 
 // GET /api/employees — list employees with finance mapping
 // Query params: ?inactive=true to get inactive employees
 export async function GET(req: NextRequest) {
+  const tenantSession = await requireTenantSession();
+  if (tenantSession instanceof NextResponse) return tenantSession;
   try {
     const { searchParams } = new URL(req.url);
     const showInactive = searchParams.get('inactive') === 'true';
@@ -115,10 +117,8 @@ export async function GET(req: NextRequest) {
 // HR model: optional full payload with employmentType, payrollMethod, scheduleConfig, etc.
 export async function POST(req: NextRequest) {
   try {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
-    }
+    const session = await requireTenantSession();
+    if (session instanceof NextResponse) return session;
 
     const body = (await req.json()) as EmployeeHrPayload & {
       imageUrl?: string | null;

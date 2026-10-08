@@ -6,6 +6,7 @@ import {
 } from '@/lib/api-auth';
 import { reconcileAllBusinessDays } from '@/modules/operations/application/reconcileBusinessDay';
 import type { ReconcileTrigger } from '@/modules/operations/infra/businessDayMutationTx';
+import { runTenantJobFanout, tenantJobScopeFor } from '@/platform/tenant/tenantJobFanout';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -19,7 +20,8 @@ export const maxDuration = 120;
  *
  * The cron schedule is only a "check branches now" trigger.
  * BusinessClock decides whether each branch is past its local 08:00 window.
- * Client-supplied BranchID is ignored.
+ * Client-supplied BranchID is ignored. Runs tenant-by-tenant (active subscription only);
+ * a manual admin session only reconciles its own tenant.
  */
 async function run(req: NextRequest) {
   const jobAuth = await requireSystemJobAuth(req);
@@ -36,8 +38,21 @@ async function run(req: NextRequest) {
     });
   }
 
-  const result = await reconcileAllBusinessDays({ trigger });
-  return NextResponse.json(result, { status: result.ok ? 200 : 207 });
+  const { outcomes, skipped } = await runTenantJobFanout(
+    { scope: tenantJobScopeFor(jobAuth), job: 'business-day-reconcile' },
+    (target) => reconcileAllBusinessDays({ trigger, branchIds: target.branchIds }),
+  );
+  const ok = outcomes.every((o) => o.ok && o.result?.ok !== false);
+  return NextResponse.json(
+    {
+      ok,
+      trigger,
+      results: outcomes.flatMap((o) => o.result?.results ?? []),
+      tenants: outcomes.map((o) => ({ tenantCode: o.tenantCode, ok: o.ok && o.result?.ok !== false, error: o.error })),
+      skippedTenants: skipped,
+    },
+    { status: ok ? 200 : 207 },
+  );
 }
 
 export async function POST(req: NextRequest) {

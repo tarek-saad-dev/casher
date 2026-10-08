@@ -18,7 +18,7 @@ export const SALON_PACK: IndustryPackDefinition = {
   displayName: 'Salon',
   required: ['booking'],
   recommended: ['queue', 'pos', 'attendance', 'payroll', 'treasury', 'reports'],
-  optional: ['inventory', 'purchasing', 'loyalty', 'messaging', 'ai-receptionist'],
+  optional: ['inventory', 'purchasing', 'messaging', 'ai-receptionist'],
   configDefaults: {
     compositionSurfaces: [...SALON_PACK_SURFACES],
     bookingMode: 'appointments_and_walk_in',

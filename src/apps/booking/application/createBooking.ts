@@ -6,6 +6,7 @@ import {
 } from '@/lib/booking/publicBookingCreate';
 import type { SchedulingPortHooks } from '@/apps/booking/internal/schedulingPortAdapter';
 import { namespacedHoldKey } from './holdBooking';
+import { namespacedRequestKey } from './tenantRequestKey';
 
 export type CreateBookingInput = PublicBookingCreateInput & {
   tenantId: string;
@@ -23,6 +24,8 @@ export async function createBooking(
   return createPublicBooking({
     ...input,
     holdKey,
+    clientRequestId: namespacedRequestKey(input.tenantId, input.clientRequestId),
+    idempotencyKeyHeader: namespacedRequestKey(input.tenantId, input.idempotencyKeyHeader),
     schedulingPortHooks: input.schedulingPortHooks,
     useExtractedEventDelivery: true,
     suppressNotification: true,

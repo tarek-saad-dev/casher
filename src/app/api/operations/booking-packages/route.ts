@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
   try {
     if (branchCode !== branch.branchCode.toUpperCase()) {
       const target = await getBranchByCode(branchCode);
-      const visible = target ? await listUserOpsVisibleBranchIds(branch.userId) : null;
+      const visible = target ? await listUserOpsVisibleBranchIds(branch.userId, branch.tenantId) : null;
       if (!target || !visible?.has(target.branchId)) {
         return NextResponse.json(
           { ok: false, error: 'لا تملك صلاحية على هذا الفرع', code: 'NO_BRANCH_ACCESS' },

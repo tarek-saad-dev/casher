@@ -44,6 +44,7 @@ export async function POST(req: NextRequest) {
       : getCairoBusinessDate();
 
     const target = await resolveOpsWriteBranch({
+      tenantId: sessionBranch.tenantId,
       userId: sessionBranch.userId,
       sessionBranchId: sessionBranch.branchId,
       empId: body.empId,
@@ -65,7 +66,7 @@ export async function POST(req: NextRequest) {
 
     let response;
     if (isQueueSchedulingPortEnabled()) {
-      const actor = await buildStaffActorContext(sessionBranch.userId);
+      const actor = await buildStaffActorContext(sessionBranch.userId, sessionBranch.tenantId);
       const queuePortHooks = await buildQueuePortHooksForActor(actor);
       response = await createQueueTicket({
         ...input,

@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSession } from '@/lib/session';
 import { rescheduleBookingMove } from '@/lib/bookingRescheduleCore';
 import { ScheduleConflictError } from '@/lib/scheduleIntegrity';
 import { isBookingSchedulingPortEnabled, rescheduleOpsBooking } from '@/apps/booking/public';
@@ -9,6 +8,7 @@ import {
 } from '@/lib/bookingSchedulingComposition';
 import { BookingCreateLockError } from '@/lib/booking/publicBookingCreateLocks';
 import { PUBLIC_BOOKING_ERROR_CATALOG } from '@/lib/booking/publicBookingErrorCatalog';
+import { requireTenantSession } from '@/lib/api-auth';
 
 export const runtime = 'nodejs';
 
@@ -16,10 +16,8 @@ type RouteContext = { params: Promise<{ id: string }> };
 
 export async function PATCH(req: NextRequest, context: RouteContext) {
   try {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
-    }
+    const session = await requireTenantSession();
+    if (session instanceof NextResponse) return session;
 
     const { id } = await context.params;
     const bookingId = parseInt(id, 10);
@@ -48,7 +46,7 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
 
     const result = isBookingSchedulingPortEnabled()
       ? await (async () => {
-          const actor = await buildStaffActorContext(session.UserID);
+          const actor = await buildStaffActorContext(session.UserID, session.TenantId);
           const schedulingPortHooks = await buildSchedulingPortHooksForActor(actor);
           return rescheduleOpsBooking({ ...moveInput, schedulingPortHooks });
         })()

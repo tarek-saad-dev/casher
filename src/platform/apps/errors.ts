@@ -9,6 +9,7 @@ export type TenantAppErrorCode =
   | 'APP_NOT_SELECTED'
   | 'APP_NOT_INSTALLED'
   | 'APP_ALREADY_INSTALLED'
+  | 'APP_NOT_AVAILABLE'
   | 'TENANT_NOT_FOUND'
   | 'LOCK_TIMEOUT';
 

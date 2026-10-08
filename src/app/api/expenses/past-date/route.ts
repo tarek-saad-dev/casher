@@ -121,7 +121,7 @@ export async function POST(req: NextRequest) {
     const finalAmount = Math.max(0, Number(amount));
     const finalInvTime = invTime || '12:00';
     const notesText = notes?.trim() || catName;
-    const actor = await buildStaffActorContext(session.UserID);
+    const actor = await buildStaffActorContext(session.UserID, session.TenantId);
     const treasuryPorts = await buildTreasuryWritePorts(actor);
     const idempotencyKey =
       typeof body.idempotencyKey === 'string' && body.idempotencyKey.trim()

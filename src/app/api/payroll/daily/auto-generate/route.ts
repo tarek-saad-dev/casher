@@ -10,8 +10,10 @@ import {
   runDailyPayrollGenerateWithOptionalLedger,
 } from '@/lib/services/employeeLedgerDualWrite';
 import { isSystemJobAuthResult, requireSystemJobAuth } from '@/lib/api-auth';
-import { listActiveBranches } from '@/lib/branch';
+import { listActiveBranchesIn } from '@/lib/branch';
 import { getEmpBranchWorkDayCloseState } from '@/lib/hr/empBranchWorkDayClose.service';
+import { resolveLegacyBootstrapTenantId } from '@/platform/tenant/legacyBootstrapSeam';
+import { runTenantJobFanout, tenantJobScopeFor } from '@/platform/tenant/tenantJobFanout';
 
 function resolveWorkDate(override?: string): string {
   if (override && /^\d{4}-\d{2}-\d{2}$/.test(override)) return override;
@@ -22,7 +24,151 @@ function resolveWorkDate(override?: string): string {
   return `${target.getFullYear()}-${String(target.getMonth() + 1).padStart(2, '0')}-${String(target.getDate()).padStart(2, '0')}`;
 }
 
-// POST /api/payroll/daily/auto-generate — Phase 1L: per active branch
+type GenerateOutcome = { status: number; body: Record<string, unknown> };
+
+/** One tenant's run: only that tenant's active Location branches. */
+async function generateForTenantBranches(
+  branchIds: readonly number[],
+  workDate: string,
+  writeLegacyLog: boolean,
+): Promise<GenerateOutcome> {
+  const db = await getPool();
+  const branches = await listActiveBranchesIn(branchIds);
+  const log = writeLegacyLog ? logAutoGenResult : async () => undefined;
+
+  let employeesCount = 0;
+  let totalHours = 0;
+  let totalWages = 0;
+  let anyGenerated = false;
+  let anyIncomplete = false;
+  let allPosted = branches.length > 0;
+  let ledgerDualWrite: unknown = undefined;
+  let ledgerSync: unknown = null;
+  const branchErrors: string[] = [];
+  const allMissing: ValidationMissing[] = [];
+
+  for (const branch of branches) {
+    const closeState = await getEmpBranchWorkDayCloseState(branch.branchId, workDate);
+    if (closeState.state === 'CLOSED') {
+      branchErrors.push(`${branch.branchCode}: payroll day CLOSED — skipped`);
+      continue;
+    }
+
+    const postedCount = await countPostedDailyPayroll(db, workDate, branch.branchId);
+    if (postedCount > 0) {
+      continue;
+    }
+    allPosted = false;
+
+    const { missing } = await validateDailyPayrollAttendance(db, workDate, {
+      branchId: branch.branchId,
+    });
+    if (missing.length > 0) {
+      anyIncomplete = true;
+      allMissing.push(...missing);
+      branchErrors.push(`${branch.branchCode}: attendance incomplete (${missing.length})`);
+      continue;
+    }
+
+    try {
+      const { result, ledgerDualWrite: ld, ledgerSync: ls } =
+        await runDailyPayrollGenerateWithOptionalLedger(workDate, {
+          notesPrefix: `[Auto][${branch.branchCode}] `,
+          branchId: branch.branchId,
+        });
+      employeesCount += result.generatedCount;
+      totalHours += Number(result.totalHours) || 0;
+      totalWages += Number(result.totalWage) || 0;
+      ledgerDualWrite = ld;
+      ledgerSync = ls ?? null;
+      anyGenerated = true;
+    } catch (branchErr) {
+      const msg = branchErr instanceof Error ? branchErr.message : String(branchErr);
+      branchErrors.push(`${branch.branchCode}: ${msg}`);
+    }
+  }
+
+  if (branches.length === 0) {
+    return {
+      status: 200,
+      body: {
+        ok: true,
+        status: 'no_eligible_employees',
+        workDate,
+        message: 'لا يوجد فروع نشطة',
+        employeesCount: 0,
+        totalHours: 0,
+        totalWages: 0,
+      },
+    };
+  }
+
+  if (allPosted && !anyGenerated) {
+    return {
+      status: 409,
+      body: {
+        ok: false,
+        status: 'already_posted',
+        workDate,
+        message: 'يوجد يوميات مرحلة للخزنة لهذا التاريخ، لا يمكن إعادة توليدها.',
+      },
+    };
+  }
+
+  if (anyIncomplete && !anyGenerated) {
+    await log(db, workDate, false, allMissing, 0, 0, 0);
+    return {
+      status: 422,
+      body: {
+        ok: false,
+        status: 'attendance_incomplete',
+        workDate,
+        message: 'لم يتم توليد اليوميات تلقائيًا بسبب نقص بيانات الحضور والانصراف',
+        missing: allMissing,
+        branchErrors,
+      },
+    };
+  }
+
+  if (!anyGenerated) {
+    return {
+      status: 200,
+      body: {
+        ok: true,
+        status: 'no_eligible_employees',
+        workDate,
+        message: branchErrors.length
+          ? `فشل التوليد: ${branchErrors.join(' | ')}`
+          : 'لا يوجد موظفون مؤهلون لنظام الرواتب',
+        employeesCount: 0,
+        totalHours: 0,
+        totalWages: 0,
+        branchErrors,
+      },
+    };
+  }
+
+  await log(db, workDate, true, [], employeesCount, totalHours, totalWages);
+
+  return {
+    status: 200,
+    body: {
+      ok: true,
+      status: 'generated',
+      workDate,
+      message: 'تم توليد اليوميات تلقائيًا ولم يتم ترحيلها للخزنة بعد',
+      employeesCount,
+      totalHours: Number(totalHours),
+      totalWages: Number(totalWages),
+      ledgerDualWrite,
+      ledgerSync,
+      branchErrors: branchErrors.length ? branchErrors : undefined,
+    },
+  };
+}
+
+// POST /api/payroll/daily/auto-generate — per tenant (active subscription + payroll app), per branch.
+// A cron bearer runs every eligible tenant; an admin session runs its own tenant only.
 export async function POST(req: NextRequest) {
   try {
     const jobAuth = await requireSystemJobAuth(req);
@@ -36,124 +182,39 @@ export async function POST(req: NextRequest) {
       );
     }
     const workDate = resolveWorkDate(body?.workDate);
-    const db = await getPool();
-    const branches = await listActiveBranches();
+    const legacyLogTenantId = await resolveLegacyBootstrapTenantId('legacy-payroll-job-log');
 
-    let employeesCount = 0;
-    let totalHours = 0;
-    let totalWages = 0;
-    let anyGenerated = false;
-    let anyIncomplete = false;
-    let allPosted = branches.length > 0;
-    let ledgerDualWrite: unknown = undefined;
-    let ledgerSync: unknown = null;
-    const branchErrors: string[] = [];
-    const allMissing: ValidationMissing[] = [];
+    const { outcomes, skipped } = await runTenantJobFanout(
+      { scope: tenantJobScopeFor(jobAuth), app: 'payroll', job: 'payroll-auto-generate' },
+      (target) => generateForTenantBranches(target.branchIds, workDate, target.tenantId === legacyLogTenantId),
+    );
 
-    for (const branch of branches) {
-      const closeState = await getEmpBranchWorkDayCloseState(branch.branchId, workDate);
-      if (closeState.state === 'CLOSED') {
-        branchErrors.push(`${branch.branchCode}: payroll day CLOSED — skipped`);
-        continue;
+    if (jobAuth.via === 'session') {
+      const own = outcomes[0];
+      if (!own) {
+        return NextResponse.json(
+          { ok: false, error: 'تطبيق الرواتب أو اشتراك المنشأة غير نشط', code: skipped[0]?.reason ?? 'TENANT_SKIPPED' },
+          { status: 403 },
+        );
       }
-
-      const postedCount = await countPostedDailyPayroll(db, workDate, branch.branchId);
-      if (postedCount > 0) {
-        continue;
+      if (!own.ok || !own.result) {
+        return NextResponse.json({ ok: false, error: own.error ?? 'Unknown error' }, { status: 500 });
       }
-      allPosted = false;
-
-      const { missing } = await validateDailyPayrollAttendance(db, workDate, {
-        branchId: branch.branchId,
-      });
-      if (missing.length > 0) {
-        anyIncomplete = true;
-        allMissing.push(...missing);
-        branchErrors.push(`${branch.branchCode}: attendance incomplete (${missing.length})`);
-        continue;
-      }
-
-      try {
-        const { result, ledgerDualWrite: ld, ledgerSync: ls } =
-          await runDailyPayrollGenerateWithOptionalLedger(workDate, {
-            notesPrefix: `[Auto][${branch.branchCode}] `,
-            branchId: branch.branchId,
-          });
-        employeesCount += result.generatedCount;
-        totalHours += Number(result.totalHours) || 0;
-        totalWages += Number(result.totalWage) || 0;
-        ledgerDualWrite = ld;
-        ledgerSync = ls ?? null;
-        anyGenerated = true;
-      } catch (branchErr) {
-        const msg = branchErr instanceof Error ? branchErr.message : String(branchErr);
-        branchErrors.push(`${branch.branchCode}: ${msg}`);
-      }
+      return NextResponse.json(own.result.body, { status: own.result.status });
     }
-
-    if (branches.length === 0) {
-      return NextResponse.json({
-        ok: true,
-        status: 'no_eligible_employees',
-        workDate,
-        message: 'لا يوجد فروع نشطة',
-        employeesCount: 0,
-        totalHours: 0,
-        totalWages: 0,
-      });
-    }
-
-    if (allPosted && !anyGenerated) {
-      return NextResponse.json({
-        ok: false,
-        status: 'already_posted',
-        workDate,
-        message: 'يوجد يوميات مرحلة للخزنة لهذا التاريخ، لا يمكن إعادة توليدها.',
-      }, { status: 409 });
-    }
-
-    if (anyIncomplete && !anyGenerated) {
-      await logAutoGenResult(db, workDate, false, allMissing, 0, 0, 0);
-      return NextResponse.json({
-        ok: false,
-        status: 'attendance_incomplete',
-        workDate,
-        message: 'لم يتم توليد اليوميات تلقائيًا بسبب نقص بيانات الحضور والانصراف',
-        missing: allMissing,
-        branchErrors,
-      }, { status: 422 });
-    }
-
-    if (!anyGenerated) {
-      return NextResponse.json({
-        ok: true,
-        status: 'no_eligible_employees',
-        workDate,
-        message: branchErrors.length
-          ? `فشل التوليد: ${branchErrors.join(' | ')}`
-          : 'لا يوجد موظفون مؤهلون لنظام الرواتب',
-        employeesCount: 0,
-        totalHours: 0,
-        totalWages: 0,
-        branchErrors,
-      });
-    }
-
-    await logAutoGenResult(db, workDate, true, [], employeesCount, totalHours, totalWages);
 
     return NextResponse.json({
-      ok: true,
-      status: 'generated',
+      ok: outcomes.every((o) => o.ok),
       workDate,
-      message: 'تم توليد اليوميات تلقائيًا ولم يتم ترحيلها للخزنة بعد',
-      employeesCount,
-      totalHours: Number(totalHours),
-      totalWages: Number(totalWages),
-      ledgerDualWrite,
-      ledgerSync,
-      branchErrors: branchErrors.length ? branchErrors : undefined,
+      tenants: outcomes.map((o) => ({
+        tenantCode: o.tenantCode,
+        ok: o.ok,
+        status: o.result?.status,
+        result: o.result?.body,
+        error: o.error,
+      })),
+      skippedTenants: skipped,
     });
-
   } catch (err: unknown) {
     if (err instanceof EmployeeLedgerDualWriteError) {
       return NextResponse.json({ ok: false, error: err.message }, { status: 503 });
@@ -164,10 +225,19 @@ export async function POST(req: NextRequest) {
   }
 }
 
+// GET /api/payroll/daily/auto-generate — last run from the CASHER_BOOT-only legacy log.
 export async function GET(req: NextRequest) {
   try {
+    const jobAuth = await requireSystemJobAuth(req);
+    if (!isSystemJobAuthResult(jobAuth)) return jobAuth;
+
     const { searchParams } = new URL(req.url);
     const workDate = searchParams.get('workDate') ?? resolveWorkDate();
+
+    const legacyLogTenantId = await resolveLegacyBootstrapTenantId('legacy-payroll-job-log');
+    if (jobAuth.via === 'session' && jobAuth.tenantId !== legacyLogTenantId) {
+      return NextResponse.json({ workDate, lastRun: null });
+    }
 
     const db = await getPool();
     const result = await db.request()

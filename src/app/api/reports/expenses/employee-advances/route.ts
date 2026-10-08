@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { liveCashMovePredicate } from '@/lib/treasury/liveCashMoveSql';
 import { getPool, sql } from '@/lib/db';
 import type { EmployeeAdvanceData, RiskStatus } from '@/lib/types';
+import { requireTenantSession } from '@/lib/api-auth';
 
 function calculateRiskStatus(advances: number, revenue: number): RiskStatus {
   // Critical: advances exist but no revenue
@@ -51,6 +52,8 @@ function calculateRiskStatus(advances: number, revenue: number): RiskStatus {
 
 // GET /api/reports/expenses/employee-advances?year=2026&month=3
 export async function GET(req: NextRequest) {
+  const tenantSession = await requireTenantSession();
+  if (tenantSession instanceof NextResponse) return tenantSession;
   try {
     const { searchParams } = new URL(req.url);
     const year = parseInt(searchParams.get('year') || '');

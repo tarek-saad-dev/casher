@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
-import { getSession } from '@/lib/session';
 import type { AdjustPointsPayload } from '@/lib/types';
+import { requireTenantSession } from '@/lib/api-auth';
 
 export const runtime = 'nodejs';
 
@@ -35,7 +35,8 @@ export async function POST(req: NextRequest) {
     }
 
     // Get current user from session
-    const session = await getSession();
+    const session = await requireTenantSession();
+    if (session instanceof NextResponse) return session;
     const userId = session?.UserID || 0;
 
     const db = await getPool();

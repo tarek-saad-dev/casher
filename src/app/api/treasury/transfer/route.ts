@@ -226,7 +226,7 @@ export async function POST(req: NextRequest) {
       resolvedInvDate = owned.ownership.businessDate ?? undefined;
     }
 
-    const actor = await buildStaffActorContext(session.UserID);
+    const actor = await buildStaffActorContext(session.UserID, session.TenantId);
     const treasuryPorts = await buildTreasuryWritePorts(actor);
     const transferScope = resolveTransferIdempotencyScope(
       req.headers.get('idempotency-key') ?? req.headers.get('x-idempotency-key'),

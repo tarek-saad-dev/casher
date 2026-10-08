@@ -284,7 +284,7 @@ export async function POST(req: NextRequest) {
     if (!owned.ok) return owned.response;
     const branchId = owned.ownership.branchId;
 
-    const actor = await buildStaffActorContext(session.UserID);
+    const actor = await buildStaffActorContext(session.UserID, session.TenantId);
     const treasuryPorts = await buildTreasuryWritePorts(actor);
     const idempotencyKey =
       typeof body.idempotencyKey === 'string' && body.idempotencyKey.trim()

@@ -1,21 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
-import { getSession } from '@/lib/session';
+import { requireTenantSession } from '@/lib/api-auth';
 import { getUserAccess } from '@/lib/permissions-server';
 import { executeAuditedAction, isAuditedActionError } from '@/lib/sensitiveActionAudit';
 import { getUserRolesSnapshot, updateUserRoles } from '@/lib/actions/permissionActions';
+import { assertLegacyUserInTenant, isTenantContextError } from '@/platform/tenant/tenantContext';
 
 export const runtime = 'nodejs';
 
 async function requireSuperAdmin() {
-  const session = await getSession();
-  if (!session) return null;
+  const session = await requireTenantSession();
+  if (session instanceof NextResponse) return null;
   const access = await getUserAccess(session.UserID, session.UserName, session.UserLevel);
   if (!access.isSuperAdmin) return null;
   return session;
 }
 
-// GET — list all users with their roles
+// GET — list the session tenant's users with their roles
 export async function GET() {
   try {
     const session = await requireSuperAdmin();
@@ -24,11 +25,14 @@ export async function GET() {
     }
 
     const db = await getPool();
-    const res = await db.request().query(`
+    const res = await db.request()
+      .input('tenantId', sql.UniqueIdentifier, session.TenantId)
+      .query(`
       SELECT
         u.UserID, u.UserName, u.loginName, u.UserLevel, u.isDeleted,
         STRING_AGG(r.RoleKey, ',') AS roles
       FROM dbo.TblUser u
+      INNER JOIN dbo.TenantMembership m ON m.LegacyUserId = u.UserID AND m.TenantId = @tenantId
       LEFT JOIN dbo.TblUserRoles ur ON ur.UserID = u.UserID
       LEFT JOIN dbo.TblRoles r     ON r.RoleID  = ur.RoleID AND r.IsActive = 1
       GROUP BY u.UserID, u.UserName, u.loginName, u.UserLevel, u.isDeleted
@@ -56,12 +60,12 @@ export async function GET() {
   }
 }
 
-// POST — assign or remove roles for a user
+// POST — assign or remove roles for a user of the session tenant
 // Body: { userID: number, roles: string[] }  — full replacement of roles
 export async function POST(req: NextRequest) {
   try {
-    const session = await getSession();
-    if (!session) return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
+    const session = await requireTenantSession();
+    if (session instanceof NextResponse) return session;
 
     const access = await getUserAccess(session.UserID, session.UserName, session.UserLevel);
 
@@ -72,6 +76,15 @@ export async function POST(req: NextRequest) {
 
     if (!access.isSuperAdmin) {
       return NextResponse.json({ error: 'غير مصرح — super_admin فقط' }, { status: 403 });
+    }
+
+    try {
+      await assertLegacyUserInTenant(session.TenantId, Number(userID));
+    } catch (err) {
+      if (isTenantContextError(err)) {
+        return NextResponse.json({ error: err.publicMessage, code: err.publicCode }, { status: err.status });
+      }
+      throw err;
     }
 
     const db = await getPool();

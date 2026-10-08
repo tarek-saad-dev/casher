@@ -32,8 +32,19 @@ const INSTALL_DEPENDENCIES: Partial<Record<AppRegistryCode, readonly AppRegistry
 
 const INSTALLABLE = new Set<string>(APP_REGISTRY_CODES);
 
+/**
+ * DRVO-013 V1: apps whose data is still global legacy CASHER_BOOT data (no TenantId) and must not
+ * be installed for any other tenant. CASHER_BOOT keeps them through its grandfathered state.
+ * Loyalty: TblLoyalty* / TblClientInventory are global until Loyalty is made multi-tenant.
+ */
+const LEGACY_ONLY_APPS = new Set<string>(['loyalty']);
+
 export function isInstallableAppCode(code: string): code is AppRegistryCode {
   return INSTALLABLE.has(code);
+}
+
+export function isLegacyOnlyAppCode(code: string): boolean {
+  return LEGACY_ONLY_APPS.has(code);
 }
 
 export function getAppInstallDependencies(code: AppRegistryCode): readonly AppRegistryCode[] {

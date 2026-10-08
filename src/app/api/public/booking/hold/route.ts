@@ -13,7 +13,10 @@ import {
   releaseHoldBooking,
   isBookingSchedulingPortEnabled,
 } from '@/apps/booking/public';
-import { resolveBootstrapTenantId } from '@/lib/bookingSchedulingComposition';
+import {
+  resolvePublicTenantForBranchId,
+  resolvePublicTenantForHoldKey,
+} from '@/lib/booking/publicBookingTenant';
 import {
   describePlatformBootstrapFailure,
   isPlatformBootstrapFailure,
@@ -70,9 +73,20 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const hold = isBookingSchedulingPortEnabled()
+    const publicTenant = isBookingSchedulingPortEnabled()
+      ? await resolvePublicTenantForBranchId(ctx.branchId, 'public/booking/hold')
+      : null;
+    if (isBookingSchedulingPortEnabled() && !publicTenant) {
+      const def = PUBLIC_BOOKING_ERROR_CATALOG.BRANCH_NOT_FOUND;
+      return NextResponse.json(
+        { ok: false, code: def.code, messageAr: def.messageAr },
+        { status: def.httpStatus },
+      );
+    }
+
+    const hold = publicTenant
       ? await holdBooking({
-          tenantId: await resolveBootstrapTenantId(),
+          tenantId: publicTenant.tenantId,
           branchId: ctx.branchId,
           empId,
           businessDate,
@@ -192,7 +206,9 @@ export async function DELETE(req: NextRequest) {
     }
     const released = isBookingSchedulingPortEnabled()
       ? await (async () => {
-          await releaseHoldBooking(await resolveBootstrapTenantId(), holdKey);
+          const holdTenant = await resolvePublicTenantForHoldKey(holdKey, 'public/booking/hold:delete');
+          if (!holdTenant) return false;
+          await releaseHoldBooking(holdTenant.tenantId, holdKey);
           return true;
         })()
       : await releaseBookingHold(holdKey);

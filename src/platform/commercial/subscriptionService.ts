@@ -6,6 +6,7 @@ import {
   acquireTenantApplock,
   TENANT_COMMERCIAL_LOCK_PARTS,
 } from '@/platform/tenant/tenantApplock';
+import { invalidateTenantAccessGate } from './accessGateMemo';
 import { assertNotBootstrapTenant } from './bootstrapGuard';
 import { CommercialError } from './errors';
 import { getPlan, getTenantSubscription, tenantExists } from './planRepository';
@@ -117,6 +118,7 @@ async function withTenantCommercialTx<T>(
     await acquireTenantApplock(tx, tenantId, TENANT_COMMERCIAL_LOCK_PARTS);
     const out = await fn(tx);
     await tx.commit();
+    invalidateTenantAccessGate(tenantId);
     return out;
   } catch (err) {
     try {

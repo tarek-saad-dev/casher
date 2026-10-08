@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '@/lib/db';
-import { isAuthResult, requirePageAccess } from '@/lib/api-auth';
+import { isAuthResult, requirePageAccess, requireTenantSession } from '@/lib/api-auth';
 import {
   createServicePackage,
   listServicePackages,
@@ -10,6 +10,8 @@ import { ensureServicePackagesTables } from '@/lib/migrations/ensureServicePacka
 
 // GET /api/packages?kind=regular|groom&active=true
 export async function GET(req: NextRequest) {
+  const tenantSession = await requireTenantSession();
+  if (tenantSession instanceof NextResponse) return tenantSession;
   try {
     const { searchParams } = new URL(req.url);
     const kind = searchParams.get('kind') ?? undefined;

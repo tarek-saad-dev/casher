@@ -1,4 +1,19 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+
+vi.mock('@/lib/session', () => ({
+  getSession: vi.fn(async () => ({
+    UserID: 1,
+    UserName: 'admin',
+    UserLevel: 'admin',
+    ActiveBranchID: 1,
+    ActiveBranchCode: 'MAIN',
+    BranchSessionVersion: 1,
+  })),
+}));
+vi.mock('@/lib/api-auth', async (importOriginal) =>
+  (await import('@/lib/__tests__/helpers/tenantSessionAuthMock')).tenantSessionAuthMock(await importOriginal()),
+);
+
 import { POST as approvePost } from '@/app/api/admin/approvals/[id]/approve/route';
 import { POST as rejectPost } from '@/app/api/admin/approvals/[id]/reject/route';
 import type { NextRequest } from 'next/server';

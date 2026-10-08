@@ -160,6 +160,20 @@ const harness = vi.hoisted(() => {
   };
 });
 
+vi.mock('@/lib/session', () => ({
+  getSession: vi.fn(async () => ({
+    UserID: 1,
+    UserName: 'admin',
+    UserLevel: 'admin',
+    ActiveBranchID: 1,
+    ActiveBranchCode: 'MAIN',
+    BranchSessionVersion: 1,
+  })),
+}));
+vi.mock('@/lib/api-auth', async (importOriginal) =>
+  (await import('@/lib/__tests__/helpers/tenantSessionAuthMock')).tenantSessionAuthMock(await importOriginal()),
+);
+
 vi.mock('@/lib/db', () => ({
   getPool: vi.fn(async () => ({ request: () => harness.makeRequest() })),
   sql: {

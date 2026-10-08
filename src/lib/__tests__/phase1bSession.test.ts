@@ -71,6 +71,8 @@ describe('Phase 1B session encode/decode', () => {
       ActiveBranchID: 42,
       ActiveBranchCode: 'GLEEM',
       BranchSessionVersion: BRANCH_SESSION_VERSION,
+      TenantId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      MembershipId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
       iat: Math.floor(Date.now() / 1000),
       ...overrides,
     };
@@ -83,6 +85,25 @@ describe('Phase 1B session encode/decode', () => {
     expect(decoded.ok).toBe(true);
     if (!decoded.ok) return;
     expect(decoded.payload).toEqual(payload);
+  });
+
+  it('DRVO-013: a branch session without a tenant binding requires re-login', () => {
+    const noTenant: Partial<SessionPayload> = samplePayload();
+    delete noTenant.TenantId;
+    expect(decodeSessionToken(encodeSessionPayload(noTenant as SessionPayload))).toEqual({
+      ok: false,
+      reason: 'legacy',
+    });
+    const noMembership: Partial<SessionPayload> = samplePayload();
+    delete noMembership.MembershipId;
+    expect(decodeSessionToken(encodeSessionPayload(noMembership as SessionPayload))).toEqual({
+      ok: false,
+      reason: 'legacy',
+    });
+    expect(decodeSessionToken(encodeSessionPayload(samplePayload({ TenantId: '' })))).toEqual({
+      ok: false,
+      reason: 'legacy',
+    });
   });
 
   it('rejects a tampered signature', () => {
@@ -260,6 +281,8 @@ describe('Session reads are mutation-free', () => {
       ActiveBranchID: 42,
       ActiveBranchCode: 'GLEEM',
       BranchSessionVersion: 1,
+      TenantId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      MembershipId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
       iat: Math.floor(Date.now() / 1000),
     });
     cookieStore.get.mockReturnValue({ name: COOKIE_NAME, value: token });
@@ -271,6 +294,8 @@ describe('Session reads are mutation-free', () => {
       ActiveBranchID: 42,
       ActiveBranchCode: 'GLEEM',
       BranchSessionVersion: 1,
+      TenantId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      MembershipId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
     });
     expect(cookieStore.delete).not.toHaveBeenCalled();
   });

@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '@/lib/db';
-import { getSession } from '@/lib/session';
 import { getUserAccess } from '@/lib/permissions-server';
+import { requireTenantSession } from '@/lib/api-auth';
+import { assertLegacyUserInTenant, isTenantContextError } from '@/platform/tenant/tenantContext';
 
 export const runtime = 'nodejs';
 
 // Super-admin only debug endpoint — never expose publicly
 export async function GET(req: NextRequest) {
-  const session = await getSession();
-  if (!session) return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
+  const session = await requireTenantSession();
+  if (session instanceof NextResponse) return session;
 
   const access = await getUserAccess(session.UserID, session.UserName, session.UserLevel);
   if (!access.isSuperAdmin) {
@@ -21,6 +22,15 @@ export async function GET(req: NextRequest) {
 
   if (!targetUserId || !requestedPath) {
     return NextResponse.json({ error: 'userId و path مطلوبان' }, { status: 400 });
+  }
+
+  try {
+    await assertLegacyUserInTenant(session.TenantId, parseInt(targetUserId, 10));
+  } catch (err) {
+    if (isTenantContextError(err)) {
+      return NextResponse.json({ error: err.publicMessage, code: err.publicCode }, { status: err.status });
+    }
+    throw err;
   }
 
   const db = await getPool();

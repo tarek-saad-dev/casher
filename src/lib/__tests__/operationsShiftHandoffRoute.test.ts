@@ -7,6 +7,9 @@ describe('POST /api/operations/shift/handoff', () => {
   beforeEach(() => {
     vi.resetModules();
     vi.doMock('server-only', () => ({}));
+    vi.doMock('@/lib/api-auth', async (importOriginal) =>
+      (await import('@/lib/__tests__/helpers/tenantSessionAuthMock')).tenantSessionAuthMock(await importOriginal()),
+    );
   });
 
   it('hands off with one atomic command and returns bootstrap operational CAMP', async () => {

@@ -10,6 +10,7 @@ import type {
 } from "@/lib/store/store.types";
 import { getClientInventory } from "@/lib/store/inventory.service";
 import { getPool, sql } from "@/lib/db";
+import { requireTenantSession } from '@/lib/api-auth';
 
 export const runtime = "nodejs";
 
@@ -37,6 +38,8 @@ export async function OPTIONS(): Promise<NextResponse> {
 export async function GET(
   req: NextRequest,
 ): Promise<NextResponse<POSClientInventoryResponse | StoreErrorResponse>> {
+  const tenantSession = await requireTenantSession();
+  if (tenantSession instanceof NextResponse) return tenantSession as NextResponse<StoreErrorResponse>;
   try {
     const { searchParams } = new URL(req.url);
     const clientIdParam = searchParams.get("clientId");

@@ -1,6 +1,7 @@
 import { NextResponse, NextRequest } from 'next/server';
 import { getPool } from '@/lib/db';
 import { ensureTblCatSortOrderColumn } from '@/lib/migrations/ensureCategorySortOrder';
+import { requireTenantSession } from '@/lib/api-auth';
 
 export const runtime = 'nodejs';
 
@@ -9,6 +10,8 @@ export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const tenantSession = await requireTenantSession();
+  if (tenantSession instanceof NextResponse) return tenantSession;
   try {
     const { id } = await params;
     const categoryId = parseInt(id);
@@ -91,6 +94,8 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const tenantSession = await requireTenantSession();
+  if (tenantSession instanceof NextResponse) return tenantSession;
   try {
     const { id } = await params;
     const categoryId = parseInt(id);

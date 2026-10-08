@@ -8,6 +8,16 @@ import {
 const COOKIE_NAME = 'pos_session';
 
 /**
+ * Forward the request with `x-pathname` set by the proxy. Always overwritten so a client-sent
+ * value never reaches route handlers (the DRVO-013 route-family app gate reads it).
+ */
+function nextWithPathname(req: NextRequest, pathname: string): NextResponse {
+  const requestHeaders = new Headers(req.headers);
+  requestHeaders.set('x-pathname', pathname);
+  return NextResponse.next({ request: { headers: requestHeaders } });
+}
+
+/**
  * Edge proxy — defense-in-depth session gate.
  * Route handlers remain authoritative for authorization.
  *
@@ -23,13 +33,13 @@ export function proxy(req: NextRequest) {
   }
 
   if (classification.kind === 'anonymous_public') {
-    return NextResponse.next();
+    return nextWithPathname(req, pathname);
   }
 
   if (classification.kind === 'whatsapp_inbox_webhook') {
     const hasSession = Boolean(req.cookies.get(COOKIE_NAME)?.value);
     if (hasSession || isWhatsAppInboxWebhookAuthorized(req.headers.get('authorization'))) {
-      return NextResponse.next();
+      return nextWithPathname(req, pathname);
     }
     return NextResponse.json(
       { error: 'غير مصرح — WHATSAPP_INBOX_WEBHOOK_TOKEN مطلوب (Bearer)' },
@@ -40,7 +50,7 @@ export function proxy(req: NextRequest) {
   if (classification.kind === 'cron_bearer') {
     const hasSession = Boolean(req.cookies.get(COOKIE_NAME)?.value);
     if (hasSession || isCronBearerAuthorized(req.headers.get('authorization'))) {
-      return NextResponse.next();
+      return nextWithPathname(req, pathname);
     }
     return NextResponse.json(
       { error: 'غير مصرح — CRON_SECRET مطلوب (Bearer)' },
@@ -56,12 +66,7 @@ export function proxy(req: NextRequest) {
     return NextResponse.redirect(new URL('/login', req.url));
   }
 
-  const requestHeaders = new Headers(req.headers);
-  requestHeaders.set('x-pathname', pathname);
-
-  return NextResponse.next({
-    request: { headers: requestHeaders },
-  });
+  return nextWithPathname(req, pathname);
 }
 
 export const config = {

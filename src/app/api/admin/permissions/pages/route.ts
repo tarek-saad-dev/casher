@@ -1,18 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '@/lib/db';
-import { getSession } from '@/lib/session';
-import { getUserAccess } from '@/lib/permissions-server';
+import { requirePlatformOperator, requireTenantSession } from '@/lib/api-auth';
 import { executeAuditedAction, isAuditedActionError } from '@/lib/sensitiveActionAudit';
 import { getPageAccessSnapshot, updatePageAccess, createPage } from '@/lib/actions/permissionActions';
 
 export const runtime = 'nodejs';
 
+/** Pages and role definitions are global, so only a platform operator may read or change them. */
 async function requireSuperAdmin() {
-  const session = await getSession();
-  if (!session) return null;
-  const access = await getUserAccess(session.UserID, session.UserName, session.UserLevel);
-  if (!access.isSuperAdmin) return null;
-  return session;
+  const operator = await requirePlatformOperator();
+  if (operator instanceof NextResponse) return null;
+  const session = await requireTenantSession();
+  return session instanceof NextResponse ? null : session;
 }
 
 // GET — all pages with their current accessMode and role assignments

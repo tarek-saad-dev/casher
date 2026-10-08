@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
-import { getSession } from '@/lib/session';
+import { requireTenantSession } from '@/lib/api-auth';
 
 /**
  * PATCH /api/reports/employee-services/reassign
@@ -12,7 +12,8 @@ import { getSession } from '@/lib/session';
  */
 export async function PATCH(req: NextRequest) {
   try {
-    const session = await getSession();
+    const session = await requireTenantSession();
+    if (session instanceof NextResponse) return session;
     const body = await req.json();
     const { invoiceId, invoiceType, oldEmpId, newEmpId } = body;
 
