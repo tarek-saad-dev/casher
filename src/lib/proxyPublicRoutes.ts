@@ -25,6 +25,10 @@ export const PUBLIC_EXACT_ROUTES = [
  */
 export const PUBLIC_PREFIX_ROUTES = [
   '/api/public/',
+  // DRVOWA machine-to-machine connector. The route handler enforces its own
+  // per-integration Bearer token, so it must be allowed through the edge proxy
+  // without a browser session cookie.
+  '/api/integrations/drvowa/v1/',
 ] as const;
 
 /**
