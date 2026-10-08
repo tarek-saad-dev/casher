@@ -1,5 +1,6 @@
 import 'server-only';
 import { getPool, sql } from '@/lib/db';
+import { requireMasterDataTenantId } from '@/platform/masterData/tenantScope';
 import type { CatalogItemKind, CatalogPort, ItemSnapshot } from '../public/ports';
 
 function isProductRow(proType: unknown, catType: unknown): boolean {
@@ -35,29 +36,33 @@ const ITEM_SELECT = `
     ISNULL(p.ProType, N'') AS ProType,
     ISNULL(c.CatType, N'') AS CatType
   FROM dbo.TblPro p
-  LEFT JOIN dbo.TblCat c ON c.CatID = p.CatID
+  LEFT JOIN dbo.TblCat c ON c.CatID = p.CatID AND c.TenantId = p.TenantId
 `;
 
 /**
  * Anti-corruption adapter over legacy TblPro (sellable item) and TblCat (category).
  * Price and duration come from SPrice1 and DurationMinutes. TblCat is not an item.
+ * Every read is bound to the actor's authoritative TenantId (DRVO-015).
  */
 export function createLegacyCatalogAdapter(): CatalogPort {
   return {
-    async getItem(_actor, catalogItemId) {
+    async getItem(actor, catalogItemId) {
+      const tenantId = requireMasterDataTenantId(actor.tenantId, 'catalog.getItem');
       const db = await getPool();
       const pro = await db
         .request()
+        .input('tenantId', sql.UniqueIdentifier, tenantId)
         .input('id', sql.Int, catalogItemId)
         .query(`
           ${ITEM_SELECT}
-          WHERE p.ProID = @id AND ISNULL(p.isDeleted, 0) = 0;
+          WHERE p.ProID = @id AND p.TenantId = @tenantId AND ISNULL(p.isDeleted, 0) = 0;
         `);
       if (!pro.recordset.length) return null;
       return mapProRow(pro.recordset[0] as Record<string, unknown>);
     },
 
-    async listSellable(_actor, filter) {
+    async listSellable(actor, filter) {
+      const tenantId = requireMasterDataTenantId(actor.tenantId, 'catalog.listSellable');
       const db = await getPool();
       const kindClause =
         filter.kind === 'product'
@@ -71,9 +76,9 @@ export function createLegacyCatalogAdapter(): CatalogPort {
               OR LOWER(ISNULL(c.CatType, N'')) = N'pro'
             )`
             : '';
-      const pro = await db.request().query(`
+      const pro = await db.request().input('tenantId', sql.UniqueIdentifier, tenantId).query(`
         ${ITEM_SELECT}
-        WHERE ISNULL(p.isDeleted, 0) = 0
+        WHERE p.TenantId = @tenantId AND ISNULL(p.isDeleted, 0) = 0
         ${kindClause}
         ORDER BY p.ProName;
       `);

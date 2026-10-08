@@ -10,6 +10,8 @@ import { requireBranchOperationAccess } from '@/lib/branch/context';
 import { resolveBranchDayForDate } from '@/lib/branch/operationalGates';
 import { finalizeHistoricalFinancialWrite } from '@/lib/branch/financialOwnershipPolicy';
 import { getCairoTimeStr } from '@/lib/businessDate';
+import { ensureTenantFinanceCategory } from '@/platform/masterData/financeCategories';
+import { tenantIdForBranchContext } from '@/platform/masterData/tenantScope';
 
 const DATE_RE   = /^\d{4}-\d{2}-\d{2}$/;
 const CAT_NAME  = 'يوميات الموظفين';
@@ -82,21 +84,8 @@ export async function POST(req: NextRequest) {
     const db           = await getPool();
 
     // ── 1. Ensure expense category exists (CatName + ExpINType only, no Description) ──
-    const catCheck = await db.request()
-      .input('CatName',   sql.NVarChar(200), CAT_NAME)
-      .input('ExpINType', sql.NVarChar(50),  CAT_TYPE)
-      .query(`SELECT ExpINID FROM dbo.TblExpINCat WHERE CatName = @CatName AND ExpINType = @ExpINType`);
-
-    let expenseExpINID: number;
-    if (catCheck.recordset.length > 0) {
-      expenseExpINID = catCheck.recordset[0].ExpINID;
-    } else {
-      const catIns = await db.request()
-        .input('CatName',   sql.NVarChar(200), CAT_NAME)
-        .input('ExpINType', sql.NVarChar(50),  CAT_TYPE)
-        .query(`INSERT INTO dbo.TblExpINCat (CatName, ExpINType) OUTPUT INSERTED.ExpINID VALUES (@CatName, @ExpINType);`);
-      expenseExpINID = catIns.recordset[0].ExpINID;
-    }
+    const tenantId = await tenantIdForBranchContext(branch);
+    const expenseExpINID = await ensureTenantFinanceCategory(db, tenantId, CAT_NAME, CAT_TYPE);
 
     // ── 2. Find fully-unposted Earned rows (Status=Earned, CashMoveID IS NULL, EmployeeIncomeCashMoveID IS NULL) ──
     const pendingResult = await db.request()

@@ -21,6 +21,7 @@ import {
   resolveGroomOptionalGroup,
   type GroomOptionalGroup,
 } from '@/lib/catalog/groomOptionalAddons';
+import { requireMasterDataTenantId } from '@/platform/masterData/tenantScope';
 
 export const PUBLIC_PACKAGES_CONTRACT_VERSION = 'public-packages-v2';
 export const PUBLIC_PACKAGES_CURRENCY = 'EGP' as const;
@@ -156,6 +157,7 @@ function mapItemWire(
 
 async function loadServiceMetaByIds(
   db: ConnectionPool,
+  tenantId: string,
   proIds: number[],
 ): Promise<Map<number, ServiceMeta>> {
   const map = new Map<number, ServiceMeta>();
@@ -168,14 +170,15 @@ async function loadServiceMetaByIds(
       const result = await db
         .request()
         .input('ProID', sql.Int, proId)
+        .input('tenantId', sql.UniqueIdentifier, tenantId)
         .query(`
           SELECT
             p.ProID, p.ProName, p.ProNameAr, p.SPrice1, p.DurationMinutes,
             ISNULL(p.isDeleted, 0) AS isDeleted,
             c.CatName
           FROM dbo.TblPro p
-          LEFT JOIN dbo.TblCat c ON c.CatID = p.CatID
-          WHERE p.ProID = @ProID
+          LEFT JOIN dbo.TblCat c ON c.CatID = p.CatID AND c.TenantId = p.TenantId
+          WHERE p.ProID = @ProID AND p.TenantId = @tenantId
         `);
       const row = result.recordset[0] as Record<string, unknown> | undefined;
       if (!row) return;
@@ -328,6 +331,7 @@ function mapPackageWire(
 
 async function loadItemsByPackageIds(
   db: ConnectionPool,
+  tenantId: string,
   packageIds: number[],
 ): Promise<Map<number, PackageItemRow[]>> {
   const map = new Map<number, PackageItemRow[]>();
@@ -335,15 +339,17 @@ async function loadItemsByPackageIds(
 
   await Promise.all(
     packageIds.map(async (id) => {
-      map.set(id, await getPackageItems(db, id));
+      map.set(id, await getPackageItems(db, tenantId, id));
     }),
   );
   return map;
 }
 
 export async function getPublicPackagesCatalog(opts: {
+  tenantId: string;
   kind?: string | null;
-} = {}): Promise<PublicPackagesCatalogResponse> {
+}): Promise<PublicPackagesCatalogResponse> {
+  const tenantId = requireMasterDataTenantId(opts.tenantId, 'getPublicPackagesCatalog');
   const db = await getPool();
   const ready = await ensureServicePackagesTables(db);
   if (!ready) {
@@ -364,18 +370,19 @@ export async function getPublicPackagesCatalog(opts: {
   }
 
   const kindFilter = opts.kind && isPackageKind(opts.kind) ? opts.kind : undefined;
-  const rows = await listServicePackages(db, {
+  const rows = await listServicePackages(db, tenantId, {
     kind: kindFilter,
     activeOnly: true,
   });
 
   const itemsMap = await loadItemsByPackageIds(
     db,
+    tenantId,
     rows.map((r) => r.PackageID),
   );
 
   const allProIds = [...itemsMap.values()].flat().map((i) => i.ProID);
-  const serviceMeta = await loadServiceMetaByIds(db, allProIds);
+  const serviceMeta = await loadServiceMetaByIds(db, tenantId, allProIds);
 
   const wires = rows.map((r) =>
     mapPackageWire(r, itemsMap.get(r.PackageID) ?? [], serviceMeta),
@@ -401,35 +408,41 @@ export async function getPublicPackagesCatalog(opts: {
 }
 
 export async function getPublicPackageById(
+  tenantId: string,
   packageId: number,
 ): Promise<PublicPackageWire | null> {
+  const tid = requireMasterDataTenantId(tenantId, 'getPublicPackageById');
   const db = await getPool();
   const ready = await ensureServicePackagesTables(db);
   if (!ready) return null;
 
-  const pkg = await getServicePackageById(db, packageId);
+  const pkg = await getServicePackageById(db, tid, packageId);
   if (!pkg || pkg.isDeleted) return null;
 
   const items = pkg.items ?? [];
   const serviceMeta = await loadServiceMetaByIds(
     db,
+    tid,
     items.map((i) => i.ProID),
   );
   return mapPackageWire(pkg, items, serviceMeta);
 }
 
 /** Load active home-visit ProIDs (for POS / sales exclusivity enforcement). */
-export async function listHomeVisitProIds(db?: ConnectionPool): Promise<number[]> {
+export async function listHomeVisitProIds(tenantId: string, db?: ConnectionPool): Promise<number[]> {
+  const tid = requireMasterDataTenantId(tenantId, 'listHomeVisitProIds');
   const pool = db ?? (await getPool());
   const { GROOM_HOME_VISIT_CATEGORY_NAME } = await import('@/lib/catalog/groomOptionalAddons');
   const result = await pool
     .request()
     .input('CatName', sql.NVarChar(200), GROOM_HOME_VISIT_CATEGORY_NAME)
+    .input('tenantId', sql.UniqueIdentifier, tid)
     .query(`
       SELECT p.ProID
       FROM dbo.TblPro p
-      INNER JOIN dbo.TblCat c ON c.CatID = p.CatID
+      INNER JOIN dbo.TblCat c ON c.CatID = p.CatID AND c.TenantId = p.TenantId
       WHERE ISNULL(p.isDeleted, 0) = 0
+        AND p.TenantId = @tenantId
         AND c.CatName = @CatName
       ORDER BY p.ProID
     `);

@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
 import { validateCustomerSource } from '@/lib/customerSource';
-import { requireTenantSession } from '@/lib/api-auth';
+import { authenticate, isAuthResult } from '@/lib/api-auth';
 
 // GET /api/customers?q=search_term
 export async function GET(req: NextRequest) {
-  const tenantSession = await requireTenantSession();
-  if (tenantSession instanceof NextResponse) return tenantSession;
+  const auth = await authenticate();
+  if (!isAuthResult(auth)) return auth;
   const q = req.nextUrl.searchParams.get('q') || '';
   if (q.length < 1) {
     return NextResponse.json([]);
@@ -15,13 +15,14 @@ export async function GET(req: NextRequest) {
   try {
     const db = await getPool();
     const result = await db.request()
+      .input('tenantId', sql.UniqueIdentifier, auth.tenantId)
       .input('q', sql.NVarChar(100), `%${q}%`)
       .query(`
         SELECT TOP 20
           ClientID, [Name], Mobile, BirthDate, Address, RegisterDate, Notes,
           CameFrom, CameFromDetails, ReferralCode
         FROM [dbo].[TblClient]
-        WHERE [Name] LIKE @q OR Mobile LIKE @q
+        WHERE TenantId = @tenantId AND ([Name] LIKE @q OR Mobile LIKE @q)
         ORDER BY [Name]
       `);
     return NextResponse.json(result.recordset);
@@ -34,8 +35,9 @@ export async function GET(req: NextRequest) {
 
 // POST /api/customers  { name, mobile, birthDate, address, notes, cameFrom, cameFromDetails, referralCode }
 export async function POST(req: NextRequest) {
-  const tenantSession = await requireTenantSession();
-  if (tenantSession instanceof NextResponse) return tenantSession;
+  const auth = await authenticate();
+  if (!isAuthResult(auth)) return auth;
+
   try {
     const body = await req.json();
     const { name, mobile, birthDate, address, notes, cameFrom, cameFromDetails, referralCode } = body;
@@ -51,6 +53,7 @@ export async function POST(req: NextRequest) {
 
     const db = await getPool();
     const result = await db.request()
+      .input('tenantId', sql.UniqueIdentifier, auth.tenantId)
       .input('name', sql.NVarChar(100), name.trim())
       .input('mobile', sql.NVarChar(30), mobile?.trim() || null)
       .input('birthDate', sql.Date, birthDate || null)
@@ -61,12 +64,12 @@ export async function POST(req: NextRequest) {
       .input('referralCode', sql.NVarChar(50), sourceValidation.referralCode)
       .query(`
         INSERT INTO [dbo].[TblClient]
-          ([Name], Mobile, BirthDate, Address, Notes, RegisterDate, CameFrom, CameFromDetails, ReferralCode)
+          (TenantId, [Name], Mobile, BirthDate, Address, Notes, RegisterDate, CameFrom, CameFromDetails, ReferralCode)
         OUTPUT
           INSERTED.ClientID, INSERTED.[Name], INSERTED.Mobile,
           INSERTED.BirthDate, INSERTED.Address, INSERTED.Notes, INSERTED.RegisterDate,
           INSERTED.CameFrom, INSERTED.CameFromDetails, INSERTED.ReferralCode
-        VALUES (@name, @mobile, @birthDate, @address, @notes, GETDATE(), @cameFrom, @cameFromDetails, @referralCode)
+        VALUES (@tenantId, @name, @mobile, @birthDate, @address, @notes, GETDATE(), @cameFrom, @cameFromDetails, @referralCode)
       `);
 
     return NextResponse.json(result.recordset[0], { status: 201 });

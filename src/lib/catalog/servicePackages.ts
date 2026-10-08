@@ -7,6 +7,18 @@ import type {
   ServicePackageRow,
 } from '@/lib/catalog/servicePackages.types';
 import { isPackageKind } from '@/lib/migrations/ensureServicePackages';
+import { findForeignServiceIds } from '@/lib/catalog/tenantCatalogGuards';
+import { requireMasterDataTenantId } from '@/platform/masterData/tenantScope';
+
+/** A package item named a service that is not in the caller's tenant (looks like a missing service). */
+export class PackageItemServiceNotFoundError extends Error {
+  readonly proIds: number[];
+  constructor(proIds: number[]) {
+    super('خدمة غير موجودة في الباكدج');
+    this.name = 'PackageItemServiceNotFoundError';
+    this.proIds = proIds;
+  }
+}
 
 const PACKAGE_SELECT = `
   p.PackageID,
@@ -75,10 +87,12 @@ function mapItemRow(row: Record<string, unknown>): PackageItemRow {
 
 export async function listServicePackages(
   db: ConnectionPool,
+  tenantId: string,
   opts: { kind?: string; activeOnly?: boolean } = {},
 ): Promise<ServicePackageRow[]> {
-  const request = db.request();
-  const conditions: string[] = [];
+  const tid = requireMasterDataTenantId(tenantId, 'listServicePackages');
+  const request = db.request().input('tenantId', sql.UniqueIdentifier, tid);
+  const conditions: string[] = ['p.TenantId = @tenantId'];
 
   if (opts.kind && isPackageKind(opts.kind)) {
     conditions.push('p.PackageKind = @kind');
@@ -88,16 +102,16 @@ export async function listServicePackages(
     conditions.push('p.isDeleted = 0');
   }
 
-  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   const result = await request.query(`
     SELECT ${PACKAGE_SELECT}
     FROM dbo.TblServicePackage p
     LEFT JOIN (
       SELECT PackageID, COUNT(*) AS ItemCount
       FROM dbo.TblServicePackageItem
+      WHERE TenantId = @tenantId
       GROUP BY PackageID
     ) ic ON ic.PackageID = p.PackageID
-    ${where}
+    WHERE ${conditions.join(' AND ')}
     ORDER BY p.PackageKind, p.SortOrder, p.PackageID
   `);
 
@@ -106,37 +120,44 @@ export async function listServicePackages(
 
 export async function getServicePackageById(
   db: ConnectionPool,
+  tenantId: string,
   packageId: number,
 ): Promise<ServicePackageRow | null> {
+  const tid = requireMasterDataTenantId(tenantId, 'getServicePackageById');
   const result = await db
     .request()
     .input('PackageID', sql.Int, packageId)
+    .input('tenantId', sql.UniqueIdentifier, tid)
     .query(`
       SELECT ${PACKAGE_SELECT}
       FROM dbo.TblServicePackage p
       LEFT JOIN (
         SELECT PackageID, COUNT(*) AS ItemCount
         FROM dbo.TblServicePackageItem
+        WHERE TenantId = @tenantId
         GROUP BY PackageID
       ) ic ON ic.PackageID = p.PackageID
-      WHERE p.PackageID = @PackageID
+      WHERE p.PackageID = @PackageID AND p.TenantId = @tenantId
     `);
 
   const row = result.recordset[0] as Record<string, unknown> | undefined;
   if (!row) return null;
 
   const pkg = mapPackageRow(row);
-  pkg.items = await getPackageItems(db, packageId);
+  pkg.items = await getPackageItems(db, tid, packageId);
   return pkg;
 }
 
 export async function getPackageItems(
   db: ConnectionPool,
+  tenantId: string,
   packageId: number,
 ): Promise<PackageItemRow[]> {
+  const tid = requireMasterDataTenantId(tenantId, 'getPackageItems');
   const result = await db
     .request()
     .input('PackageID', sql.Int, packageId)
+    .input('tenantId', sql.UniqueIdentifier, tid)
     .query(`
       SELECT
         i.PackageItemID,
@@ -150,8 +171,8 @@ export async function getPackageItems(
         pro.SPrice1,
         pro.DurationMinutes
       FROM dbo.TblServicePackageItem i
-      LEFT JOIN dbo.TblPro pro ON pro.ProID = i.ProID
-      WHERE i.PackageID = @PackageID
+      LEFT JOIN dbo.TblPro pro ON pro.ProID = i.ProID AND pro.TenantId = i.TenantId
+      WHERE i.PackageID = @PackageID AND i.TenantId = @tenantId
       ORDER BY i.SortOrder, i.PackageItemID
     `);
 
@@ -251,8 +272,19 @@ export function validatePackageBody(body: unknown): { ok: true; data: PackageWri
   };
 }
 
+async function assertItemsInTenant(
+  db: ConnectionPool,
+  tenantId: string,
+  items: PackageItemInput[] | undefined,
+): Promise<void> {
+  if (!items?.length) return;
+  const foreign = await findForeignServiceIds(db, tenantId, items.map((i) => Number(i.ProID)));
+  if (foreign.length) throw new PackageItemServiceNotFoundError(foreign);
+}
+
 async function replacePackageItems(
   db: ConnectionPool,
+  tenantId: string,
   packageId: number,
   items: PackageItemInput[],
 ): Promise<void> {
@@ -261,18 +293,20 @@ async function replacePackageItems(
   try {
     await new sql.Request(tx)
       .input('PackageID', sql.Int, packageId)
-      .query(`DELETE FROM dbo.TblServicePackageItem WHERE PackageID = @PackageID`);
+      .input('tenantId', sql.UniqueIdentifier, tenantId)
+      .query(`DELETE FROM dbo.TblServicePackageItem WHERE PackageID = @PackageID AND TenantId = @tenantId`);
 
     for (const item of items) {
       await new sql.Request(tx)
+        .input('tenantId', sql.UniqueIdentifier, tenantId)
         .input('PackageID', sql.Int, packageId)
         .input('ProID', sql.Int, item.ProID)
         .input('Qty', sql.Decimal(10, 2), item.Qty ?? 1)
         .input('SortOrder', sql.Int, item.SortOrder ?? 0)
         .input('IsOptional', sql.Bit, item.IsOptional ? 1 : 0)
         .query(`
-          INSERT INTO dbo.TblServicePackageItem (PackageID, ProID, Qty, SortOrder, IsOptional)
-          VALUES (@PackageID, @ProID, @Qty, @SortOrder, @IsOptional)
+          INSERT INTO dbo.TblServicePackageItem (TenantId, PackageID, ProID, Qty, SortOrder, IsOptional)
+          VALUES (@tenantId, @PackageID, @ProID, @Qty, @SortOrder, @IsOptional)
         `);
     }
     await tx.commit();
@@ -288,10 +322,14 @@ async function replacePackageItems(
 
 export async function createServicePackage(
   db: ConnectionPool,
+  tenantId: string,
   data: PackageWriteBody,
 ): Promise<ServicePackageRow> {
+  const tid = requireMasterDataTenantId(tenantId, 'createServicePackage');
+  await assertItemsInTenant(db, tid, data.items);
   const result = await db
     .request()
+    .input('tenantId', sql.UniqueIdentifier, tid)
     .input('NameEn', sql.NVarChar(200), data.NameEn)
     .input('NameAr', sql.NVarChar(200), data.NameAr)
     .input('PackageKind', sql.NVarChar(20), data.PackageKind)
@@ -311,12 +349,12 @@ export async function createServicePackage(
     .input('NotesAr', sql.NVarChar(500), data.NotesAr)
     .query(`
       INSERT INTO dbo.TblServicePackage (
-        NameEn, NameAr, PackageKind, PackagePrice, OriginalPrice, DurationMinutes,
+        TenantId, NameEn, NameAr, PackageKind, PackagePrice, OriginalPrice, DurationMinutes,
         Bonus, ImageUrl, DescriptionAr, DescriptionEn, SortOrder, IsPopular, isDeleted,
         DepositAmount, IncludesTrial, SessionCount, NotesAr
       )
       VALUES (
-        @NameEn, @NameAr, @PackageKind, @PackagePrice, @OriginalPrice, @DurationMinutes,
+        @tenantId, @NameEn, @NameAr, @PackageKind, @PackagePrice, @OriginalPrice, @DurationMinutes,
         @Bonus, @ImageUrl, @DescriptionAr, @DescriptionEn, @SortOrder, @IsPopular, @isDeleted,
         @DepositAmount, @IncludesTrial, @SessionCount, @NotesAr
       );
@@ -326,21 +364,25 @@ export async function createServicePackage(
 
   const packageId = Number(result.recordset[0].PackageID);
   if (data.items?.length) {
-    await replacePackageItems(db, packageId, data.items);
+    await replacePackageItems(db, tid, packageId, data.items);
   }
 
-  const created = await getServicePackageById(db, packageId);
+  const created = await getServicePackageById(db, tid, packageId);
   if (!created) throw new Error('فشل إنشاء الباكدج');
   return created;
 }
 
 export async function updateServicePackage(
   db: ConnectionPool,
+  tenantId: string,
   packageId: number,
   data: PackageWriteBody,
 ): Promise<ServicePackageRow | null> {
+  const tid = requireMasterDataTenantId(tenantId, 'updateServicePackage');
+  await assertItemsInTenant(db, tid, data.items);
   const result = await db
     .request()
+    .input('tenantId', sql.UniqueIdentifier, tid)
     .input('PackageID', sql.Int, packageId)
     .input('NameEn', sql.NVarChar(200), data.NameEn)
     .input('NameAr', sql.NVarChar(200), data.NameAr)
@@ -380,7 +422,7 @@ export async function updateServicePackage(
         SessionCount = @SessionCount,
         NotesAr = @NotesAr,
         UpdatedAt = SYSDATETIME()
-      WHERE PackageID = @PackageID;
+      WHERE PackageID = @PackageID AND TenantId = @tenantId;
 
       SELECT @@ROWCOUNT AS affected;
     `);
@@ -388,23 +430,26 @@ export async function updateServicePackage(
   if (Number(result.recordset[0]?.affected) === 0) return null;
 
   if (data.items !== undefined) {
-    await replacePackageItems(db, packageId, data.items ?? []);
+    await replacePackageItems(db, tid, packageId, data.items ?? []);
   }
 
-  return getServicePackageById(db, packageId);
+  return getServicePackageById(db, tid, packageId);
 }
 
 export async function softDeleteServicePackage(
   db: ConnectionPool,
+  tenantId: string,
   packageId: number,
 ): Promise<boolean> {
+  const tid = requireMasterDataTenantId(tenantId, 'softDeleteServicePackage');
   const result = await db
     .request()
     .input('PackageID', sql.Int, packageId)
+    .input('tenantId', sql.UniqueIdentifier, tid)
     .query(`
       UPDATE dbo.TblServicePackage
       SET isDeleted = 1, UpdatedAt = SYSDATETIME()
-      WHERE PackageID = @PackageID;
+      WHERE PackageID = @PackageID AND TenantId = @tenantId;
       SELECT @@ROWCOUNT AS affected;
     `);
   return Number(result.recordset[0]?.affected) > 0;
@@ -412,15 +457,18 @@ export async function softDeleteServicePackage(
 
 export async function restoreServicePackage(
   db: ConnectionPool,
+  tenantId: string,
   packageId: number,
 ): Promise<boolean> {
+  const tid = requireMasterDataTenantId(tenantId, 'restoreServicePackage');
   const result = await db
     .request()
     .input('PackageID', sql.Int, packageId)
+    .input('tenantId', sql.UniqueIdentifier, tid)
     .query(`
       UPDATE dbo.TblServicePackage
       SET isDeleted = 0, UpdatedAt = SYSDATETIME()
-      WHERE PackageID = @PackageID;
+      WHERE PackageID = @PackageID AND TenantId = @tenantId;
       SELECT @@ROWCOUNT AS affected;
     `);
   return Number(result.recordset[0]?.affected) > 0;

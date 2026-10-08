@@ -12,6 +12,10 @@ import {
   COMMERCIAL_MIGRATION_KEY,
   verifyCommercialSubscriptionSchema,
 } from './migrations/009-commercial-subscription-tenant-apps';
+import {
+  MASTER_DATA_MIGRATION_KEY,
+  verifyMasterDataTenancySchema,
+} from './migrations/010-master-data-tenancy';
 import { listAppliedDrvoMigrations } from './registry';
 import { isAcceptedChecksum } from './checksum';
 import type { DrvoModuleReadinessReport, DrvoReadinessCheck } from './types';
@@ -126,6 +130,7 @@ export async function verifyDrvoReadiness(
     module === 'pos-sale-treasury' ||
     module === 'pos-sale-treasury-mutation' ||
     module === 'platform-commercial' ||
+    module === 'platform-master-data' ||
     module === 'platform-core'
   ) {
     const bootstrap = await verifyPlatformBootstrap(pool);
@@ -168,6 +173,19 @@ export async function verifyDrvoReadiness(
       detail: commercial.ok
         ? 'Commercial plans, subscriptions and tenant app state ready'
         : commercial.failures.join('; '),
+    });
+  }
+
+  if (module === 'platform-master-data') {
+    const masterData = appliedKeys.has(MASTER_DATA_MIGRATION_KEY)
+      ? await verifyMasterDataTenancySchema(pool)
+      : { ok: false, failures: [`Migration ${MASTER_DATA_MIGRATION_KEY} not applied`] };
+    checks.push({
+      id: 'platform.master-data',
+      ok: masterData.ok,
+      detail: masterData.ok
+        ? 'Master data is tenant-owned (TenantId NOT NULL, tenant keys, no NULL rows)'
+        : masterData.failures.join('; '),
     });
   }
 

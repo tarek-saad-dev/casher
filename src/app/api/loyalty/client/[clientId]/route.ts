@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
+import { authenticate, isAuthResult } from '@/lib/api-auth';
 import type { LoyaltyClientDetailResponse } from '@/lib/types';
 import { requireTenantSession } from '@/lib/api-auth';
 
@@ -10,8 +11,9 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ clientId: string }> }
 ) {
-  const tenantSession = await requireTenantSession();
-  if (tenantSession instanceof NextResponse) return tenantSession;
+  const auth = await authenticate();
+  if (!isAuthResult(auth)) return auth;
+
   try {
     const { clientId: clientIdStr } = await params;
     const clientId = parseInt(clientIdStr, 10);
@@ -28,13 +30,14 @@ export async function GET(
     // Get client basic info
     const clientResult = await db.request()
       .input('clientId', sql.Int, clientId)
+      .input('tenantId', sql.UniqueIdentifier, auth.tenantId)
       .query(`
         SELECT 
           c.ClientID,
           c.[Name] as ClientName,
           c.Mobile as Phone
         FROM [dbo].[TblClient] c
-        WHERE c.ClientID = @clientId
+        WHERE c.ClientID = @clientId AND c.TenantId = @tenantId
       `);
 
     if (clientResult.recordset.length === 0) {

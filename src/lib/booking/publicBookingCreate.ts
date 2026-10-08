@@ -928,6 +928,7 @@ export async function createPublicBooking(
       transaction,
       customerName,
       customerPhone,
+      branchNow.branchId,
     );
 
     const notesPersist = [

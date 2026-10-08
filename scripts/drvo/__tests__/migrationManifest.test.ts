@@ -17,7 +17,7 @@ import { assertDrvoDeployManifestConsistent } from '../readiness';
 describe('DRVO migration manifest', () => {
   it('has valid ordering, unique ids/keys, and resolvable dependencies', () => {
     expect(() => assertDrvoMigrationManifestValid()).not.toThrow();
-    expect(DRVO_MIGRATIONS.map((m) => m.migrationId)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    expect(DRVO_MIGRATIONS.map((m) => m.migrationId)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
     expect(DRVO_MIGRATIONS.map((m) => m.migrationKey)).toContain(
       'commercial-subscription-tenant-apps',
     );

@@ -20,6 +20,13 @@ vi.mock('@/lib/client/publicClientWebsite.service', () => ({
   updateClientWebsiteProfile: (...args: unknown[]) => updateClientWebsiteProfile(...args),
 }));
 
+const resolvePublicCatalogTenantId = vi.fn();
+const TENANT_A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+
+vi.mock('@/lib/catalog/publicCatalogTenant', () => ({
+  resolvePublicCatalogTenantId: (...args: unknown[]) => resolvePublicCatalogTenantId(...args),
+}));
+
 vi.mock('@/lib/client/publicClientWebsiteRateLimit', () => ({
   isPublicClientWebsiteLookupRateLimited: vi.fn(() => false),
   isPublicClientWebsiteUpdateRateLimited: vi.fn(() => false),
@@ -73,6 +80,7 @@ describe('GET /api/client/lookup', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.resetModules();
+    resolvePublicCatalogTenantId.mockResolvedValue(TENANT_A);
   });
 
   async function loadLookup() {
@@ -132,6 +140,22 @@ describe('GET /api/client/lookup', () => {
     });
   });
 
+  it('scopes the lookup to the public branch tenant', async () => {
+    lookupClientByMobile.mockResolvedValueOnce(null);
+    const GET = await loadLookup();
+    await GET(new NextRequest('http://localhost/api/client/lookup?mobile=01012345678&branchCode=B1'));
+    expect(lookupClientByMobile).toHaveBeenCalledWith(TENANT_A, '01012345678');
+  });
+
+  it('answers not-found without querying when no tenant resolves', async () => {
+    resolvePublicCatalogTenantId.mockResolvedValueOnce(null);
+    const GET = await loadLookup();
+    const res = await GET(new NextRequest('http://localhost/api/client/lookup?mobile=01012345678'));
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ ok: true, found: false, client: null });
+    expect(lookupClientByMobile).not.toHaveBeenCalled();
+  });
+
   it('returns 500 on database error', async () => {
     lookupClientByMobile.mockRejectedValueOnce(new Error('db down'));
     const GET = await loadLookup();
@@ -150,6 +174,7 @@ describe('PATCH /api/client/update', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.resetModules();
+    resolvePublicCatalogTenantId.mockResolvedValue(TENANT_A);
   });
 
   async function loadUpdate() {
@@ -198,10 +223,22 @@ describe('PATCH /api/client/update', () => {
     );
     expect(res.status).toBe(200);
     await expect(res.json()).resolves.toEqual({ ok: true });
-    expect(updateClientWebsiteProfile).toHaveBeenCalledWith({
+    expect(updateClientWebsiteProfile).toHaveBeenCalledWith(TENANT_A, {
       clientId: 123,
       address: 'Giza',
     });
+  });
+  it('returns 404 and never updates when no tenant resolves', async () => {
+    resolvePublicCatalogTenantId.mockResolvedValueOnce(null);
+    const PATCH = await loadUpdate();
+    const res = await PATCH(
+      new NextRequest('http://localhost/api/client/update', {
+        method: 'PATCH',
+        body: JSON.stringify({ clientId: 123, address: 'Giza' }),
+      }),
+    );
+    expect(res.status).toBe(404);
+    expect(updateClientWebsiteProfile).not.toHaveBeenCalled();
   });
 });
 

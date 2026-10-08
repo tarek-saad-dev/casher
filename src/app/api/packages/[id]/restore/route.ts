@@ -28,7 +28,7 @@ export async function PATCH(
       );
     }
 
-    const existing = await getServicePackageById(db, packageId);
+    const existing = await getServicePackageById(db, auth.tenantId, packageId);
     if (!existing) {
       return NextResponse.json({ error: 'الباكدج غير موجود' }, { status: 404 });
     }
@@ -37,8 +37,8 @@ export async function PATCH(
       return NextResponse.json({ ...existing, alreadyActive: true });
     }
 
-    await restoreServicePackage(db, packageId);
-    const restored = await getServicePackageById(db, packageId);
+    await restoreServicePackage(db, auth.tenantId, packageId);
+    const restored = await getServicePackageById(db, auth.tenantId, packageId);
     return NextResponse.json({ ...restored, alreadyActive: false });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';

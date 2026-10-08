@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
-import { requireTenantSession } from '@/lib/api-auth';
+import { authenticate, isAuthResult } from "@/lib/api-auth";
 
 // PUT /api/finance/categories/[id] — update CatName (and optionally ExpINType)
 export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const tenantSession = await requireTenantSession();
-  if (tenantSession instanceof NextResponse) return tenantSession;
+  const auth = await authenticate();
+  if (!isAuthResult(auth)) return auth;
+
   try {
     const { id: rawId } = await params;
     const id = parseInt(rawId, 10);
@@ -25,6 +26,7 @@ export async function PUT(
 
     const db = await getPool();
     const request = db.request()
+      .input("tenantId",  sql.UniqueIdentifier, auth.tenantId)
       .input("ExpINID",   sql.Int,          id)
       .input("CatName",   sql.NVarChar(200), String(CatName).trim());
 
@@ -36,14 +38,14 @@ export async function PUT(
         UPDATE dbo.TblExpINCat
         SET CatName = @CatName, ExpINType = @ExpINType
         OUTPUT INSERTED.ExpINID, INSERTED.CatName, INSERTED.ExpINType
-        WHERE ExpINID = @ExpINID;
+        WHERE ExpINID = @ExpINID AND TenantId = @tenantId;
       `;
     } else {
       query = `
         UPDATE dbo.TblExpINCat
         SET CatName = @CatName
         OUTPUT INSERTED.ExpINID, INSERTED.CatName, INSERTED.ExpINType
-        WHERE ExpINID = @ExpINID;
+        WHERE ExpINID = @ExpINID AND TenantId = @tenantId;
       `;
     }
 
@@ -67,8 +69,9 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const tenantSession = await requireTenantSession();
-  if (tenantSession instanceof NextResponse) return tenantSession;
+  const auth = await authenticate();
+  if (!isAuthResult(auth)) return auth;
+
   try {
     const { id: rawId } = await params;
     const id = parseInt(rawId, 10);
@@ -77,6 +80,14 @@ export async function DELETE(
     }
 
     const db = await getPool();
+
+    const owned = await db.request()
+      .input("tenantId", sql.UniqueIdentifier, auth.tenantId)
+      .input("ExpINID", sql.Int, id)
+      .query(`SELECT 1 AS ok FROM dbo.TblExpINCat WHERE ExpINID = @ExpINID AND TenantId = @tenantId;`);
+    if (owned.recordset.length === 0) {
+      return NextResponse.json({ error: "الفئة غير موجودة" }, { status: 404 });
+    }
 
     const usageCheck = await db.request()
       .input("ExpINID", sql.Int, id)
@@ -95,11 +106,12 @@ export async function DELETE(
     }
 
     const result = await db.request()
+      .input("tenantId", sql.UniqueIdentifier, auth.tenantId)
       .input("ExpINID", sql.Int, id)
       .query(`
         DELETE FROM dbo.TblExpINCat
         OUTPUT DELETED.ExpINID, DELETED.CatName
-        WHERE ExpINID = @ExpINID;
+        WHERE ExpINID = @ExpINID AND TenantId = @tenantId;
       `);
 
     if (result.recordset.length === 0) {

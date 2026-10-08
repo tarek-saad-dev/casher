@@ -101,6 +101,7 @@ export async function bridgeQueueUpsertCustomer(
   tx: Transaction,
   customerName: string,
   customerPhone: string,
+  branchId: number,
 ): Promise<number> {
   if (ctx.queuePortHooks) {
     return ctx.queuePortHooks.upsertCustomer(tx, {
@@ -109,7 +110,9 @@ export async function bridgeQueueUpsertCustomer(
     });
   }
   const { upsertCustomer } = await import('@/lib/publicBookingHelpers');
-  return upsertCustomer(customerName, customerPhone, tx);
+  const { resolveLegacyBranchTenantId } = await import('@/platform/masterData/tenantScope');
+  const tenantId = await resolveLegacyBranchTenantId(branchId, tx);
+  return upsertCustomer(customerName, customerPhone, tx, tenantId);
 }
 
 export async function bridgeQueuePublishCreatedEvent(

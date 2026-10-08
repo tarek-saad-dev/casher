@@ -13,6 +13,8 @@ import {
 import { getEmployeeAllTimeBalance, validateLedgerMonth } from '@/lib/services/employeeLedgerService';
 import type { EmpLedgerFundingResponse } from '@/lib/types/employee-ledger';
 import { getCairoInvTimeDotStr } from '@/lib/businessDate';
+import { ensureTenantFinanceCategory } from '@/platform/masterData/financeCategories';
+import { resolveLegacyBranchTenantId } from '@/platform/masterData/tenantScope';
 
 export const EMPLOYEE_FUNDING_CATEGORY_NAME = 'تمويل من موظف';
 export { EMP_LEDGER_REASON_EMPLOYEE_FUNDING };
@@ -40,30 +42,9 @@ function buildLedgerNotes(notes?: string | null): string {
 
 export async function ensureEmployeeFundingIncomeCategory(
   transaction: sql.Transaction,
+  tenantId: string,
 ): Promise<number> {
-  const findResult = await new sql.Request(transaction)
-    .input('catName', sql.NVarChar(200), EMPLOYEE_FUNDING_CATEGORY_NAME)
-    .input('expType', sql.NVarChar(50), 'ايرادات')
-    .query(`
-      SELECT ExpINID
-      FROM dbo.TblExpINCat
-      WHERE CatName = @catName AND ExpINType = @expType
-    `);
-
-  if (findResult.recordset.length > 0) {
-    return Number(findResult.recordset[0].ExpINID);
-  }
-
-  const insertResult = await new sql.Request(transaction)
-    .input('catName', sql.NVarChar(200), EMPLOYEE_FUNDING_CATEGORY_NAME)
-    .input('expType', sql.NVarChar(50), 'ايرادات')
-    .query(`
-      INSERT INTO dbo.TblExpINCat (CatName, ExpINType)
-      OUTPUT INSERTED.ExpINID
-      VALUES (@catName, @expType)
-    `);
-
-  return Number(insertResult.recordset[0].ExpINID);
+  return ensureTenantFinanceCategory(transaction, tenantId, EMPLOYEE_FUNDING_CATEGORY_NAME, 'ايرادات');
 }
 
 export async function insertEmployeeFundingLedgerEntry(
@@ -153,13 +134,15 @@ export async function executeEmployeeFunding(params: {
 
   const amount = roundMoney(params.amount);
   const db = await getPool();
+  const tenantId = await resolveLegacyBranchTenantId(params.branchId);
 
   const empResult = await db.request()
     .input('empId', sql.Int, params.empId)
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
     .query(`
       SELECT EmpID, EmpName
       FROM dbo.TblEmp
-      WHERE EmpID = @empId AND ISNULL(isActive, 1) = 1
+      WHERE EmpID = @empId AND TenantId = @tenantId AND ISNULL(isActive, 1) = 1
     `);
   if (empResult.recordset.length === 0) {
     throw new EmployeeLedgerFundingError('الموظف غير موجود أو غير نشط');
@@ -169,10 +152,11 @@ export async function executeEmployeeFunding(params: {
 
   const pmResult = await db.request()
     .input('paymentMethodId', sql.Int, params.paymentMethodId)
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
     .query(`
       SELECT PaymentID
       FROM dbo.TblPaymentMethods
-      WHERE PaymentID = @paymentMethodId
+      WHERE PaymentID = @paymentMethodId AND TenantId = @tenantId
     `);
   if (pmResult.recordset.length === 0) {
     throw new EmployeeLedgerFundingError('طريقة الدفع غير موجودة');
@@ -186,7 +170,7 @@ export async function executeEmployeeFunding(params: {
 
   try {
     const previousBalance = await getEmployeeAllTimeBalance(params.empId, transaction);
-    const fundingExpINID = await ensureEmployeeFundingIncomeCategory(transaction);
+    const fundingExpINID = await ensureEmployeeFundingIncomeCategory(transaction, tenantId);
     const newInvID = await allocateInvID(transaction, 'TblCashMove', 'ايرادات', 5000);
 
     const cashReq = new sql.Request(transaction);

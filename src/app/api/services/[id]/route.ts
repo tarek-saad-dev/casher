@@ -2,15 +2,17 @@ import { NextResponse, NextRequest } from 'next/server';
 import { getPool, sql } from '@/lib/db';
 import { ensureTblProImageUrlColumn, tblProImageUrlSelect } from '@/lib/migrations/ensureServiceImageUrl';
 import { invalidatePublicBookingServicesCache } from '@/lib/booking/publicBookingServices';
-import { requireTenantSession } from '@/lib/api-auth';
+import { authenticate, isAuthResult } from '@/lib/api-auth';
+import { isTenantCategory } from '@/lib/catalog/tenantCatalogGuards';
 
 // PUT /api/services/[id] — update a service
 export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const tenantSession = await requireTenantSession();
-  if (tenantSession instanceof NextResponse) return tenantSession;
+  const auth = await authenticate();
+  if (!isAuthResult(auth)) return auth;
+
   try {
     const { id } = await params;
     const serviceId = parseInt(id);
@@ -41,7 +43,12 @@ export async function PUT(
       );
     }
 
+    if (CatID && !(await isTenantCategory(db, auth.tenantId, Number(CatID)))) {
+      return NextResponse.json({ error: 'التصنيف غير موجود' }, { status: 404 });
+    }
+
     const dbReq = db.request()
+      .input('tenantId', sql.UniqueIdentifier, auth.tenantId)
       .input('ProID', serviceId)
       .input('ProName', ProName.trim())
       .input('ProNameAr', ProNameAr?.trim() || null)
@@ -64,7 +71,7 @@ export async function PUT(
             Bonus = @Bonus, 
             CatID = @CatID, 
             isDeleted = @isDeleted${imageUrlSet}
-        WHERE ProID = @ProID;
+        WHERE ProID = @ProID AND TenantId = @tenantId;
         
         SELECT 
           p.ProID, p.ProName, p.ProNameAr, p.SPrice1, p.Bonus, p.CatID, p.isDeleted,
@@ -72,13 +79,13 @@ export async function PUT(
           ISNULL(pop.SalesCount, 0) AS SalesCount,
           ${imageUrlCol}
         FROM [dbo].[TblPro] p
-        LEFT JOIN [dbo].[TblCat] c ON p.CatID = c.CatID
+        LEFT JOIN [dbo].[TblCat] c ON p.CatID = c.CatID AND c.TenantId = p.TenantId
         LEFT JOIN (
           SELECT ProID, COUNT(*) AS SalesCount
           FROM [dbo].[TblinvServDetail]
           GROUP BY ProID
         ) pop ON p.ProID = pop.ProID
-        WHERE p.ProID = @ProID;
+        WHERE p.ProID = @ProID AND p.TenantId = @tenantId;
       `);
 
     if (result.recordset.length === 0) {
@@ -100,8 +107,9 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const tenantSession = await requireTenantSession();
-  if (tenantSession instanceof NextResponse) return tenantSession;
+  const auth = await authenticate();
+  if (!isAuthResult(auth)) return auth;
+
   try {
     const { id } = await params;
     const serviceId = parseInt(id);
@@ -126,7 +134,9 @@ export async function PATCH(
     const db = await getPool();
     const hasImageUrl = await ensureTblProImageUrlColumn(db);
     const imageUrlCol = tblProImageUrlSelect(hasImageUrl);
-    const reqUpdate = db.request().input('ProID', sql.Int, serviceId);
+    const reqUpdate = db.request()
+      .input('ProID', sql.Int, serviceId)
+      .input('tenantId', sql.UniqueIdentifier, auth.tenantId);
     const updateFields: string[] = [];
 
     if (durationMinutes !== undefined) {
@@ -148,12 +158,15 @@ export async function PATCH(
     }
 
     if (updateFields.length > 0) {
-      await reqUpdate.query(`UPDATE [dbo].[TblPro] SET ${updateFields.join(', ')} WHERE ProID = @ProID`);
+      await reqUpdate.query(
+        `UPDATE [dbo].[TblPro] SET ${updateFields.join(', ')} WHERE ProID = @ProID AND TenantId = @tenantId`,
+      );
     }
 
     const result = await db.request()
       .input('ProID', sql.Int, serviceId)
-      .query(`SELECT ProID, ProName, SPrice1, Bonus, CatID, isDeleted, DurationMinutes, ${imageUrlCol} FROM [dbo].[TblPro] p WHERE ProID = @ProID`);
+      .input('tenantId', sql.UniqueIdentifier, auth.tenantId)
+      .query(`SELECT ProID, ProName, SPrice1, Bonus, CatID, isDeleted, DurationMinutes, ${imageUrlCol} FROM [dbo].[TblPro] p WHERE ProID = @ProID AND TenantId = @tenantId`);
 
     if (!result.recordset[0]) {
       return NextResponse.json({ error: 'الخدمة غير موجودة' }, { status: 404 });
@@ -172,8 +185,9 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const tenantSession = await requireTenantSession();
-  if (tenantSession instanceof NextResponse) return tenantSession;
+  const auth = await authenticate();
+  if (!isAuthResult(auth)) return auth;
+
   try {
     const { id } = await params;
     const serviceId = parseInt(id);
@@ -184,19 +198,14 @@ export async function DELETE(
 
     const db = await getPool();
 
-    // Check if service exists
-    const serviceResult = await db.request()
+    const result = await db.request()
       .input('ProID', serviceId)
-      .query(`SELECT ProID FROM [dbo].[TblPro] WHERE ProID = @ProID`);
+      .input('tenantId', sql.UniqueIdentifier, auth.tenantId)
+      .query(`UPDATE [dbo].[TblPro] SET isDeleted = 1 WHERE ProID = @ProID AND TenantId = @tenantId`);
 
-    if (serviceResult.recordset.length === 0) {
+    if ((result.rowsAffected?.[0] ?? 0) === 0) {
       return NextResponse.json({ error: 'الخدمة غير موجودة' }, { status: 404 });
     }
-
-    // Soft delete the service
-    await db.request()
-      .input('ProID', serviceId)
-      .query(`UPDATE [dbo].[TblPro] SET isDeleted = 1 WHERE ProID = @ProID`);
 
     invalidatePublicBookingServicesCache();
     return NextResponse.json({ success: true });

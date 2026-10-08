@@ -12,6 +12,8 @@ import {
 import { getEmployeeBranchBalance } from '@/lib/services/employeeLedgerService';
 import type { EmpLedgerPayoutResponse } from '@/lib/types/employee-ledger';
 import { getCairoInvTimeDotStr } from '@/lib/businessDate';
+import { ensureTenantFinanceCategory } from '@/platform/masterData/financeCategories';
+import { resolveLegacyBranchTenantId } from '@/platform/masterData/tenantScope';
 
 export const PAYOUT_EXPENSE_CATEGORY_NAME = 'صرف مستحقات الموظفين';
 export const EMP_LEDGER_REASON_PAYOUT = 'payout';
@@ -34,30 +36,9 @@ function buildCashMoveNotes(employeeName: string, notes?: string | null): string
 
 export async function ensurePayoutExpenseCategory(
   transaction: sql.Transaction,
+  tenantId: string,
 ): Promise<number> {
-  const findResult = await new sql.Request(transaction)
-    .input('catName', sql.NVarChar(200), PAYOUT_EXPENSE_CATEGORY_NAME)
-    .input('expType', sql.NVarChar(50), 'مصروفات')
-    .query(`
-      SELECT ExpINID
-      FROM dbo.TblExpINCat
-      WHERE CatName = @catName AND ExpINType = @expType
-    `);
-
-  if (findResult.recordset.length > 0) {
-    return Number(findResult.recordset[0].ExpINID);
-  }
-
-  const insertResult = await new sql.Request(transaction)
-    .input('catName', sql.NVarChar(200), PAYOUT_EXPENSE_CATEGORY_NAME)
-    .input('expType', sql.NVarChar(50), 'مصروفات')
-    .query(`
-      INSERT INTO dbo.TblExpINCat (CatName, ExpINType)
-      OUTPUT INSERTED.ExpINID
-      VALUES (@catName, @expType)
-    `);
-
-  return Number(insertResult.recordset[0].ExpINID);
+  return ensureTenantFinanceCategory(transaction, tenantId, PAYOUT_EXPENSE_CATEGORY_NAME, 'مصروفات');
 }
 
 export async function insertPayoutLedgerEntry(
@@ -138,13 +119,15 @@ export async function executeEmployeePayout(params: {
   const allowOverpay = params.allowOverpay === true;
 
   const db = await getPool();
+  const tenantId = await resolveLegacyBranchTenantId(params.branchId);
 
   const empResult = await db.request()
     .input('empId', sql.Int, params.empId)
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
     .query(`
       SELECT EmpID, EmpName
       FROM dbo.TblEmp
-      WHERE EmpID = @empId AND ISNULL(isActive, 1) = 1
+      WHERE EmpID = @empId AND TenantId = @tenantId AND ISNULL(isActive, 1) = 1
     `);
   if (empResult.recordset.length === 0) {
     throw new EmployeeLedgerPayoutError('الموظف غير موجود أو غير نشط');
@@ -153,10 +136,11 @@ export async function executeEmployeePayout(params: {
 
   const pmResult = await db.request()
     .input('paymentMethodId', sql.Int, params.paymentMethodId)
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
     .query(`
       SELECT PaymentID
       FROM dbo.TblPaymentMethods
-      WHERE PaymentID = @paymentMethodId
+      WHERE PaymentID = @paymentMethodId AND TenantId = @tenantId
     `);
   if (pmResult.recordset.length === 0) {
     throw new EmployeeLedgerPayoutError('طريقة الدفع غير موجودة');
@@ -181,7 +165,7 @@ export async function executeEmployeePayout(params: {
       );
     }
 
-    const payoutExpINID = await ensurePayoutExpenseCategory(transaction);
+    const payoutExpINID = await ensurePayoutExpenseCategory(transaction, tenantId);
     const newInvID = await allocateInvID(transaction, 'TblCashMove', 'مصروفات', 5000);
 
     const cashReq = new sql.Request(transaction);

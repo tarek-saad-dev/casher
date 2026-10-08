@@ -292,6 +292,25 @@ export const DRVO_MODULE_ROLLOUT: DrvoModuleRolloutSpec[] = [
     ],
     rollbackRollout: 'extracted',
   },
+  {
+    module: 'platform-master-data',
+    drvoId: 'DRVO-015',
+    rollout: 'extracted',
+    classification: 'always_on_infrastructure',
+    classificationRationale:
+      'DRVO-015 tenant ownership of shared master data (customers, services, categories, packages, payment methods, expense categories; TblEmp column only). Every repository read/write is bound to the authoritative TenantId; no strangler path. CUT data is backfilled to CASHER_BOOT by migration.',
+    requiredMigrationKeys: ['platform-core', 'platform-bootstrap', 'master-data-tenancy'],
+    dependencies: ['platform-core'],
+    readinessCheckIds: [
+      'migration.platform-core',
+      'migration.platform-bootstrap',
+      'migration.master-data-tenancy',
+      'platform.bootstrap',
+      'platform.core.structure',
+      'platform.master-data',
+    ],
+    rollbackRollout: 'extracted',
+  },
 ];
 
 export function getDrvoModuleRolloutSpec(module: string): DrvoModuleRolloutSpec {

@@ -175,9 +175,9 @@ async function main() {
     if (!paymentMethodId) fail('no payment method');
 
     const client = await pool.request().query(`
-      INSERT INTO dbo.TblClient (Name, Notes, RegisterDate)
+      INSERT INTO dbo.TblClient (TenantId, Name, Notes, RegisterDate)
       OUTPUT INSERTED.ClientID AS clientId
-      VALUES (N'DRVO008-SMOKE', N'DRVO008-SMOKE', CAST(GETDATE() AS date))
+      VALUES ((SELECT TenantId FROM dbo.Tenant WHERE Code = N'CASHER_BOOT'), N'DRVO008-SMOKE', N'DRVO008-SMOKE', CAST(GETDATE() AS date))
     `);
     const clientId = Number(client.recordset[0]?.clientId ?? 0);
     if (!clientId) fail('could not create smoke client');

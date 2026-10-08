@@ -1,4 +1,5 @@
 import { sql } from '@/lib/db';
+import { ensureTenantFinanceCategory } from '@/platform/masterData/financeCategories';
 
 export interface AdvanceMappingResult {
   expINID: number;
@@ -11,35 +12,12 @@ export interface AdvanceMappingResult {
  */
 export async function ensureEmployeeAdvanceMapping(
   transaction: sql.Transaction,
+  tenantId: string,
   empId: number,
   empName: string,
 ): Promise<AdvanceMappingResult> {
   const catName = `سلفه ( ${empName} )`;
-  const expType = 'مصروفات';
-
-  let expINID = 0;
-
-  const existCat = await new sql.Request(transaction)
-    .input('catName', sql.NVarChar(200), catName)
-    .input('expType', sql.NVarChar(50), expType)
-    .query(`
-      SELECT ExpINID FROM dbo.TblExpINCat
-      WHERE CatName = @catName AND ExpINType = @expType
-    `);
-
-  if (existCat.recordset.length > 0) {
-    expINID = existCat.recordset[0].ExpINID;
-  } else {
-    const catRes = await new sql.Request(transaction)
-      .input('catName', sql.NVarChar(200), catName)
-      .input('expType', sql.NVarChar(50), expType)
-      .query(`
-        INSERT INTO dbo.TblExpINCat (CatName, ExpINType)
-        OUTPUT INSERTED.ExpINID
-        VALUES (@catName, @expType)
-      `);
-    expINID = catRes.recordset[0].ExpINID;
-  }
+  const expINID = await ensureTenantFinanceCategory(transaction, tenantId, catName, 'مصروفات');
 
   if (!expINID || expINID <= 0) {
     throw new Error('فشل في إنشاء/العثور على تصنيف السلفة');

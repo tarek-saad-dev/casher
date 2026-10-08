@@ -16,6 +16,7 @@ import {
   maybeSyncAdvanceLedgerForExpenseCashMove,
 } from '@/lib/services/employeeLedgerDualWrite';
 import { liveCashMovePredicate } from '@/lib/treasury/liveCashMoveSql';
+import { resolveLegacyBranchTenantId } from '@/platform/masterData/tenantScope';
 
 export interface ExpenseSnapshot {
   ID: number;
@@ -171,9 +172,11 @@ export async function updateExpenseCategory(
     throw new Error('هذه المعاملة ليست مصروف');
   }
 
+  const rowTenantId = await resolveLegacyBranchTenantId(Number(current.BranchID), transaction);
   const catRes = await new sql.Request(transaction)
     .input('expinid', sql.Int, expINID)
-    .query(`SELECT 1 FROM dbo.TblExpINCat WHERE ExpINID = @expinid AND ExpINType = N'مصروفات'`);
+    .input('tenantId', sql.UniqueIdentifier, rowTenantId)
+    .query(`SELECT 1 FROM dbo.TblExpINCat WHERE ExpINID = @expinid AND TenantId = @tenantId AND ExpINType = N'مصروفات'`);
   if (catRes.recordset.length === 0) {
     throw new Error('الفئة المحددة غير موجودة أو ليست فئة مصروفات');
   }

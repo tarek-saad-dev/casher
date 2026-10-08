@@ -17,6 +17,7 @@ import {
 import { buildTreasuryWritePorts } from '@/lib/treasuryComposition';
 import { syncEmployeeFundingFromCashMove } from '@/lib/services/employeeLedgerFundingSyncService';
 import { liveCashMovePredicate } from '@/lib/treasury/liveCashMoveSql';
+import { resolveLegacyBranchTenantId } from '@/platform/masterData/tenantScope';
 import type { EmployeeFundingSyncResult } from '@/lib/services/employeeLedgerFundingSyncService';
 
 export interface IncomeSnapshot {
@@ -85,16 +86,20 @@ export async function updateIncome(
   const parsedDate = new Date(input.invDate);
   if (isNaN(parsedDate.getTime())) throw new Error(`تاريخ غير صالح: ${input.invDate}`);
 
+  const rowTenantId = await resolveLegacyBranchTenantId(Number(exists.BranchID), transaction);
+
   // Validate category
   const catRes = await new sql.Request(transaction)
     .input('expInId', sql.Int, input.expInId)
-    .query(`SELECT 1 FROM dbo.TblExpINCat WHERE ExpINID = @expInId`);
+    .input('tenantId', sql.UniqueIdentifier, rowTenantId)
+    .query(`SELECT 1 FROM dbo.TblExpINCat WHERE ExpINID = @expInId AND TenantId = @tenantId`);
   if (catRes.recordset.length === 0) throw new Error('تصنيف الإيراد غير موجود');
 
   // Validate payment method
   const pmRes = await new sql.Request(transaction)
     .input('pmId', sql.Int, input.paymentMethodId)
-    .query(`SELECT 1 FROM dbo.TblPaymentMethods WHERE PaymentID = @pmId`);
+    .input('tenantId', sql.UniqueIdentifier, rowTenantId)
+    .query(`SELECT 1 FROM dbo.TblPaymentMethods WHERE PaymentID = @pmId AND TenantId = @tenantId`);
   if (pmRes.recordset.length === 0) throw new Error('طريقة الدفع غير موجودة');
 
   await new sql.Request(transaction)

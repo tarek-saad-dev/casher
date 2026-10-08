@@ -9,6 +9,7 @@ import {
   checkRateLimit,
   getRateLimitKey,
 } from '@/lib/publicBookingHelpers';
+import { resolvePublicCatalogTenantId } from '@/lib/catalog/publicCatalogTenant';
 
 export const runtime = 'nodejs';
 
@@ -83,7 +84,16 @@ export async function GET(req: NextRequest) {
       type = typeParam;
     }
 
+    const tenantId = await resolvePublicCatalogTenantId(searchParams, '/api/services/catalog');
+    if (!tenantId) {
+      return NextResponse.json(
+        { ok: false, error: 'الفرع غير متاح' },
+        { status: 404, headers: CORS_HEADERS },
+      );
+    }
+
     const catalog = await fetchServiceCatalog(
+      tenantId,
       normalizeCatalogQuery({
         activeOnly: activeParam === 'false' ? false : true,
         type,

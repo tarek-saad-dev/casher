@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPublicPackagesCatalog } from '@/lib/catalog/publicPackagesCatalog';
 import { isPackageKind } from '@/lib/migrations/ensureServicePackages';
+import { resolvePublicCatalogTenantId } from '@/lib/catalog/publicCatalogTenant';
 
 export const runtime = 'nodejs';
 
@@ -54,7 +55,15 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const catalog = await getPublicPackagesCatalog({ kind: kindParam });
+    const tenantId = await resolvePublicCatalogTenantId(searchParams, '/api/public/client/packages');
+    if (!tenantId) {
+      return NextResponse.json(
+        { ok: false, error: 'Branch not available', code: 'NOT_FOUND' },
+        { status: 404, headers: corsHeaders },
+      );
+    }
+
+    const catalog = await getPublicPackagesCatalog({ tenantId, kind: kindParam });
     return NextResponse.json(catalog, { headers: corsHeaders });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';

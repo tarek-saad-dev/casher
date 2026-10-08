@@ -11,7 +11,7 @@ export async function GET() {
   if (!isAuthResult(auth)) return auth;
 
   try {
-    const catalog = await getPublicPackagesCatalog();
+    const catalog = await getPublicPackagesCatalog({ tenantId: auth.tenantId });
     return NextResponse.json({
       ok: true,
       currency: catalog.currency,

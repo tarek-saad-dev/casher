@@ -2,7 +2,8 @@ import { NextResponse, NextRequest } from 'next/server';
 import { getPool, sql } from '@/lib/db';
 import { getActiveBranchContext } from '@/lib/branch/context';
 import { getGlobalTimingDefaults, getPublicSettings } from '@/lib/publicBookingHelpers';
-import { requireTenantSession } from '@/lib/api-auth';
+import { getSession } from '@/lib/session';
+import { authenticate, isAuthResult } from '@/lib/api-auth';
 
 /**
  * GET /api/services/:proId/barber-durations
@@ -22,11 +23,17 @@ export async function GET(
     }
 
     const db = await getPool();
+    const session = await getSession();
 
-    // Fetch service info
+    // Fetch service info — staff only see their tenant's service; anonymous readers get the
+    // service's own tenant roster.
     const svcRes = await db.request()
       .input('ProID', sql.Int, proId)
-      .query(`SELECT ProID, ProName, DurationMinutes FROM dbo.TblPro WHERE ProID = @ProID`);
+      .input('tenantId', sql.UniqueIdentifier, session?.TenantId ?? null)
+      .query(`
+        SELECT ProID, ProName, DurationMinutes, TenantId FROM dbo.TblPro
+        WHERE ProID = @ProID AND (@tenantId IS NULL OR TenantId = @tenantId)
+      `);
 
     if (!svcRes.recordset[0]) {
       return NextResponse.json({ error: 'الخدمة غير موجودة' }, { status: 404 });
@@ -49,9 +56,10 @@ export async function GET(
     const serviceDefault: number | null = svc.DurationMinutes ?? null;
 
     // Fetch all active barbers
-    const barbersRes = await db.request().query(`
+    const barbersRes = await db.request().input('svcTenantId', sql.UniqueIdentifier, svc.TenantId).query(`
       SELECT EmpID, EmpName FROM dbo.TblEmp
-      WHERE ISNULL(isActive,1) = 1
+      WHERE TenantId = @svcTenantId
+        AND ISNULL(isActive,1) = 1
         AND Job IN (N'حلاق', N'مساعد', N'Barber', N'barber')
       ORDER BY EmpName
     `).catch(() => ({ recordset: [] as any[] }));
@@ -127,8 +135,9 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const tenantSession = await requireTenantSession();
-  if (tenantSession instanceof NextResponse) return tenantSession;
+  const auth = await authenticate();
+  if (!isAuthResult(auth)) return auth;
+
   try {
     const { id } = await params;
     const proId = parseInt(id);
@@ -148,9 +157,19 @@ export async function PATCH(
     // Validate service exists
     const svcCheck = await db.request()
       .input('ProID', sql.Int, proId)
-      .query(`SELECT 1 AS ex FROM dbo.TblPro WHERE ProID = @ProID`);
+      .input('tenantId', sql.UniqueIdentifier, auth.tenantId)
+      .query(`SELECT 1 AS ex FROM dbo.TblPro WHERE ProID = @ProID AND TenantId = @tenantId`);
     if (!svcCheck.recordset[0]) {
       return NextResponse.json({ error: 'الخدمة غير موجودة' }, { status: 404 });
+    }
+
+    const requestedEmpIds = [...new Set(items.map((i) => Number(i.empId)).filter((n) => Number.isInteger(n) && n > 0))];
+    const tenantEmpIds = new Set<number>();
+    if (requestedEmpIds.length) {
+      const empRes = await db.request()
+        .input('tenantId', sql.UniqueIdentifier, auth.tenantId)
+        .query(`SELECT EmpID FROM dbo.TblEmp WHERE TenantId = @tenantId AND EmpID IN (${requestedEmpIds.join(',')})`);
+      for (const r of empRes.recordset as Array<{ EmpID: number }>) tenantEmpIds.add(Number(r.EmpID));
     }
 
     let processed = 0;
@@ -159,6 +178,7 @@ export async function PATCH(
       const dur = item.durationMinutes;
 
       if (!empId || isNaN(empId)) continue;
+      if (!tenantEmpIds.has(empId)) continue;
 
       if (dur === null || dur === undefined) {
         // Deactivate override

@@ -3,6 +3,7 @@ import { lookupClientIdByPhone } from '@/lib/client/clientPhoneLookup';
 import { getPool, sql } from '@/lib/db';
 import { listPublicUpcomingBookings } from '@/lib/booking/publicBookingReader';
 import type { AiToolCallRequest, AiToolExecutionContext, AiToolResult } from './types';
+import { resolveLegacyBootstrapTenantId } from '@/platform/tenant/legacyBootstrapSeam';
 
 export async function executeGetCustomerContext(
   _request: AiToolCallRequest,
@@ -22,7 +23,8 @@ export async function executeGetCustomerContext(
   }
 
   try {
-    const lookup = await lookupClientIdByPhone(phone);
+    const tenantId = await resolveLegacyBootstrapTenantId('legacy-messaging-worker');
+    const lookup = await lookupClientIdByPhone(tenantId, phone);
     if (lookup.ambiguous) {
       return {
         name: 'get_customer_context',
@@ -54,10 +56,11 @@ export async function executeGetCustomerContext(
     const nameRow = await pool
       .request()
       .input('clientId', sql.Int, lookup.clientId)
+      .input('tenantId', sql.UniqueIdentifier, tenantId)
       .query(`
         SELECT TOP 1 LTRIM(RTRIM(ISNULL([Name], N''))) AS DisplayName
         FROM dbo.TblClient
-        WHERE ClientID = @clientId
+        WHERE ClientID = @clientId AND TenantId = @tenantId
       `);
     const displayName = String(nameRow.recordset[0]?.DisplayName ?? '').trim() || null;
 

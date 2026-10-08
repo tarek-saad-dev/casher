@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { isAuthResult, requireDevelopmentAdmin } from '@/lib/api-auth';
-import { getPool } from '@/lib/db';
+import { getPool, sql } from '@/lib/db';
 
 export async function POST() {
   const __auth = await requireDevelopmentAdmin();
@@ -61,12 +61,12 @@ export async function POST() {
       try {
         // Update the Arabic name for each service
         const result = await db.request()
-          .input('ProName', service.name)
+          .input('tenantId', sql.UniqueIdentifier, __auth.tenantId).input('ProName', service.name)
           .input('ProNameAr', service.nameAr)
           .query(`
             UPDATE [dbo].[TblPro] 
             SET ProNameAr = @ProNameAr 
-            WHERE ProName = @ProName
+            WHERE ProName = @ProName AND TenantId = @tenantId
           `);
         
         if (result.rowsAffected && result.rowsAffected[0] > 0) {

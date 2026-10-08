@@ -1,17 +1,18 @@
 import { NextResponse, NextRequest } from 'next/server';
-import { getPool } from '@/lib/db';
+import { getPool, sql } from '@/lib/db';
 import {
   ensureTblCatSortOrderColumn,
   tblCatSortOrderSelect,
 } from '@/lib/migrations/ensureCategorySortOrder';
-import { requireTenantSession } from '@/lib/api-auth';
+import { authenticate, isAuthResult } from '@/lib/api-auth';
 
 export const runtime = 'nodejs';
 
 // GET /api/services/categories — returns all categories with service counts + sortOrder
 export async function GET() {
-  const tenantSession = await requireTenantSession();
-  if (tenantSession instanceof NextResponse) return tenantSession;
+  const auth = await authenticate();
+  if (!isAuthResult(auth)) return auth;
+
   try {
     const db = await getPool();
     const hasSortOrder = await ensureTblCatSortOrderColumn(db);
@@ -20,7 +21,7 @@ export async function GET() {
       ? 'ISNULL(c.SortOrder, 999999), c.CatName'
       : 'c.CatName';
 
-    const result = await db.request().query(`
+    const result = await db.request().input('tenantId', sql.UniqueIdentifier, auth.tenantId).query(`
       SELECT
         c.CatID,
         c.CatName,
@@ -30,9 +31,10 @@ export async function GET() {
       LEFT JOIN (
         SELECT CatID, COUNT(*) AS ServiceCount
         FROM [dbo].[TblPro]
-        WHERE isDeleted = 0
+        WHERE isDeleted = 0 AND TenantId = @tenantId
         GROUP BY CatID
       ) p ON c.CatID = p.CatID
+      WHERE c.TenantId = @tenantId
       ORDER BY ${orderBy}
     `);
 
@@ -53,8 +55,9 @@ export async function GET() {
 
 // POST /api/services/categories — create a new category
 export async function POST(req: NextRequest) {
-  const tenantSession = await requireTenantSession();
-  if (tenantSession instanceof NextResponse) return tenantSession;
+  const auth = await authenticate();
+  if (!isAuthResult(auth)) return auth;
+
   try {
     const body = await req.json();
     const { CatName, SortOrder } = body;
@@ -70,8 +73,8 @@ export async function POST(req: NextRequest) {
     if (typeof SortOrder === 'number' && Number.isFinite(SortOrder)) {
       nextOrder = Math.trunc(SortOrder);
     } else if (hasSortOrder) {
-      const maxRes = await db.request().query(`
-        SELECT ISNULL(MAX(SortOrder), 0) AS MaxOrder FROM [dbo].[TblCat]
+      const maxRes = await db.request().input('tenantId', sql.UniqueIdentifier, auth.tenantId).query(`
+        SELECT ISNULL(MAX(SortOrder), 0) AS MaxOrder FROM [dbo].[TblCat] WHERE TenantId = @tenantId
       `);
       nextOrder = (Number(maxRes.recordset[0]?.MaxOrder) || 0) + 10;
     }
@@ -79,12 +82,13 @@ export async function POST(req: NextRequest) {
     if (hasSortOrder) {
       const result = await db
         .request()
+        .input('tenantId', sql.UniqueIdentifier, auth.tenantId)
         .input('CatName', CatName.trim())
         .input('SortOrder', nextOrder)
         .query(`
-          INSERT INTO [dbo].[TblCat] (CatName, SortOrder)
+          INSERT INTO [dbo].[TblCat] (TenantId, CatName, SortOrder)
           OUTPUT INSERTED.CatID, INSERTED.CatName, INSERTED.SortOrder
-          VALUES (@CatName, @SortOrder);
+          VALUES (@tenantId, @CatName, @SortOrder);
         `);
 
       const newCategory = result.recordset[0];
@@ -98,11 +102,12 @@ export async function POST(req: NextRequest) {
 
     const result = await db
       .request()
+      .input('tenantId', sql.UniqueIdentifier, auth.tenantId)
       .input('CatName', CatName.trim())
       .query(`
-        INSERT INTO [dbo].[TblCat] (CatName)
+        INSERT INTO [dbo].[TblCat] (TenantId, CatName)
         OUTPUT INSERTED.CatID, INSERTED.CatName
-        VALUES (@CatName);
+        VALUES (@tenantId, @CatName);
       `);
 
     const newCategory = result.recordset[0];

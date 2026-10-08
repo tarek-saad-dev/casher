@@ -208,9 +208,9 @@ async function main() {
   await deleteSmokeClients();
 
   const client = await pool.request().query(`
-    INSERT INTO dbo.TblClient (Name, Notes, RegisterDate)
+    INSERT INTO dbo.TblClient (TenantId, Name, Notes, RegisterDate)
     OUTPUT INSERTED.ClientID AS clientId
-    VALUES (N'${MARKER}', N'${MARKER}', CAST(GETDATE() AS date))
+    VALUES ((SELECT TenantId FROM dbo.Tenant WHERE Code = N'CASHER_BOOT'), N'${MARKER}', N'${MARKER}', CAST(GETDATE() AS date))
   `);
   const clientRow = client.recordset[0] as { clientId?: number; ClientID?: number } | undefined;
   const clientId = Number(clientRow?.clientId ?? clientRow?.ClientID ?? 0);

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
 import { requireTenantSession } from '@/lib/api-auth';
+import { ensureTenantFinanceCategory } from "@/platform/masterData/financeCategories";
+import { requireMasterDataTenantId } from "@/platform/masterData/tenantScope";
 
 // POST /api/admin/employees/auto-revenue-map
 // Automatically maps revenue categories to unmapped employees
@@ -8,6 +10,7 @@ export async function POST(req: NextRequest) {
   try {
     const session = await requireTenantSession();
     if (session instanceof NextResponse) return session;
+    const tenantId = requireMasterDataTenantId(session.TenantId, "auto-revenue-map");
 
     const db = await getPool();
     const transaction = new sql.Transaction(db);
@@ -17,20 +20,23 @@ export async function POST(req: NextRequest) {
       // 1. Get available revenue categories
       const revenueCategories = await new sql.Request(transaction)
         .input("expType", sql.NVarChar(50), "ايرادات")
+        .input("tenantId", sql.UniqueIdentifier, tenantId)
         .query(`
           SELECT ExpINID, CatName 
           FROM dbo.TblExpINCat 
-          WHERE ExpINType = @expType
+          WHERE ExpINType = @expType AND TenantId = @tenantId
           ORDER BY CatName
         `);
 
       // 2. Get unmapped employees
-      const unmappedEmployees = await new sql.Request(transaction).query(`
+      const unmappedEmployees = await new sql.Request(transaction)
+        .input("tenantId", sql.UniqueIdentifier, tenantId)
+        .query(`
         SELECT 
           e.EmpID,
           e.EmpName
         FROM dbo.TblEmp e
-        WHERE ISNULL(e.isActive, 1) = 1
+        WHERE ISNULL(e.isActive, 1) = 1 AND e.TenantId = @tenantId
           AND NOT EXISTS (
             SELECT 1 FROM dbo.TblExpCatEmpMap m
             WHERE m.EmpID = e.EmpID 
@@ -93,31 +99,12 @@ export async function POST(req: NextRequest) {
         if (!mapped) {
           const individualCategoryName = `ايراد (${employee.EmpName})`;
           
-          // Check if individual category already exists
-          const existingCat = await new sql.Request(transaction)
-            .input("catName", sql.NVarChar(200), individualCategoryName)
-            .input("expType", sql.NVarChar(50), "ايرادات")
-            .query(`
-              SELECT ExpINID FROM dbo.TblExpINCat 
-              WHERE CatName = @catName AND ExpINType = @expType
-            `);
-          
-          let categoryExpINID: number;
-          
-          if (existingCat.recordset.length === 0) {
-            // Create individual revenue category
-            const createCat = await new sql.Request(transaction)
-              .input("catName", sql.NVarChar(200), individualCategoryName)
-              .input("expType", sql.NVarChar(50), "ايرادات")
-              .query(`
-                INSERT INTO dbo.TblExpINCat (CatName, ExpINType)
-                OUTPUT INSERTED.ExpINID
-                VALUES (@catName, @expType)
-              `);
-            categoryExpINID = createCat.recordset[0].ExpINID;
-          } else {
-            categoryExpINID = existingCat.recordset[0].ExpINID;
-          }
+          const categoryExpINID = await ensureTenantFinanceCategory(
+            transaction,
+            tenantId,
+            individualCategoryName,
+            "ايرادات",
+          );
           
           // Insert mapping to individual category
           await new sql.Request(transaction)
@@ -144,7 +131,9 @@ export async function POST(req: NextRequest) {
       await transaction.commit();
 
       // Get final statistics
-      const finalStats = await db.request().query(`
+      const finalStats = await db.request()
+        .input("tenantId", sql.UniqueIdentifier, tenantId)
+        .query(`
         SELECT 
           COUNT(*) AS totalEmployees,
           COUNT(CASE WHEN rev.ExpINID IS NOT NULL THEN 1 END) AS mappedEmployees
@@ -153,7 +142,7 @@ export async function POST(req: NextRequest) {
             ON rev.EmpID = e.EmpID
            AND rev.TxnKind = N'revenue'
            AND rev.IsActive = 1
-        WHERE ISNULL(e.isActive, 1) = 1
+        WHERE ISNULL(e.isActive, 1) = 1 AND e.TenantId = @tenantId
       `);
 
       const stats = finalStats.recordset[0];
@@ -190,17 +179,20 @@ export async function GET() {
   try {
     const session = await requireTenantSession();
     if (session instanceof NextResponse) return session;
+    const tenantId = requireMasterDataTenantId(session.TenantId, "auto-revenue-map");
 
     const db = await getPool();
 
     // Get unmapped employees
-    const unmappedEmployees = await db.request().query(`
+    const unmappedEmployees = await db.request()
+      .input("tenantId", sql.UniqueIdentifier, tenantId)
+      .query(`
       SELECT 
         e.EmpID,
         e.EmpName,
         e.Job
       FROM dbo.TblEmp e
-      WHERE ISNULL(e.isActive, 1) = 1
+      WHERE ISNULL(e.isActive, 1) = 1 AND e.TenantId = @tenantId
         AND NOT EXISTS (
           SELECT 1 FROM dbo.TblExpCatEmpMap m
           WHERE m.EmpID = e.EmpID 
@@ -213,10 +205,11 @@ export async function GET() {
     // Get available revenue categories
     const revenueCategories = await db.request()
       .input("expType", sql.NVarChar(50), "ايرادات")
+      .input("tenantId", sql.UniqueIdentifier, tenantId)
       .query(`
         SELECT ExpINID, CatName 
         FROM dbo.TblExpINCat 
-        WHERE ExpINType = @expType
+        WHERE ExpINType = @expType AND TenantId = @tenantId
         ORDER BY CatName
       `);
 
