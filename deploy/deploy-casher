@@ -165,6 +165,17 @@ node scripts/ensure-phase1b-secrets.cjs
 "
 
 echo
+echo "[6a/8] Ensuring DRVOWA connector encryption secret..."
+runuser -u casher -- bash -lc "
+cd '$APP_DIR'
+touch .env.local
+if ! grep -q '^DRVOWA_CONNECTOR_SECRET=' .env.local; then
+  printf '\nDRVOWA_CONNECTOR_SECRET=%s\n' "\$(openssl rand -hex 32)" >> .env.local
+fi
+chmod 600 .env.local
+"
+
+echo
 echo "[7a/8] Phase 3 AI schema migration..."
 runuser -u casher -- bash -lc "
 cd '$APP_DIR'
@@ -190,6 +201,13 @@ echo "[7b3/8] Booking Management schema migration (idempotent, flag stays off)..
 runuser -u casher -- bash -lc "
 cd '$APP_DIR'
 npm run messaging:migrate-booking-management
+"
+
+echo
+echo "[7b4/8] DRVOWA integration schema migration (idempotent)..."
+runuser -u casher -- bash -lc "
+cd '$APP_DIR'
+npm run integrations:migrate-drvowa
 "
 
 echo

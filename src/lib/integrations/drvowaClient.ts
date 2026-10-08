@@ -1,5 +1,7 @@
 import 'server-only';
 
+import { getDrvowaIntegrationConfig } from '@/lib/integrations/drvowaConfig';
+
 export type DrvowaEventMessageInput = {
   eventId: string;
   event: string;
@@ -16,7 +18,15 @@ export type DrvowaEventMessageResult = {
   idempotentReplay?: boolean;
 };
 
-function integrationConfig(): { baseUrl: string; apiKey: string } {
+async function integrationConfig(): Promise<{ baseUrl: string; apiKey: string }> {
+  const paired = await getDrvowaIntegrationConfig();
+  if (paired && paired.status === 'ACTIVE') {
+    return {
+      baseUrl: paired.drvowaBaseUrl.replace(/\/$/, ''),
+      apiKey: paired.inboundApiKey,
+    };
+  }
+
   const baseUrl = process.env.DRVOWA_BASE_URL?.trim().replace(/\/$/, '');
   const apiKey = process.env.DRVOWA_INBOUND_API_KEY?.trim();
   if (!baseUrl || !apiKey) {
@@ -33,7 +43,7 @@ function integrationConfig(): { baseUrl: string; apiKey: string } {
 export async function sendDrvowaEventMessage(
   input: DrvowaEventMessageInput,
 ): Promise<DrvowaEventMessageResult> {
-  const { baseUrl, apiKey } = integrationConfig();
+  const { baseUrl, apiKey } = await integrationConfig();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 10_000);
 

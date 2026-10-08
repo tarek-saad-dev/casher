@@ -2,6 +2,11 @@ import 'server-only';
 
 import { timingSafeEqual } from 'node:crypto';
 
+import {
+  getDrvowaOutboundTokenHash,
+  hashDrvowaToken,
+} from '@/lib/integrations/drvowaConfig';
+
 function safeEqual(a: string, b: string): boolean {
   const left = Buffer.from(a, 'utf8');
   const right = Buffer.from(b, 'utf8');
@@ -9,17 +14,30 @@ function safeEqual(a: string, b: string): boolean {
   return timingSafeEqual(left, right);
 }
 
-export function requireDrvowaIntegrationAuth(request: Request): void {
-  const expected = process.env.DRVOWA_INTEGRATION_TOKEN?.trim();
-  if (!expected) {
-    throw new Error('DRVOWA_INTEGRATION_NOT_CONFIGURED');
-  }
+export async function requireDrvowaIntegrationAuth(request: Request): Promise<void> {
   const header = request.headers.get('authorization');
   const token =
     header && /^Bearer\s+/i.test(header)
       ? header.replace(/^Bearer\s+/i, '').trim()
       : '';
-  if (!token || !safeEqual(token, expected)) {
+  if (!token) {
+    throw new Error('DRVOWA_INTEGRATION_UNAUTHORIZED');
+  }
+
+  const dbHash = await getDrvowaOutboundTokenHash();
+  if (dbHash) {
+    const tokenHash = hashDrvowaToken(token);
+    if (!safeEqual(tokenHash, dbHash)) {
+      throw new Error('DRVOWA_INTEGRATION_UNAUTHORIZED');
+    }
+    return;
+  }
+
+  const legacyExpected = process.env.DRVOWA_INTEGRATION_TOKEN?.trim();
+  if (!legacyExpected) {
+    throw new Error('DRVOWA_INTEGRATION_NOT_CONFIGURED');
+  }
+  if (!safeEqual(token, legacyExpected)) {
     throw new Error('DRVOWA_INTEGRATION_UNAUTHORIZED');
   }
 }
