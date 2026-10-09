@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserFriendlyError } from '@/lib/db';
 import {
@@ -8,6 +9,10 @@ import { withControlDeps } from '@/modules/messaging/handoff/application/command
 import { sendHumanErpMessage } from '@/modules/messaging/handoff/application/sendHumanErp';
 import { resolveUserDisplayName } from '@/modules/messaging/handoff/application/listInbox';
 import { HandoffError } from '@/modules/messaging/handoff/application/errors';
+import {
+  isDrvowaEventMessagingActive,
+  sendDrvowaInboxReply,
+} from '@/lib/integrations/drvowaClient';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -20,11 +25,25 @@ export async function POST(req: NextRequest, ctx: Ctx) {
 
   try {
     const { id } = await ctx.params;
+    const body = (await req.json()) as { text?: string };
+
+    if (await isDrvowaEventMessagingActive()) {
+      const text = String(body.text ?? '').trim();
+      if (!text) {
+        return NextResponse.json({ error: 'الرسالة مطلوبة' }, { status: 400 });
+      }
+      const result = await sendDrvowaInboxReply({
+        conversationId: id,
+        text,
+        idempotencyKey: randomUUID(),
+      });
+      return NextResponse.json({ ok: true, source: 'DRVOWA', ...result });
+    }
+
     const conversationId = Number(id);
     if (!Number.isFinite(conversationId) || conversationId <= 0) {
       return NextResponse.json({ error: 'invalid id' }, { status: 400 });
     }
-    const body = (await req.json()) as { text?: string };
     const result = await sendHumanErpMessage(
       {
         conversationId,
