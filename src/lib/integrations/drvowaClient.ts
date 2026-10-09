@@ -97,6 +97,8 @@ export type DrvowaInboxListItem = {
   displayName: string | null;
   lastMessagePreview: string | null;
   lastMessageAt: string;
+  lastMessageDirection?: 'INBOUND' | 'OUTBOUND' | null;
+  needsReply?: boolean;
   lastInboundAt?: string | null;
   lastOutboundAt?: string | null;
   aiMode: string;
