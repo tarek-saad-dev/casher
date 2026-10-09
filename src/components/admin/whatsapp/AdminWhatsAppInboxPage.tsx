@@ -16,7 +16,7 @@ import { Button } from '@/components/ui/button';
 import { ownershipLabel, type InboxFilter, type InboxListItem } from '@/modules/messaging/handoff/domain/inboxRanking';
 
 type InboxMessage = {
-  messageId: number;
+  messageId: number | string;
   direction: 'inbound' | 'outbound';
   origin: string;
   text: string | null;
@@ -108,7 +108,7 @@ export default function AdminWhatsAppInboxPage() {
   const [searchInput, setSearchInput] = useState('');
   const [q, setQ] = useState('');
   const [items, setItems] = useState<InboxListItem[]>([]);
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [selectedId, setSelectedId] = useState<number | string | null>(null);
   const [detail, setDetail] = useState<ConversationDetail | null>(null);
   const [draft, setDraft] = useState('');
   const [loadingList, setLoadingList] = useState(false);
@@ -120,8 +120,8 @@ export default function AdminWhatsAppInboxPage() {
 
   const messagesPaneRef = useRef<HTMLDivElement | null>(null);
   const stickToBottomRef = useRef(true);
-  const selectedIdRef = useRef<number | null>(null);
-  const lastMessageIdRef = useRef<number | undefined>(undefined);
+  const selectedIdRef = useRef<number | string | null>(null);
+  const lastMessageIdRef = useRef<number | string | undefined>(undefined);
   const messageCountRef = useRef(0);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -168,7 +168,7 @@ export default function AdminWhatsAppInboxPage() {
     }
   }, [filter, q]);
 
-  const loadDetail = useCallback(async (id: number, afterMessageId?: number) => {
+  const loadDetail = useCallback(async (id: number | string, afterMessageId?: number | string) => {
     const params = afterMessageId ? `?afterMessageId=${afterMessageId}` : '';
     const res = await fetch(`/api/admin/whatsapp/inbox/${id}${params}`);
     const data = await res.json();
@@ -236,7 +236,7 @@ export default function AdminWhatsAppInboxPage() {
     }
   }, [detail?.messages.length, detail?.conversationId, selectedId, scrollMessagesToBottom]);
 
-  const openConversation = async (id: number) => {
+  const openConversation = async (id: number | string) => {
     if (id === selectedId && detail?.conversationId === id) return;
 
     setSelectedId(id);
