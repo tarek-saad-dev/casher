@@ -109,16 +109,27 @@ export type DrvowaInboxListItem = {
 export type DrvowaInboxMessage = {
   messageId: string;
   direction: 'inbound' | 'outbound';
-  origin: string;
+  origin: 'CUSTOMER' | 'AI' | 'HUMAN' | 'SYSTEM' | 'UNKNOWN' | string;
+  actorName?: string | null;
+  actorUserId?: string | null;
   text: string | null;
   occurredAt: string;
   deliveryStatus: string | null;
+  createdAtUtc?: string | null;
 };
 
 export type DrvowaInboxConversation = DrvowaInboxListItem & {
   pausedAtUtc?: string | null;
   resumedAtUtc?: string | null;
   messages: DrvowaInboxMessage[];
+  pageInfo?: {
+    hasMore: boolean;
+    nextCursor: {
+      beforeAt: string | null;
+      beforeCreatedAt: string | null;
+      beforeMessageId: string;
+    } | null;
+  };
 };
 
 async function drvowaRequest<T>(params: {
@@ -175,12 +186,22 @@ export async function listDrvowaInboxConversations(
 
 export async function getDrvowaInboxConversation(
   conversationId: string,
-  limit = 200,
+  limit = 100,
+  before?: {
+    beforeAt: string;
+    beforeCreatedAt: string;
+    beforeMessageId: string;
+  } | null,
 ): Promise<DrvowaInboxConversation | null> {
+  const qs = new URLSearchParams({ limit: String(limit) });
+  if (before) {
+    qs.set('beforeAt', before.beforeAt);
+    qs.set('beforeCreatedAt', before.beforeCreatedAt);
+    qs.set('beforeMessageId', before.beforeMessageId);
+  }
   const payload = await drvowaRequest<{ conversation?: DrvowaInboxConversation }>({
     path:
-      `/api/external/v1/inbox/conversations/${encodeURIComponent(conversationId)}`
-      + `?limit=${encodeURIComponent(String(limit))}`,
+      `/api/external/v1/inbox/conversations/${encodeURIComponent(conversationId)}?${qs.toString()}`,
   });
   return payload.conversation ?? null;
 }
@@ -189,6 +210,8 @@ export async function sendDrvowaInboxReply(params: {
   conversationId: string;
   text: string;
   idempotencyKey: string;
+  actorName?: string | null;
+  actorExternalId?: string | null;
 }): Promise<Record<string, unknown>> {
   return drvowaRequest<Record<string, unknown>>({
     path:
@@ -197,6 +220,8 @@ export async function sendDrvowaInboxReply(params: {
     body: {
       text: params.text,
       idempotencyKey: params.idempotencyKey,
+      actorName: params.actorName ?? undefined,
+      actorExternalId: params.actorExternalId ?? undefined,
     },
   });
 }
