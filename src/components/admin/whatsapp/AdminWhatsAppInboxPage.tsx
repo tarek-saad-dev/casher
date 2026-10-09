@@ -190,7 +190,7 @@ export default function AdminWhatsAppInboxPage() {
     }
     stickToBottomRef.current = true;
     setShowNewBelow(false);
-  }, [detail?.pageInfo?.hasMore, loadingOlder, loadOlderMessages]);
+  }, []);
 
   const onMessagesScroll = useCallback(() => {
     const pane = messagesPaneRef.current;
@@ -198,9 +198,6 @@ export default function AdminWhatsAppInboxPage() {
     const near = isNearBottom(pane);
     stickToBottomRef.current = near;
     if (near) setShowNewBelow(false);
-    if (pane.scrollTop < 72 && detail?.pageInfo?.hasMore && !loadingOlder) {
-      void loadOlderMessages();
-    }
   }, []);
 
   const loadList = useCallback(async () => {
