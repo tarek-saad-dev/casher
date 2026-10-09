@@ -89,3 +89,132 @@ export async function sendDrvowaEventMessage(
     clearTimeout(timer);
   }
 }
+
+
+export type DrvowaInboxListItem = {
+  conversationId: string;
+  phone: string;
+  displayName: string | null;
+  lastMessagePreview: string | null;
+  lastMessageAt: string;
+  lastInboundAt?: string | null;
+  lastOutboundAt?: string | null;
+  aiMode: string;
+  aiPauseReason: string | null;
+  aiReplyHealth?: unknown;
+};
+
+export type DrvowaInboxMessage = {
+  messageId: string;
+  direction: 'inbound' | 'outbound';
+  origin: string;
+  text: string | null;
+  occurredAt: string;
+  deliveryStatus: string | null;
+};
+
+export type DrvowaInboxConversation = DrvowaInboxListItem & {
+  pausedAtUtc?: string | null;
+  resumedAtUtc?: string | null;
+  messages: DrvowaInboxMessage[];
+};
+
+async function drvowaRequest<T>(params: {
+  path: string;
+  method?: 'GET' | 'POST';
+  body?: unknown;
+  timeoutMs?: number;
+}): Promise<T> {
+  const { baseUrl, apiKey } = await integrationConfig();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), params.timeoutMs ?? 10_000);
+  try {
+    const response = await fetch(`${baseUrl}${params.path}`, {
+      method: params.method ?? 'GET',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        Accept: 'application/json',
+        ...(params.body === undefined ? {} : { 'Content-Type': 'application/json' }),
+      },
+      body: params.body === undefined ? undefined : JSON.stringify(params.body),
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+    const payload = await response.json().catch(() => null) as
+      | T
+      | { error?: string; code?: string }
+      | null;
+    if (!response.ok) {
+      const rec = payload && typeof payload === 'object'
+        ? payload as Record<string, unknown>
+        : {};
+      const code =
+        typeof rec.code === 'string'
+          ? rec.code
+          : typeof rec.error === 'string'
+            ? rec.error
+            : `DRVOWA_HTTP_${response.status}`;
+      throw new Error(code);
+    }
+    return payload as T;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export async function listDrvowaInboxConversations(
+  limit = 100,
+): Promise<DrvowaInboxListItem[]> {
+  const payload = await drvowaRequest<{ items?: DrvowaInboxListItem[] }>({
+    path: `/api/external/v1/inbox/conversations?limit=${encodeURIComponent(String(limit))}`,
+  });
+  return payload.items ?? [];
+}
+
+export async function getDrvowaInboxConversation(
+  conversationId: string,
+  limit = 200,
+): Promise<DrvowaInboxConversation | null> {
+  const payload = await drvowaRequest<{ conversation?: DrvowaInboxConversation }>({
+    path:
+      `/api/external/v1/inbox/conversations/${encodeURIComponent(conversationId)}`
+      + `?limit=${encodeURIComponent(String(limit))}`,
+  });
+  return payload.conversation ?? null;
+}
+
+export async function sendDrvowaInboxReply(params: {
+  conversationId: string;
+  text: string;
+  idempotencyKey: string;
+}): Promise<Record<string, unknown>> {
+  return drvowaRequest<Record<string, unknown>>({
+    path:
+      `/api/external/v1/inbox/conversations/${encodeURIComponent(params.conversationId)}/messages`,
+    method: 'POST',
+    body: {
+      text: params.text,
+      idempotencyKey: params.idempotencyKey,
+    },
+  });
+}
+
+export async function takeoverDrvowaInboxConversation(
+  conversationId: string,
+): Promise<Record<string, unknown>> {
+  return drvowaRequest<Record<string, unknown>>({
+    path:
+      `/api/external/v1/inbox/conversations/${encodeURIComponent(conversationId)}/takeover`,
+    method: 'POST',
+  });
+}
+
+export async function resumeDrvowaInboxConversation(
+  conversationId: string,
+): Promise<Record<string, unknown>> {
+  return drvowaRequest<Record<string, unknown>>({
+    path:
+      `/api/external/v1/inbox/conversations/${encodeURIComponent(conversationId)}/resume`,
+    method: 'POST',
+  });
+}
