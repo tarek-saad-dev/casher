@@ -99,6 +99,7 @@ export type DrvowaInboxListItem = {
   lastMessageAt: string;
   lastMessageDirection?: 'INBOUND' | 'OUTBOUND' | null;
   needsReply?: boolean;
+  unread?: boolean;
   lastInboundAt?: string | null;
   lastOutboundAt?: string | null;
   aiMode: string;
@@ -242,6 +243,17 @@ export async function resumeDrvowaInboxConversation(
   return drvowaRequest<Record<string, unknown>>({
     path:
       `/api/external/v1/inbox/conversations/${encodeURIComponent(conversationId)}/resume`,
+    method: 'POST',
+  });
+}
+
+
+export async function markDrvowaInboxRead(
+  conversationId: string,
+): Promise<Record<string, unknown>> {
+  return drvowaRequest<Record<string, unknown>>({
+    path:
+      `/api/external/v1/inbox/conversations/${encodeURIComponent(conversationId)}/read`,
     method: 'POST',
   });
 }

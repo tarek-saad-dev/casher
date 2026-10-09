@@ -8,7 +8,10 @@ import { markInboxRead } from '@/modules/messaging/handoff/application/commands'
 import { withControlDeps } from '@/modules/messaging/handoff/application/commands';
 import { resolveUserDisplayName } from '@/modules/messaging/handoff/application/listInbox';
 import { HandoffError } from '@/modules/messaging/handoff/application/errors';
-import { isDrvowaEventMessagingActive } from '@/lib/integrations/drvowaClient';
+import {
+  isDrvowaEventMessagingActive,
+  markDrvowaInboxRead,
+} from '@/lib/integrations/drvowaClient';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -23,6 +26,7 @@ export async function POST(_req: NextRequest, ctx: Ctx) {
     const { id } = await ctx.params;
 
     if (await isDrvowaEventMessagingActive()) {
+      await markDrvowaInboxRead(id);
       return NextResponse.json({ ok: true, source: 'DRVOWA' });
     }
 
