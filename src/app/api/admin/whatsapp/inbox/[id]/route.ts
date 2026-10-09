@@ -10,6 +10,7 @@ import {
   getDrvowaInboxConversation,
   isDrvowaEventMessagingActive,
 } from '@/lib/integrations/drvowaClient';
+import { enrichDrvowaInboxContacts } from '@/lib/integrations/drvowaInboxEnrichment';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -27,45 +28,51 @@ export async function GET(req: NextRequest, ctx: Ctx) {
     const { id } = await ctx.params;
 
     if (await isDrvowaEventMessagingActive()) {
-      const remote = await getDrvowaInboxConversation(id, 250);
+      const url = new URL(req.url);
+      const beforeAt = url.searchParams.get('beforeAt');
+      const beforeCreatedAt = url.searchParams.get('beforeCreatedAt');
+      const beforeMessageId = url.searchParams.get('beforeMessageId');
+      const before =
+        beforeAt && beforeCreatedAt && beforeMessageId
+          ? { beforeAt, beforeCreatedAt, beforeMessageId }
+          : null;
+
+      const remote = await getDrvowaInboxConversation(id, 100, before);
       if (!remote) return NextResponse.json({ error: 'not found' }, { status: 404 });
+
+      const [enriched] = await enrichDrvowaInboxContacts([remote]);
       const mode =
         remote.aiMode === 'HUMAN_PAUSED'
           ? 'HUMAN'
           : remote.aiMode === 'SAFETY_PAUSED'
             ? 'PAUSED'
             : 'BOT';
+
       return NextResponse.json({
         ok: true,
         source: 'DRVOWA',
         conversation: {
           conversationId: remote.conversationId,
-          phone: remote.phone,
-          displayName: remote.displayName,
+          phone: enriched?.erpPhone || remote.phone,
+          displayName: enriched?.erpCustomerName || remote.displayName,
+          erpClientId: enriched?.erpClientId ?? null,
           lastMessagePreview: remote.lastMessagePreview,
           lastMessageAt: remote.lastMessageAt,
-          unreadCount: 0,
+          unreadCount: remote.needsReply ? 1 : 0,
           mode,
           takeoverSource: mode === 'HUMAN' ? 'ERP' : null,
           takenOverByUserId: null,
           takenOverByName: mode === 'HUMAN' ? 'موظف' : null,
           controlVersion: 1,
           humanLeaseUntil: null,
-          messages: remote.messages.map((message) => ({
-            ...message,
-            origin:
-              message.origin === 'CUSTOMER'
-                ? 'CUSTOMER'
-                : message.direction === 'outbound'
-                  ? 'BOT'
-                  : 'CUSTOMER',
-          })),
+          messages: remote.messages,
+          pageInfo: remote.pageInfo ?? { hasMore: false, nextCursor: null },
           ownershipLabel:
             mode === 'HUMAN'
               ? 'مع موظف'
               : mode === 'PAUSED'
                 ? 'متوقف'
-                : 'البوت',
+                : 'الـ AI',
         },
       });
     }
