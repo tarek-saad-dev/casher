@@ -1,0 +1,76 @@
+identity: last132_agent / drvo_agent / last132 access=0
+ONBOARDING
+  PASS [onboarding] industry pack is required — rejected: Cannot read properties of undefined (reading 'packCode')
+[db:cloud] Connection attempt 1/3 server=127.0.0.1 db=last132_agent auth=sql
+[db:cloud] Connected to SQL Server successfully
+  PASS [onboarding] DRVOGA_A_SALON readiness PASS + owner admin
+  PASS [onboarding] DRVOGA_A_SALON industry pack + apps — pack=salon apps=attendance,booking,payroll,pos,queue,reports,treasury
+  PASS [onboarding] DRVOGA_A_SALON subscription created — starter/active
+  PASS [onboarding] DRVOGA_A_SALON brand profile
+  PASS [onboarding] DRVOGA_A_SALON master-data seed — paymentMethods=2 finance=2
+  PASS [onboarding] DRVOGA_A_SALON first branch usable + owner default access — lifecycle=INTERNAL_LIVE
+  PASS [password] DRVOGA_A_SALON owner password stored hashed — len=47
+  PASS [onboarding] DRVOGA_B_MARKET readiness PASS + owner admin
+  PASS [onboarding] DRVOGA_B_MARKET industry pack + apps — pack=supermarket apps=inventory,pos,purchasing,reports,treasury
+  PASS [onboarding] DRVOGA_B_MARKET subscription created — starter/active
+  PASS [onboarding] DRVOGA_B_MARKET brand profile
+  PASS [onboarding] DRVOGA_B_MARKET master-data seed — paymentMethods=2 finance=2
+  PASS [onboarding] DRVOGA_B_MARKET first branch usable + owner default access — lifecycle=INTERNAL_LIVE
+  PASS [password] DRVOGA_B_MARKET owner password stored hashed — len=47
+  PASS [onboarding] salon installs booking, supermarket does not
+HEALTH
+  PASS [health] /api/health/live = 200
+  PASS [health] /api/health/ready = 200 — {"status":"ready","checks":[{"name":"database","ok":true,"durationMs":209},{"nam
+LOGIN / PASSWORD
+  PASS [onboarding] owner A logs in (hashed password) — branch=DRVOGA_A_BR
+  PASS [onboarding] owner B logs in (hashed password) — branch=DRVOGA_B_BR
+  PASS [password] wrong password rejected (401)
+  PASS [password] legacy plaintext row upgrades to hash on login — plaintext → login 200 → row s1$ → login 200
+ISOLATION (HTTP)
+  PASS [isolation] A creates category, service, customer, employee — cat=200 pro=200 cust=201 emp=201 ids={"catId":65,"proId":1101,"clientId":15086,"empId":2236,"phone":"01000000771","payId":64}
+[pages-sync] Registry synced ✓
+[roles-sync] Partner role synced ✓
+  PASS [isolation] B creates category, service, customer, employee — cat=200 pro=200 cust=201 emp=201 ids={"catId":66,"proId":1102,"clientId":15087,"empId":2237,"phone":"01000000772","payId":66}
+  PASS [isolation] customers: B cannot list or open A customer — B list clean, A sees own, B edit A=404, row unchanged
+  PASS [isolation] catalog: B cannot see or edit A service — B edit A=404
+  PASS [isolation] employees: B cannot see A employee
+  PASS [isolation] CUT data invisible to synthetic tenant — no CUT employee in B list
+SALON FLOW
+  PASS [salon] A opens business day + shift — day=5580 shift=12485
+  PASS [non_salon] B opens business day + shift — day=5581 shift=12486
+  PASS [salon] A walk-in queue ticket for customer + service (no barber yet) — ticket={"ok":true,"ticketId":179,"ticketCode":"A1","ticket":null,"estimatedStartTime":n
+  PASS [salon] A POS sale (cash) for own service — inv=9632
+  PASS [salon] A treasury reflects the sale — {"currentDay":{"id":5580,"newDay":"2026-10-09","dayDate":"2026-10-09","isOpen":false},"currentShift":{"shiftMoveId":1248
+  PASS [isolation] POS: A cannot sell B service — foreign service → 404
+  PASS [public_booking] /book/[branchCode] renders A branding — status 200, brand shown
+  PASS [public_booking] /book for B (no booking app) renders not-found, no brand — status 200 (not-found UI)
+  PASS [public_booking] public API: B branch not found; A resolves to its own tenant — B=404/BRANCH_NOT_FOUND A=409/SERVICES_NOT_CONFIGURED
+NON-SALON FLOW
+  PASS [non_salon] B POS sale (cash) — inv=9633
+  FAIL [non_salon] B purchase posted into inventory — purchase=500 {"error":"Cannot insert the value NULL into column 'ClientID', table 'last132_agent.dbo.TblinvPurchaseHead'; column does not allow nulls. INSERT fails."}
+  PASS [non_salon] B treasury reachable
+MESSAGING / AI
+  PASS [messaging] channel token resolves its own tenant; unknown token fails closed
+  PASS [messaging] outbound uses each tenant own channel (fake transport) — ["http://127.0.0.1:9/drvoga-a","http://127.0.0.1:9/drvoga-b"]
+  PASS [messaging] send without tenant scope throws (no default tenant) — throws
+  PASS [messaging] usage metered per tenant — A=1 B=1
+  PASS [messaging] AI profile: no CUT persona leaks to new tenants; CUT keeps salon pack — A=unconfigured B=unconfigured CUT=salon-concierge
+  PASS [messaging] inbound webhook lands in the token owner tenant — A=201 B=201 rows A=1 B=1
+  PASS [messaging] unknown or missing webhook token → 401 — unknown=401 missing=401
+SUBSCRIPTION / APP GATES
+  PASS [gates] active subscription → staff route works
+  PASS [gates] suspended → staff route blocked — status 403
+  PASS [gates] reactivated → staff route works again
+  PASS [gates] past_due / grace behaviour — past_due staff access=allowed (grace)
+  PASS [gates] salon pack refuses to uninstall its required booking app — refused: booking is required by pack salon
+  PASS [gates] B installs optional booking app → /book/B works
+  PASS [gates] B uninstalls booking app → /book/B blocked again
+  PASS [gates] A suspended → /book/A blocked
+  PASS [gates] A reactivated → /book/A works
+CLEANUP
+  PASS [cleanup] purge DRVOGA_A_SALON
+  PASS [cleanup] purge DRVOGA_B_MARKET
+  PASS [cleanup] zero synthetic residue — {"tenants":0,"users":0,"branches":0,"locations":0}
+  PASS [cut] CASHER_BOOT counts unchanged — {"clients":3113,"pros":73,"emps":177,"members":11,"locations":3}
+SUMMARY {"onboarding":"PASS","password":"PASS","health":"PASS","isolation":"PASS","salon":"PASS","non_salon":"FAIL","public_booking":"PASS","messaging":"PASS","gates":"PASS","cleanup":"PASS","cut":"PASS"}
+TOTAL 60 checks, 1 failed
