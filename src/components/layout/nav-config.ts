@@ -206,7 +206,7 @@ export const NAV_SECTIONS: NavSection[] = [
     title: 'واتساب',
     icon: MessageCircle,
     items: [
-      { href: '/admin/whatsapp/inbox', label: 'صندوق الوارد', icon: Inbox },
+      { href: '/admin/whatsapp/inbox', label: 'صندوق الوارد', icon: Inbox, badge: 'whatsapp-unread' },
       { href: '/admin/whatsapp',       label: 'إعدادات واتساب', icon: Settings },
     ],
   },
