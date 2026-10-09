@@ -20,6 +20,7 @@ import SidebarThemeSwitch from '@/components/theme/SidebarThemeSwitch';
 import { useMobileNav } from '@/components/layout/MobileNavContext';
 import { useNavMode } from '@/hooks/useNavMode';
 import { cn } from '@/lib/utils';
+import { useWhatsAppAttention } from '@/components/layout/WhatsAppAttentionProvider';
 
 
 // Glow helpers — computed once per rgb
@@ -48,6 +49,7 @@ export default function MainNav({ suppressMobileChrome = false }: MainNavProps) 
   const [isSidebarHovered, setIsSidebarHovered] = useState(false);
 
   const { canSeePage, access, loading: permLoading, isAuthenticated } = usePermissions();
+  const { count: whatsAppAttentionCount } = useWhatsAppAttention();
 
   // Filter nav sections based on user permissions
   // 3 states: loading → skeleton | not-authenticated → empty | authenticated → filtered
@@ -360,6 +362,29 @@ export default function MainNav({ suppressMobileChrome = false }: MainNavProps) 
             }}
           >
             {paymentAuditCount > 99 ? '99+' : paymentAuditCount}
+          </span>
+        )}
+        {item.badge === 'whatsapp-unread' && whatsAppAttentionCount > 0 && (
+          <span
+            style={{
+              minWidth: 20,
+              height: 20,
+              padding: '0 6px',
+              borderRadius: 9999,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: 10,
+              fontWeight: 800,
+              backgroundColor: '#dc2626',
+              color: '#fff',
+              border: '2px solid rgba(255,255,255,0.92)',
+              boxShadow: '0 0 0 2px rgba(220,38,38,0.18), 0 0 12px rgba(220,38,38,0.45)',
+              flexShrink: 0,
+              marginRight: 4,
+            }}
+          >
+            {whatsAppAttentionCount > 99 ? '99+' : whatsAppAttentionCount}
           </span>
         )}
       </Link>
@@ -691,6 +716,13 @@ export default function MainNav({ suppressMobileChrome = false }: MainNavProps) 
             }}
           >
             {paymentAuditCount > 99 ? '99+' : paymentAuditCount}
+          </span>
+        )}
+        {item.badge === 'whatsapp-unread' && whatsAppAttentionCount > 0 && (
+          <span
+            className="inline-flex min-h-5 min-w-5 items-center justify-center rounded-full border-2 border-white bg-red-600 px-1.5 text-[10px] font-black text-white shadow-md"
+          >
+            {whatsAppAttentionCount > 99 ? '99+' : whatsAppAttentionCount}
           </span>
         )}
         {active && (
