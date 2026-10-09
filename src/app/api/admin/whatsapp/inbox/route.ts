@@ -16,6 +16,7 @@ import {
   isDrvowaEventMessagingActive,
   listDrvowaInboxConversations,
 } from '@/lib/integrations/drvowaClient';
+import { enrichDrvowaInboxContacts } from '@/lib/integrations/drvowaInboxEnrichment';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -33,8 +34,10 @@ export async function GET(req: NextRequest) {
     const q = searchParams.get('q') || '';
     const limit = Number(searchParams.get('limit') || 80);
     if (await isDrvowaEventMessagingActive()) {
-      const remote = await listDrvowaInboxConversations(limit);
-      const mapped: InboxListItem[] = remote.map((item) => {
+      const remoteLimit = q.trim() ? 500 : Math.max(limit, 200);
+      const remote = await listDrvowaInboxConversations(remoteLimit);
+      const enriched = await enrichDrvowaInboxContacts(remote);
+      const mapped: InboxListItem[] = enriched.map((item) => {
         const human = item.aiMode === 'HUMAN_PAUSED';
         const paused = item.aiMode === 'SAFETY_PAUSED';
         return {
