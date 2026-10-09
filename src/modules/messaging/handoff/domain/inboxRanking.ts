@@ -3,7 +3,7 @@ import type { ConversationControlMode } from './types';
 export type InboxFilter = 'all' | 'needs_takeover' | 'human' | 'bot' | 'unread';
 
 export type InboxListItem = {
-  conversationId: number;
+  conversationId: number | string;
   phone: string;
   displayName: string | null;
   lastMessagePreview: string | null;
@@ -29,7 +29,9 @@ export function sortInboxItems(items: InboxListItem[]): InboxListItem[] {
     if (bucket !== 0) return bucket;
     const t = b.lastMessageAt.localeCompare(a.lastMessageAt);
     if (t !== 0) return t;
-    return b.conversationId - a.conversationId;
+    const aId = String(a.conversationId);
+    const bId = String(b.conversationId);
+    return bId.localeCompare(aId);
   });
 }
 
