@@ -1,0 +1,452 @@
+
+> pos-system@0.1.0 drvo:verify
+> tsx scripts/drvo/verify-cli.ts
+
+[dotenv@17.3.1] injecting env (0) from .env -- tip: ≡ƒ¢á∩╕Å  run anywhere with `dotenvx run -- yourcommand`
+[dotenv@17.3.1] injecting env (0) from .env.local -- tip: ΓÜí∩╕Å secrets for agents: https://dotenvx.com/as2
+[db:cloud] Connection attempt 1/3 server=127.0.0.1 db=last132_agent auth=sql
+[db:cloud] Connected to SQL Server successfully
+[pages-sync] Registry synced Γ£ô
+[roles-sync] Partner role synced Γ£ô
+{
+  "database": "last132_agent",
+  "migrations": {
+    "ok": true,
+    "applied": [
+      "platform-core",
+      "platform-bootstrap",
+      "booking-prerequisites",
+      "queue-prerequisites",
+      "operational-calendar-prerequisites",
+      "treasury-movement-registry",
+      "booking-hold-key",
+      "ins-cash-move-sales-guard",
+      "commercial-subscription-tenant-apps",
+      "master-data-tenancy",
+      "tenant-brand-profile",
+      "messaging-tenancy"
+    ],
+    "pending": [],
+    "checksumMismatches": []
+  },
+  "platformCore": {
+    "ok": true,
+    "failures": [],
+    "tenantId": "083D433E-F36B-1410-8820-009EC495C7E1",
+    "branchCodes": [
+      "GLEEM",
+      "PH1GTEST",
+      "CAMP_CAESAR"
+    ],
+    "tenantCount": 1,
+    "locationCount": 3,
+    "branchCount": 3
+  },
+  "modules": [
+    {
+      "module": "booking",
+      "ok": true,
+      "checks": [
+        {
+          "id": "migration.platform-core",
+          "ok": true,
+          "detail": "applied"
+        },
+        {
+          "id": "migration.platform-bootstrap",
+          "ok": true,
+          "detail": "applied"
+        },
+        {
+          "id": "migration.booking-prerequisites",
+          "ok": true,
+          "detail": "applied"
+        },
+        {
+          "id": "migration.booking-hold-key",
+          "ok": true,
+          "detail": "applied"
+        },
+        {
+          "id": "platform.core.structure",
+          "ok": true,
+          "detail": "Platform Core structure OK"
+        },
+        {
+          "id": "platform.bootstrap",
+          "ok": true,
+          "detail": "CASHER_BOOT ready"
+        }
+      ],
+      "requiredMigrationKeys": [
+        "platform-core",
+        "platform-bootstrap",
+        "booking-prerequisites",
+        "booking-hold-key"
+      ],
+      "rollout": "extracted",
+      "activationRequired": true
+    },
+    {
+      "module": "queue",
+      "ok": true,
+      "checks": [
+        {
+          "id": "migration.platform-core",
+          "ok": true,
+          "detail": "applied"
+        },
+        {
+          "id": "migration.platform-bootstrap",
+          "ok": true,
+          "detail": "applied"
+        },
+        {
+          "id": "migration.queue-prerequisites",
+          "ok": true,
+          "detail": "applied"
+        },
+        {
+          "id": "platform.core.structure",
+          "ok": true,
+          "detail": "Platform Core structure OK"
+        },
+        {
+          "id": "platform.bootstrap",
+          "ok": true,
+          "detail": "CASHER_BOOT ready"
+        }
+      ],
+      "requiredMigrationKeys": [
+        "platform-core",
+        "platform-bootstrap",
+        "queue-prerequisites"
+      ],
+      "rollout": "extracted",
+      "activationRequired": true
+    },
+    {
+      "module": "operational-calendar",
+      "ok": true,
+      "checks": [
+        {
+          "id": "migration.platform-core",
+          "ok": true,
+          "detail": "applied"
+        },
+        {
+          "id": "migration.platform-bootstrap",
+          "ok": true,
+          "detail": "applied"
+        },
+        {
+          "id": "migration.operational-calendar-prerequisites",
+          "ok": true,
+          "detail": "applied"
+        },
+        {
+          "id": "platform.core.structure",
+          "ok": true,
+          "detail": "Platform Core structure OK"
+        },
+        {
+          "id": "platform.bootstrap",
+          "ok": true,
+          "detail": "CASHER_BOOT ready"
+        }
+      ],
+      "requiredMigrationKeys": [
+        "platform-core",
+        "platform-bootstrap",
+        "operational-calendar-prerequisites"
+      ],
+      "rollout": "extracted",
+      "activationRequired": true
+    },
+    {
+      "module": "treasury",
+      "ok": true,
+      "checks": [
+        {
+          "id": "migration.platform-core",
+          "ok": true,
+          "detail": "applied"
+        },
+        {
+          "id": "migration.platform-bootstrap",
+          "ok": true,
+          "detail": "applied"
+        },
+        {
+          "id": "migration.treasury-movement-registry",
+          "ok": true,
+          "detail": "applied"
+        },
+        {
+          "id": "platform.core.structure",
+          "ok": true,
+          "detail": "Platform Core structure OK"
+        },
+        {
+          "id": "platform.bootstrap",
+          "ok": true,
+          "detail": "CASHER_BOOT ready"
+        },
+        {
+          "id": "treasury.schema",
+          "ok": true,
+          "detail": "TreasuryMovementRegistry ready"
+        }
+      ],
+      "requiredMigrationKeys": [
+        "platform-core",
+        "platform-bootstrap",
+        "treasury-movement-registry"
+      ],
+      "rollout": "extracted",
+      "activationRequired": true
+    },
+    {
+      "module": "pos",
+      "ok": true,
+      "checks": [
+        {
+          "id": "migration.platform-core",
+          "ok": true,
+          "detail": "applied"
+        },
+        {
+          "id": "migration.platform-bootstrap",
+          "ok": true,
+          "detail": "applied"
+        },
+        {
+          "id": "migration.operational-calendar-prerequisites",
+          "ok": true,
+          "detail": "applied"
+        },
+        {
+          "id": "migration.treasury-movement-registry",
+          "ok": true,
+          "detail": "applied"
+        },
+        {
+          "id": "platform.core.structure",
+          "ok": true,
+          "detail": "Platform Core structure OK"
+        },
+        {
+          "id": "platform.bootstrap",
+          "ok": true,
+          "detail": "CASHER_BOOT ready"
+        }
+      ],
+      "requiredMigrationKeys": [
+        "platform-core",
+        "platform-bootstrap",
+        "operational-calendar-prerequisites",
+        "treasury-movement-registry"
+      ],
+      "rollout": "extracted",
+      "activationRequired": true
+    },
+    {
+      "module": "pos-sale-treasury",
+      "ok": true,
+      "checks": [
+        {
+          "id": "migration.platform-core",
+          "ok": true,
+          "detail": "applied"
+        },
+        {
+          "id": "migration.platform-bootstrap",
+          "ok": true,
+          "detail": "applied"
+        },
+        {
+          "id": "migration.treasury-movement-registry",
+          "ok": true,
+          "detail": "applied"
+        },
+        {
+          "id": "migration.ins-cash-move-sales-guard",
+          "ok": true,
+          "detail": "applied"
+        },
+        {
+          "id": "platform.core.structure",
+          "ok": true,
+          "detail": "Platform Core structure OK"
+        },
+        {
+          "id": "platform.bootstrap",
+          "ok": true,
+          "detail": "CASHER_BOOT ready"
+        },
+        {
+          "id": "treasury.schema",
+          "ok": true,
+          "detail": "TreasuryMovementRegistry ready"
+        },
+        {
+          "id": "treasury.sale-trigger-guard",
+          "ok": true,
+          "detail": "InsCashMoveSales coexistence guard ready"
+        }
+      ],
+      "requiredMigrationKeys": [
+        "platform-core",
+        "platform-bootstrap",
+        "treasury-movement-registry",
+        "ins-cash-move-sales-guard"
+      ],
+      "rollout": "extracted",
+      "activationRequired": true
+    },
+    {
+      "module": "pos-sale-treasury-mutation",
+      "ok": true,
+      "checks": [
+        {
+          "id": "migration.platform-core",
+          "ok": true,
+          "detail": "applied"
+        },
+        {
+          "id": "migration.platform-bootstrap",
+          "ok": true,
+          "detail": "applied"
+        },
+        {
+          "id": "migration.treasury-movement-registry",
+          "ok": true,
+          "detail": "applied"
+        },
+        {
+          "id": "migration.ins-cash-move-sales-guard",
+          "ok": true,
+          "detail": "applied"
+        },
+        {
+          "id": "platform.core.structure",
+          "ok": true,
+          "detail": "Platform Core structure OK"
+        },
+        {
+          "id": "platform.bootstrap",
+          "ok": true,
+          "detail": "CASHER_BOOT ready"
+        },
+        {
+          "id": "treasury.schema",
+          "ok": true,
+          "detail": "TreasuryMovementRegistry ready"
+        },
+        {
+          "id": "treasury.sale-trigger-guard",
+          "ok": true,
+          "detail": "InsCashMoveSales coexistence guard ready"
+        }
+      ],
+      "requiredMigrationKeys": [
+        "platform-core",
+        "platform-bootstrap",
+        "treasury-movement-registry",
+        "ins-cash-move-sales-guard"
+      ],
+      "rollout": "extracted",
+      "activationRequired": true
+    },
+    {
+      "module": "platform-commercial",
+      "ok": true,
+      "checks": [
+        {
+          "id": "migration.platform-core",
+          "ok": true,
+          "detail": "applied"
+        },
+        {
+          "id": "migration.platform-bootstrap",
+          "ok": true,
+          "detail": "applied"
+        },
+        {
+          "id": "migration.commercial-subscription-tenant-apps",
+          "ok": true,
+          "detail": "applied"
+        },
+        {
+          "id": "platform.core.structure",
+          "ok": true,
+          "detail": "Platform Core structure OK"
+        },
+        {
+          "id": "platform.bootstrap",
+          "ok": true,
+          "detail": "CASHER_BOOT ready"
+        },
+        {
+          "id": "platform.commercial",
+          "ok": true,
+          "detail": "Commercial plans, subscriptions and tenant app state ready"
+        }
+      ],
+      "requiredMigrationKeys": [
+        "platform-core",
+        "platform-bootstrap",
+        "commercial-subscription-tenant-apps"
+      ],
+      "rollout": "extracted",
+      "activationRequired": true
+    },
+    {
+      "module": "platform-master-data",
+      "ok": true,
+      "checks": [
+        {
+          "id": "migration.platform-core",
+          "ok": true,
+          "detail": "applied"
+        },
+        {
+          "id": "migration.platform-bootstrap",
+          "ok": true,
+          "detail": "applied"
+        },
+        {
+          "id": "migration.master-data-tenancy",
+          "ok": true,
+          "detail": "applied"
+        },
+        {
+          "id": "platform.core.structure",
+          "ok": true,
+          "detail": "Platform Core structure OK"
+        },
+        {
+          "id": "platform.bootstrap",
+          "ok": true,
+          "detail": "CASHER_BOOT ready"
+        },
+        {
+          "id": "platform.master-data",
+          "ok": true,
+          "detail": "Master data is tenant-owned (TenantId NOT NULL, tenant keys, no NULL rows)"
+        }
+      ],
+      "requiredMigrationKeys": [
+        "platform-core",
+        "platform-bootstrap",
+        "master-data-tenancy"
+      ],
+      "rollout": "extracted",
+      "activationRequired": true
+    }
+  ],
+  "ok": true,
+  "failures": []
+}
+PASS: DRVO verify.
+[db] All pools closed

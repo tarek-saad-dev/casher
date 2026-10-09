@@ -39,6 +39,7 @@
     "drvo:migrate": "tsx scripts/drvo/run-migrations.ts",
     "drvo:migrate-production": "tsx scripts/drvo/run-migrations.ts --allow-production",
     "drvo:verify": "tsx scripts/drvo/verify-cli.ts",
+    "drvo:backup": "tsx scripts/drvo/db-backup.ts",
     "drvo-011:smoke": "tsx scripts/drvo/drvo-011-tenant-onboarding-smoke.ts",
     "drvo-012:smoke": "tsx scripts/drvo/drvo-012-commercial-smoke.ts",
     "drvo-013:smoke": "tsx scripts/drvo/drvo-013-tenant-isolation-smoke.ts",

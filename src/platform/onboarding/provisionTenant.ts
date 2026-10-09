@@ -1,6 +1,7 @@
 import 'server-only';
 import type { Transaction } from 'mssql';
 import { getPool, sql } from '@/lib/db';
+import { hashPassword } from '@/lib/auth/passwordHash';
 import { assertBranchIdentityAvailable } from '@/lib/branch/bootstrap';
 import { resolveTenantComposition } from '@/platform/apps/compositionResolver';
 import { applyCompositionInTransaction } from '@/platform/apps/tenantApps';
@@ -216,7 +217,7 @@ async function createOwnerUserInTransaction(
   const inserted = await new sql.Request(tx)
     .input('userName', sql.NVarChar(50), input.userName)
     .input('loginName', sql.NVarChar(50), input.loginName)
-    .input('password', sql.NVarChar(50), input.password)
+    .input('password', sql.NVarChar(50), await hashPassword(input.password))
     .input('userLevel', sql.NVarChar(20), input.userLevel)
     .query(`
       INSERT INTO dbo.TblUser (UserName, loginName, Password, UserLevel, ShiftID, CardNO, isDeleted)

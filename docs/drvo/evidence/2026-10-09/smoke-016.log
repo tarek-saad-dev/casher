@@ -1,0 +1,43 @@
+  live database: last132_agent (drvo_agent)
+  CASHER_BOOT employees before: 177
+Scenario 1 — provision two tenants
+[db:cloud] Connection attempt 1/3 server=127.0.0.1 db=last132_agent auth=sql
+[db:cloud] Connected to SQL Server successfully
+  ok: two distinct tenants with their own branch
+Scenario 2 — DRVO016_A: employee → attendance → daily payroll → payout
+  ok: DRVO016_A owns its employee 2228
+  ok: DRVO016_A branch sees its employee for attendance
+  ok: DRVO016_A attendance recorded
+  ok: DRVO016_A daily payroll generated (generatedCount=1, wage=300)
+  ok: DRVO016_A has a seeded payment method
+  ok: DRVO016_A employee-ledger payout posted (entry 3296)
+Scenario 2 — DRVO016_B: employee → attendance → daily payroll → payout
+  ok: DRVO016_B owns its employee 2229
+  ok: DRVO016_B branch sees its employee for attendance
+  ok: DRVO016_B attendance recorded
+  ok: DRVO016_B daily payroll generated (generatedCount=1, wage=300)
+  ok: DRVO016_B has a seeded payment method
+  ok: DRVO016_B employee-ledger payout posted (entry 3297)
+Scenario 3 — isolation
+  ok: DRVO016_A cannot resolve DRVO016_B's employee (الموظف غير موجود)
+  ok: DRVO016_A branch cannot record attendance for DRVO016_B's employee
+  ok: DRVO016_A branch cannot pay DRVO016_B's employee (الموظف غير موجود أو غير نشط)
+  ok: DRVO016_A ledger summary lists only its employee
+  ok: DRVO016_A HR branch list is its own branch only
+  ok: DRVO016_A employee filter drops the foreign employee
+  ok: DRVO016_B cannot resolve DRVO016_A's employee (الموظف غير موجود)
+  ok: DRVO016_B branch cannot record attendance for DRVO016_A's employee
+  ok: DRVO016_B branch cannot pay DRVO016_A's employee (الموظف غير موجود أو غير نشط)
+  ok: DRVO016_B ledger summary lists only its employee
+  ok: DRVO016_B HR branch list is its own branch only
+  ok: DRVO016_B employee filter drops the foreign employee
+Scenario 4 — cleanup; CASHER_BOOT unchanged
+[pages-sync] Registry synced ✓
+[roles-sync] Partner role synced ✓
+  cleanup: removed DRVO016_A
+  cleanup: removed DRVO016_B
+  ok: no DRVO016 tenants left
+  ok: DRVO016_A smoke employee removed
+  ok: DRVO016_B smoke employee removed
+  ok: CASHER_BOOT employee count unchanged (177)
+DRVO-016 smoke PASS

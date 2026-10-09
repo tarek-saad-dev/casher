@@ -1,0 +1,6 @@
+identity: last132_agent / drvo_agent / last132 access=0 mode=COMMIT
+attribution: OK (all new key rows belong to the regression)
+deleted: [dbo].[Bookings]=1 [dbo].[BookingServices]=0 [dbo].[PlatformOutbox]=3 [dbo].[TblEmpBranchAssignment]=1 [dbo].[TblExpCatEmpMap]=1 [dbo].[TblExpINCat]=1 [dbo].[TblinvServDetail]=1 [dbo].[TblinvServPayment]=1 [dbo].[TblLoyaltyPointLedger]=1 [dbo].[TblPublicBookingCancelRequest]=1 [dbo].[TblPublicBookingCreateRequest]=1 [dbo].[TblPublicBookingHealthSample]=1 [dbo].[TblUserBranchAccess]=1 [dbo].[TblUserRoles]=1 [dbo].[TreasuryMovementRegistry]=1 [dbo].[LegacyIdMap]=1 [dbo].[TenantMembership]=1 [dbo].[TenantMessagingUsage]=1 [dbo].[TblBookingAvailabilityRevision]=1 [dbo].[TblCashMove]=1 [dbo].[TblClientLoyalty]=1 [dbo].[TblEmp]=1 [dbo].[TblinvServHead]=1 [dbo].[TblShiftMove]=1 [dbo].[TblUser]=1 [dbo].[TblClient]=2 [dbo].[TblNewDay]=1
+restored: TblNewDay 5573 Status=1; TblShiftMove 12474,12475 Status=1 EndDate/EndTime NULL
+count parity: 168 tables equal; openDays=2 openShifts=4 drvogaUsers=0
+COMMITTED

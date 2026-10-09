@@ -1,0 +1,2 @@
+snapshot: 168 tables -> tmp/cut-snap-aftercleanup.json
+compare vs tmp/cut-snap-before.json: 168 tables, 0 differ

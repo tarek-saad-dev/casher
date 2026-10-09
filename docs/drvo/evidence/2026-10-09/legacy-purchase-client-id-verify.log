@@ -1,0 +1,10 @@
+identity: last132_agent / drvo_agent / last132 access=0
+schema: {"nullable":true,"fkName":"FK_TblinvPurchaseHead_TblClient","notTrusted":false,"disabled":false,"refTable":"TblClient","onDelete":"NO_ACTION"}
+  ok: ClientID allows NULL
+  ok: FK_TblinvPurchaseHead_TblClient ΓåÆ TblClient preserved
+  ok: FK is enabled and trusted (existing rows validated)
+  ok: insert with ClientID = NULL accepted
+  ok: non-null valid ClientID still accepted and stored
+  ok: invalid non-null ClientID rejected by the FK
+  ok: probe rows rolled back
+legacy purchase ClientID verify PASS

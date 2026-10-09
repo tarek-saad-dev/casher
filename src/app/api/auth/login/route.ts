@@ -8,7 +8,11 @@ import {
 } from '@/lib/session';
 import { getUserAccess } from '@/lib/permissions-server';
 import { BranchDomainError, BRANCH_SESSION_VERSION } from '@/lib/branch/types';
+import type { DbUser } from '@/lib/session-types';
 import { resolveLoginDefaultBranch } from '@/lib/branch/access';
+import { hashPassword, verifyPassword } from '@/lib/auth/passwordHash';
+import { createLogger } from '@/lib/observability/logger';
+import { captureException } from '@/lib/observability/errorTracking';
 import {
   isTenantContextError,
   resolveStaffTenantContextForRequest,
@@ -36,11 +40,8 @@ type LoginBody = {
 };
 
 function logStep(requestId: string, step: string, detail?: Record<string, unknown>) {
-  if (detail) {
-    console.info(`[auth/login:${requestId}] ${step}`, detail);
-    return;
-  }
-  console.info(`[auth/login:${requestId}] ${step}`);
+  const tenantId = typeof detail?.tenantId === 'string' ? detail.tenantId : null;
+  createLogger({ scope: 'auth/login', requestId, tenantId }).info(step, detail);
 }
 
 async function parseLoginBody(req: NextRequest, requestId: string): Promise<LoginBody | NextResponse> {
@@ -63,6 +64,56 @@ async function parseLoginBody(req: NextRequest, requestId: string): Promise<Logi
       { error: 'صيغة الطلب غير صالحة', code: 'INVALID_JSON' },
       { status: 400 },
     );
+  }
+}
+
+type LoginCandidate = Pick<DbUser, 'UserID' | 'UserName' | 'UserLevel' | 'loginName' | 'ShiftID'> & {
+  StoredPassword: string | null;
+};
+
+type VerifiedLoginUser = Omit<LoginCandidate, 'StoredPassword'> & {
+  storedPassword: string;
+  needsUpgrade: boolean;
+};
+
+async function findUserWithPassword(
+  candidates: LoginCandidate[],
+  password: string,
+): Promise<VerifiedLoginUser | null> {
+  for (const candidate of candidates) {
+    const verification = await verifyPassword(password, candidate.StoredPassword);
+    if (!verification.ok) continue;
+    const { StoredPassword, ...user } = candidate;
+    return { ...user, storedPassword: StoredPassword ?? '', needsUpgrade: verification.needsUpgrade };
+  }
+  return null;
+}
+
+/** Best effort: a failed upgrade must not block a valid login; the row is retried next login. */
+async function upgradeLegacyPassword(
+  db: Awaited<ReturnType<typeof getPool>>,
+  user: VerifiedLoginUser,
+  password: string,
+  requestId: string,
+) {
+  try {
+    const hashed = await hashPassword(password);
+    await db
+      .request()
+      .input('userId', user.UserID)
+      .input('hashed', hashed)
+      .input('previous', user.storedPassword)
+      .query(`
+        UPDATE [dbo].[TblUser]
+        SET Password = @hashed
+        WHERE UserID = @userId AND Password = @previous
+      `);
+    logStep(requestId, 'password:upgraded', { userId: user.UserID });
+  } catch (err: unknown) {
+    logStep(requestId, 'password:upgrade-failed', {
+      userId: user.UserID,
+      message: err instanceof Error ? err.message : 'unknown',
+    });
   }
 }
 
@@ -121,16 +172,16 @@ export async function POST(req: NextRequest) {
     const result = await db
       .request()
       .input('loginName', loginName)
-      .input('password', password)
       .query(`
-        SELECT UserID, UserName, UserLevel, loginName, ShiftID
+        SELECT UserID, UserName, UserLevel, loginName, ShiftID, Password AS StoredPassword
         FROM [dbo].[TblUser]
         WHERE loginName = @loginName
-          AND Password = @password
           AND ISNULL(isDeleted, 0) = 0
+        ORDER BY UserID
       `);
 
-    if (result.recordset.length === 0) {
+    const user = await findUserWithPassword(result.recordset as LoginCandidate[], password);
+    if (!user) {
       logStep(requestId, 'reject:invalid-credentials', { loginName });
       return NextResponse.json(
         { error: 'اسم المستخدم أو كلمة المرور غير صحيحة', code: 'INVALID_CREDENTIALS' },
@@ -138,7 +189,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const user = result.recordset[0];
+    if (user.needsUpgrade) {
+      await upgradeLegacyPassword(db, user, password, requestId);
+    }
     logStep(requestId, 'branch:resolve-default', { userId: user.UserID });
 
     let defaultAccess;
@@ -209,6 +262,7 @@ export async function POST(req: NextRequest) {
     }
 
     logStep(requestId, 'success', {
+      tenantId: tenant.tenantId,
       userId: user.UserID,
       userName: user.UserName,
       level: user.UserLevel,
@@ -231,9 +285,7 @@ export async function POST(req: NextRequest) {
       allowedPagePaths,
     });
   } catch (err: unknown) {
-    const rawMessage = err instanceof Error ? err.message : 'Unknown error';
-    const stack = err instanceof Error ? err.stack : undefined;
-    console.error(`[auth/login:${requestId}] error`, { message: rawMessage, stack, durationMs: Date.now() - startedAt });
+    captureException(err, { scope: 'auth/login', requestId }, { durationMs: Date.now() - startedAt });
     if (err instanceof SessionConfigError) {
       return NextResponse.json(
         {

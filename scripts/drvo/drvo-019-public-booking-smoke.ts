@@ -111,6 +111,12 @@ function publicRequest(origin: string | null): Request {
 }
 
 async function cleanupTenant(pool: sql.ConnectionPool, tenantCode: string): Promise<void> {
+  // Covers tables added by later DRVO branches (master data, brand, messaging, HR, booking).
+  const { purgeSmokeTenant } = await import('./smokeTenantPurge');
+  if (await purgeSmokeTenant(pool, tenantCode)) {
+    console.log(`  cleanup: removed ${tenantCode}`);
+    return;
+  }
   const tenant = await pool
     .request()
     .input('code', sql.NVarChar(64), tenantCode)
@@ -329,10 +335,14 @@ async function main() {
       `salon catalogue has no CUT services (cut=${cutCatalog.services.length}, salon=${salonCatalog.services.length})`,
     );
     const cutBarbers = await listPublicBookingBarbers({ tenantId: cut.tenancy.tenantId, mode: 'global' });
+    // A fresh tenant has no public services, so the roster fails closed instead of listing barbers.
     const salonBarbers = await listPublicBookingBarbers({
       tenantId: salon.tenantId,
       mode: 'branch',
       branchCode: SALON.branch,
+    }).catch((err: unknown) => {
+      if ((err as { code?: string }).code === 'SERVICES_NOT_CONFIGURED') return { barbers: [] as { empId: number }[] };
+      throw err;
     });
     const cutEmpIds = new Set(cutBarbers.barbers.map((b) => b.empId));
     check(
