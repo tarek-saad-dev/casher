@@ -11,6 +11,10 @@ import {
 import { resolveUserDisplayName } from '@/modules/messaging/handoff/application/listInbox';
 import { HandoffError } from '@/modules/messaging/handoff/application/errors';
 import { ownershipLabel } from '@/modules/messaging/handoff/domain/inboxRanking';
+import {
+  isDrvowaEventMessagingActive,
+  takeoverDrvowaInboxConversation,
+} from '@/lib/integrations/drvowaClient';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -23,6 +27,17 @@ export async function POST(_req: NextRequest, ctx: Ctx) {
 
   try {
     const { id } = await ctx.params;
+
+    if (await isDrvowaEventMessagingActive()) {
+      const result = await takeoverDrvowaInboxConversation(id);
+      return NextResponse.json({
+        ok: true,
+        source: 'DRVOWA',
+        ...result,
+        ownershipLabel: 'مع موظف',
+      });
+    }
+
     const conversationId = Number(id);
     if (!Number.isFinite(conversationId) || conversationId <= 0) {
       return NextResponse.json({ error: 'invalid id' }, { status: 400 });
