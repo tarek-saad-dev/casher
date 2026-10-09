@@ -19,15 +19,29 @@ type InboxMessage = {
   messageId: number | string;
   direction: 'inbound' | 'outbound';
   origin: string;
+  actorName?: string | null;
+  actorUserId?: string | null;
   text: string | null;
   occurredAt: string;
   deliveryStatus: string | null;
+  createdAtUtc?: string | null;
+};
+
+type MessageCursor = {
+  beforeAt: string | null;
+  beforeCreatedAt: string | null;
+  beforeMessageId: string;
 };
 
 type ConversationDetail = InboxListItem & {
   messages: InboxMessage[];
   humanLeaseUntil: string | null;
   ownershipLabel?: string;
+  erpClientId?: number | null;
+  pageInfo?: {
+    hasMore: boolean;
+    nextCursor: MessageCursor | null;
+  };
 };
 
 const FILTERS: Array<{ id: InboxFilter; label: string }> = [
@@ -35,7 +49,7 @@ const FILTERS: Array<{ id: InboxFilter; label: string }> = [
   { id: 'needs_takeover', label: 'محتاج استلام' },
   { id: 'human', label: 'مع موظف' },
   { id: 'bot', label: 'مع البوت' },
-  { id: 'unread', label: 'غير مقروء' },
+  { id: 'unread', label: 'محتاجة رد' },
 ];
 
 const NEAR_BOTTOM_PX = 96;
@@ -77,12 +91,44 @@ function formatBubbleTime(iso: string): string {
   }
 }
 
-function bubbleMeta(origin: string): string | null {
-  if (origin === 'HUMAN_ERP') return 'ERP';
-  if (origin === 'HUMAN_WHATSAPP') return 'واتساب';
-  if (origin === 'BOT') return 'بوت';
-  if (origin === 'HANDOFF_ACK') return null;
+function bubbleMeta(message: InboxMessage): string | null {
+  if (message.origin === 'CUSTOMER') return null;
+  if (message.origin === 'AI' || message.origin === 'BOT') return '🤖 AI';
+  if (message.origin === 'HUMAN' || message.origin === 'HUMAN_ERP') {
+    return `👤 ${message.actorName?.trim() || 'موظف'}`;
+  }
+  if (message.origin === 'HUMAN_WHATSAPP') return '👤 موظف واتساب';
+  if (message.origin === 'SYSTEM' || message.origin === 'HANDOFF_ACK') return '⚙ النظام';
+  if (message.direction === 'outbound') return 'رسالة صادرة قديمة';
   return null;
+}
+
+function dayLabel(iso: string): string {
+  try {
+    const d = new Date(iso);
+    const now = new Date();
+    const sameDay = d.toDateString() === now.toDateString();
+    if (sameDay) return 'اليوم';
+    const yesterday = new Date(now);
+    yesterday.setDate(now.getDate() - 1);
+    if (d.toDateString() === yesterday.toDateString()) return 'أمس';
+    return d.toLocaleDateString('ar-EG', {
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
+      year: d.getFullYear() === now.getFullYear() ? undefined : 'numeric',
+    });
+  } catch {
+    return iso;
+  }
+}
+
+function dayKey(iso: string): string {
+  try {
+    return new Date(iso).toISOString().slice(0, 10);
+  } catch {
+    return iso.slice(0, 10);
+  }
 }
 
 function initials(name: string | null, phone: string): string {
@@ -113,6 +159,7 @@ export default function AdminWhatsAppInboxPage() {
   const [draft, setDraft] = useState('');
   const [loadingList, setLoadingList] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmReturn, setConfirmReturn] = useState(false);
@@ -143,7 +190,7 @@ export default function AdminWhatsAppInboxPage() {
     }
     stickToBottomRef.current = true;
     setShowNewBelow(false);
-  }, []);
+  }, [detail?.pageInfo?.hasMore, loadingOlder, loadOlderMessages]);
 
   const onMessagesScroll = useCallback(() => {
     const pane = messagesPaneRef.current;
@@ -151,6 +198,9 @@ export default function AdminWhatsAppInboxPage() {
     const near = isNearBottom(pane);
     stickToBottomRef.current = near;
     if (near) setShowNewBelow(false);
+    if (pane.scrollTop < 72 && detail?.pageInfo?.hasMore && !loadingOlder) {
+      void loadOlderMessages();
+    }
   }, []);
 
   const loadList = useCallback(async () => {
@@ -195,6 +245,48 @@ export default function AdminWhatsAppInboxPage() {
 
     void fetch(`/api/admin/whatsapp/inbox/${id}/read`, { method: 'POST' });
   }, []);
+
+  const loadOlderMessages = useCallback(async () => {
+    if (!detail?.pageInfo?.hasMore || !detail.pageInfo.nextCursor || loadingOlder) return;
+    const pane = messagesPaneRef.current;
+    const previousHeight = pane?.scrollHeight ?? 0;
+    setLoadingOlder(true);
+    try {
+      const cursor = detail.pageInfo.nextCursor;
+      if (!cursor.beforeAt || !cursor.beforeCreatedAt) return;
+      const params = new URLSearchParams({
+        beforeAt: cursor.beforeAt,
+        beforeCreatedAt: cursor.beforeCreatedAt,
+        beforeMessageId: cursor.beforeMessageId,
+      });
+      const res = await fetch(
+        `/api/admin/whatsapp/inbox/${detail.conversationId}?${params.toString()}`,
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'فشل تحميل الرسائل الأقدم');
+      const older = data.conversation as ConversationDetail;
+      setDetail((prev) => {
+        if (!prev || prev.conversationId !== older.conversationId) return prev;
+        const known = new Set(prev.messages.map((m) => m.messageId));
+        return {
+          ...prev,
+          ...older,
+          messages: [
+            ...older.messages.filter((m) => !known.has(m.messageId)),
+            ...prev.messages,
+          ],
+        };
+      });
+      requestAnimationFrame(() => {
+        if (!pane) return;
+        pane.scrollTop = pane.scrollHeight - previousHeight;
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoadingOlder(false);
+    }
+  }, [detail, loadingOlder]);
 
   useEffect(() => {
     void loadList();
@@ -465,9 +557,16 @@ export default function AdminWhatsAppInboxPage() {
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-baseline justify-between gap-2">
-                      <p className="truncate text-[15px] font-medium text-zinc-100">
-                        {item.displayName || item.phone}
-                      </p>
+                      <div className="min-w-0">
+                        <p className="truncate text-[15px] font-medium text-zinc-100">
+                          {item.displayName || item.phone}
+                        </p>
+                        {item.displayName ? (
+                          <p dir="ltr" className="truncate text-[10px] text-zinc-500">
+                            {item.phone}
+                          </p>
+                        ) : null}
+                      </div>
                       <span
                         className={`shrink-0 text-[11px] ${
                           item.unreadCount > 0 ? 'text-emerald-400' : 'text-zinc-500'
@@ -542,11 +641,15 @@ export default function AdminWhatsAppInboxPage() {
                   <h2 className="truncate text-[15px] font-semibold leading-tight">
                     {chatTitle || '…'}
                   </h2>
-                  <p className="truncate text-[12px] text-zinc-400">
-                    {loadingDetail && !detail
-                      ? 'جاري التحميل…'
-                      : headerLabel || chatPhone}
-                  </p>
+                  <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-zinc-400">
+                    <span dir="ltr">{chatPhone}</span>
+                    {detail ? (
+                      <span className="rounded-full bg-white/5 px-2 py-0.5">
+                        {headerLabel || 'الـ AI'}
+                      </span>
+                    ) : null}
+                    {loadingDetail && !detail ? <span>جاري التحميل…</span> : null}
+                  </div>
                 </div>
                 <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
                   {detail && needsTakeover ? (
@@ -602,15 +705,46 @@ export default function AdminWhatsAppInboxPage() {
 
                   {detail ? (
                     <div className="mx-auto flex max-w-3xl flex-col gap-1.5" dir="ltr">
-                      {detail.messages.map((m) => {
-                        const mine = m.direction === 'outbound';
-                        const meta = bubbleMeta(m.origin);
-                        const botish = m.origin === 'BOT' || m.origin === 'HANDOFF_ACK';
-                        return (
-                          <div
-                            key={m.messageId}
-                            className={`flex ${mine ? 'justify-end' : 'justify-start'}`}
+                      {detail.pageInfo?.hasMore ? (
+                        <div className="mb-2 flex justify-center">
+                          <button
+                            type="button"
+                            disabled={loadingOlder}
+                            onClick={() => void loadOlderMessages()}
+                            className="rounded-full bg-[#202c33] px-3 py-1.5 text-[11px] font-medium text-zinc-300 ring-1 ring-white/10 hover:bg-[#2a3942] disabled:opacity-50"
                           >
+                            {loadingOlder ? 'جاري تحميل الرسائل الأقدم…' : 'تحميل رسائل أقدم'}
+                          </button>
+                        </div>
+                      ) : detail.messages.length > 0 ? (
+                        <div className="mb-2 text-center text-[10px] text-zinc-600">
+                          بداية المحادثة
+                        </div>
+                      ) : null}
+                      {detail.messages.map((m, index) => {
+                        const mine = m.direction === 'outbound';
+                        const meta = bubbleMeta(m);
+                        const botish =
+                          m.origin === 'AI'
+                          || m.origin === 'BOT'
+                          || m.origin === 'SYSTEM'
+                          || m.origin === 'HANDOFF_ACK'
+                          || m.origin === 'UNKNOWN';
+                        const showDay =
+                          index === 0
+                          || dayKey(detail.messages[index - 1]!.occurredAt) !== dayKey(m.occurredAt);
+                        return (
+                          <div key={m.messageId}>
+                            {showDay ? (
+                              <div className="my-3 flex justify-center" dir="rtl">
+                                <span className="rounded-lg bg-[#182229]/95 px-3 py-1 text-[10px] font-medium text-zinc-400 shadow-sm ring-1 ring-white/5">
+                                  {dayLabel(m.occurredAt)}
+                                </span>
+                              </div>
+                            ) : null}
+                            <div
+                              className={`flex ${mine ? 'justify-end' : 'justify-start'}`}
+                            >
                             <div
                               className={`relative max-w-[min(85%,28rem)] rounded-lg px-2.5 pb-1.5 pt-1.5 text-[14.2px] leading-snug shadow-sm ${
                                 mine
@@ -622,9 +756,17 @@ export default function AdminWhatsAppInboxPage() {
                               dir="auto"
                             >
                               {meta ? (
-                                <p className="mb-0.5 text-[10px] font-medium text-emerald-300/80">
-                                  {meta}
-                                </p>
+                                <div className="mb-1 flex" dir="rtl">
+                                  <span className={`rounded-full px-2 py-0.5 text-[9px] font-black ${
+                                    m.origin === 'AI' || m.origin === 'BOT'
+                                      ? 'bg-cyan-500/15 text-cyan-300'
+                                      : m.origin === 'HUMAN' || m.origin === 'HUMAN_ERP' || m.origin === 'HUMAN_WHATSAPP'
+                                        ? 'bg-emerald-500/15 text-emerald-300'
+                                        : 'bg-zinc-500/15 text-zinc-300'
+                                  }`}>
+                                    {meta}
+                                  </span>
+                                </div>
                               ) : null}
                               <p className="whitespace-pre-wrap wrap-break-word">{m.text || '—'}</p>
                               <div className="mt-0.5 flex items-center justify-end gap-1 text-[10px] text-zinc-400/90">
@@ -640,6 +782,7 @@ export default function AdminWhatsAppInboxPage() {
                                 ) : null}
                               </div>
                             </div>
+                          </div>
                           </div>
                         );
                       })}
