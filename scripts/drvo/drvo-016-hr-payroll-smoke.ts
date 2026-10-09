@@ -141,6 +141,12 @@ async function deleteIfTable(tx: sql.Transaction, table: string, where: string, 
 }
 
 async function cleanupTenant(pool: sql.ConnectionPool, tenantCode: string): Promise<void> {
+  // Covers tables added by later DRVO branches (master data, brand, messaging, HR, booking).
+  const { purgeSmokeTenant } = await import('./smokeTenantPurge');
+  if (await purgeSmokeTenant(pool, tenantCode)) {
+    console.log(`  cleanup: removed ${tenantCode}`);
+    return;
+  }
   const tenant = await pool
     .request()
     .input('code', sql.NVarChar(64), tenantCode)

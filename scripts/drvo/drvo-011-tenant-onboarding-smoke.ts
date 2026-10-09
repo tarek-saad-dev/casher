@@ -94,6 +94,12 @@ async function assertLiveDatabase(pool: sql.ConnectionPool) {
 }
 
 async function cleanupSmokeTenant(pool: sql.ConnectionPool): Promise<void> {
+  // Covers tables added by later DRVO branches (master data, brand, messaging, HR, booking).
+  const { purgeSmokeTenant } = await import('./smokeTenantPurge');
+  if (await purgeSmokeTenant(pool, SMOKE_TENANT_CODE)) {
+    console.log(`  cleanup: removed ${SMOKE_TENANT_CODE}`);
+    return;
+  }
   const tenant = await pool
     .request()
     .input('code', sql.NVarChar(64), SMOKE_TENANT_CODE)

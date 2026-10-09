@@ -96,6 +96,12 @@ async function expectError(fn: () => Promise<unknown>, code: string, message: st
 }
 
 async function cleanupTenant(pool: sql.ConnectionPool, tenantCode: string): Promise<void> {
+  // Covers tables added by later DRVO branches (master data, brand, messaging, HR, booking).
+  const { purgeSmokeTenant } = await import('./smokeTenantPurge');
+  if (await purgeSmokeTenant(pool, tenantCode)) {
+    console.log(`  cleanup: removed ${tenantCode}`);
+    return;
+  }
   const tenant = await pool
     .request()
     .input('code', sql.NVarChar(64), tenantCode)
@@ -178,6 +184,7 @@ async function main() {
   const { SUPERMARKET_PACK } = await import('../../src/packs/supermarket/public');
   const { verifyPlatformBootstrap } = await import('./platformBootstrap');
   const { verifyTenantBrandProfileSchema } = await import('./migrations/011-tenant-brand-profile');
+  const { isPasswordHash, verifyPassword } = await import('../../src/lib/auth/passwordHash');
 
   const pool = await sql.connect(config);
   try {
@@ -233,13 +240,15 @@ async function main() {
     const login = await pool
       .request()
       .input('loginName', SMOKE_TENANT.login)
-      .input('password', SMOKE_TENANT.password)
       .query(`
-        SELECT UserID, UserName, UserLevel FROM dbo.TblUser
-        WHERE loginName = @loginName AND Password = @password AND ISNULL(isDeleted, 0) = 0;
+        SELECT UserID, UserName, UserLevel, Password AS StoredPassword FROM dbo.TblUser
+        WHERE loginName = @loginName AND ISNULL(isDeleted, 0) = 0;
       `);
-    check(login.recordset.length === 1, 'owner credentials match');
-    const owner = login.recordset[0] as { UserID: number; UserName: string; UserLevel: string };
+    check(login.recordset.length === 1, 'owner row exists');
+    const owner = login.recordset[0] as { UserID: number; UserName: string; UserLevel: string; StoredPassword: string };
+    check(isPasswordHash(owner.StoredPassword), 'owner password is stored hashed');
+    const verified = await verifyPassword(SMOKE_TENANT.password, owner.StoredPassword);
+    check(verified.ok && !verified.needsUpgrade, 'owner credentials match');
     const defaultBranch = await resolveLoginDefaultBranch(owner.UserID);
     check(defaultBranch.branchId === created.legacyBranchId, 'owner default branch resolves');
     const ctx = await resolveStaffTenantContextForRequest({
