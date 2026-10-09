@@ -1,0 +1,36 @@
+  live database: last132_agent (drvo_agent)
+Setup — salon tenant (booking) + supermarket tenant (no booking)
+[db:cloud] Connection attempt 1/3 server=127.0.0.1 db=last132_agent auth=sql
+[db:cloud] Connected to SQL Server successfully
+  ok: salon tenant has the booking app
+  ok: supermarket tenant has no booking app
+Scenario 1 — branchCode decides the tenant
+  ok: GLEEM resolves
+  ok: DRVO019_SBR resolves
+  ok: salon branch resolves to the salon tenant
+  ok: the two tenants are distinct
+Scenario 2 — CUT compatibility fallback is origin-bound
+  ok: branch-less CUT request uses cut-compat
+  ok: cut-compat resolves to the GLEEM tenant
+  ok: salon origin without branchCode is refused
+Scenario 3 — no cross-tenant branch context
+  ok: salon branch under the CUT tenant is BRANCH_NOT_FOUND (got BRANCH_NOT_FOUND)
+  ok: salon branch context carries its tenant
+Scenario 4 — catalogue / barbers / upcoming isolation
+  ok: salon catalogue has no CUT services (cut=38, salon=0)
+  ok: salon barbers contain no CUT employees (cut=6, salon=0)
+  ok: a CUT customer phone lists nothing under the salon tenant
+Scenario 5 — per-tenant CORS origins
+  ok: salon origin allowed for the salon tenant
+  ok: salon origin not allowed for the CUT tenant
+Scenario 6 — booking app not installed → not found
+[public-booking-tenancy] denied { route: 'drvo019-smoke', reason: 'booking_app_unavailable' }
+  ok: supermarket branch is BRANCH_NOT_FOUND
+Scenario 7 — cleanup + CASHER_BOOT verify
+[pages-sync] Registry synced ✓
+[roles-sync] Partner role synced ✓
+  cleanup: removed DRVO019_SALON
+  cleanup: removed DRVO019_MARKET
+  ok: no DRVO019 residue
+  ok: CASHER_BOOT bootstrap verify (clean)
+DRVO-019 smoke PASS

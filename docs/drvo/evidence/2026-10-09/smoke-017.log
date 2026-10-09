@@ -1,0 +1,37 @@
+  live database: last132_agent (drvo_agent)
+Scenario 1 — migration 11 verify + CASHER_BOOT brand seed
+  ok: migration 11 verify (clean)
+[db:cloud] Connection attempt 1/3 server=127.0.0.1 db=last132_agent auth=sql
+[db:cloud] Connected to SQL Server successfully
+  ok: CASHER_BOOT keeps Cut Salon branding
+Scenario 2 — operator creates a non-salon tenant
+  ok: readiness PASS
+  ok: owner role is tenant admin
+  ok: supermarket does not install booking
+  ok: brand row written
+Scenario 3 — first branch usable
+  ok: branch is active INTERNAL_LIVE
+  ok: public booking + notifications off
+Scenario 4 — owner login path
+  ok: owner row exists
+  ok: owner password is stored hashed
+  ok: owner credentials match
+  ok: owner default branch resolves
+  ok: owner tenant context resolves
+  ok: owner has admin, not super_admin
+  ok: owner can see pages
+Scenario 5 — user limit
+  ok: plan starter has a finite user limit (5)
+  ok: filled 5/5 users
+  ok: user over the plan limit is refused (got USER_LIMIT_REACHED)
+Scenario 6 — suspend blocks
+  ok: suspended tenant is blocked by the access gate (got SUBSCRIPTION_INACTIVE)
+Scenario 7 — reactivate restores
+  ok: reactivated tenant is allowed again
+Scenario 8 — cleanup + CASHER_BOOT verify
+  cleanup: removed DRVO017_MARKET
+  ok: no DRVO017 residue
+[pages-sync] Registry synced ✓
+[roles-sync] Partner role synced ✓
+  ok: CASHER_BOOT bootstrap verify (clean)
+DRVO-017 smoke PASS (first-sale proof pending DRVO-015)
