@@ -233,7 +233,11 @@ export default function AdminWhatsAppInboxPage() {
         ];
         const lastMerged = merged[merged.length - 1]?.messageId;
         if (lastMerged != null) lastMessageIdRef.current = lastMerged;
-        return { ...conversation, messages: merged };
+        return {
+          ...conversation,
+          pageInfo: prev.pageInfo,
+          messages: merged,
+        };
       }
       const last = conversation.messages[conversation.messages.length - 1]?.messageId;
       if (last != null) lastMessageIdRef.current = last;
