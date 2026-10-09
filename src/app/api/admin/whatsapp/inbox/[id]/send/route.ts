@@ -36,6 +36,8 @@ export async function POST(req: NextRequest, ctx: Ctx) {
         conversationId: id,
         text,
         idempotencyKey: randomUUID(),
+        actorName: admin.userName || 'موظف ERP',
+        actorExternalId: String(admin.userId),
       });
       return NextResponse.json({ ok: true, source: 'DRVOWA', ...result });
     }
