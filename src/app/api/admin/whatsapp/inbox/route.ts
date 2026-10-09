@@ -46,7 +46,7 @@ export async function GET(req: NextRequest) {
           displayName: item.displayName,
           lastMessagePreview: item.lastMessagePreview,
           lastMessageAt: item.lastMessageAt,
-          unreadCount: item.needsReply || item.lastMessageDirection === 'INBOUND' ? 1 : 0,
+          unreadCount: item.unread ? 1 : 0,
           mode: human ? 'HUMAN' : paused ? 'PAUSED' : 'BOT',
           takeoverSource: human ? 'ERP' : null,
           takenOverByUserId: null,
