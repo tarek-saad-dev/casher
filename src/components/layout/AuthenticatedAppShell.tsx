@@ -9,6 +9,7 @@ import { OperationalToastProvider } from '@/components/session/OperationalToast'
 import PartnerOnlyShell from '@/components/layout/PartnerOnlyShell';
 import { MobileNavProvider } from '@/components/layout/MobileNavContext';
 import { cn } from '@/lib/utils';
+import WhatsAppAttentionProvider from '@/components/layout/WhatsAppAttentionProvider';
 import type { UserAccess } from '@/lib/hooks/useMyAccess';
 
 interface AuthenticatedAppShellProps {
@@ -39,6 +40,7 @@ export default function AuthenticatedAppShell({
 
   return (
     <OperationalToastProvider>
+      <WhatsAppAttentionProvider>
       <ShiftOperationalGateProvider>
         <MobileNavProvider>
         <div className={cn((isPosPage || isOperationsPage) && 'max-md:hidden')}>
@@ -63,6 +65,7 @@ export default function AuthenticatedAppShell({
         </div>
         </MobileNavProvider>
       </ShiftOperationalGateProvider>
+      </WhatsAppAttentionProvider>
     </OperationalToastProvider>
   );
 }
