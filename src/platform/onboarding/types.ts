@@ -20,6 +20,9 @@ export type ProvisionTenantInput = {
   ownerPassword: string;
   firstBranchCode: string;
   firstBranchName: string;
+  firstBranchShortName?: string | null;
+  /** Defaults to defaultTimezone. */
+  firstBranchTimezone?: string | null;
   branchAddress?: string | null;
   branchPhone?: string | null;
   branchDefaultOpenTime?: string | null;
