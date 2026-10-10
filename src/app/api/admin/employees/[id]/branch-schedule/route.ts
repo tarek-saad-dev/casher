@@ -13,6 +13,7 @@ import {
 } from '@/lib/hr/employeeGlobalWeeklyScheduleSave';
 import { ensureEmpBranchWorkScheduleTable } from '@/lib/hr/empBranchWorkSchedule';
 import { getCairoBusinessDate } from '@/lib/businessDate';
+import { requireMasterDataTenantId } from '@/platform/masterData/tenantScope';
 
 export const runtime = 'nodejs';
 
@@ -34,6 +35,7 @@ export async function GET(
     if (!Number.isFinite(empId)) {
       return NextResponse.json({ error: 'empId غير صالح' }, { status: 400 });
     }
+    const tenantId = requireMasterDataTenantId(auth.tenantId, 'GET /api/admin/employees/[id]/branch-schedule');
 
     const from =
       new URL(req.url).searchParams.get('from') || getCairoBusinessDate();
@@ -46,11 +48,12 @@ export async function GET(
     const empRes = await db
       .request()
       .input('empId', sql.Int, empId)
+      .input('tenantId', sql.UniqueIdentifier, tenantId)
       .query(`
         SELECT EmpID, EmpName, ISNULL(isActive, 1) AS IsActive,
           CONVERT(VARCHAR(5), DefaultCheckInTime, 108) AS DefaultCheckInTime,
           CONVERT(VARCHAR(5), DefaultCheckOutTime, 108) AS DefaultCheckOutTime
-        FROM dbo.TblEmp WHERE EmpID = @empId
+        FROM dbo.TblEmp WHERE EmpID = @empId AND TenantId = @tenantId
       `);
     if (!empRes.recordset[0]) {
       return NextResponse.json({ error: 'الموظف غير موجود' }, { status: 404 });
@@ -60,6 +63,7 @@ export async function GET(
       .request()
       .input('empId', sql.Int, empId)
       .input('day', sql.Date, from)
+      .input('tenantId', sql.UniqueIdentifier, tenantId)
       .query(`
         SELECT DISTINCT b.BranchID, b.BranchCode, b.BranchName, b.LifecycleStatus,
                b.IsActive, b.DefaultOpenTime, b.DefaultCloseTime,
@@ -71,8 +75,8 @@ export async function GET(
          AND a.IsActive = 1
          AND a.EffectiveFrom <= @day
          AND (a.EffectiveTo IS NULL OR a.EffectiveTo >= @day)
-        WHERE b.IsActive = 1
-           OR a.ID IS NOT NULL
+        WHERE (b.IsActive = 1 OR a.ID IS NOT NULL)
+          AND b.BranchID IN (SELECT l.LegacyBranchId FROM dbo.Location l WHERE l.TenantId = @tenantId)
         ORDER BY b.BranchID
       `);
 

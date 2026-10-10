@@ -5,6 +5,7 @@
  */
 
 import { getChairNumber, getChairDisplayText } from './chairMapping';
+import { getPrintBrandHtml } from './tenant/tenantBrandClient';
 
 export interface BookingTicketData {
   bookingId: number;
@@ -213,6 +214,7 @@ function generateBookingTicketHTML(data: BookingTicketData): string {
   // Duration
   const totalDuration = data.durationMinutes || 
     data.services.reduce((sum, s) => sum + (s.durationMinutes || 0), 0);
+  const brand = getPrintBrandHtml();
 
 return `
 <!DOCTYPE html>
@@ -383,7 +385,7 @@ return `
 
 <body>
   <div class="center">
-    <div class="header">CUT SALON</div>
+    <div class="header">${brand.title}</div>
     <div class="subheader">ورقة حجز</div>
   </div>
 
@@ -460,7 +462,7 @@ return `
 
   <div class="footer">
     <div>يرجى تسليم الورقة قبل الدخول</div>
-    <div class="footer-note">شكراً لاختياركم Cut Salon</div>
+    ${brand.footer ? `<div class="footer-note">${brand.footer}</div>` : ''}
   </div>
 </body>
 </html>

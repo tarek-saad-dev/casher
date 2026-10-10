@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
       empIdFromCategoryMap: body.empIdFromCategoryMap != null ? Number(body.empIdFromCategoryMap) : null,
     };
 
-    const settings = await loadClassificationSettings();
+    const settings = await loadClassificationSettings(auth.tenantId);
     const withoutAdmin = classifyCashMove(input, emptySettingsBundle());
     const withAdmin = classifyCashMove(input, settings);
 

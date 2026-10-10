@@ -1,33 +1,26 @@
-import { NextRequest } from 'next/server';
-import { publicBookingErrorResponse } from '@/lib/booking/publicBookingErrorCatalog';
-import {
-  publicBookingOptionsResponse,
-  PUBLIC_BOOKING_ROUTE_CORS,
-} from '@/lib/booking/publicBookingCors';
+import { NextRequest, NextResponse } from 'next/server';
 import {
   PublicBookingBarberError,
   getPublicBarberLocation,
 } from '@/lib/booking/publicBookingBarbers';
 import { parsePublicServiceIdsParam } from '@/lib/booking/publicBookingBarberPolicy';
+import { extractPublicBranchCode } from '@/lib/branch/bookingQueueOwnership';
 import {
   gatePublicBookingRoute,
   finalizePublicBookingError,
   finalizePublicBookingJson,
+  publicBookingTenantOptionsResponse,
+  requirePublicBookingRouteTenancy,
 } from '@/lib/booking/publicBookingRouteGate';
 
 export const runtime = 'nodejs';
 
 export async function OPTIONS(req: NextRequest) {
-  const cors = PUBLIC_BOOKING_ROUTE_CORS['location'];
-  return publicBookingOptionsResponse({
-    request: req,
-    allowedMethods: [...cors.methods],
-    allowedHeaders: cors.headers,
-  });
+  return publicBookingTenantOptionsResponse(req, 'location');
 }
 
 /**
- * GET /api/public/booking/barbers/[empId]/location?date=&serviceIds=
+ * GET /api/public/booking/barbers/[empId]/location?date=&serviceIds=[&branchCode=]
  * One public operational branch per WorkDate (or safe off / not_available_publicly).
  */
 export async function GET(
@@ -45,13 +38,22 @@ export async function GET(
     void searchParams.get('BranchID');
     const preview = searchParams.get('preview');
     const date = searchParams.get('date') || '';
+    const branchCode = extractPublicBranchCode(searchParams);
 
     const parsedServices = parsePublicServiceIdsParam(searchParams.get('serviceIds'));
     if (!parsedServices.ok) {
       return finalizePublicBookingError(req, gate, 'SERVICE_NOT_AVAILABLE_AT_BRANCH');
     }
 
+    const tenancy = await requirePublicBookingRouteTenancy(req, gate, {
+      branchCode,
+      allowCutCompat: true,
+    });
+    if (tenancy instanceof NextResponse) return tenancy;
+
     const loc = await getPublicBarberLocation({
+      tenantId: tenancy.tenantId,
+      branchCode,
       empId,
       date,
       serviceIds: parsedServices.ids,

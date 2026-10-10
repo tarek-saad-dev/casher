@@ -56,9 +56,16 @@ describe('Phase 5A/5C1 does not change current send paths', () => {
 
   it('does not change the WhatsApp Gateway adapter contract', () => {
     const adapter = src('src/modules/messaging/infra/whatsappAdapter.ts');
-    expect(adapter).toContain('sendWhatsAppMessage');
+    expect(adapter).toContain('sendViaTenantChannel');
+    expect(adapter).toContain('tenancy/transport');
+    expect(adapter).not.toContain('@/lib/integrations/whatsapp');
     expect(adapter).not.toContain('enqueueMessage');
     expect(adapter).not.toContain('TblMessageOutbox');
+
+    const transport = src('src/modules/messaging/tenancy/transport.ts');
+    expect(transport).toContain('sendWhatsAppMessage(input, { apiBaseUrl: channel.endpointUrl })');
+    expect(transport).not.toContain('enqueueMessage');
+    expect(transport).not.toContain('TblMessageOutbox');
 
     const gateway = src('src/lib/integrations/whatsapp/index.ts');
     expect(gateway).not.toContain('enqueueMessage');

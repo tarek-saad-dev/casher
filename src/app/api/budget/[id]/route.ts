@@ -2,6 +2,7 @@ import { liveCashMovePredicate } from '@/lib/treasury/liveCashMoveSql';
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
 import type { UpdateBudgetMonthPayload, BudgetLineGroup, BudgetBlocker } from '@/lib/types';
+import { requireLegacyGlobalDataSession } from '@/lib/api-auth';
 
 // ── Line group classification ──
 function getLineGroup(lineType: string, empID: unknown): BudgetLineGroup {
@@ -20,6 +21,8 @@ export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const tenantSession = await requireLegacyGlobalDataSession('budget');
+  if (tenantSession instanceof NextResponse) return tenantSession;
   try {
     const { id } = await params;
     const budgetMonthID = parseInt(id);
@@ -323,6 +326,8 @@ export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const tenantSession = await requireLegacyGlobalDataSession('budget');
+  if (tenantSession instanceof NextResponse) return tenantSession;
   try {
     const { id } = await params;
     const budgetMonthID = parseInt(id);

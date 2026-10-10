@@ -9,10 +9,9 @@ import { withControlDeps } from '@/modules/messaging/handoff/application/command
 import { sendHumanErpMessage } from '@/modules/messaging/handoff/application/sendHumanErp';
 import { resolveUserDisplayName } from '@/modules/messaging/handoff/application/listInbox';
 import { HandoffError } from '@/modules/messaging/handoff/application/errors';
-import {
-  isDrvowaEventMessagingActive,
-  sendDrvowaInboxReply,
-} from '@/lib/integrations/drvowaClient';
+import { sendDrvowaInboxReply } from '@/lib/integrations/drvowaClient';
+import { isDrvowaActiveForMessagingTenant } from '@/lib/integrations/drvowaTenant';
+import { runWithStaffMessagingTenant } from '@/modules/messaging/tenancy/staffScope';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -22,48 +21,49 @@ type Ctx = { params: Promise<{ id: string }> };
 export async function POST(req: NextRequest, ctx: Ctx) {
   const admin = await requireWhatsAppTemplateAdmin();
   if (!isWhatsAppTemplateAdmin(admin)) return admin;
+  return runWithStaffMessagingTenant(admin, 'admin/whatsapp/inbox/[id]/send:POST', async () => {
+    try {
+      const { id } = await ctx.params;
+      const body = (await req.json()) as { text?: string };
 
-  try {
-    const { id } = await ctx.params;
-    const body = (await req.json()) as { text?: string };
-
-    if (await isDrvowaEventMessagingActive()) {
-      const text = String(body.text ?? '').trim();
-      if (!text) {
-        return NextResponse.json({ error: 'الرسالة مطلوبة' }, { status: 400 });
+      if (await isDrvowaActiveForMessagingTenant('admin/whatsapp/inbox/[id]/send:POST')) {
+        const text = String(body.text ?? '').trim();
+        if (!text) {
+          return NextResponse.json({ error: 'الرسالة مطلوبة' }, { status: 400 });
+        }
+        const result = await sendDrvowaInboxReply({
+          conversationId: id,
+          text,
+          idempotencyKey: randomUUID(),
+          actorName: admin.userName || 'موظف ERP',
+          actorExternalId: String(admin.userId),
+        });
+        return NextResponse.json({ ok: true, source: 'DRVOWA', ...result });
       }
-      const result = await sendDrvowaInboxReply({
-        conversationId: id,
-        text,
-        idempotencyKey: randomUUID(),
-        actorName: admin.userName || 'موظف ERP',
-        actorExternalId: String(admin.userId),
-      });
-      return NextResponse.json({ ok: true, source: 'DRVOWA', ...result });
-    }
 
-    const conversationId = Number(id);
-    if (!Number.isFinite(conversationId) || conversationId <= 0) {
-      return NextResponse.json({ error: 'invalid id' }, { status: 400 });
-    }
-    const result = await sendHumanErpMessage(
-      {
-        conversationId,
-        userId: admin.userId,
-        text: String(body.text ?? ''),
-        branchId: admin.branchId,
-      },
-      withControlDeps({ resolveUserName: resolveUserDisplayName }),
-    );
-    return NextResponse.json({ ok: true, ...result });
-  } catch (err) {
-    if (err instanceof HandoffError) {
-      return NextResponse.json(
-        { ok: false, error: err.message, code: err.code, ownerName: err.ownerName },
-        { status: err.status },
+      const conversationId = Number(id);
+      if (!Number.isFinite(conversationId) || conversationId <= 0) {
+        return NextResponse.json({ error: 'invalid id' }, { status: 400 });
+      }
+      const result = await sendHumanErpMessage(
+        {
+          conversationId,
+          userId: admin.userId,
+          text: String(body.text ?? ''),
+          branchId: admin.branchId,
+        },
+        withControlDeps({ resolveUserName: resolveUserDisplayName }),
       );
+      return NextResponse.json({ ok: true, ...result });
+    } catch (err) {
+      if (err instanceof HandoffError) {
+        return NextResponse.json(
+          { ok: false, error: err.message, code: err.code, ownerName: err.ownerName },
+          { status: err.status },
+        );
+      }
+      console.error('[api/admin/whatsapp/inbox/[id]/send POST]', err);
+      return NextResponse.json({ error: getUserFriendlyError(err) }, { status: 500 });
     }
-    console.error('[api/admin/whatsapp/inbox/[id]/send POST]', err);
-    return NextResponse.json({ error: getUserFriendlyError(err) }, { status: 500 });
-  }
+  });
 }

@@ -18,6 +18,7 @@ import {
   normalizePublicBookingCode,
   PublicBookingReadError,
 } from '@/lib/booking/publicBookingReader';
+import { tenantLocationBranchSql } from '@/lib/booking/publicBookingTenancy';
 import {
   resolvePublicCancellationCutoff,
   isApprovedReasonCode,
@@ -84,6 +85,8 @@ export type CancelPublicBookingInput = {
   requestContext?: { ip?: string; userAgent?: string };
   schedulingPortHooks?: SchedulingPortHooks;
   useExtractedEventDelivery?: boolean;
+  /** DRVO-019: booking must belong to one of this tenant's branches. */
+  tenantId?: string | null;
 };
 
 export type CancelPublicBookingResult = {
@@ -246,8 +249,12 @@ function deriveDateSource(row: BookingCancelRow): {
 async function loadBookingByCode(
   makeRequest: () => sql.Request,
   code: string,
+  tenantId: string | null,
 ): Promise<BookingCancelRow | null> {
-  const r = await makeRequest().input('code', sql.NVarChar(32), code).query(`
+  const r = await makeRequest()
+    .input('code', sql.NVarChar(32), code)
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
+    .query(`
     SELECT TOP 1
       b.BookingID,
       b.BookingCode,
@@ -274,8 +281,11 @@ async function loadBookingByCode(
     FROM dbo.Bookings b
     LEFT JOIN dbo.TblBranch br ON br.BranchID = b.BranchID
     LEFT JOIN dbo.TblClient c ON c.ClientID = b.ClientID
+      AND (@tenantId IS NULL OR c.TenantId = @tenantId)
     LEFT JOIN dbo.TblEmp e ON e.EmpID = b.AssignedEmpID
+      AND (@tenantId IS NULL OR e.TenantId = @tenantId)
     WHERE b.BookingCode = @code
+      AND (@tenantId IS NULL OR ${tenantLocationBranchSql('b.BranchID')})
   `);
   return (r.recordset[0] as BookingCancelRow | undefined) ?? null;
 }
@@ -542,7 +552,7 @@ export async function cancelPublicBooking(
 
   // Preload for fingerprint ownership digest (best-effort; TX revalidates).
   const db = await getPool();
-  const pre = await loadBookingByCode(() => db.request(), code);
+  const pre = await loadBookingByCode(() => db.request(), code, input.tenantId ?? null);
   if (!pre || !isPublicOriginBooking(pre)) {
     throw new PublicBookingCancelError('BOOKING_NOT_FOUND_OR_UNAUTHORIZED');
   }
@@ -632,7 +642,11 @@ export async function cancelPublicBooking(
   try {
     await acquireBookingAppLock(transaction, cancelLockResource(code));
 
-    const row = await loadBookingByCode(() => new sql.Request(transaction), code);
+    const row = await loadBookingByCode(
+      () => new sql.Request(transaction),
+      code,
+      input.tenantId ?? null,
+    );
     if (!row || !isPublicOriginBooking(row)) {
       throw new PublicBookingCancelError('BOOKING_NOT_FOUND_OR_UNAUTHORIZED');
     }

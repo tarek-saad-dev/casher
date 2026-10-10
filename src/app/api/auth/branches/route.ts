@@ -25,7 +25,7 @@ export async function GET() {
     }
 
     const user = await getSession();
-    if (!user) {
+    if (!user || !user.TenantId) {
       return NextResponse.json(
         { ok: false, error: 'UNAUTHORIZED', message: 'يلزم تسجيل الدخول' },
         { status: 401 },
@@ -41,7 +41,7 @@ export async function GET() {
       );
     }
 
-    const branches = await listSwitchableBranchesForUser(user.UserID, ctx.branchId);
+    const branches = await listSwitchableBranchesForUser(user.UserID, ctx.branchId, user.TenantId);
 
     return NextResponse.json({
       ok: true,

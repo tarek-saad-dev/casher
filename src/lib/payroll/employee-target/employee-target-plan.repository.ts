@@ -81,15 +81,17 @@ function mapTier(row: Record<string, unknown>): TargetTierRow {
 
 export async function getEmployeeBasic(
   empId: number,
+  tenantId: string,
 ): Promise<{ EmpID: number; EmpName: string; isActive: boolean } | null> {
   const db = await getPool();
   const result = await db
     .request()
     .input('empId', sql.Int, empId)
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
     .query(`
       SELECT EmpID, EmpName, CAST(ISNULL(isActive, 1) AS BIT) AS isActive
       FROM dbo.TblEmp
-      WHERE EmpID = @empId
+      WHERE EmpID = @empId AND TenantId = @tenantId
     `);
   if (!result.recordset[0]) return null;
   const row = result.recordset[0] as Record<string, unknown>;
@@ -374,11 +376,13 @@ export async function deletePlanInTransaction(
  */
 export async function getEmployeesTargetSummaryBatch(
   asOfDate: string,
+  tenantId: string,
 ): Promise<Map<number, EmployeeTargetSummaryRow>> {
   const db = await getPool();
   const result = await db
     .request()
     .input('asOf', sql.Date, asOfDate)
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
     .query(`
       SELECT
         e.EmpID,
@@ -414,6 +418,7 @@ export async function getEmployeesTargetSummaryBatch(
           AND (p.EffectiveTo IS NULL OR p.EffectiveTo >= @asOf)
         ORDER BY p.EffectiveFrom DESC, p.ID DESC
       ) ep
+      WHERE e.TenantId = @tenantId
     `);
 
   const map = new Map<number, EmployeeTargetSummaryRow>();

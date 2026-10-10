@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isAuthResult, requirePageAccess } from '@/lib/api-auth';
+import { branchAdminTenantScopeResponse } from '@/lib/branch/context';
 import { BranchDomainError } from '@/lib/branch/types';
 import { activateBranchPartnerShares } from '@/lib/branch/activatePartnerShares';
 
@@ -15,6 +16,8 @@ export async function POST(
   if (!Number.isFinite(branchId)) {
     return NextResponse.json({ error: 'معرف فرع غير صالح' }, { status: 400 });
   }
+  const outOfTenant = await branchAdminTenantScopeResponse(auth, branchId);
+  if (outOfTenant) return outOfTenant;
   try {
     const body = await req.json();
     const effectiveFrom = String(body.effectiveFrom || '');

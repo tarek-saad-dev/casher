@@ -16,6 +16,7 @@ import {
   isPosPortEnabled,
 } from '@/apps/pos/public';
 import { createSaleLegacyFromRoute } from '@/lib/sales/legacyRouteSaleCreate';
+import { findForeignServiceIds } from '@/lib/catalog/tenantCatalogGuards';
 
 export const runtime = "nodejs";
 
@@ -32,13 +33,27 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const sessionUser = await getSession();
+    if (!sessionUser?.TenantId) {
+      return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
+    }
+
+    // Lines may only name services/products of the caller's tenant.
+    {
+      const lineProIds = body.items.map((i) => Number(i.proId));
+      const foreign = await findForeignServiceIds(await getPool(), sessionUser.TenantId, lineProIds);
+      if (foreign.length > 0) {
+        return NextResponse.json({ error: "خدمة غير موجودة" }, { status: 404 });
+      }
+    }
+
     // Home-visit tiers are mutually exclusive on one invoice.
     {
       const { listHomeVisitProIds } = await import('@/lib/catalog/publicPackagesCatalog');
       const { hasConflictingHomeVisitProIds } = await import(
         '@/lib/catalog/groomOptionalAddons'
       );
-      const homeVisitProIds = await listHomeVisitProIds();
+      const homeVisitProIds = await listHomeVisitProIds(sessionUser.TenantId);
       const lineProIds = body.items.map((i) => Number(i.proId));
       if (hasConflictingHomeVisitProIds(lineProIds, homeVisitProIds)) {
         return NextResponse.json(
@@ -53,7 +68,6 @@ export async function POST(req: NextRequest) {
     }
 
     // ──── Session enforcement ────
-    const sessionUser = await getSession();
     const userID = sessionUser?.UserID ?? 0;
 
     const db = await getPool();

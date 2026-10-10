@@ -1,24 +1,19 @@
 /**
  * POST /api/admin/migrate-employee-image-url
  * Runs the TblEmp ImageUrl migration (idempotent).
- * Protected: requires admin session.
+ * Protected: platform operator only (global schema/data maintenance).
  */
 import { NextResponse } from 'next/server';
 import { getPool } from '@/lib/db';
-import { getSession } from '@/lib/session';
+import { requirePlatformOperator } from '@/lib/api-auth';
 import { ensureTblEmpImageUrlColumn } from '@/lib/migrations/ensureEmployeeImageUrl';
 
 export const runtime = 'nodejs';
 
 export async function POST() {
   try {
-    const session = await getSession();
-    if (!session || session.UserLevel !== 'admin') {
-      return NextResponse.json(
-        { ok: false, error: 'غير مصرح - يتطلب صلاحيات المدير' },
-        { status: 403 },
-      );
-    }
+    const operator = await requirePlatformOperator();
+    if (operator instanceof NextResponse) return operator;
 
     const db = await getPool();
     const ready = await ensureTblEmpImageUrlColumn(db);

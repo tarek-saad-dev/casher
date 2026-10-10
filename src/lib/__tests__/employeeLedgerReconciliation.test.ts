@@ -3,6 +3,8 @@ import { NextRequest } from 'next/server';
 
 vi.mock('server-only', () => ({}));
 
+const TENANT_ID = '11111111-1111-4111-8111-111111111111';
+
 function makeQueryRouter(handlers: Array<(sql: string) => unknown>) {
   let idx = 0;
   return vi.fn(async (sql: string) => {
@@ -203,7 +205,7 @@ describe('getEmployeeLedgerReconciliation', () => {
     }));
 
     const { getEmployeeLedgerReconciliation } = await import('@/lib/services/employeeLedgerReconciliationService');
-    const result = await getEmployeeLedgerReconciliation('2026-04');
+    const result = await getEmployeeLedgerReconciliation('2026-04', null, null, TENANT_ID);
 
     expect(result.summary.payrollGeneratedTotal).toBe(500);
     expect(result.summary.issueCount).toBe(0);
@@ -244,7 +246,7 @@ describe('getEmployeeLedgerReconciliation', () => {
     }));
 
     const { getEmployeeLedgerReconciliation } = await import('@/lib/services/employeeLedgerReconciliationService');
-    const result = await getEmployeeLedgerReconciliation('2026-04');
+    const result = await getEmployeeLedgerReconciliation('2026-04', null, null, TENANT_ID);
 
     expect(result.summary.payrollLedgerCreditDiff).toBe(200);
     expect(result.summary.issueCount).toBe(1);
@@ -278,7 +280,7 @@ describe('getEmployeeLedgerReconciliation', () => {
     }));
 
     const { getEmployeeLedgerReconciliation } = await import('@/lib/services/employeeLedgerReconciliationService');
-    const result = await getEmployeeLedgerReconciliation('2026-04');
+    const result = await getEmployeeLedgerReconciliation('2026-04', null, null, TENANT_ID);
 
     expect(result.summary.advanceCashMoveTotal).toBe(150);
     expect(result.summary.advanceLedgerDiff).toBe(150);
@@ -314,7 +316,7 @@ describe('getEmployeeLedgerReconciliation', () => {
     }));
 
     const { getEmployeeLedgerReconciliation } = await import('@/lib/services/employeeLedgerReconciliationService');
-    const result = await getEmployeeLedgerReconciliation('2026-07');
+    const result = await getEmployeeLedgerReconciliation('2026-07', null, null, TENANT_ID);
 
     expect(result.summary.advanceLedgerDiff).toBe(30);
     expect(result.missingAdvanceDebits).toHaveLength(0);
@@ -357,7 +359,7 @@ describe('getEmployeeLedgerReconciliation', () => {
     }));
 
     const { getEmployeeLedgerReconciliation } = await import('@/lib/services/employeeLedgerReconciliationService');
-    const result = await getEmployeeLedgerReconciliation('2026-04');
+    const result = await getEmployeeLedgerReconciliation('2026-04', null, null, TENANT_ID);
 
     expect(result.legacyMirrorRows).toHaveLength(1);
     expect(result.legacyMirrorRows[0].rowCount).toBe(2);

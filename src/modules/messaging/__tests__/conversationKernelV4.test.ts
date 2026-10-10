@@ -27,6 +27,10 @@ import {
 } from '@/modules/messaging/ai/conversationOrchestrator/benchmarkV31';
 import type { BookingPlanSnapshot } from '@/modules/messaging/ai/planner/types';
 
+vi.mock('@/modules/messaging/ai/tools/messagingBookingTenant', () => ({
+  resolveMessagingBookingTenantId: async () => '11111111-1111-4111-8111-111111111111',
+}));
+
 vi.mock('@/lib/booking/publicBookingBarbers', () => ({
   listPublicBookingBarbers: vi.fn(async () => ({
     mode: 'branch',

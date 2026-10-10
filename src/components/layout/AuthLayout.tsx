@@ -49,7 +49,9 @@ export default function AuthLayout({ children }: AuthLayoutProps) {
     });
   }, [pathname, sessionLoading, sessionAuth, permLoading, access, authResolving, isLoginPage]);
 
-  if (isLoginPage) {
+  const isPublicBookingPage = pathname.startsWith('/book/');
+
+  if (isLoginPage || isPublicBookingPage) {
     return (
       <div className="flex-1 flex flex-col min-h-0">
         {children}

@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
-import { getSession } from "@/lib/session";
 import { executeAuditedAction, isAuditedActionError } from '@/lib/sensitiveActionAudit';
 import { getIncomeSnapshot, updateIncome, deleteIncome } from '@/lib/actions/incomeActions';
 import { liveCashMovePredicate } from '@/lib/treasury/liveCashMoveSql';
 import { cashMoveHardDeleteSuccessMessage } from '@/lib/services/cashMoveHardDeleteService';
+import { requireTenantSession } from '@/lib/api-auth';
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -63,7 +63,8 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
 // ─────────────────────── PATCH /api/incomes/[id] ───────────────────────
 export async function PATCH(req: NextRequest, { params }: Ctx) {
   try {
-    const session = await getSession();
+    const session = await requireTenantSession();
+    if (session instanceof NextResponse) return session;
     if (!session)
       return NextResponse.json(
         { error: "يجب تسجيل الدخول أولاً" },
@@ -169,9 +170,10 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
 // ───────────────────────── DELETE /api/incomes/[id] ───────────────────────
 export async function DELETE(req: NextRequest, { params }: Ctx) {
   try {
-    const session = await getSession();
-    if (!session)
-      return NextResponse.json({ error: 'يجب تسجيل الدخول أولاً' }, { status: 401 });
+    const session = await requireTenantSession();
+    if (session instanceof NextResponse) return session;
+    if (!session.TenantId) return NextResponse.json({ error: 'يجب تسجيل الدخول أولاً' }, { status: 401 });
+    const sessionTenantId = session.TenantId;
 
     const { id } = await params;
     const incomeId = parseInt(id);
@@ -205,7 +207,10 @@ export async function DELETE(req: NextRequest, { params }: Ctx) {
         return snap as unknown as Record<string, unknown>;
       },
       execute: async (transaction) =>
-        deleteIncome(transaction, incomeId, loaded.ownership.branchId),
+        deleteIncome(transaction, incomeId, loaded.ownership.branchId, {
+          tenantId: sessionTenantId,
+          userId: session.UserID,
+        }),
       loadNewData: async () => null,
     });
 

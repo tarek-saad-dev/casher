@@ -1,0 +1,259 @@
+name: DRVO Staging Gate
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: drvo-staging-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  staging-gate:
+    if: >
+      (github.event_name == 'workflow_dispatch') ||
+      (
+        github.event.pull_request.head.repo.full_name == github.repository &&
+        github.event.pull_request.head.ref == 'drvo-012-commercial-plans-tenant-apps'
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    env:
+      DRVO_STAGING_SSH_HOST: ${{ secrets.DRVO_STAGING_SSH_HOST || secrets.VPS_HOST }}
+      DRVO_STAGING_SSH_KEY: ${{ secrets.DRVO_STAGING_SSH_KEY }}
+      DRVO_STAGING_DB_PASSWORD: ${{ secrets.DRVO_STAGING_DB_PASSWORD }}
+      DRVO_STAGING_DB_SERVER: 127.0.0.1
+      DRVO_STAGING_DB_PORT: '14330'
+      DB_SERVER: 127.0.0.1
+      DB_PORT: '14330'
+      DB_DATABASE: last132_agent
+      DB_USER: drvo_agent
+      DB_PASSWORD: ${{ secrets.DRVO_STAGING_DB_PASSWORD }}
+      DB_ENCRYPT: 'false'
+      DB_TRUST_SERVER_CERTIFICATE: 'true'
+      CLOUD_DB_SERVER: 127.0.0.1
+      CLOUD_DB_PORT: '14330'
+      CLOUD_DB_NAME: last132_agent
+      CLOUD_DB_USER: drvo_agent
+      CLOUD_DB_PASSWORD: ${{ secrets.DRVO_STAGING_DB_PASSWORD }}
+      CLOUD_DB_ENCRYPT: 'false'
+      CLOUD_DB_TRUST_CERT: 'true'
+      DEPLOY_COMMIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Refuse local env files
+        run: |
+          set -euo pipefail
+          for f in .env .env.local .env.production .env.production.local; do
+            if [[ -f "$f" ]]; then
+              echo "Refusing staging gate: repository checkout contains $f" >&2
+              exit 10
+            fi
+          done
+
+      - name: Check staging secrets are configured
+        run: |
+          set -euo pipefail
+          missing=0
+          for key in DRVO_STAGING_SSH_HOST DRVO_STAGING_SSH_KEY DRVO_STAGING_DB_PASSWORD; do
+            if [[ -z "${!key:-}" ]]; then
+              echo "Missing required staging secret: $key" >&2
+              missing=1
+            fi
+          done
+          [[ "$missing" -eq 0 ]] || exit 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Configure staging SSH key
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$DRVO_STAGING_SSH_KEY" > ~/.ssh/drvo_staging
+          chmod 600 ~/.ssh/drvo_staging
+          ssh-keyscan -H "$DRVO_STAGING_SSH_HOST" >> ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Open staging SQL tunnel
+        run: |
+          set -euo pipefail
+          ssh \
+            -i ~/.ssh/drvo_staging \
+            -o BatchMode=yes \
+            -o ExitOnForwardFailure=yes \
+            -o ServerAliveInterval=30 \
+            -L 14330:127.0.0.1:1433 \
+            "drvo-tunnel@$DRVO_STAGING_SSH_HOST" \
+            -N &
+          echo $! > /tmp/drvo-staging-tunnel.pid
+
+          for i in {1..30}; do
+            if nc -z 127.0.0.1 14330; then
+              echo "Staging SQL tunnel ready."
+              exit 0
+            fi
+            sleep 1
+          done
+
+          echo "Staging SQL tunnel did not become ready." >&2
+          exit 12
+
+      - name: Prove staging identity
+        run: |
+          set -euo pipefail
+          npx tsx -e "
+            import sql from 'mssql';
+            const cfg = {
+              server: '127.0.0.1',
+              port: 14330,
+              database: 'last132_agent',
+              user: 'drvo_agent',
+              password: process.env.DRVO_STAGING_DB_PASSWORD!,
+              options: { encrypt: false, trustServerCertificate: true }
+            };
+            const p = await sql.connect(cfg);
+            try {
+              const r = await p.request().query('SELECT DB_NAME() AS db, SUSER_SNAME() AS login;');
+              const row = r.recordset[0];
+              console.log('DB identity:', row.db, '/', row.login);
+              if (row.db !== 'last132_agent') throw new Error('Refusing unexpected database: ' + row.db);
+              if (String(row.login).toLowerCase() !== 'drvo_agent') throw new Error('Refusing unexpected login: ' + row.login);
+            } finally {
+              await p.close();
+            }
+          "
+
+      - name: Apply DRVO migrations to staging only
+        run: npm run drvo:migrate -- --expected-database=last132_agent
+
+      - name: Verify migration 9 ledger
+        run: |
+          set -euo pipefail
+          npx tsx -e "
+            import sql from 'mssql';
+            const expected = 'a711f08b6e4ff2954611145120ed6d26634e55d0c67a9ecbc35bc3b792f96427';
+            const p = await sql.connect({
+              server: '127.0.0.1',
+              port: 14330,
+              database: 'last132_agent',
+              user: 'drvo_agent',
+              password: process.env.DRVO_STAGING_DB_PASSWORD!,
+              options: { encrypt: false, trustServerCertificate: true }
+            });
+            try {
+              const r = await p.request().query(`
+                SELECT MigrationId, MigrationKey, Checksum, AppCommitSha
+                FROM dbo.DrvoSchemaMigration
+                WHERE MigrationId = 9;
+              `);
+              if (r.recordset.length !== 1) throw new Error('Migration 9 ledger row missing');
+              const row = r.recordset[0];
+              console.log('Migration 9:', row.MigrationKey, row.Checksum, row.AppCommitSha);
+              if (row.MigrationKey !== 'commercial-subscription-tenant-apps') throw new Error('Unexpected migration key');
+              if (String(row.Checksum).toLowerCase() !== expected) throw new Error('Migration 9 checksum mismatch');
+            } finally {
+              await p.close();
+            }
+          "
+
+      - name: Verify DRVO after migration
+        id: verify_after_migration
+        continue-on-error: true
+        run: npm run drvo:verify
+
+      - name: Reconcile grandfathered subscriptions if required
+        if: steps.verify_after_migration.outcome == 'failure'
+        run: |
+          set -euo pipefail
+          npm run drvo-012:reconcile-subscriptions -- --expected-database=last132_agent
+          npm run drvo:verify
+
+      - name: DRVO-012 staging smoke
+        run: npm run drvo-012:smoke
+
+      - name: DRVO-011 regression smoke
+        run: npm run drvo-011:smoke
+
+      - name: Cleanup proof
+        run: |
+          set -euo pipefail
+          npx tsx -e "
+            import sql from 'mssql';
+            const p = await sql.connect({
+              server: '127.0.0.1',
+              port: 14330,
+              database: 'last132_agent',
+              user: 'drvo_agent',
+              password: process.env.DRVO_STAGING_DB_PASSWORD!,
+              options: { encrypt: false, trustServerCertificate: true }
+            });
+            try {
+              const tenant = await p.request().query(`
+                SELECT COUNT(*) AS cnt
+                FROM dbo.Tenant
+                WHERE Code LIKE N'DRVO011[_]%' OR Code LIKE N'DRVO012[_]%';
+              `);
+              const cnt = Number(tenant.recordset[0].cnt);
+              console.log('Synthetic tenant residue:', cnt);
+              if (cnt !== 0) throw new Error('Synthetic DRVO011/DRVO012 tenant residue remains');
+
+              const orphanChecks = [
+                ['TenantSubscription', 'TenantId'],
+                ['TenantIndustryPack', 'TenantId'],
+                ['TenantAppEntitlement', 'TenantId'],
+                ['PlatformOutbox', 'TenantId']
+              ];
+              for (const [table, col] of orphanChecks) {
+                const q = await p.request().query(`
+                  SELECT COUNT(*) AS cnt
+                  FROM dbo.[${table}] x
+                  WHERE NOT EXISTS (
+                    SELECT 1 FROM dbo.Tenant t WHERE t.TenantId = x.[${col}]
+                  );
+                `);
+                const n = Number(q.recordset[0].cnt);
+                console.log(table + ' orphan rows:', n);
+                if (n !== 0) throw new Error(table + ' has orphan rows');
+              }
+            } finally {
+              await p.close();
+            }
+          "
+
+      - name: Final DRVO verify
+        run: npm run drvo:verify
+
+      - name: Report PASS
+        run: |
+          {
+            echo "## DRVO-012 staging gate PASS"
+            echo
+            echo "- DB: last132_agent"
+            echo "- Login: drvo_agent"
+            echo "- Migration: 9 / commercial-subscription-tenant-apps"
+            echo "- Checksum: a711f08b6e4ff2954611145120ed6d26634e55d0c67a9ecbc35bc3b792f96427"
+            echo "- DRVO-012 smoke: PASS"
+            echo "- DRVO-011 smoke: PASS"
+            echo "- Cleanup: PASS"
+            echo "- Final verify: PASS"
+          } >> "$GITHUB_STEP_SUMMARY"

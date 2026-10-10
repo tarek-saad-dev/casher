@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { Printer, X, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { getPrintBrandHtml, usePrintBrand } from '@/lib/tenant/tenantBrandClient';
 
 interface DeductionReceiptData {
   deductionInvID: number;
@@ -174,6 +175,7 @@ const RECEIPT_CSS = `
 `;
 
 export default function DeductionReceiptPopup({ open, deduction, onClose }: DeductionReceiptPopupProps) {
+  const printBrand = usePrintBrand();
   const [printing, setPrinting] = useState(false);
   const [visible, setVisible] = useState(false);
   const [progress, setProgress] = useState(100);
@@ -210,7 +212,7 @@ export default function DeductionReceiptPopup({ open, deduction, onClose }: Dedu
 </head>
 <body>
   <div class="deduction-header">
-    <div class="salon-name">CUT SALON</div>
+    <div class="salon-name">${getPrintBrandHtml().title}</div>
     <div class="deduction-title">إشعار خصم</div>
   </div>
   
@@ -386,7 +388,7 @@ export default function DeductionReceiptPopup({ open, deduction, onClose }: Dedu
         {/* Receipt Mini Preview */}
         <div className="bg-white border border-black rounded p-2 mb-3 text-black" dir="rtl">
           <div className="text-center border-b-2 border-black pb-1 mb-1">
-            <p className="font-black text-[10px] tracking-wider">CUT SALON</p>
+            <p className="font-black text-[10px] tracking-wider">{printBrand.title}</p>
             <p className="font-black text-[12px] text-red-600">إشعار خصم</p>
           </div>
           

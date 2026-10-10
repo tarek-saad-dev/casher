@@ -5,6 +5,8 @@ import type { MessageSendResult } from '../domain/types';
 import { MessageTemplateError } from '../domain/templateTypes';
 import { composeMessage } from './composeMessage';
 import { sendMessage } from './sendMessage';
+import { isTenantContextError } from '@/platform/tenant/tenantContext';
+import { runWithMessagingTenantForBranch } from '../tenancy/branchTenantScope';
 import {
   ATTENDANCE_CHECK_IN_TEMPLATE_KEY,
   ATTENDANCE_CHECK_OUT_TEMPLATE_KEY,
@@ -90,8 +92,9 @@ function mergeMetadata(
 /**
  * Public feature integration boundary for templated WhatsApp.
  *
- * Internally: templateKey → composeMessage (branch/global/default + render)
- * → sendMessage → generic sendWhatsAppMessage → Gateway.
+ * Internally: tenant (ambient scope, else owner of context/metadata branchId) → templateKey →
+ * composeMessage (tenant branch/global/default + render) → sendMessage → tenant channel.
+ * No resolvable tenant → skipped `tenant_unresolved` (never another tenant's channel).
  *
  * Features must not call composeMessage+sendMessage, sendWhatsAppMessage,
  * the HTTP client, or typed bot APIs.
@@ -126,6 +129,32 @@ export async function sendTemplateMessage(
     return { sent: false, channel: 'whatsapp', reason: 'missing_phone', skipped: true };
   }
 
+  const branchId = templateBranchId(input);
+  try {
+    return await runWithMessagingTenantForBranch(branchId, `template:${templateKey}`, () =>
+      composeAndSend(templateKey, phone, input, deps),
+    );
+  } catch (err) {
+    if (isTenantContextError(err)) {
+      console.log(`[whatsapp] Template ${templateKey} skipped: tenant unresolved — ${err.message}`);
+      return { sent: false, channel: 'whatsapp', reason: 'tenant_unresolved', skipped: true };
+    }
+    throw err;
+  }
+}
+
+function templateBranchId(input: SendTemplateMessageInput): number | null {
+  if (typeof input.context?.branchId === 'number') return input.context.branchId;
+  const fromMetadata = Number(input.metadata?.branchId);
+  return Number.isInteger(fromMetadata) && fromMetadata > 0 ? fromMetadata : null;
+}
+
+async function composeAndSend(
+  templateKey: string,
+  phone: string,
+  input: SendTemplateMessageInput,
+  deps?: SendTemplateMessageDeps,
+): Promise<MessageSendResult> {
   const compose = deps?.compose ?? composeMessage;
   const send = deps?.send ?? sendMessage;
 

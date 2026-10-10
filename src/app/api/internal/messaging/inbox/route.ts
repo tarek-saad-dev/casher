@@ -4,6 +4,7 @@ import {
   requireSystemJobAuth,
 } from '@/lib/api-auth';
 import { listInboxMessages } from '@/modules/messaging/inbox/application/listInboxMessages';
+import { runWithSystemJobMessagingTenant } from '@/modules/messaging/tenancy/systemJobScope';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -18,21 +19,23 @@ export async function GET(req: NextRequest) {
   const jobAuth = await requireSystemJobAuth(req);
   if (!isSystemJobAuthResult(jobAuth)) return jobAuth;
 
-  try {
-    const { searchParams } = req.nextUrl;
-    const status = searchParams.get('status');
-    const limitRaw = searchParams.get('limit');
-    const limit = limitRaw == null ? undefined : Number(limitRaw);
+  return runWithSystemJobMessagingTenant(jobAuth, req, 'internal/messaging/inbox:GET', async () => {
+    try {
+      const { searchParams } = req.nextUrl;
+      const status = searchParams.get('status');
+      const limitRaw = searchParams.get('limit');
+      const limit = limitRaw == null ? undefined : Number(limitRaw);
 
-    const result = await listInboxMessages({ status, limit });
-    return NextResponse.json({
-      ok: true,
-      items: result.items,
-      limit: result.limit,
-    });
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Unknown error';
-    console.error('[api/internal/messaging/inbox] error:', message);
-    return NextResponse.json({ ok: false, error: message }, { status: 500 });
-  }
+      const result = await listInboxMessages({ status, limit });
+      return NextResponse.json({
+        ok: true,
+        items: result.items,
+        limit: result.limit,
+      });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      console.error('[api/internal/messaging/inbox] error:', message);
+      return NextResponse.json({ ok: false, error: message }, { status: 500 });
+    }
+  });
 }

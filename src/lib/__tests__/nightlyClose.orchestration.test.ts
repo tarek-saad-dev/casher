@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('server-only', () => ({}));
 
@@ -82,6 +82,9 @@ vi.mock('@/lib/hr/owner-daily-whatsapp-report.service', () => ({
 vi.mock('@/lib/integrations/whatsapp', () => ({
   checkWhatsAppStatus: (...args: unknown[]) => checkWhatsAppStatus(...args),
   isWhatsAppEnabled: (...args: unknown[]) => isWhatsAppEnabled(...args),
+  checkWhatsAppBotHealth: vi.fn(),
+  sendWhatsAppMessage: vi.fn(),
+  sendWhatsAppGroupMessage: vi.fn(),
 }));
 
 vi.mock('@/lib/db', () => ({
@@ -98,12 +101,25 @@ vi.mock('@/lib/db', () => ({
 const listActiveBranches = vi.fn();
 vi.mock('@/lib/branch', () => ({
   listActiveBranches: (...args: unknown[]) => listActiveBranches(...args),
+  listActiveBranchesIn: async (ids: readonly number[]) =>
+    ((await listActiveBranches()) as { branchId: number }[]).filter((b) => ids.includes(b.branchId)),
 }));
 
+type TenantKit = typeof import('@/modules/messaging/__tests__/support/messagingTenantTestKit');
+
 describe('runNightlyClose orchestration', () => {
-  beforeEach(() => {
+  let kit: TenantKit;
+
+  afterEach(() => {
+    kit.resetMessagingTenantTestKit();
+  });
+
+  beforeEach(async () => {
     vi.resetModules();
     vi.clearAllMocks();
+    // Imported after resetModules so the seams bind the same module instances as the service.
+    kit = await import('@/modules/messaging/__tests__/support/messagingTenantTestKit');
+    kit.installMessagingTenantTestKit();
     listActiveBranches.mockResolvedValue([
       { branchId: 1, branchCode: 'GLEEM', branchName: 'جليم', isActive: true },
     ]);
@@ -198,7 +214,7 @@ describe('runNightlyClose orchestration', () => {
 
   it('runs D → payroll → targets → employee WA → owner WA and verifies', async () => {
     const { runNightlyClose } = await import('@/lib/hr/nightly-close.service');
-    const result = await runNightlyClose({ workDate: '2026-07-14' });
+    const result = await runNightlyClose({ tenantId: '11111111-1111-4111-8111-111111111111', workDate: '2026-07-14', branchIds: [1] });
 
     expect(finalizeIncompleteAttendanceAsDayOff).toHaveBeenCalledWith('2026-07-14', {
       branchId: 1,
@@ -209,11 +225,15 @@ describe('runNightlyClose orchestration', () => {
       generatedByUserId: null,
       branchId: 1,
     });
+    expect(checkWhatsAppStatus).toHaveBeenCalledWith({ apiBaseUrl: kit.DEFAULT_TEST_ENDPOINT });
     expect(sendEmployeeDailyWhatsAppReports).toHaveBeenCalledWith({
+      tenantId: '11111111-1111-4111-8111-111111111111',
       workDate: '2026-07-14',
       dryRun: false,
+      messagingTenantId: kit.TENANT_A,
     });
     expect(sendOwnerDailyWhatsApp).toHaveBeenCalledWith({
+      tenantId: '11111111-1111-4111-8111-111111111111',
       workDate: '2026-07-14',
       dryRun: false,
     });
@@ -242,9 +262,59 @@ describe('runNightlyClose orchestration', () => {
     });
 
     const { runNightlyClose } = await import('@/lib/hr/nightly-close.service');
-    const result = await runNightlyClose({ workDate: '2026-07-14' });
+    const result = await runNightlyClose({ tenantId: '11111111-1111-4111-8111-111111111111', workDate: '2026-07-14', branchIds: [1] });
     expect(result.ok).toBe(false);
     expect(result.delivery.ok).toBe(false);
     expect(result.delivery.error).toMatch(/المدير/);
+  });
+
+  it('checks the channel of the tenant owning the active branches', async () => {
+    kit.resetMessagingTenantTestKit();
+    kit.installMessagingTenantTestKit({
+      channels: { [kit.TENANT_B]: { endpointUrl: 'http://bridge-b.test' } },
+      locations: { [kit.TENANT_B]: [{ legacyBranchId: 1, branchCode: 'B1' }] },
+    });
+
+    const { runNightlyClose } = await import('@/lib/hr/nightly-close.service');
+    const result = await runNightlyClose({ workDate: '2026-07-14', branchIds: [1] });
+    expect(checkWhatsAppStatus).toHaveBeenCalledTimes(1);
+    expect(checkWhatsAppStatus).toHaveBeenCalledWith({ apiBaseUrl: 'http://bridge-b.test' });
+    expect(sendEmployeeDailyWhatsAppReports).toHaveBeenCalledWith(
+      expect.objectContaining({ messagingTenantId: kit.TENANT_B }),
+    );
+    expect(result.delivery.ok).toBe(true);
+  });
+
+  it('fails closed (no sends) when active branches span several tenants', async () => {
+    listActiveBranches.mockResolvedValue([
+      { branchId: 1, branchCode: 'GLEEM', branchName: 'جليم', isActive: true },
+      { branchId: 7, branchCode: 'OTHER', branchName: 'أخرى', isActive: true },
+    ]);
+    kit.resetMessagingTenantTestKit();
+    kit.installMessagingTenantTestKit({
+      locations: {
+        [kit.TENANT_A]: [{ legacyBranchId: 1, branchCode: 'GLEEM' }],
+        [kit.TENANT_B]: [{ legacyBranchId: 7, branchCode: 'OTHER' }],
+      },
+    });
+
+    const { runNightlyClose } = await import('@/lib/hr/nightly-close.service');
+    const result = await runNightlyClose({ workDate: '2026-07-14', branchIds: [1, 7] });
+    expect(checkWhatsAppStatus).not.toHaveBeenCalled();
+    expect(sendEmployeeDailyWhatsAppReports).not.toHaveBeenCalled();
+    expect(sendOwnerDailyWhatsApp).not.toHaveBeenCalled();
+    expect(result.ok).toBe(false);
+    expect(result.delivery.ok).toBe(false);
+  });
+
+  it('tenant without a channel is not WhatsApp-ready', async () => {
+    kit.resetMessagingTenantTestKit();
+    kit.installMessagingTenantTestKit({ channels: {} });
+
+    const { runNightlyClose } = await import('@/lib/hr/nightly-close.service');
+    const result = await runNightlyClose({ workDate: '2026-07-14', branchIds: [1] });
+    expect(checkWhatsAppStatus).not.toHaveBeenCalled();
+    expect(result.delivery.whatsappReady).toBe(false);
+    expect(result.delivery.ok).toBe(false);
   });
 });

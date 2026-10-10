@@ -1,6 +1,7 @@
 import { getPool, sql } from '@/lib/db';
 import { resolveExternalContactKey } from '@/modules/messaging/conversation/domain/externalContactKey';
 import { DEFAULT_BOT_CHANNEL } from '@/modules/messaging/conversation/domain/types';
+import { bindMessagingTenant } from '@/modules/messaging/tenancy/tenantSql';
 import {
   classifyFromMeEvent,
 } from '../domain/classify';
@@ -51,14 +52,13 @@ async function findConversationIdByContactKey(externalContactKey: string): Promi
   phone: string;
 } | null> {
   const pool = await getPool();
-  const result = await pool
-    .request()
+  const result = await bindMessagingTenant(pool.request(), 'handoff.findConversationIdByContactKey')
     .input('channel', sql.NVarChar(30), DEFAULT_BOT_CHANNEL)
     .input('key', sql.NVarChar(100), externalContactKey)
     .query(`
       SELECT TOP 1 ConversationID, Phone
       FROM dbo.TblBotConversation
-      WHERE Channel = @channel AND ExternalContactKey = @key
+      WHERE Channel = @channel AND ExternalContactKey = @key AND TenantId = @tenantId
       ORDER BY LastMessageAt DESC, ConversationID DESC
     `);
   const row = result.recordset[0] as { ConversationID: number | string; Phone: string } | undefined;
@@ -75,8 +75,7 @@ async function ensureConversation(input: {
   const existing = await findConversationIdByContactKey(input.externalContactKey);
   if (existing) return existing.conversationId;
   const pool = await getPool();
-  const result = await pool
-    .request()
+  const result = await bindMessagingTenant(pool.request(), 'handoff.ensureConversation')
     .input('channel', sql.NVarChar(30), DEFAULT_BOT_CHANNEL)
     .input('provider', sql.NVarChar(50), input.provider)
     .input('key', sql.NVarChar(100), input.externalContactKey)
@@ -86,15 +85,15 @@ async function ensureConversation(input: {
       SET NOCOUNT ON;
       BEGIN TRY
         INSERT INTO dbo.TblBotConversation
-          (Channel, Provider, ExternalContactKey, Phone, ClientID, BranchID, ControlMode, ContextJson, LastMessageAt, CreatedAt)
+          (TenantId, Channel, Provider, ExternalContactKey, Phone, ClientID, BranchID, ControlMode, ContextJson, LastMessageAt, CreatedAt)
         OUTPUT INSERTED.ConversationID
-        VALUES (@channel, @provider, @key, @phone, NULL, NULL, N'BOT', N'{}', @occurredAt, SYSUTCDATETIME());
+        VALUES (@tenantId, @channel, @provider, @key, @phone, NULL, NULL, N'BOT', N'{}', @occurredAt, SYSUTCDATETIME());
       END TRY
       BEGIN CATCH
         IF ERROR_NUMBER() NOT IN (2627, 2601) THROW;
         SELECT TOP 1 ConversationID
         FROM dbo.TblBotConversation
-        WHERE Channel = @channel AND ExternalContactKey = @key
+        WHERE Channel = @channel AND ExternalContactKey = @key AND TenantId = @tenantId
         ORDER BY LastMessageAt DESC, ConversationID DESC;
       END CATCH
     `);
@@ -108,14 +107,13 @@ async function findExistingManualMessage(
   providerMessageId: string,
 ): Promise<{ messageId: number; conversationId: number } | null> {
   const pool = await getPool();
-  const result = await pool
-    .request()
+  const result = await bindMessagingTenant(pool.request(), 'handoff.findExistingManualMessage')
     .input('provider', sql.NVarChar(50), provider)
     .input('pmid', sql.NVarChar(250), providerMessageId)
     .query(`
       SELECT TOP 1 MessageID, ConversationID
       FROM dbo.TblBotMessage
-      WHERE Provider = @provider AND ProviderMessageID = @pmid
+      WHERE Provider = @provider AND ProviderMessageID = @pmid AND TenantId = @tenantId
     `);
   const row = result.recordset[0] as
     | { MessageID: number | string; ConversationID: number | string }
@@ -136,8 +134,7 @@ async function insertManualHumanMessage(input: {
   if (existing) return { messageId: existing.messageId, duplicate: true };
   const pool = await getPool();
   try {
-    const result = await pool
-      .request()
+    const result = await bindMessagingTenant(pool.request(), 'handoff.insertManualHumanMessage')
       .input('cid', sql.BigInt, input.conversationId)
       .input('provider', sql.NVarChar(50), input.provider)
       .input('pmid', sql.NVarChar(250), input.providerMessageId)
@@ -146,13 +143,13 @@ async function insertManualHumanMessage(input: {
       .input('origin', sql.NVarChar(30), input.origin)
       .query(`
         INSERT INTO dbo.TblBotMessage
-          (ConversationID, InboxID, Direction, Provider, ProviderMessageID, MessageType, Text, OccurredAt, CreatedAt, Origin)
+          (TenantId, ConversationID, InboxID, Direction, Provider, ProviderMessageID, MessageType, Text, OccurredAt, CreatedAt, Origin)
         OUTPUT INSERTED.MessageID
-        VALUES (@cid, NULL, N'outbound', @provider, @pmid, N'text', @text, @occurredAt, SYSUTCDATETIME(), @origin);
+        VALUES (@tenantId, @cid, NULL, N'outbound', @provider, @pmid, N'text', @text, @occurredAt, SYSUTCDATETIME(), @origin);
 
         UPDATE dbo.TblBotConversation
         SET LastMessageAt = @occurredAt, UpdatedAt = SYSUTCDATETIME()
-        WHERE ConversationID = @cid;
+        WHERE ConversationID = @cid AND TenantId = @tenantId;
       `);
     return { messageId: Number(result.recordset[0]?.MessageID), duplicate: false };
   } catch (err) {

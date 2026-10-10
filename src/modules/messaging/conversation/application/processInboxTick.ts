@@ -2,7 +2,9 @@ import {
   claimPendingBatch,
   markFailed,
   recoverStaleProcessing,
+  type TenantMessageInboxRow,
 } from '../../inbox/infra/messageInboxRepository';
+import { runWithMessagingJobTenant } from '../../tenancy/messagingTenantScope';
 import { processInboxMessage } from './processInboxMessage';
 import { scheduleAiTurn } from '../../ai/application/scheduleAiTurn';
 import {
@@ -50,107 +52,13 @@ export async function processInboxTick(
   };
 
   for (const row of claimed) {
-    const timer = InboxProcessorPerfTimer.start();
-    timer.markClaimDbDone(claimDbMs);
-    const workerWakeMs = computePersistedToReadyMs(row.createdAt, claimFinishedAt);
-
-    if (row.isGroup || row.status === 'ignored') {
-      summary.skippedIgnored += 1;
-      logInboxProcessorPerf({
-        event: 'inbox_message_skipped',
-        inboxId: row.id,
-        provider: row.provider,
-        providerMessageId: row.providerMessageId,
-        duplicate: false,
-        conversationCreated: false,
-        clientLinked: false,
-        workerWakeMs,
-        claimDbMs,
-        conversationDbMs: null,
-        clientLookupMs: null,
-        messageCommitMs: null,
-        processorTotalMs: timer.snapshot().processorTotalMs,
-        inboxPersistedToConversationReadyMs: null,
-        sqlRoundTrips: null,
-        errorCode: 'ignored_group',
-      });
+    if (!row.tenantId) {
+      console.error('[messaging-inbox] claimed row without TenantId left in processing', { id: row.id });
       continue;
     }
-
-    try {
-      const result = await processInboxMessage(row, timer);
-      const timing = timer.snapshot();
-      const readyAt = new Date();
-
-      if (result.duplicate) summary.duplicates += 1;
-      else {
-        summary.processed += 1;
-        if (result.conversationId != null && result.messageId != null) {
-          try {
-            await scheduleAiTurn({
-              conversationId: result.conversationId,
-              inboundMessageId: result.messageId,
-            });
-          } catch (scheduleErr) {
-            const scheduleMessage =
-              scheduleErr instanceof Error ? scheduleErr.message : String(scheduleErr);
-            console.error(
-              JSON.stringify({
-                type: 'messaging_ai_schedule_failed',
-                inboxId: row.id,
-                conversationId: result.conversationId,
-                messageId: result.messageId,
-                error: scheduleMessage,
-              }),
-            );
-          }
-        }
-      }
-
-      logInboxProcessorPerf({
-        event: 'inbox_message_processed',
-        inboxId: row.id,
-        conversationId: result.conversationId,
-        messageId: result.messageId,
-        provider: row.provider,
-        providerMessageId: row.providerMessageId,
-        duplicate: result.duplicate,
-        conversationCreated: result.conversationCreated,
-        clientLinked: result.clientLinked,
-        clientAmbiguous: result.clientAmbiguous,
-        workerWakeMs,
-        claimDbMs: timing.claimDbMs,
-        conversationDbMs: timing.conversationDbMs,
-        clientLookupMs: timing.clientLookupMs,
-        messageCommitMs: timing.messageCommitMs,
-        processorTotalMs: timing.processorTotalMs,
-        inboxPersistedToConversationReadyMs: computePersistedToReadyMs(row.createdAt, readyAt),
-        sqlRoundTrips: 1,
-      });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      await markFailed({ id: row.id, lastError: message });
-      summary.failed += 1;
-      const timing = timer.snapshot();
-      logInboxProcessorPerf({
-        event: 'inbox_message_failed',
-        inboxId: row.id,
-        provider: row.provider,
-        providerMessageId: row.providerMessageId,
-        duplicate: false,
-        conversationCreated: false,
-        clientLinked: false,
-        workerWakeMs,
-        claimDbMs: timing.claimDbMs,
-        conversationDbMs: timing.conversationDbMs,
-        clientLookupMs: timing.clientLookupMs,
-        messageCommitMs: timing.messageCommitMs,
-        processorTotalMs: timing.processorTotalMs,
-        inboxPersistedToConversationReadyMs: null,
-        sqlRoundTrips: null,
-        errorCode: 'PROCESS_FAILED',
-      });
-    }
+    await runWithMessagingJobTenant(row.tenantId, `messaging-inbox:${row.id}`, () =>
+      processClaimedRow(row, summary, claimDbMs, claimFinishedAt),
+    );
   }
 
   if (isHumanHandoffV1Enabled()) {
@@ -172,4 +80,114 @@ export async function processInboxTick(
   }
 
   return summary;
+}
+
+/** One inbox row, inside the row tenant's messaging scope. */
+async function processClaimedRow(
+  row: TenantMessageInboxRow,
+  summary: ProcessInboxTickResult,
+  claimDbMs: number,
+  claimFinishedAt: Date,
+): Promise<void> {
+  const timer = InboxProcessorPerfTimer.start();
+  timer.markClaimDbDone(claimDbMs);
+  const workerWakeMs = computePersistedToReadyMs(row.createdAt, claimFinishedAt);
+
+  if (row.isGroup || row.status === 'ignored') {
+    summary.skippedIgnored += 1;
+    logInboxProcessorPerf({
+      event: 'inbox_message_skipped',
+      inboxId: row.id,
+      provider: row.provider,
+      providerMessageId: row.providerMessageId,
+      duplicate: false,
+      conversationCreated: false,
+      clientLinked: false,
+      workerWakeMs,
+      claimDbMs,
+      conversationDbMs: null,
+      clientLookupMs: null,
+      messageCommitMs: null,
+      processorTotalMs: timer.snapshot().processorTotalMs,
+      inboxPersistedToConversationReadyMs: null,
+      sqlRoundTrips: null,
+      errorCode: 'ignored_group',
+    });
+    return;
+  }
+
+  try {
+    const result = await processInboxMessage(row, timer);
+    const timing = timer.snapshot();
+    const readyAt = new Date();
+
+    if (result.duplicate) summary.duplicates += 1;
+    else {
+      summary.processed += 1;
+      if (result.conversationId != null && result.messageId != null) {
+        try {
+          await scheduleAiTurn({
+            conversationId: result.conversationId,
+            inboundMessageId: result.messageId,
+          });
+        } catch (scheduleErr) {
+          const scheduleMessage =
+            scheduleErr instanceof Error ? scheduleErr.message : String(scheduleErr);
+          console.error(
+            JSON.stringify({
+              type: 'messaging_ai_schedule_failed',
+              inboxId: row.id,
+              conversationId: result.conversationId,
+              messageId: result.messageId,
+              error: scheduleMessage,
+            }),
+          );
+        }
+      }
+    }
+
+    logInboxProcessorPerf({
+      event: 'inbox_message_processed',
+      inboxId: row.id,
+      conversationId: result.conversationId,
+      messageId: result.messageId,
+      provider: row.provider,
+      providerMessageId: row.providerMessageId,
+      duplicate: result.duplicate,
+      conversationCreated: result.conversationCreated,
+      clientLinked: result.clientLinked,
+      clientAmbiguous: result.clientAmbiguous,
+      workerWakeMs,
+      claimDbMs: timing.claimDbMs,
+      conversationDbMs: timing.conversationDbMs,
+      clientLookupMs: timing.clientLookupMs,
+      messageCommitMs: timing.messageCommitMs,
+      processorTotalMs: timing.processorTotalMs,
+      inboxPersistedToConversationReadyMs: computePersistedToReadyMs(row.createdAt, readyAt),
+      sqlRoundTrips: 1,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    await markFailed({ id: row.id, lastError: message });
+    summary.failed += 1;
+    const timing = timer.snapshot();
+    logInboxProcessorPerf({
+      event: 'inbox_message_failed',
+      inboxId: row.id,
+      provider: row.provider,
+      providerMessageId: row.providerMessageId,
+      duplicate: false,
+      conversationCreated: false,
+      clientLinked: false,
+      workerWakeMs,
+      claimDbMs: timing.claimDbMs,
+      conversationDbMs: timing.conversationDbMs,
+      clientLookupMs: timing.clientLookupMs,
+      messageCommitMs: timing.messageCommitMs,
+      processorTotalMs: timing.processorTotalMs,
+      inboxPersistedToConversationReadyMs: null,
+      sqlRoundTrips: null,
+      errorCode: 'PROCESS_FAILED',
+    });
+  }
 }

@@ -611,7 +611,11 @@ describe('Phase 2 business day rollover', () => {
     const { reconcileAllBusinessDays } = await import(
       '@/modules/operations/application/reconcileBusinessDay'
     );
-    const all = await reconcileAllBusinessDays({ now: AT_EIGHT, trigger: 'SCHEDULED' });
+    const all = await reconcileAllBusinessDays({
+      now: AT_EIGHT,
+      trigger: 'SCHEDULED',
+      branchIds: [GLEEM, CAMP],
+    });
     expect(all.results).toHaveLength(2);
     expect(all.results.some((r) => r.action === 'ROLLED_OVER' || r.action === 'NO_OP')).toBe(true);
     expect(all.results.some((r) => r.action === 'FAILED')).toBe(true);

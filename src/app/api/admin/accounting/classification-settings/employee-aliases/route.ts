@@ -13,8 +13,8 @@ export async function GET() {
   if (!isAuthResult(auth)) return auth;
   try {
     const status = await getAccountingSettingsMigrationStatus();
-    const employees = await listEmployees();
-    const aliases = status.migrationRequired ? [] : await listEmployeeAliases();
+    const employees = await listEmployees(auth.tenantId);
+    const aliases = status.migrationRequired ? [] : await listEmployeeAliases(auth.tenantId);
     return NextResponse.json({
       aliases,
       employees,

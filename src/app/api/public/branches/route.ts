@@ -1,36 +1,37 @@
-import { NextRequest } from 'next/server';
-import {
-  publicBookingOptionsResponse,
-  PUBLIC_BOOKING_ROUTE_CORS,
-} from '@/lib/booking/publicBookingCors';
-import { listPublicDiscoverableBranches } from '@/lib/booking/publicBookingBranchContext';
+import { NextRequest, NextResponse } from 'next/server';
+import { listPublicDiscoverableBranchesForTenant } from '@/lib/booking/publicBookingTenancy';
 import {
   gatePublicBookingRoute,
   finalizePublicBookingJson,
+  publicBookingTenantOptionsResponse,
+  requirePublicBookingRouteTenancy,
 } from '@/lib/booking/publicBookingRouteGate';
 
 export const runtime = 'nodejs';
 
 export async function OPTIONS(req: NextRequest) {
-  const cors = PUBLIC_BOOKING_ROUTE_CORS['branches'];
-  return publicBookingOptionsResponse({
-    request: req,
-    allowedMethods: [...cors.methods],
-    allowedHeaders: cors.headers,
-  });
+  return publicBookingTenantOptionsResponse(req, 'branches');
 }
 
 /**
- * GET /api/public/branches
+ * GET /api/public/branches[?branchCode=XXX]
  * Public discovery list — PUBLIC_LIVE + PublicBookingEnabled + QBS.BookingEnabled only.
  * Never includes Camp Caesar while public booking is disabled.
+ * DRVO-019: only the request tenant's branches (branchCode names the tenant; CUT may omit it).
  */
 export async function GET(req: NextRequest) {
   const { gate, blocked } = gatePublicBookingRoute(req, 'branches');
   if (blocked) return blocked;
 
   try {
-    const branches = await listPublicDiscoverableBranches();
+    const { searchParams } = new URL(req.url);
+    const tenancy = await requirePublicBookingRouteTenancy(req, gate, {
+      branchCode: searchParams.get('branchCode'),
+      allowCutCompat: true,
+    });
+    if (tenancy instanceof NextResponse) return tenancy;
+
+    const branches = await listPublicDiscoverableBranchesForTenant(tenancy.tenantId);
     return finalizePublicBookingJson(req, gate, { ok: true, branches });
   } catch (err) {
     console.error('[public/branches]', err);

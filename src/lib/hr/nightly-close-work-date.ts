@@ -16,14 +16,23 @@ export function shiftYmd(yyyyMmDd: string, days: number): string {
   return dt.toISOString().slice(0, 10);
 }
 
-/** The close continues to process the previous Cairo calendar day. */
+/**
+ * The close continues to process the previous calendar day in the tenant's HR time zone
+ * (Africa/Cairo when none is given — CUT's behaviour).
+ */
 export function resolveNightlyCloseWorkDate(
   override?: string | null,
   now: Date = new Date(),
+  timeZone: string = 'Africa/Cairo',
 ): string {
   if (override && /^\d{4}-\d{2}-\d{2}$/.test(override)) return override;
-  const cairoToday = now.toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' });
-  return shiftYmd(cairoToday, -1);
+  let localToday: string;
+  try {
+    localToday = now.toLocaleDateString('en-CA', { timeZone });
+  } catch {
+    localToday = now.toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' });
+  }
+  return shiftYmd(localToday, -1);
 }
 
 export function getCairoClockParts(now: Date = new Date()): {

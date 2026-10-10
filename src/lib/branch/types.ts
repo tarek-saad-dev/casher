@@ -72,6 +72,8 @@ export interface ActiveBranchContext {
   canOperate: boolean;
   canViewReports: boolean;
   canSwitch: boolean;
+  /** DRVO-013: authoritative tenant that owns this branch (set by the request context resolver). */
+  tenantId?: string;
 }
 
 export type BranchDomainErrorCode =
@@ -110,7 +112,9 @@ export type BranchDomainErrorCode =
   | 'BRANCH_REQUIRED'
   | 'BRANCH_LIFECYCLE_FORBIDDEN'
   | 'BRANCH_NOT_READY'
-  | 'BRANCH_ADMIN_REQUIRED';
+  | 'BRANCH_ADMIN_REQUIRED'
+  | 'SUBSCRIPTION_INACTIVE'
+  | 'APP_NOT_INSTALLED';
 
 export class BranchDomainError extends Error {
   readonly code: BranchDomainErrorCode;

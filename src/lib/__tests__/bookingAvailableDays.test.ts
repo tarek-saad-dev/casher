@@ -50,7 +50,7 @@ describe('bookingAvailableDays / Slots routes', () => {
     expect(days).toContain('getPublicAvailableDays');
     expect(slots).toContain('getPublicAvailableSlots');
     expect(barberSlots).toContain('getPublicAvailableSlots');
-    expect(days).toContain('publicBookingErrorResponse');
+    expect(days).toMatch(/publicBookingErrorResponse|finalizePublicBookingError/);
     expect(days).not.toContain('resolvePublicBranchCode');
     expect(barberSlots).not.toContain('resolvePublicBranchCode');
   });
@@ -58,8 +58,8 @@ describe('bookingAvailableDays / Slots routes', () => {
   it('OPTIONS/CORS and new error codes exist', () => {
     expect(days).toContain('OPTIONS');
     expect(slots).toContain('OPTIONS');
-    expect(days).toContain('publicBookingOptionsResponse');
-    expect(slots).toContain('PUBLIC_BOOKING_ROUTE_CORS');
+    expect(days).toMatch(/publicBooking(Tenant)?OptionsResponse/);
+    expect(slots).toMatch(/PUBLIC_BOOKING_ROUTE_CORS|publicBookingTenantOptionsResponse\(req, '/);
     for (const code of [
       'NO_ELIGIBLE_BARBER',
       'AVAILABILITY_UNAVAILABLE',

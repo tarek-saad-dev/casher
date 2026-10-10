@@ -13,6 +13,8 @@ import { getEmployeeAllTimeBalance, validateLedgerMonth } from '@/lib/services/e
 import type { EmpLedgerTipResponse } from '@/lib/types/employee-ledger';
 import { calculateTipAmount } from '@/lib/pos/tipMath';
 import { getCairoInvTimeDotStr } from '@/lib/businessDate';
+import { ensureTenantFinanceCategory } from '@/platform/masterData/financeCategories';
+import { resolveLegacyBranchTenantId } from '@/platform/masterData/tenantScope';
 
 export { calculateTipAmount } from '@/lib/pos/tipMath';
 export const EMP_LEDGER_REASON_TIP = 'tip';
@@ -38,30 +40,9 @@ function buildLedgerNotes(invoiceTotal: number, amountPaid: number): string {
 
 export async function ensureTipIncomeCategory(
   transaction: sql.Transaction,
+  tenantId: string,
 ): Promise<number> {
-  const findResult = await new sql.Request(transaction)
-    .input('catName', sql.NVarChar(200), TIP_INCOME_CATEGORY_NAME)
-    .input('expType', sql.NVarChar(50), 'ايرادات')
-    .query(`
-      SELECT ExpINID
-      FROM dbo.TblExpINCat
-      WHERE CatName = @catName AND ExpINType = @expType
-    `);
-
-  if (findResult.recordset.length > 0) {
-    return Number(findResult.recordset[0].ExpINID);
-  }
-
-  const insertResult = await new sql.Request(transaction)
-    .input('catName', sql.NVarChar(200), TIP_INCOME_CATEGORY_NAME)
-    .input('expType', sql.NVarChar(50), 'ايرادات')
-    .query(`
-      INSERT INTO dbo.TblExpINCat (CatName, ExpINType)
-      OUTPUT INSERTED.ExpINID
-      VALUES (@catName, @expType)
-    `);
-
-  return Number(insertResult.recordset[0].ExpINID);
+  return ensureTenantFinanceCategory(transaction, tenantId, TIP_INCOME_CATEGORY_NAME, 'ايرادات');
 }
 
 async function insertTipLedgerEntry(
@@ -166,13 +147,15 @@ export async function executeEmployeeTip(params: {
   }
 
   const db = await getPool();
+  const tenantId = await resolveLegacyBranchTenantId(params.branchId);
 
   const empResult = await db.request()
     .input('empId', sql.Int, params.empId)
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
     .query(`
       SELECT EmpID, EmpName
       FROM dbo.TblEmp
-      WHERE EmpID = @empId AND ISNULL(isActive, 1) = 1
+      WHERE EmpID = @empId AND TenantId = @tenantId AND ISNULL(isActive, 1) = 1
     `);
   if (empResult.recordset.length === 0) {
     throw new EmployeeTipError('الموظف غير موجود أو غير نشط');
@@ -181,10 +164,11 @@ export async function executeEmployeeTip(params: {
 
   const pmResult = await db.request()
     .input('paymentMethodId', sql.Int, params.paymentMethodId)
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
     .query(`
       SELECT PaymentID
       FROM dbo.TblPaymentMethods
-      WHERE PaymentID = @paymentMethodId
+      WHERE PaymentID = @paymentMethodId AND TenantId = @tenantId
     `);
   if (pmResult.recordset.length === 0) {
     throw new EmployeeTipError('طريقة الدفع غير موجودة');
@@ -198,7 +182,7 @@ export async function executeEmployeeTip(params: {
 
   try {
     const previousBalance = await getEmployeeAllTimeBalance(params.empId, transaction);
-    const tipExpINID = await ensureTipIncomeCategory(transaction);
+    const tipExpINID = await ensureTipIncomeCategory(transaction, tenantId);
     const newInvID = await allocateInvID(transaction, 'TblCashMove', 'ايرادات', 5000);
 
     const cashReq = new sql.Request(transaction);

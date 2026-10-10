@@ -32,7 +32,7 @@ export async function GET(_req: NextRequest, { params }: RouteCtx) {
       );
     }
 
-    if (!(await proExists(db, proId))) {
+    if (!(await proExists(db, auth.tenantId, proId))) {
       return NextResponse.json({ error: 'الخدمة غير موجودة' }, { status: 404 });
     }
 
@@ -72,7 +72,7 @@ export async function PUT(req: NextRequest, { params }: RouteCtx) {
       );
     }
 
-    if (!(await proExists(db, proId))) {
+    if (!(await proExists(db, auth.tenantId, proId))) {
       return NextResponse.json({ error: 'الخدمة غير موجودة' }, { status: 404 });
     }
 

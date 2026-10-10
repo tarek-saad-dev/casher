@@ -10,6 +10,7 @@ import type {
 } from "@/lib/store/store.types";
 import { getClientInventory } from "@/lib/store/inventory.service";
 import { getPool, sql } from "@/lib/db";
+import { authenticate, isAuthResult } from "@/lib/api-auth";
 
 export const runtime = "nodejs";
 
@@ -37,6 +38,9 @@ export async function OPTIONS(): Promise<NextResponse> {
 export async function GET(
   req: NextRequest,
 ): Promise<NextResponse<POSClientInventoryResponse | StoreErrorResponse>> {
+  const auth = await authenticate();
+  if (!isAuthResult(auth)) return auth as NextResponse<StoreErrorResponse>;
+
   try {
     const { searchParams } = new URL(req.url);
     const clientIdParam = searchParams.get("clientId");
@@ -61,10 +65,11 @@ export async function GET(
     const clientResult = await db
       .request()
       .input("clientId", sql.Int, clientId)
+      .input("tenantId", sql.UniqueIdentifier, auth.tenantId)
       .query(`
         SELECT Name
         FROM [dbo].[TblClient]
-        WHERE ClientID = @clientId
+        WHERE ClientID = @clientId AND TenantId = @tenantId
       `);
 
     if (clientResult.recordset.length === 0) {

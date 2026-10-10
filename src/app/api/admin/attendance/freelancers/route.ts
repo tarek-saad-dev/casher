@@ -47,6 +47,7 @@ export async function GET(req: NextRequest) {
         LEFT JOIN dbo.TblEmpAttendance a
           ON a.EmpID = e.EmpID AND a.WorkDate = @workDate AND a.BranchID = @branchId
         WHERE ISNULL(e.isActive, 1) = 1
+          AND e.TenantId IN (SELECT l.TenantId FROM dbo.Location l WHERE l.LegacyBranchId = @branchId)
           AND (
             e.EmploymentType = 'freelance'
             OR ISNULL(e.IsAttendanceExempt, 0) = 1

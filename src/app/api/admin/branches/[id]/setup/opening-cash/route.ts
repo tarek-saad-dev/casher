@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isAuthResult, requirePageAccess } from '@/lib/api-auth';
+import { branchAdminTenantScopeResponse } from '@/lib/branch/context';
 import { BranchDomainError } from '@/lib/branch/types';
 import { getBranchSetupPolicy } from '@/lib/branch/branchSetupPolicy';
 import {
@@ -20,6 +21,8 @@ export async function GET(
   if (!Number.isFinite(branchId)) {
     return NextResponse.json({ error: 'معرف فرع غير صالح' }, { status: 400 });
   }
+  const outOfTenant = await branchAdminTenantScopeResponse(auth, branchId);
+  if (outOfTenant) return outOfTenant;
   const policy = await getBranchSetupPolicy(branchId);
   const resolved = await isOpeningCashResolved(branchId);
   return NextResponse.json({
@@ -43,6 +46,8 @@ export async function POST(
   if (!Number.isFinite(branchId)) {
     return NextResponse.json({ error: 'معرف فرع غير صالح' }, { status: 400 });
   }
+  const outOfTenant = await branchAdminTenantScopeResponse(auth, branchId);
+  if (outOfTenant) return outOfTenant;
 
   try {
     const body = await req.json();

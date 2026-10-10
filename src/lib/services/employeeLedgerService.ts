@@ -12,13 +12,10 @@ import type {
   EmpLedgerEntryRow,
   EmpLedgerListResponse,
   EmpLedgerSummaryResponse,
+  EmpLedgerTableBranch,
   EmpLedgerTableBranchCode,
 } from '@/lib/types/employee-ledger';
-import { EMP_LEDGER_TABLE_BRANCH_CODES } from '@/lib/types/employee-ledger';
-import {
-  CAMP_CAESAR_BRANCH_CODE,
-  GLEEM_BRANCH_CODE,
-} from '@/lib/branch/smokeBranchPolicy';
+import { listTenantHrBranches, requireHrTenantId } from '@/lib/hr/hrTenantScope';
 
 const MONTH_RE = /^\d{4}-\d{2}$/;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -92,29 +89,38 @@ export function validateLedgerMonth(month: string): string | null {
   return null;
 }
 
-export interface EmployeeLedgerTableBranchMeta {
-  branchId: number;
-  branchCode: EmpLedgerTableBranchCode | string;
-  branchName: string;
-}
+export type EmployeeLedgerTableBranchMeta = EmpLedgerTableBranch;
 
-/** GLEEM + CAMP_CAESAR — always shown as paired rows in the employee ledger UI. */
-export async function getEmployeeLedgerTableBranches(): Promise<EmployeeLedgerTableBranchMeta[]> {
-  const db = await getPool();
-  const result = await db.request().query(`
-    SELECT BranchID, BranchCode, BranchName
-    FROM dbo.TblBranch
-    WHERE BranchCode IN (N'${GLEEM_BRANCH_CODE}', N'${CAMP_CAESAR_BRANCH_CODE}')
-    ORDER BY CASE BranchCode WHEN N'${GLEEM_BRANCH_CODE}' THEN 0 ELSE 1 END
-  `);
-  return (result.recordset as Array<Record<string, unknown>>).map((row) => ({
-    branchId: Number(row.BranchID),
-    branchCode: String(row.BranchCode ?? ''),
-    branchName: String(row.BranchName ?? ''),
+/**
+ * The tenant's branches shown as row groups in the employee ledger UI: active branches, plus
+ * inactive ones that still hold ledger entries.
+ */
+export async function getEmployeeLedgerTableBranches(
+  tenantId: string,
+): Promise<EmployeeLedgerTableBranchMeta[]> {
+  const all = await listTenantHrBranches(tenantId, undefined, { includeInactive: true });
+  const inactiveIds = all.filter((b) => !b.isActive).map((b) => b.branchId);
+  let withEntries = new Set<number>();
+  if (inactiveIds.length > 0) {
+    const db = await getPool();
+    const result = await db.request().query(`
+      SELECT DISTINCT BranchID FROM dbo.TblEmpLedgerEntry
+      WHERE IsVoided = 0 AND BranchID IN (${inactiveIds.join(',')})
+    `);
+    withEntries = new Set(
+      (result.recordset as Array<{ BranchID: number }>).map((r) => Number(r.BranchID)),
+    );
+  }
+  const branches = all.filter((b) => b.isActive || withEntries.has(b.branchId));
+  return branches.map((b) => ({
+    branchId: b.branchId,
+    branchCode: b.branchCode,
+    branchName: b.branchName,
+    label: b.label,
   }));
 }
 
-/** Union accessible branches with ledger table branches so Camp Caesar entries are never hidden. */
+/** Union accessible branches with ledger table branches so no tenant branch's entries are hidden. */
 export function mergeEmployeeLedgerBranchScope(
   accessibleBranchIds: number[],
   tableBranchIds: number[],
@@ -127,6 +133,7 @@ export function mergeEmployeeLedgerBranchScope(
 }
 
 export async function getEmployeeLedgerEntries(params: {
+  tenantId: string;
   empId?: number | null;
   dateFrom?: string | null;
   dateTo?: string | null;
@@ -136,8 +143,12 @@ export async function getEmployeeLedgerEntries(params: {
   branchIds?: number[] | null;
 }): Promise<EmpLedgerListResponse> {
   const db = await getPool();
+  const tenantId = requireHrTenantId(params.tenantId, 'getEmployeeLedgerEntries');
 
-  const where: string[] = [ACTIVE_ENTRY_FILTER];
+  const where: string[] = [
+    ACTIVE_ENTRY_FILTER,
+    'l.EmpID IN (SELECT te.EmpID FROM dbo.TblEmp te WHERE te.TenantId = @tenantId)',
+  ];
 
   if (params.branchId != null && params.branchId > 0) {
     where.push('l.BranchID = @branchId');
@@ -176,6 +187,7 @@ export async function getEmployeeLedgerEntries(params: {
   const whereClause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
 
   const bindFilters = (req: sql.Request) => {
+    req.input('tenantId', sql.UniqueIdentifier, tenantId);
     if (params.branchId != null && params.branchId > 0) {
       req.input('branchId', sql.Int, params.branchId);
     }
@@ -226,7 +238,7 @@ export async function getEmployeeLedgerEntries(params: {
       b.BranchCode,
       b.BranchName
     FROM dbo.TblEmpLedgerEntry l
-    INNER JOIN dbo.TblEmp e ON e.EmpID = l.EmpID
+    INNER JOIN dbo.TblEmp e ON e.EmpID = l.EmpID AND e.TenantId = @tenantId
     LEFT JOIN dbo.TblBranch b ON b.BranchID = l.BranchID
     ${whereClause}
     ORDER BY l.EntryDate DESC, l.ID DESC
@@ -554,12 +566,15 @@ function sumBranchBreakdowns(
 
 export async function getEmployeeLedgerSummary(
   month: string,
-  branchId?: number | null,
-  options?: {
+  branchId: number | null | undefined,
+  options: {
+    /** Authoritative tenant: only its employees and branches are summarised (DRVO-016). */
+    tenantId: string;
     /** When viewing all branches: limit to accessible branch IDs and attach per-emp branchBalances. */
     accessibleBranchIds?: number[];
   },
 ): Promise<EmpLedgerSummaryResponse> {
+  const tenantId = requireHrTenantId(options.tenantId, 'getEmployeeLedgerSummary');
   const monthError = validateLedgerMonth(month);
   if (monthError) {
     throw new Error(monthError);
@@ -571,29 +586,27 @@ export async function getEmployeeLedgerSummary(
     parseInt(monthStr, 10),
   );
 
-  const accessible = (options?.accessibleBranchIds ?? []).filter(
-    (id) => Number.isFinite(id) && id > 0,
+  const tableBranchMeta = await getEmployeeLedgerTableBranches(tenantId);
+  const tableBranchIds = tableBranchMeta.map((b) => b.branchId);
+  const tableBranchIdSet = new Set(tableBranchIds);
+  // Accessible ids outside the tenant's branches are ignored (never another tenant's branch).
+  const accessible = (options.accessibleBranchIds ?? []).filter(
+    (id) => Number.isFinite(id) && id > 0 && tableBranchIdSet.has(id),
   );
-  const singleBranch = branchId != null && branchId > 0 ? branchId : null;
+  const singleBranch =
+    branchId != null && branchId > 0 && tableBranchIdSet.has(branchId) ? branchId : null;
 
   const db = await getPool();
 
-  // Resolve GLEEM + CAMP_CAESAR ids (table always shows both).
-  const tableBranchMeta = await getEmployeeLedgerTableBranches();
-  const tableBranchIds = tableBranchMeta.map((b) => b.branchId);
   const metaByCode = new Map(tableBranchMeta.map((b) => [b.branchCode, b]));
   const ledgerBranchScope = mergeEmployeeLedgerBranchScope(accessible, tableBranchIds);
 
   // One query: employee × table-branch buckets (entry BranchID). No N+1.
-  const scopeIds =
-    tableBranchIds.length > 0
-      ? tableBranchIds
-      : accessible.length > 0
-        ? accessible
-        : [];
+  const scopeIds = tableBranchIds;
 
   const request = db
     .request()
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
     .input('month', sql.NVarChar(7), month)
     .input('monthStart', sql.Date, startDate)
     .input('monthEnd', sql.Date, endDate);
@@ -616,9 +629,10 @@ export async function getEmployeeLedgerSummary(
            AND l.IsVoided = 0
            AND ${buildMonthEntryFilter('l')}
           WHERE ISNULL(e.isActive, 1) = 1
+            AND e.TenantId = @tenantId
             AND b.BranchID IN (${scopeIds.join(',')})
           GROUP BY e.EmpID, e.EmpName, b.BranchID, b.BranchCode, b.BranchName
-          ORDER BY e.EmpName, CASE b.BranchCode WHEN N'${GLEEM_BRANCH_CODE}' THEN 0 ELSE 1 END
+          ORDER BY e.EmpName, b.BranchID
         `)
       : { recordset: [] as Array<Record<string, unknown>> };
 
@@ -641,10 +655,11 @@ export async function getEmployeeLedgerSummary(
   }
 
   // Ensure active employees with no ledger rows still appear (CROSS JOIN should already).
-  // Fill missing GLEEM/CAMP slots with zeros.
+  // Fill missing tenant-branch slots with zeros.
+  const tableCodes = tableBranchMeta.map((b) => b.branchCode);
   const employees: EmpLedgerEmployeeSummaryRow[] = [...empMap.values()].map((acc) => {
     const branches = {} as Record<EmpLedgerTableBranchCode, EmpLedgerEmployeeBranchBreakdown>;
-    for (const code of EMP_LEDGER_TABLE_BRANCH_CODES) {
+    for (const code of tableCodes) {
       const existing = acc.byCode.get(code);
       const meta = metaByCode.get(code);
       branches[code] =
@@ -654,7 +669,7 @@ export async function getEmployeeLedgerSummary(
         );
     }
 
-    const allParts = EMP_LEDGER_TABLE_BRANCH_CODES.map((c) => branches[c]);
+    const allParts = tableCodes.map((c) => branches[c]);
     const overallBalance = roundMoney(allParts.reduce((s, p) => s + p.balance, 0));
 
     // Flat aggregates respect branch filter (summary cards / payout scope).
@@ -733,6 +748,7 @@ export async function getEmployeeLedgerSummary(
 
   return {
     month,
+    tableBranches: tableBranchMeta,
     branchId: singleBranch,
     employees,
     totals: {

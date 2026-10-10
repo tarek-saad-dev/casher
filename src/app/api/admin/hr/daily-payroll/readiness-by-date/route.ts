@@ -33,6 +33,7 @@ export async function GET(request: NextRequest) {
     }
 
     const result = await evaluateDailyPayrollReadinessByDate({
+      tenantId: auth.tenantId,
       workDate,
       branchIds: accessibleIds,
     });

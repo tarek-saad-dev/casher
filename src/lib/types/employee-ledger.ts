@@ -64,9 +64,20 @@ export interface EmpLedgerListResponse {
   };
 }
 
-/** Fixed salon branches rendered as paired rows in the employee ledger table. */
-export const EMP_LEDGER_TABLE_BRANCH_CODES = ['GLEEM', 'CAMP_CAESAR'] as const;
-export type EmpLedgerTableBranchCode = (typeof EMP_LEDGER_TABLE_BRANCH_CODES)[number];
+/**
+ * Branch code of one of the tenant's active branches; the employee ledger table renders one row
+ * per tenant branch (see `EmpLedgerSummaryResponse.tableBranches`).
+ */
+export type EmpLedgerTableBranchCode = string;
+
+/** One column/row group of the employee ledger table (tenant branch, ordered by branch id). */
+export interface EmpLedgerTableBranch {
+  branchId: number;
+  branchCode: EmpLedgerTableBranchCode;
+  branchName: string;
+  /** Tab / row label (CUT keeps its legacy Arabic labels). */
+  label: string;
+}
 
 /**
  * Per-branch employee strip (entry BranchID).
@@ -75,7 +86,7 @@ export type EmpLedgerTableBranchCode = (typeof EMP_LEDGER_TABLE_BRANCH_CODES)[nu
  */
 export interface EmpLedgerEmployeeBranchBreakdown {
   branchId: number;
-  branchCode: EmpLedgerTableBranchCode | string;
+  branchCode: EmpLedgerTableBranchCode;
   branchName: string;
   salary: number;
   target: number;
@@ -106,7 +117,7 @@ export interface EmpLedgerEmployeeSummaryRow {
   payoutDebits: number;
   deductionDebits: number;
   balance: number;
-  /** Sum of per-branch balances for GLEEM + CAMP_CAESAR (always both). */
+  /** Sum of per-branch balances over every tenant table branch. */
   overallBalance: number;
   // إيراد الموظف الفعلي للمحل خلال الشهر (من الفواتير) — يُستخدم لتصنيف المسحوبات.
   revenue: number;
@@ -118,7 +129,7 @@ export interface EmpLedgerEmployeeSummaryRow {
   // سلفة = ما تجاوز (راتب + تارجت + إيراد)
   advanceExcess: number;
   /**
-   * Always includes GLEEM + CAMP_CAESAR (zeros when no entries).
+   * Always includes every tenant table branch, keyed by branch code (zeros when no entries).
    * Attribution = TblEmpLedgerEntry.BranchID only.
    */
   branches: Record<EmpLedgerTableBranchCode, EmpLedgerEmployeeBranchBreakdown>;
@@ -181,6 +192,8 @@ export interface EmpLedgerBranchFinancialSummary {
 
 export interface EmpLedgerSummaryResponse {
   month: string;
+  /** The tenant's ledger table branches, in display order (keys of `employees[].branches`). */
+  tableBranches: EmpLedgerTableBranch[];
   employees: EmpLedgerEmployeeSummaryRow[];
   totals: {
     salaryCredits: number;

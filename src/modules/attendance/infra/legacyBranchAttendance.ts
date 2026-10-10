@@ -86,9 +86,12 @@ export async function assertEmployeeEligibleForBranchAttendance(
   const empRow = await db
     .request()
     .input('empId', sql.Int, empId)
+    .input('hrBranchId', sql.Int, branchId)
     .query(`
       SELECT EmpID, ISNULL(isActive, 1) AS isActive
-      FROM dbo.TblEmp WHERE EmpID = @empId
+      FROM dbo.TblEmp
+      WHERE EmpID = @empId
+        AND TenantId IN (SELECT tloc.TenantId FROM dbo.Location tloc WHERE tloc.LegacyBranchId = @hrBranchId)
     `);
   if (!empRow.recordset[0]) {
     throw new AttendanceDomainError('EMP_NOT_FOUND', 'الموظف غير موجود', 404);

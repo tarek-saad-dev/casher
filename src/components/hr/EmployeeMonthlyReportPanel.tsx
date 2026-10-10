@@ -48,6 +48,7 @@ import {
   formatTime12hAr,
 } from '@/lib/reports/reportFormatters';
 import { shortBranchName } from '@/lib/hr/dailyPayrollClosingUi';
+import { hrBranchPalette, parseHrBranchOptions, type HrBranchOption } from '@/lib/hr/hrBranchUi';
 
 interface EmployeeOption {
   EmpID: number;
@@ -113,22 +114,20 @@ function moneyOrDash(value: number | null | undefined): string {
   return formatCurrencyAr(value);
 }
 
-function dayBranchBadge(day: {
-  attendanceBranchCode: string | null;
-  attendanceBranchName: string | null;
-}) {
+function dayBranchBadge(
+  day: {
+    attendanceBranchCode: string | null;
+    attendanceBranchName: string | null;
+  },
+  branchCodes: readonly string[],
+) {
   if (!day.attendanceBranchCode && !day.attendanceBranchName) return null;
   const code = String(day.attendanceBranchCode ?? '');
   const label = shortBranchName({
     branchCode: code || '—',
     branchName: day.attendanceBranchName || code || '—',
   });
-  const tone =
-    code === 'GLEEM'
-      ? 'border-sky-500/25 bg-sky-500/10 text-sky-300/90'
-      : code === 'CAMP_CAESAR'
-        ? 'border-amber-500/25 bg-amber-500/10 text-amber-300/90'
-        : 'border-zinc-600/40 bg-zinc-800/60 text-zinc-400';
+  const tone = hrBranchPalette(code, branchCodes).badge;
   return (
     <span
       className={`inline-flex items-center mt-1 px-1.5 py-0.5 rounded text-[10px] font-medium border ${tone}`}
@@ -154,6 +153,8 @@ export default function EmployeeMonthlyReportPanel() {
   const [employeesLoading, setEmployeesLoading] = useState(true);
   const [onlyWorkDays, setOnlyWorkDays] = useState(false);
   const [sessionBranchId, setSessionBranchId] = useState<number | null>(null);
+  const [branchOptions, setBranchOptions] = useState<HrBranchOption[]>([]);
+  const branchCodes = useMemo(() => branchOptions.map((o) => o.code), [branchOptions]);
   const [attendanceFix, setAttendanceFix] = useState<{
     workDate: string;
     branchId: number;
@@ -202,6 +203,7 @@ export default function EmployeeMonthlyReportPanel() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'فشل تحميل التقرير');
       setReport(data);
+      setBranchOptions(parseHrBranchOptions(data.branchOptions));
       if (data.branch?.branchId) setSessionBranchId(Number(data.branch.branchId));
     } catch (err) {
       setReport(null);
@@ -772,7 +774,7 @@ export default function EmployeeMonthlyReportPanel() {
                         <td className="px-3 py-2.5 whitespace-nowrap">
                           <div className="text-zinc-200 font-medium">{day.dayNameAr}</div>
                           <div className="text-[11px] text-zinc-500 font-mono">{day.date}</div>
-                          {dayBranchBadge(day)}
+                          {dayBranchBadge(day, branchCodes)}
                         </td>
                         <td className="px-3 py-2.5 text-zinc-400 whitespace-nowrap text-xs">
                           {day.scheduledStart && day.scheduledEnd

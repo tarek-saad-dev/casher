@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { isAuthResult, requirePageAccess } from '@/lib/api-auth';
+import { isAuthResult, requirePageAccess, withTenantApp } from '@/lib/api-auth';
+import { listTenantLegacyBranchIds } from '@/platform/tenant/tenantContext';
 import { requireBranchOperationAccess, isActiveBranchContext } from '@/lib/branch/context';
 import {
   runDailyPayrollBulkCloseRange,
@@ -18,12 +19,14 @@ export const maxDuration = 300;
  * otherwise → single JSON result (200 / 207 / 400 / 409)
  */
 export async function POST(request: NextRequest) {
-  const auth = await requirePageAccess('/admin/hr');
+  const auth = await withTenantApp('payroll', requirePageAccess('/admin/hr'));
   if (!isAuthResult(auth)) return auth;
 
   try {
     const sessionBranch = await requireBranchOperationAccess();
     if (!isActiveBranchContext(sessionBranch)) return sessionBranch;
+    const tenantId = auth.tenantId;
+    const branchIds = [...(await listTenantLegacyBranchIds(tenantId))];
 
     let body: unknown;
     try {
@@ -42,6 +45,8 @@ export async function POST(request: NextRequest) {
         fromDate,
         toDate,
         actorUserId: auth.userId,
+        tenantId,
+        branchIds,
       });
 
       if (result.error && result.daysProcessed === 0) {
@@ -64,6 +69,8 @@ export async function POST(request: NextRequest) {
             fromDate,
             toDate,
             actorUserId: auth.userId,
+            tenantId,
+            branchIds,
             onProgress: (event) => write(event),
           });
 

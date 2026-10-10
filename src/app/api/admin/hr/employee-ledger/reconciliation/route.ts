@@ -53,6 +53,7 @@ export async function GET(request: NextRequest) {
       month,
       empId,
       branch.branchId,
+      auth.tenantId,
     );
     return NextResponse.json(result);
   } catch (error: unknown) {

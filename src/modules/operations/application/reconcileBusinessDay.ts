@@ -256,13 +256,16 @@ export async function ensureBusinessDayCurrent(
   return result;
 }
 
-export async function reconcileAllBusinessDays(args?: {
+export async function reconcileAllBusinessDays(args: {
   now?: Date;
   trigger?: ReconcileTrigger;
+  /** One tenant's active Location branch ids (DRVO-013); other branches are never touched. */
+  branchIds: readonly number[];
 }): Promise<ReconcileAllBusinessDaysResult> {
-  const trigger = args?.trigger ?? 'SCHEDULED';
-  const at = args?.now ?? businessClockNow();
-  const branches = await listActiveBranches();
+  const trigger = args.trigger ?? 'SCHEDULED';
+  const at = args.now ?? businessClockNow();
+  const scope = new Set(args.branchIds);
+  const branches = (await listActiveBranches()).filter((b) => scope.has(b.branchId));
   const results: ReconcileBusinessDayResult[] = [];
 
   for (const branch of branches) {

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { NextRequest, NextResponse } from 'next/server';
@@ -147,6 +147,15 @@ import {
 import { POST as PREVIEW } from '@/app/api/admin/whatsapp/templates/[templateKey]/preview/route';
 import { buildAdminWhatsAppTemplateView } from '@/modules/messaging/application/adminWhatsAppTemplates';
 import { getWhatsAppTemplateDefinition } from '@/modules/messaging/templates/definitions';
+import { currentMessagingTenantScope } from '@/modules/messaging/tenancy/messagingTenantScope';
+import { TenantContextError } from '@/platform/tenant/tenantContext';
+import { requireWhatsAppTemplateAdmin } from '@/app/api/admin/whatsapp/templates/access';
+import {
+  TENANT_A,
+  TENANT_B,
+  installMessagingTenantTestKit,
+  resetMessagingTenantTestKit,
+} from './support/messagingTenantTestKit';
 
 const KEY = 'sale.customer_receipt';
 const ADMIN = {
@@ -158,6 +167,8 @@ const ADMIN = {
   isSuperAdmin: false,
   activeBranchId: 3,
   activeBranchCode: 'GLEEM',
+  tenantId: TENANT_A,
+  membershipId: 'membership-admin',
 };
 const BRANCH = {
   userId: 7,
@@ -206,6 +217,58 @@ describe('Admin WhatsApp template APIs', () => {
     repo.reset();
     requireAdmin.mockResolvedValue(ADMIN);
     requireActiveBranchContext.mockResolvedValue(BRANCH);
+    installMessagingTenantTestKit();
+  });
+
+  afterEach(() => {
+    resetMessagingTenantTestKit();
+  });
+
+  it('access context carries the authenticated tenant', async () => {
+    await expect(requireWhatsAppTemplateAdmin()).resolves.toEqual({
+      userId: 7,
+      branchId: 3,
+      tenantId: TENANT_A,
+    });
+  });
+
+  it('runs repository reads and writes inside the admin tenant messaging scope', async () => {
+    const scopes: Array<ReturnType<typeof currentMessagingTenantScope>> = [];
+    const listSpy = vi.spyOn(repo, 'listMessageTemplateRows').mockImplementation(async () => {
+      scopes.push(currentMessagingTenantScope());
+      return [];
+    });
+    const realUpsert = repo.upsertBranchMessageTemplateOverride;
+    const upsertSpy = vi
+      .spyOn(repo, 'upsertBranchMessageTemplateOverride')
+      .mockImplementation(async (input) => {
+        scopes.push(currentMessagingTenantScope());
+        return realUpsert(input);
+      });
+
+    requireAdmin.mockResolvedValue({ ...ADMIN, tenantId: TENANT_B });
+    expect((await GET_LIST()).status).toBe(200);
+    const res = await PUT(
+      jsonRequest(`http://localhost/api/admin/whatsapp/templates/${KEY}`, 'PUT', {
+        language: 'ar',
+        content: 'فرع {{customerName}}',
+      }),
+      params(),
+    );
+    expect(res.status).toBe(200);
+    listSpy.mockRestore();
+    upsertSpy.mockRestore();
+
+    expect(scopes.length).toBeGreaterThanOrEqual(2);
+    for (const scope of scopes) {
+      expect(scope).toMatchObject({ tenantId: TENANT_B, source: 'staff' });
+    }
+  });
+
+  it('fails closed when the auth result has no tenant', async () => {
+    const { tenantId: _tenantId, ...noTenant } = ADMIN;
+    requireAdmin.mockResolvedValue(noTenant);
+    await expect(GET_LIST()).rejects.toBeInstanceOf(TenantContextError);
   });
 
   it('returns 401 when unauthenticated', async () => {

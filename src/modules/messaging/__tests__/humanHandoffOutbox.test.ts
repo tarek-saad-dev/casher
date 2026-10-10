@@ -42,9 +42,12 @@ vi.mock('@/modules/messaging/handoff/application/outboxSendGate', () => ({
 }));
 
 import { processOutboxTick } from '@/modules/messaging/application/processOutboxTick';
+import { currentMessagingTenantScope } from '@/modules/messaging/tenancy/messagingTenantScope';
+import { TENANT_B } from './support/messagingTenantTestKit';
 
 function row(partial: Partial<OutboxMessageRow> & Pick<OutboxMessageRow, 'id' | 'idempotencyKey'>): OutboxMessageRow {
   return {
+    tenantId: TENANT_B,
     channel: 'whatsapp',
     recipient: '201555000000',
     templateKey: '',
@@ -77,11 +80,12 @@ describe('processOutboxTick handoff suppression', () => {
   beforeEach(() => {
     repo.reset([row({ id: 50, idempotencyKey: 'ai-turn:50' })]);
     vi.clearAllMocks();
-    gate.evaluateOutboxSendGate.mockResolvedValue({
+    gate.evaluateOutboxSendGate.mockImplementation(async () => ({
       allow: false,
       reason: 'control_mode_human',
       origin: 'BOT',
-    });
+      tenantInScope: currentMessagingTenantScope()?.tenantId,
+    }));
   });
 
   it('queued AI outbound is marked failed without retry after human takeover', async () => {
@@ -98,5 +102,7 @@ describe('processOutboxTick handoff suppression', () => {
     expect(repo.rows[0]?.status).toBe('failed');
     expect(repo.rows[0]?.lastError).toMatch(/^suppressed:/);
     expect(repo.scheduleRetry).not.toHaveBeenCalled();
+    const gateResult = await gate.evaluateOutboxSendGate.mock.results[0]?.value;
+    expect(gateResult.tenantInScope).toBe(TENANT_B);
   });
 });

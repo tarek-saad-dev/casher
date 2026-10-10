@@ -94,6 +94,12 @@ async function assertLiveDatabase(pool: sql.ConnectionPool) {
 }
 
 async function cleanupSmokeTenant(pool: sql.ConnectionPool): Promise<void> {
+  // Covers tables added by later DRVO branches (master data, brand, messaging, HR, booking).
+  const { purgeSmokeTenant } = await import('./smokeTenantPurge');
+  if (await purgeSmokeTenant(pool, SMOKE_TENANT_CODE)) {
+    console.log(`  cleanup: removed ${SMOKE_TENANT_CODE}`);
+    return;
+  }
   const tenant = await pool
     .request()
     .input('code', sql.NVarChar(64), SMOKE_TENANT_CODE)
@@ -125,6 +131,8 @@ async function cleanupSmokeTenant(pool: sql.ConnectionPool): Promise<void> {
       .query(`
         DELETE FROM dbo.PlatformOutbox WHERE TenantId = @tenantId;
         DELETE FROM dbo.SalonPackConfig WHERE TenantId = @tenantId;
+        DELETE FROM dbo.TenantIndustryPack WHERE TenantId = @tenantId;
+        DELETE FROM dbo.TenantSubscription WHERE TenantId = @tenantId;
         DELETE FROM dbo.TenantAppEntitlement WHERE TenantId = @tenantId;
         DELETE FROM dbo.LegacyIdMap WHERE TenantId = @tenantId;
         DELETE FROM dbo.TenantMembership WHERE TenantId = @tenantId;
@@ -173,6 +181,7 @@ async function main() {
   const { provisionTenant } = await import('../../src/platform/onboarding/provisionTenant');
   const { TenantOnboardingError } = await import('../../src/platform/onboarding/errors');
   const { verifyPlatformBootstrap } = await import('./platformBootstrap');
+  const { SALON_PACK } = await import('../../src/packs/salon/public');
 
   const config = buildConfig();
   if (!config.server || !config.user || !config.database) {
@@ -202,6 +211,7 @@ async function main() {
         ownerPassword: 'smoke-pass-change-me',
         firstBranchCode: SMOKE_BRANCH_CODE,
         firstBranchName: 'DRVO011 Smoke Branch',
+        industryPack: SALON_PACK,
       },
       { actorUserId, actorUserName: 'drvo-smoke' },
     );
@@ -232,6 +242,7 @@ async function main() {
           ownerPassword: 'x',
           firstBranchCode: 'DUP_BR',
           firstBranchName: 'Dup Branch',
+          industryPack: SALON_PACK,
         },
         { actorUserId },
       );

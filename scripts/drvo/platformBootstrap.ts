@@ -322,8 +322,8 @@ export async function verifyPlatformBootstrap(
       }
     }
 
-    const { getSalonPackManifest } = await import('../../src/packs/salon/manifest');
-    const apps = [...getSalonPackManifest().enabledApps, 'operations'];
+    const { getBootstrapSalonManifest } = await import('../../src/packs/salon/manifest');
+    const apps = [...getBootstrapSalonManifest().enabledApps, 'operations'];
     for (const code of apps) {
       const reg = await pool
         .request()

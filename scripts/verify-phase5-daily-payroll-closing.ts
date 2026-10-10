@@ -369,6 +369,7 @@ async function main() {
   }
 
   // Import app services after DB connect (server-only stubbed).
+  const { resolveLegacyBranchTenantId } = await import('../src/platform/masterData/tenantScope');
   const { evaluateDailyPayrollReadiness, listDailyPayrollOpenDays } = await import(
     '../src/lib/hr/dailyPayrollReadiness.service'
   );
@@ -610,7 +611,7 @@ async function main() {
 
   // open-days: CLOSED should disappear
   console.log('\n--- open-days after closes ---');
-  const openAfterClose = await listDailyPayrollOpenDays({ lookbackDays: LOOKBACK });
+  const openAfterClose = await listDailyPayrollOpenDays({ tenantId: await resolveLegacyBranchTenantId(gleemId), lookbackDays: LOOKBACK });
   const gleemOpen = openAfterClose.items.find(
     (i: any) => i.branchId === gleemId && i.workDate === gleemDate,
   );
@@ -654,7 +655,7 @@ async function main() {
       reopenReason: reopenResult.row?.reopenReason,
     };
 
-    const openAfterReopen = await listDailyPayrollOpenDays({ lookbackDays: LOOKBACK });
+    const openAfterReopen = await listDailyPayrollOpenDays({ tenantId: await resolveLegacyBranchTenantId(gleemId), lookbackDays: LOOKBACK });
     const gleemReopenedListed = openAfterReopen.items.find(
       (i: any) => i.branchId === gleemId && i.workDate === gleemDate,
     );
@@ -709,7 +710,7 @@ async function main() {
       if (recloseDiff.length) failures.push(`reclose changed finances: ${recloseDiff.join('; ')}`);
       else notes.push('Reclose → 0 accounting difference');
 
-      const openFinal = await listDailyPayrollOpenDays({ lookbackDays: LOOKBACK });
+      const openFinal = await listDailyPayrollOpenDays({ tenantId: await resolveLegacyBranchTenantId(gleemId), lookbackDays: LOOKBACK });
       if (openFinal.items.some((i: any) => i.branchId === gleemId && i.workDate === gleemDate)) {
         failures.push('re-CLOSED GLEEM still in open-days');
       } else {

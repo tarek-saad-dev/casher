@@ -12,7 +12,7 @@ import {
 
 export type InternalOpsBookingRequest = {
   branchCode: string;
-  auth: { userId: number; canOperate?: boolean };
+  auth: { userId: number; canOperate?: boolean; tenantId?: string };
   bookingSource: 'operations' | 'admin';
 };
 
@@ -46,6 +46,7 @@ export async function resolveInternalOpsBookingRequest(
   if (Number.isFinite(empIdNum) && empIdNum > 0) {
     const { resolveOpsWriteBranch } = await import('@/lib/branch/opsWriteBranch');
     const target = await resolveOpsWriteBranch({
+      tenantId: branch.tenantId,
       userId: branch.userId,
       sessionBranchId: branch.branchId,
       empId: empIdNum,
@@ -60,7 +61,7 @@ export async function resolveInternalOpsBookingRequest(
 
   return {
     branchCode,
-    auth: { userId: branch.userId, canOperate: branch.canOperate },
+    auth: { userId: branch.userId, canOperate: branch.canOperate, tenantId: branch.tenantId },
     bookingSource,
   };
 }

@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSession } from '@/lib/session';
 import {
   EmployeeTargetValidationError,
   parseTargetPreviewBody,
   previewEmployeeTargetPlan,
 } from '@/lib/payroll/employee-target';
+import { requireTenantSession } from '@/lib/api-auth';
 
 // POST /api/admin/employees/:id/target-settings/preview
 export async function POST(
@@ -12,10 +12,8 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
-    }
+    const session = await requireTenantSession();
+    if (session instanceof NextResponse) return session;
 
     const { id } = await params;
     const empId = parseInt(id, 10);

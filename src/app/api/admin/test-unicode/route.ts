@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { isAuthResult, requireDevelopmentAdmin } from '@/lib/api-auth';
-import { getPool } from '@/lib/db';
+import { getPool, sql } from '@/lib/db';
 
 export async function GET() {
   const __auth = await requireDevelopmentAdmin();
@@ -11,13 +11,13 @@ export async function GET() {
     
     // Test with a specific service to check Unicode storage
     const result = await db.request()
-      .input('ProName', 'Hair Cut')
+      .input('tenantId', sql.UniqueIdentifier, __auth.tenantId).input('ProName', 'Hair Cut')
       .query(`
         SELECT ProID, ProName, ProNameAr, 
                LEN(ProNameAr) as Length,
                UNICODE(SUBSTRING(ProNameAr, 1, 1)) as FirstCharUnicode
         FROM [dbo].[TblPro] 
-        WHERE ProName = @ProName
+        WHERE ProName = @ProName AND TenantId = @tenantId
       `);
     
     if (result.recordset.length > 0) {
@@ -25,22 +25,23 @@ export async function GET() {
       
       // Test inserting a new record with explicit N prefix
       await db.request()
-        .input('ProName', 'Test Arabic')
+        .input('tenantId', sql.UniqueIdentifier, __auth.tenantId).input('ProName', 'Test Arabic')
         .input('ProNameAr', 'اختبار عربي')
         .query(`
-          INSERT INTO [dbo].[TblPro] (ProName, ProNameAr, SPrice1, Bonus, CatID, isDeleted)
-          VALUES (@ProName, @ProNameAr, 99, 0, 8, 0)
+          INSERT INTO [dbo].[TblPro] (TenantId, ProName, ProNameAr, SPrice1, Bonus, CatID, isDeleted)
+          SELECT @tenantId, @ProName, @ProNameAr, 99, 0, 8, 0
+          WHERE EXISTS (SELECT 1 FROM [dbo].[TblCat] WHERE CatID = 8 AND TenantId = @tenantId)
         `);
       
       // Check the inserted record
       const testResult = await db.request()
-        .input('ProName', 'Test Arabic')
+        .input('tenantId', sql.UniqueIdentifier, __auth.tenantId).input('ProName', 'Test Arabic')
         .query(`
           SELECT ProID, ProName, ProNameAr, 
                  LEN(ProNameAr) as Length,
                  UNICODE(SUBSTRING(ProNameAr, 1, 1)) as FirstCharUnicode
           FROM [dbo].[TblPro] 
-          WHERE ProName = @ProName
+          WHERE ProName = @ProName AND TenantId = @tenantId
         `);
       
       return NextResponse.json({ 

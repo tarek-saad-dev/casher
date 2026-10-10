@@ -91,6 +91,8 @@ export interface GetEmployeeMonthlyWorkRevenueParams {
   month: number;
   /** When set, attendance and revenue are filtered to this branch. */
   branchId?: number | null;
+  /** Tenant of the caller; the employee must belong to it. */
+  tenantId?: string | null;
 }
 
 export function validateReportParams(

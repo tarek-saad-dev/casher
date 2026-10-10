@@ -1,18 +1,22 @@
 /**
  * Pure employee-scope helpers (safe for UI + tests).
  * Server resolution lives in dailyPayrollEmployeeScope.ts (server-only).
+ *
+ * A scope is `all` (every viewable branch of the tenant) or one branch code of the tenant.
  */
 
-export const DAILY_PAYROLL_EMPLOYEE_SCOPES = ['all', 'GLEEM', 'CAMP_CAESAR'] as const;
-export type DailyPayrollEmployeeScope = (typeof DAILY_PAYROLL_EMPLOYEE_SCOPES)[number];
+import { normalizeHrBranchCode } from '@/lib/hr/legacyHrBranchPolicy';
+
+export type DailyPayrollEmployeeScope = 'all' | (string & {});
+
+const BRANCH_CODE_RE = /^[A-Z0-9_-]{1,40}$/;
 
 export function parseDailyPayrollEmployeeScope(
   raw: string | null,
 ): DailyPayrollEmployeeScope | 'active' {
-  if (raw == null || raw === '' || raw === 'active') return 'active';
+  if (raw == null || raw.trim() === '' || raw.trim().toLowerCase() === 'active') return 'active';
   const v = raw.trim().toUpperCase();
   if (v === 'ALL') return 'all';
-  if (v === 'GLEEM') return 'GLEEM';
-  if (v === 'CAMP_CAESAR' || v === 'CAMP') return 'CAMP_CAESAR';
-  return 'active';
+  const code = normalizeHrBranchCode(v);
+  return BRANCH_CODE_RE.test(code) ? code : 'active';
 }

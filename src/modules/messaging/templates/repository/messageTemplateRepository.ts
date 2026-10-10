@@ -1,9 +1,11 @@
 /**
  * Access to dbo.TblMessageTemplate.
  * Runtime sale lookup stays active-only. Admin writes are branch-scoped overrides.
+ * Every statement is tenant-filtered; "global" templates are per tenant (BranchID IS NULL).
  */
 import { getPool, sql } from '@/lib/db';
 import { MessageTemplateAdminError, type MessageTemplateSource } from '../../domain/templateTypes';
+import { bindMessagingTenant } from '../../tenancy/tenantSql';
 
 export type MessageTemplateLookupInput = {
   channel: string;
@@ -94,8 +96,7 @@ export async function lookupActiveMessageTemplate(
   input: MessageTemplateLookupInput,
 ): Promise<MessageTemplateLookupResult | null> {
   const pool = await getPool();
-  const result = await pool
-    .request()
+  const result = await bindMessagingTenant(pool.request(), 'templates.lookupActiveMessageTemplate')
     .input('channel', sql.NVarChar(40), input.channel)
     .input('templateKey', sql.NVarChar(100), input.templateKey)
     .input('language', sql.NVarChar(10), input.language)
@@ -103,7 +104,8 @@ export async function lookupActiveMessageTemplate(
     .query<{ Content: string; BranchID: number | null }>(`
       SELECT TOP (1) [Content], [BranchID]
       FROM [dbo].[TblMessageTemplate]
-      WHERE [Channel] = @channel
+      WHERE [TenantId] = @tenantId
+        AND [Channel] = @channel
         AND [TemplateKey] = @templateKey
         AND [Language] = @language
         AND [IsActive] = 1
@@ -137,8 +139,7 @@ export async function listMessageTemplateRows(input: {
   if (input.templateKeys.length === 0) return [];
 
   const pool = await getPool();
-  const request = pool
-    .request()
+  const request = bindMessagingTenant(pool.request(), 'templates.listMessageTemplateRows')
     .input('channel', sql.NVarChar(40), input.channel)
     .input('language', sql.NVarChar(10), input.language)
     .input('branchId', sql.Int, input.branchId);
@@ -151,7 +152,8 @@ export async function listMessageTemplateRows(input: {
   const result = await request.query<RawTemplateRow>(`
     SELECT ${TEMPLATE_ROW_COLUMNS}
     FROM [dbo].[TblMessageTemplate]
-    WHERE [Channel] = @channel
+    WHERE [TenantId] = @tenantId
+      AND [Channel] = @channel
       AND [Language] = @language
       AND [TemplateKey] IN (${inList})
       AND ([BranchID] = @branchId OR [BranchID] IS NULL)
@@ -182,7 +184,7 @@ async function selectLockedBranchOverrideRows(
     branchId: number;
   },
 ): Promise<MessageTemplateStoredRow[]> {
-  const result = await new sql.Request(tx)
+  const result = await bindMessagingTenant(new sql.Request(tx), 'templates.selectLockedBranchOverrideRows')
     .input('channel', sql.NVarChar(40), input.channel)
     .input('templateKey', sql.NVarChar(100), input.templateKey)
     .input('language', sql.NVarChar(10), input.language)
@@ -190,7 +192,8 @@ async function selectLockedBranchOverrideRows(
     .query<RawTemplateRow>(`
       SELECT ${TEMPLATE_ROW_COLUMNS}
       FROM [dbo].[TblMessageTemplate] WITH (UPDLOCK, HOLDLOCK, ROWLOCK)
-      WHERE [Channel] = @channel
+      WHERE [TenantId] = @tenantId
+        AND [Channel] = @channel
         AND [TemplateKey] = @templateKey
         AND [Language] = @language
         AND [BranchID] = @branchId
@@ -223,7 +226,7 @@ export async function upsertBranchMessageTemplateOverride(input: {
 
     let saved: MessageTemplateStoredRow;
     if (target) {
-      const updated = await new sql.Request(tx)
+      const updated = await bindMessagingTenant(new sql.Request(tx), 'templates.upsertBranchMessageTemplateOverride')
         .input('id', sql.Int, target.id)
         .input('content', sql.NVarChar(sql.MAX), input.content)
         .input('userId', sql.Int, input.userId)
@@ -237,11 +240,12 @@ export async function upsertBranchMessageTemplateOverride(input: {
             [UpdatedAt] = SYSUTCDATETIME()
           OUTPUT ${TEMPLATE_OUTPUT_COLUMNS}
           WHERE [ID] = @id
+            AND [TenantId] = @tenantId
             AND [BranchID] IS NOT NULL
         `);
       saved = mapMessageTemplateRow(updated.recordset[0]);
     } else {
-      const inserted = await new sql.Request(tx)
+      const inserted = await bindMessagingTenant(new sql.Request(tx), 'templates.upsertBranchMessageTemplateOverride')
         .input('templateKey', sql.NVarChar(100), input.templateKey)
         .input('channel', sql.NVarChar(40), input.channel)
         .input('branchId', sql.Int, input.branchId)
@@ -250,6 +254,7 @@ export async function upsertBranchMessageTemplateOverride(input: {
         .input('userId', sql.Int, input.userId)
         .query<RawTemplateRow>(`
           INSERT INTO [dbo].[TblMessageTemplate] (
+            [TenantId],
             [TemplateKey],
             [Channel],
             [BranchID],
@@ -262,6 +267,7 @@ export async function upsertBranchMessageTemplateOverride(input: {
           )
           OUTPUT ${TEMPLATE_OUTPUT_COLUMNS}
           VALUES (
+            @tenantId,
             @templateKey,
             @channel,
             @branchId,
@@ -318,7 +324,7 @@ export async function deactivateBranchMessageTemplateOverride(input: {
       return { changed: false, row: existing[0] ?? null };
     }
 
-    const updated = await new sql.Request(tx)
+    const updated = await bindMessagingTenant(new sql.Request(tx), 'templates.deactivateBranchMessageTemplateOverride')
       .input('id', sql.Int, active.id)
       .input('userId', sql.Int, input.userId)
       .query<RawTemplateRow>(`
@@ -330,6 +336,7 @@ export async function deactivateBranchMessageTemplateOverride(input: {
           [UpdatedAt] = SYSUTCDATETIME()
         OUTPUT ${TEMPLATE_OUTPUT_COLUMNS}
         WHERE [ID] = @id
+          AND [TenantId] = @tenantId
           AND [BranchID] IS NOT NULL
           AND [IsActive] = 1
       `);

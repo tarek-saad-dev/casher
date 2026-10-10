@@ -85,7 +85,7 @@ export async function resolveAdvanceEmployeeFromExpINID(
       SELECT TOP 1 m.EmpID AS mapEmpId, e.EmpID AS resolvedEmpId, e.EmpName AS empName
       FROM dbo.TblExpCatEmpMap m
       INNER JOIN dbo.TblExpINCat c ON c.ExpINID = m.ExpINID AND c.ExpINType = N'مصروفات'
-      LEFT JOIN dbo.TblEmp e ON e.EmpID = m.EmpID
+      LEFT JOIN dbo.TblEmp e ON e.EmpID = m.EmpID AND e.TenantId = c.TenantId
       WHERE m.ExpINID = @ExpINID
         AND m.TxnKind = N'advance'
         AND m.IsActive = 1
@@ -120,7 +120,7 @@ export async function resolveRevenueEmployeeFromExpINID(
       SELECT TOP 1 m.EmpID AS mapEmpId, e.EmpID AS resolvedEmpId, e.EmpName AS empName
       FROM dbo.TblExpCatEmpMap m
       INNER JOIN dbo.TblExpINCat c ON c.ExpINID = m.ExpINID AND c.ExpINType = N'ايرادات'
-      LEFT JOIN dbo.TblEmp e ON e.EmpID = m.EmpID
+      LEFT JOIN dbo.TblEmp e ON e.EmpID = m.EmpID AND e.TenantId = c.TenantId
       WHERE m.ExpINID = @ExpINID
         AND m.TxnKind = N'revenue'
         AND m.IsActive = 1

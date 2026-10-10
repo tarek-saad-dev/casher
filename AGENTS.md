@@ -6,14 +6,14 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 # DRVO
 
-Casher (`tarek-saad-dev/casher`) is a salon POS being prepared for platform extraction. DRVO-001 (`docs/drvo/DRVO-001-*.md`) is an audit with provisional labels. DRVO-002 owns final platform decisions. Cloud Agents execute tasks through the GitHub control plane in `docs/drvo/CONTROL-PLANE.md`.
+Casher (`tarek-saad-dev/casher`) is a salon POS being prepared for platform extraction. DRVO-001 (`docs/drvo/DRVO-001-*.md`) is an audit with provisional labels. DRVO-002 owns final platform decisions. GitHub issues and pull requests remain the source of truth. Cursor/Cloud automations may be paused; staging verification is executed by the guarded GitHub Actions staging gate documented in `docs/drvo/CONTROL-PLANE.md`.
 
 GitHub issues and pull requests are the source of truth for task scope and status.
 
 ## Execution guardrails
 
 - Base branch: `main`.
-- Use the existing Cursor Managed Cloud Environment for this repository.
+- Use GitHub Actions for the DRVO staging gate when Cursor/Cloud automations are unavailable. Never substitute production credentials for staging credentials.
 - Staging database only: `last132_agent`.
 - Production database `last132`: no access and no mutation.
 - **Agents never merge.** A human must approve and merge every PR.
@@ -36,6 +36,10 @@ GitHub issues and pull requests are the source of truth for task scope and statu
 | Key secret | `DRVO_STAGING_SSH_KEY` |
 | DB password secret | `DRVO_STAGING_DB_PASSWORD` |
 | Tunnel local port | `14330` |
+
+Current staging executor: `.github/workflows/drvo-staging-gate.yml`. It hard-stops before any SSH/DB connection if staging credentials are unavailable and hard-stops before mutation unless `DB_NAME() = last132_agent` and `SUSER_SNAME() = drvo_agent`.
+
+The workflow may reuse the existing `VPS_HOST` value only as the network destination address. It must use the dedicated `DRVO_STAGING_SSH_KEY` for SSH user `drvo-tunnel` and `DRVO_STAGING_DB_PASSWORD` for SQL login `drvo_agent`. Production deploy keys and production DB credentials are never valid substitutes.
 
 Before any staging DB mutation: `DB_NAME() = last132_agent` and `SUSER_SNAME() = drvo_agent`.
 

@@ -25,6 +25,8 @@ import { getCairoBusinessDate } from '@/lib/businessDate';
 import { isEmployeeHiddenFromPublicBooking } from '@/lib/hr/testEmployeePolicy';
 import type { PublicBookingErrorCode } from '@/lib/booking/publicBookingErrorCatalog';
 import { createStageTimer } from '@/lib/devStageTiming';
+import { requireMasterDataTenantId } from '@/platform/masterData/tenantScope';
+import { tenantLocationBranchSql } from '@/lib/booking/publicBookingTenancy';
 
 export const MAX_CROSS_BRANCH_AVAILABILITY_DAYS = 14;
 export const MAX_CROSS_BRANCH_AVAILABILITY_SERVICES = 12;
@@ -153,15 +155,19 @@ function parseDaysCount(raw: unknown): number {
   return n;
 }
 
-async function loadBarber(empId: number): Promise<{ empId: number; nameAr: string }> {
+async function loadBarber(
+  empId: number,
+  tenantId: string,
+): Promise<{ empId: number; nameAr: string }> {
   const db = await getPool();
   const r = await db
     .request()
     .input('empId', sql.Int, empId)
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
     .query(`
       SELECT EmpName, ISNULL(isActive, 1) AS isActive
       FROM dbo.TblEmp
-      WHERE EmpID = @empId
+      WHERE EmpID = @empId AND TenantId = @tenantId
     `);
   const row = r.recordset[0];
   if (!row || !row.isActive) {
@@ -194,11 +200,13 @@ async function loadBookableAssignmentsInWindow(
   empId: number,
   dateFrom: string,
   dateTo: string,
+  tenantId: string,
 ): Promise<AssignmentRow[]> {
   const db = await getPool();
   const r = await db
     .request()
     .input('empId', sql.Int, empId)
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
     .input('dateFrom', sql.Date, dateFrom)
     .input('dateTo', sql.Date, dateTo)
     .query(`
@@ -210,9 +218,10 @@ async function loadBookableAssignmentsInWindow(
         ea.EffectiveTo
       FROM dbo.TblEmpBranchAssignment ea
       INNER JOIN dbo.TblBranch b ON b.BranchID = ea.BranchID
-      INNER JOIN dbo.TblEmp e ON e.EmpID = ea.EmpID
+      INNER JOIN dbo.TblEmp e ON e.EmpID = ea.EmpID AND e.TenantId = @tenantId
       INNER JOIN dbo.QueueBookingSettings qbs ON qbs.BranchID = b.BranchID
       WHERE ea.EmpID = @empId
+        AND ${tenantLocationBranchSql('b.BranchID')}
         AND ea.IsActive = 1
         AND ea.CanReceiveBookings = 1
         AND b.IsActive = 1
@@ -369,6 +378,7 @@ function sortSlots(slots: PublicCrossBranchSlotWire[]): PublicCrossBranchSlotWir
 }
 
 async function evaluateBranch(args: {
+  tenantId: string;
   discoverable: PublicDiscoverableBranch;
   assignments: AssignmentRow[];
   dates: string[];
@@ -389,6 +399,7 @@ async function evaluateBranch(args: {
     const branchCtx = await resolvePublicBookingBranchContext({
       branchCode: args.discoverable.branchCode,
       purpose: 'public_booking',
+      expectedTenantId: args.tenantId,
     });
     // Paused mid-flight / not bookable — omit slots, keep silence (no false slots)
     if (!branchCtx.bookingEnabled || !branchCtx.publicBookingEnabled) {
@@ -460,6 +471,8 @@ async function evaluateBranch(args: {
  * POST body handler — barber availability across all public bookable branches.
  */
 export async function getPublicCrossBranchBarberAvailability(args: {
+  /** DRVO-019: barber + branches must belong to this tenant. */
+  tenantId: string;
   empId: number;
   serviceIds: unknown;
   dateFrom: unknown;
@@ -489,8 +502,10 @@ export async function getPublicCrossBranchBarberAvailability(args: {
     throw new PublicCrossBranchAvailabilityError('SERVICE_NOT_AVAILABLE_AT_BRANCH');
   }
 
+  const tenantId = requireMasterDataTenantId(args.tenantId, 'public cross-branch availability');
   const cacheKey = [
     'xbranch',
+    tenantId,
     args.empId,
     dateFrom,
     daysCount,
@@ -513,13 +528,14 @@ export async function getPublicCrossBranchBarberAvailability(args: {
   const store = { count: 0 };
   return queryCountAls.run(store, async () => {
     const timer = createStageTimer(true);
-    const barber = await loadBarber(args.empId);
+    const barber = await loadBarber(args.empId, tenantId);
     timer.mark('barberMs');
 
     const assignments = await loadBookableAssignmentsInWindow(
       args.empId,
       dateFrom,
       dateTo,
+      tenantId,
     );
     timer.mark('eligibilityMs');
 
@@ -551,6 +567,7 @@ export async function getPublicCrossBranchBarberAvailability(args: {
     const branchOutcomes = await Promise.all(
       eligibleDiscoverable.map((branch) =>
         evaluateBranch({
+          tenantId,
           discoverable: branch,
           assignments,
           dates,

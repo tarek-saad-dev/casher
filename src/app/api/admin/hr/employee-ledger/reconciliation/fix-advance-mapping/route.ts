@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'txnKind يجب أن يكون advance' }, { status: 400 });
     }
 
-    const result = await upsertAdvanceCategoryMapping(expInId, empId);
+    const result = await upsertAdvanceCategoryMapping(expInId, empId, auth.tenantId);
     return NextResponse.json(result);
   } catch (error) {
     if (error instanceof EmployeeLedgerCleanupError) {

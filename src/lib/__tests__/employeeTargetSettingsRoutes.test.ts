@@ -4,12 +4,18 @@ import { NextRequest } from 'next/server';
 vi.mock('server-only', () => ({}));
 
 const getSession = vi.fn();
+vi.mock('@/lib/api-auth', async (importOriginal) =>
+  (await import('@/lib/__tests__/helpers/tenantSessionAuthMock')).tenantSessionAuthMock(await importOriginal()),
+);
 vi.mock('@/lib/session', () => ({
   getSession: (...args: unknown[]) => getSession(...args),
 }));
 
 vi.mock('@/lib/branch/context', () => ({
-  requireBranchOperationAccess: vi.fn(async () => ({ branchId: 1 })),
+  requireBranchOperationAccess: vi.fn(async () => ({
+    branchId: 1,
+    tenantId: '11111111-1111-4111-8111-111111111111',
+  })),
 }));
 
 const getEmployeeTargetSettings = vi.fn();
@@ -57,7 +63,12 @@ describe('target-settings APIs', () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.employee.empName).toBe('أحمد');
-    expect(getEmployeeTargetSettings).toHaveBeenCalledWith(5, null, 1);
+    expect(getEmployeeTargetSettings).toHaveBeenCalledWith(
+      5,
+      null,
+      1,
+      '11111111-1111-4111-8111-111111111111',
+    );
   });
 
   it('GET unauthorized', async () => {

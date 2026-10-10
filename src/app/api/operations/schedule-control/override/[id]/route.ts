@@ -20,6 +20,7 @@ import {
   removeBreakMatchingBlockRange,
   removeBreakTimeMatchingBlockRange,
 } from "@/lib/hr/attendance-break-schedule-sync";
+import { requireTenantSession } from '@/lib/api-auth';
 
 export const runtime = "nodejs";
 
@@ -28,6 +29,8 @@ const SC_DAY_OFF_SOURCE = "schedule-control day_off";
 type RouteContext = { params: Promise<{ id: string }> };
 
 export async function DELETE(_req: NextRequest, context: RouteContext) {
+  const tenantSession = await requireTenantSession();
+  if (tenantSession instanceof NextResponse) return tenantSession;
   try {
     const { id } = await context.params;
     const overrideId = parseInt(id, 10);

@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const preview = await previewOwnerDailyWhatsApp(date);
+    const preview = await previewOwnerDailyWhatsApp(date, auth.tenantId);
     return NextResponse.json(preview);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
@@ -53,6 +53,7 @@ export async function POST(req: NextRequest) {
     }
 
     const result = await sendOwnerDailyWhatsApp({
+      tenantId: auth.tenantId,
       workDate: date,
       dryRun: Boolean(body.dryRun),
     });

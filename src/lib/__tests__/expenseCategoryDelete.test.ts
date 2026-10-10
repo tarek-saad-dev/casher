@@ -52,8 +52,13 @@ const mockSessionUser = {
   ActiveBranchID: 1,
   ActiveBranchCode: 'GLEEM',
   BranchSessionVersion: 1 as const,
+  TenantId: '11111111-1111-4111-8111-111111111111',
+  MembershipId: '22222222-2222-4222-8222-222222222222',
 };
 
+vi.mock('@/lib/api-auth', async (importOriginal) =>
+  (await import('@/lib/__tests__/helpers/tenantSessionAuthMock')).tenantSessionAuthMock(await importOriginal()),
+);
 vi.mock('@/lib/session', () => ({
   getSession: vi.fn().mockResolvedValue(mockSessionUser),
 }));

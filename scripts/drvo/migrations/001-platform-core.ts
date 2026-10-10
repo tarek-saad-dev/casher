@@ -1,5 +1,5 @@
 import path from 'path';
-import { checksumFile } from '../checksum';
+import { checksumFile, legacyCrlfChecksumFile } from '../checksum';
 import { executeSqlFile } from '../sqlBatch';
 import { verifyPlatformCoreStructure } from '../platformCoreSchema';
 import type { DrvoMigrationDefinition } from '../types';
@@ -21,6 +21,7 @@ export const platformCoreMigration: DrvoMigrationDefinition = {
   name: 'DRVO-003 Platform Core schema',
   dependencies: [],
   checksum: checksumFile(SCHEMA),
+  legacyChecksums: [legacyCrlfChecksumFile(SCHEMA)],
   control: {
     kind: 'schema',
     risk: 'MEDIUM',

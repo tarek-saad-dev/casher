@@ -52,6 +52,7 @@ export async function GET(_req: NextRequest, context: RouteContext) {
 
     if (
       !(await userCanManageOpsBranchRecord({
+        tenantId: branch.tenantId,
         userId: branch.userId,
         sessionBranchId: branch.branchId,
         recordBranchId: booking.BranchID,
@@ -150,6 +151,7 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
 
     if (
       !(await userCanManageOpsBranchRecord({
+        tenantId: branch.tenantId,
         userId: branch.userId,
         sessionBranchId: branch.branchId,
         recordBranchId: cur.recordset[0].BranchID,

@@ -3,35 +3,28 @@
  * Phase 7A — canonical upcoming list via publicBookingReader.
  */
 
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import {
   normalizePublicBookingPhone,
 } from '@/lib/publicBookingHelpers';
-import { publicBookingErrorResponse } from '@/lib/booking/publicBookingErrorCatalog';
-import {
-  publicBookingOptionsResponse,
-  PUBLIC_BOOKING_ROUTE_CORS,
-} from '@/lib/booking/publicBookingCors';
 import {
   PublicBookingReadError,
   listPublicUpcomingBookings,
 } from '@/lib/booking/publicBookingReader';
 import { digestPublicBookingRateSubject } from '@/lib/booking/publicBookingRateLimitPolicy';
+import { extractPublicBranchCode } from '@/lib/branch/bookingQueueOwnership';
 import {
   gatePublicBookingRoute,
   finalizePublicBookingError,
   finalizePublicBookingJson,
+  publicBookingTenantOptionsResponse,
+  requirePublicBookingRouteTenancy,
 } from '@/lib/booking/publicBookingRouteGate';
 
 export const runtime = 'nodejs';
 
 export async function OPTIONS(req: NextRequest) {
-  const cors = PUBLIC_BOOKING_ROUTE_CORS['upcoming'];
-  return publicBookingOptionsResponse({
-    request: req,
-    allowedMethods: [...cors.methods],
-    allowedHeaders: cors.headers,
-  });
+  return publicBookingTenantOptionsResponse(req, 'upcoming');
 }
 
 export async function POST(req: NextRequest) {
@@ -45,7 +38,14 @@ export async function POST(req: NextRequest) {
   if (blocked) return blocked;
 
   try {
+    const tenancy = await requirePublicBookingRouteTenancy(req, gate, {
+      branchCode: extractPublicBranchCode(new URL(req.url).searchParams, body),
+      allowCutCompat: true,
+    });
+    if (tenancy instanceof NextResponse) return tenancy;
+
     const result = await listPublicUpcomingBookings({
+      tenantId: tenancy.tenantId,
       phone: body.phone,
       fromDate: body.fromDate,
       limit: body.limit,

@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSession } from '@/lib/session';
 import {
   EmployeeTargetConflictError,
   deleteEmployeeTargetPlan,
 } from '@/lib/payroll/employee-target';
+import { requireTenantSession } from '@/lib/api-auth';
 
 // DELETE /api/admin/employees/:id/target-settings/plans/:planId
 export async function DELETE(
@@ -11,10 +11,8 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string; planId: string }> },
 ) {
   try {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
-    }
+    const session = await requireTenantSession();
+    if (session instanceof NextResponse) return session;
 
     const { id, planId: planIdRaw } = await params;
     const empId = parseInt(id, 10);
@@ -23,7 +21,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'معرف غير صالح' }, { status: 400 });
     }
 
-    const result = await deleteEmployeeTargetPlan(empId, planId, session.UserID ?? null);
+    const result = await deleteEmployeeTargetPlan(empId, planId, session.UserID ?? null, session.TenantId);
     return NextResponse.json({ success: true, ...result });
   } catch (err: unknown) {
     if (err instanceof EmployeeTargetConflictError) {

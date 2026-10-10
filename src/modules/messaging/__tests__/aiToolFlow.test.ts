@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { AiTurnRow, AiStructuredResult } from '@/modules/messaging/ai/domain/types';
 import type { AiModelClient } from '@/modules/messaging/ai/model/aiModelClient';
 
@@ -60,7 +60,16 @@ vi.mock('@/modules/messaging/ai/planner/processBookingPlannerTurn', () => ({
   })),
 }));
 
-import { processAiTurn } from '@/modules/messaging/ai/application/processAiTurn';
+import { processAiTurn as processAiTurnUnscoped } from '@/modules/messaging/ai/application/processAiTurn';
+import {
+  TENANT_A,
+  inTenant,
+  installMessagingTenantTestKit,
+  resetMessagingTenantTestKit,
+} from './support/messagingTenantTestKit';
+
+const processAiTurn: typeof processAiTurnUnscoped = (turn, deps) =>
+  inTenant(TENANT_A, () => processAiTurnUnscoped(turn, deps));
 
 function turnRow(overrides: Partial<AiTurnRow> = {}): AiTurnRow {
   return {
@@ -128,6 +137,11 @@ describe('Phase 2 AI tool flow in processAiTurn', () => {
     insertOutboundBotMessage.mockResolvedValue({ messageId: 501 });
     enqueueMessage.mockResolvedValue({ messageId: 9001, duplicate: false });
     markAiTurnCompleted.mockResolvedValue(undefined);
+    installMessagingTenantTestKit();
+  });
+
+  afterEach(() => {
+    resetMessagingTenantTestKit();
   });
 
   it('15 greeting uses no tool', async () => {

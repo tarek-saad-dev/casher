@@ -165,6 +165,7 @@ async function executeAutoAbsenceScanBody(args: {
         SELECT DISTINCT e.EmpID, ISNULL(e.EmploymentType, N'full_time') AS EmploymentType
         FROM dbo.TblEmp e
         WHERE ISNULL(e.isActive, 1) = 1
+          AND e.TenantId IN (SELECT l.TenantId FROM dbo.Location l WHERE l.LegacyBranchId = @branchId)
           AND ISNULL(e.EmploymentType, N'full_time') <> N'freelance'
           AND (@empId IS NULL OR e.EmpID = @empId)
           AND (

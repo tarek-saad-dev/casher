@@ -10,48 +10,29 @@ import {
   createLegacyOperationalCalendarAdapter,
 } from '@/legacy/index';
 import { createLegacyBookingConversionAdapter } from '@/apps/pos/internal/legacyBookingConversionAdapter';
-import { resolveStaffTenantContext } from '@/platform/session/staffTenantContext';
-import { getPool, sql } from '@/lib/db';
-import { BOOTSTRAP_TENANT_CODE } from '@/platform/tenant/types';
+import { resolveUserTenantMembership, requireActorTenantId } from '@/platform/tenant/tenantContext';
+import { assertTenantAppInstalled } from '@/platform/commercial/tenantAccessGate';
 
 export type { SchedulingPortHooks } from '@/apps/booking/internal/schedulingPortAdapter';
 
-let cachedBootstrapTenantId: string | null = null;
-
-export async function resolveBootstrapTenantId(): Promise<string> {
-  if (cachedBootstrapTenantId) return cachedBootstrapTenantId;
-  const db = await getPool();
-  const result = await db
-    .request()
-    .input('code', sql.NVarChar, BOOTSTRAP_TENANT_CODE)
-    .query(`
-      SELECT TenantId FROM dbo.Tenant WHERE Code = @code AND Status = N'active'
-    `);
-  const tenantId = result.recordset[0]?.TenantId;
-  if (!tenantId) {
-    throw new Error('BOOTSTRAP_TENANT_NOT_FOUND');
-  }
-  cachedBootstrapTenantId = String(tenantId);
-  return cachedBootstrapTenantId;
-}
-
-export async function buildStaffActorContext(userId: number): Promise<ActorContext> {
-  const tenant = await resolveStaffTenantContext({ UserID: userId });
-  if (tenant) {
-    return {
-      actorType: 'staff',
-      actorId: String(userId),
-      tenantId: tenant.tenantId,
-      membershipId: tenant.membershipId,
-      viewLocationId: null,
-    };
-  }
-  const tenantId = await resolveBootstrapTenantId();
+/**
+ * Staff actor with an authoritative tenant. `sessionTenantId` is the signed session claim and
+ * must match one of the user's memberships; without it the user must have exactly one membership.
+ * Throws TenantContextError instead of defaulting to any tenant.
+ */
+export async function buildStaffActorContext(
+  userId: number,
+  sessionTenantId?: string | null,
+): Promise<ActorContext> {
+  const tenant = await resolveUserTenantMembership({
+    userId,
+    preferredTenantId: sessionTenantId ?? null,
+  });
   return {
     actorType: 'staff',
     actorId: String(userId),
-    tenantId,
-    membershipId: null,
+    tenantId: tenant.tenantId,
+    membershipId: tenant.membershipId,
     viewLocationId: null,
   };
 }
@@ -60,7 +41,7 @@ export async function buildCustomerActorContext(tenantId: string): Promise<Actor
   return {
     actorType: 'customer',
     actorId: 'anonymous',
-    tenantId,
+    tenantId: requireActorTenantId({ tenantId }, 'buildCustomerActorContext'),
     membershipId: null,
     viewLocationId: null,
   };
@@ -69,7 +50,8 @@ export async function buildCustomerActorContext(tenantId: string): Promise<Actor
 export async function buildBookingSchedulingPorts(
   actor: ActorContext,
 ): Promise<BookingSchedulingPorts> {
-  const tenantId = actor.tenantId ?? (await resolveBootstrapTenantId());
+  const tenantId = requireActorTenantId(actor, 'buildBookingSchedulingPorts');
+  await assertTenantAppInstalled(tenantId, 'booking');
   return {
     tenantId,
     actor: { ...actor, tenantId },

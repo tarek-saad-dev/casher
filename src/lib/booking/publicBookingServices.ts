@@ -2,7 +2,8 @@
  * Booking Phase 2 — public services catalog loader + bounded cache.
  */
 import 'server-only';
-import { getPool } from '@/lib/db';
+import { getPool, sql } from '@/lib/db';
+import { requireMasterDataTenantId } from '@/platform/masterData/tenantScope';
 import { ensureTblProImageUrlColumn, tblProImageUrlSelect } from '@/lib/migrations/ensureServiceImageUrl';
 import {
   ensureTblCatSortOrderColumn,
@@ -150,13 +151,13 @@ export function invalidatePublicBookingServicesCache(branchCode?: string): void 
   if (!branchCode) {
     map.clear();
   } else {
-    const prefix = `${branchCode.toUpperCase()}::`;
+    const segment = `::${branchCode.toUpperCase()}::`;
     for (const k of map.keys()) {
-      if (k.startsWith(prefix)) map.delete(k);
+      if (k.includes(segment)) map.delete(k);
     }
   }
   const g = globalThis as typeof globalThis & {
-    [stampRootKey]?: { expiresAt: number; value: string };
+    [stampRootKey]?: Map<string, { expiresAt: number; value: string }>;
   };
   delete g[stampRootKey];
   void import('@/lib/booking/v2Frontend/buildPublicBootstrap').then((m) => {
@@ -164,18 +165,18 @@ export function invalidatePublicBookingServicesCache(branchCode?: string): void 
   });
 }
 
-async function loadCatalogVersionStamp(): Promise<string> {
+async function loadCatalogVersionStamp(tenantId: string): Promise<string> {
   const db = await getPool();
   try {
-    const res = await db.request().query(`
+    const res = await db.request().input('tenantId', sql.UniqueIdentifier, tenantId).query(`
       SELECT
-        (SELECT COUNT(*) FROM dbo.TblPro) AS ProCount,
-        (SELECT COUNT(*) FROM dbo.TblPro WHERE ISNULL(isDeleted,0)=0) AS ActiveCount,
-        (SELECT ISNULL(SUM(ProID),0) FROM dbo.TblPro) AS ProIdSum,
-        (SELECT ISNULL(SUM(CAST(ISNULL(SPrice1,0) AS BIGINT)),0) FROM dbo.TblPro) AS PriceSum,
-        (SELECT ISNULL(SUM(CAST(ISNULL(DurationMinutes,0) AS BIGINT)),0) FROM dbo.TblPro) AS DurSum,
-        (SELECT ISNULL(SUM(CAST(ISNULL(CatID,0) AS BIGINT)),0) FROM dbo.TblPro) AS CatSum,
-        (SELECT ISNULL(SUM(CAST(ISNULL(SortOrder,0) AS BIGINT)),0) FROM dbo.TblCat) AS CatSortSum
+        (SELECT COUNT(*) FROM dbo.TblPro WHERE TenantId = @tenantId) AS ProCount,
+        (SELECT COUNT(*) FROM dbo.TblPro WHERE TenantId = @tenantId AND ISNULL(isDeleted,0)=0) AS ActiveCount,
+        (SELECT ISNULL(SUM(ProID),0) FROM dbo.TblPro WHERE TenantId = @tenantId) AS ProIdSum,
+        (SELECT ISNULL(SUM(CAST(ISNULL(SPrice1,0) AS BIGINT)),0) FROM dbo.TblPro WHERE TenantId = @tenantId) AS PriceSum,
+        (SELECT ISNULL(SUM(CAST(ISNULL(DurationMinutes,0) AS BIGINT)),0) FROM dbo.TblPro WHERE TenantId = @tenantId) AS DurSum,
+        (SELECT ISNULL(SUM(CAST(ISNULL(CatID,0) AS BIGINT)),0) FROM dbo.TblPro WHERE TenantId = @tenantId) AS CatSum,
+        (SELECT ISNULL(SUM(CAST(ISNULL(SortOrder,0) AS BIGINT)),0) FROM dbo.TblCat WHERE TenantId = @tenantId) AS CatSortSum
     `);
     const r = res.recordset[0] ?? {};
     return [
@@ -194,15 +195,22 @@ async function loadCatalogVersionStamp(): Promise<string> {
   }
 }
 
-async function loadCatalogVersionStampCached(): Promise<string> {
+async function loadCatalogVersionStampCached(tenantId: string): Promise<string> {
   const g = globalThis as typeof globalThis & {
-    [stampRootKey]?: { expiresAt: number; value: string };
+    [stampRootKey]?: Map<string, { expiresAt: number; value: string }>;
   };
-  const hit = g[stampRootKey];
+  if (!(g[stampRootKey] instanceof Map)) g[stampRootKey] = new Map();
+  const stamps = g[stampRootKey]!;
+  const hit = stamps.get(tenantId);
   if (hit && hit.expiresAt > Date.now()) return hit.value;
-  const value = await loadCatalogVersionStamp();
-  g[stampRootKey] = { expiresAt: Date.now() + STAMP_TTL_MS, value };
+  const value = await loadCatalogVersionStamp(tenantId);
+  stamps.set(tenantId, { expiresAt: Date.now() + STAMP_TTL_MS, value });
   return value;
+}
+
+/** The catalogue is the branch tenant's catalogue; a context without a tenant fails closed. */
+function requirePublicCatalogTenantId(ctx: Pick<PublicBookingBranchContext, 'tenantId'>): string {
+  return requireMasterDataTenantId(ctx.tenantId, 'public booking catalogue');
 }
 
 function branchContextVersion(ctx: PublicBookingBranchContext): string {
@@ -215,11 +223,13 @@ function branchContextVersion(ctx: PublicBookingBranchContext): string {
 }
 
 function cacheKeyFor(
+  tenantId: string,
   branchCode: string,
   branchVersion: string,
   catalogVersion: string,
 ): string {
   return [
+    tenantId,
     branchCode.toUpperCase(),
     branchVersion,
     catalogVersion,
@@ -228,14 +238,14 @@ function cacheKeyFor(
   ].join('::');
 }
 
-async function loadRawServiceRows(): Promise<PublicBookingServiceRow[]> {
+async function loadRawServiceRows(tenantId: string): Promise<PublicBookingServiceRow[]> {
   const db = await getPool();
   const hasImageUrl = await ensureTblProImageUrlColumn(db);
   const hasSortOrder = await ensureTblCatSortOrderColumn(db);
   const imageUrlCol = tblProImageUrlSelect(hasImageUrl);
   const sortOrderCol = tblCatSortOrderSelect(hasSortOrder);
 
-  const result = await db.request().query(`
+  const result = await db.request().input('tenantId', sql.UniqueIdentifier, tenantId).query(`
     SELECT
       p.ProID,
       p.ProName,
@@ -251,12 +261,13 @@ async function loadRawServiceRows(): Promise<PublicBookingServiceRow[]> {
       ${imageUrlCol},
       ISNULL(pop.SalesCount, 0) AS SalesCount
     FROM dbo.TblPro p
-    LEFT JOIN dbo.TblCat c ON c.CatID = p.CatID
+    LEFT JOIN dbo.TblCat c ON c.CatID = p.CatID AND c.TenantId = p.TenantId
     LEFT JOIN (
       SELECT ProID, COUNT(*) AS SalesCount
       FROM dbo.TblinvServDetail
       GROUP BY ProID
     ) pop ON pop.ProID = p.ProID
+    WHERE p.TenantId = @tenantId
     ORDER BY ISNULL(SortOrder, 999999), ISNULL(c.CatName, N''), p.ProID
   `);
 
@@ -469,24 +480,25 @@ export function buildPublicServicesCatalog(
 export async function getPublicBookingServicesCatalog(
   ctx: PublicBookingBranchContext,
 ): Promise<PublicBookingServicesCatalogResponse> {
+  const tenantId = requirePublicCatalogTenantId(ctx);
   const branchVersion = branchContextVersion(ctx);
   const map = getCacheMap();
-  // Soft hit: any fresh catalog for this branch+branchVersion avoids a stamp round-trip.
-  const branchPrefix = `${ctx.branchCode.toUpperCase()}::${branchVersion}::`;
+  // Soft hit: any fresh catalog for this tenant+branch+branchVersion avoids a stamp round-trip.
+  const branchPrefix = `${tenantId}::${ctx.branchCode.toUpperCase()}::${branchVersion}::`;
   for (const [k, hit] of map) {
     if (k.startsWith(branchPrefix) && hit.expiresAt > Date.now()) {
       return hit.value;
     }
   }
 
-  const catalogVersion = await loadCatalogVersionStampCached();
-  const key = cacheKeyFor(ctx.branchCode, branchVersion, catalogVersion);
+  const catalogVersion = await loadCatalogVersionStampCached(tenantId);
+  const key = cacheKeyFor(tenantId, ctx.branchCode, branchVersion, catalogVersion);
   const hit = map.get(key);
   if (hit && hit.expiresAt > Date.now()) {
     return hit.value;
   }
 
-  const rows = await loadRawServiceRows();
+  const rows = await loadRawServiceRows(tenantId);
   const value = buildPublicServicesCatalog(rows, ctx, catalogVersion);
 
   if (map.size >= CACHE_MAX) {

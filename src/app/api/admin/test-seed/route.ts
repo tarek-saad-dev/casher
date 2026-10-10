@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { isAuthResult, requireDevelopmentAdmin } from '@/lib/api-auth';
-import { getPool } from '@/lib/db';
+import { getPool, sql } from '@/lib/db';
 
 export async function POST() {
   const __auth = await requireDevelopmentAdmin();
@@ -11,15 +11,16 @@ export async function POST() {
     
     // Test with just one service first
     const result = await db.request()
-      .input('ProName', 'Hair Cut')
+      .input('tenantId', sql.UniqueIdentifier, __auth.tenantId).input('ProName', 'Hair Cut')
       .input('ProNameAr', 'حلاقة شعر')
       .input('SPrice1', 50)
       .input('Bonus', 0)
       .input('CatID', 8)
       .input('isDeleted', 0)
       .query(`
-        INSERT INTO [dbo].[TblPro] (ProName, ProNameAr, SPrice1, Bonus, CatID, isDeleted)
-        VALUES (@ProName, @ProNameAr, @SPrice1, @Bonus, @CatID, @isDeleted)
+        INSERT INTO [dbo].[TblPro] (TenantId, ProName, ProNameAr, SPrice1, Bonus, CatID, isDeleted)
+        SELECT @tenantId, @ProName, @ProNameAr, @SPrice1, @Bonus, @CatID, @isDeleted
+        WHERE EXISTS (SELECT 1 FROM [dbo].[TblCat] WHERE CatID = @CatID AND TenantId = @tenantId)
       `);
     
     return NextResponse.json({ 

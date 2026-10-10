@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
 import { getSession } from '@/lib/session';
 import { calcLateMinutes as calcLate } from '@/lib/timeUtils';
@@ -203,6 +203,7 @@ export async function GET(req: NextRequest) {
             AND t.FromBranchID = @branchId
         ) xferOut
         WHERE ISNULL(e.isActive, 1) = 1
+          AND e.TenantId IN (SELECT tloc.TenantId FROM dbo.Location tloc WHERE tloc.LegacyBranchId = @branchId)
           AND ISNULL(e.IsPayrollEnabled, 1) = 1
           AND (
             (ws.IsWorkingDay = 1 AND EXISTS (

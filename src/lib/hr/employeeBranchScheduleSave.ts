@@ -170,6 +170,7 @@ async function bootstrapBranchPayrollPlanFromEmpProfile(args: {
   const emp = await db
     .request()
     .input('empId', sql.Int, args.empId)
+    .input('hrBranchId', sql.Int, args.branchId)
     .query(`
       SELECT
         PayrollMethod,
@@ -180,7 +181,7 @@ async function bootstrapBranchPayrollPlanFromEmpProfile(args: {
         Salary,
         SalaryType
       FROM dbo.TblEmp
-      WHERE EmpID = @empId
+      WHERE EmpID = @empId AND TenantId IN (SELECT tloc.TenantId FROM dbo.Location tloc WHERE tloc.LegacyBranchId = @hrBranchId)
     `);
   const row = emp.recordset[0] as Record<string, unknown> | undefined;
   if (!row) return;

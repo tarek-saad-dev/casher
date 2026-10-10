@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
+import { authenticate, isAuthResult } from '@/lib/api-auth';
 import type { LoyaltyClientListItem } from '@/lib/types';
+import { requireTenantSession } from '@/lib/api-auth';
 
 export const runtime = 'nodejs';
 
@@ -12,6 +14,9 @@ export const runtime = 'nodejs';
 //   - page: page number (default 1)
 //   - limit: items per page (default 20)
 export async function GET(req: NextRequest) {
+  const auth = await authenticate();
+  if (!isAuthResult(auth)) return auth;
+
   try {
     const { searchParams } = new URL(req.url);
     const search = searchParams.get('search') || '';
@@ -24,28 +29,37 @@ export async function GET(req: NextRequest) {
     const db = await getPool();
 
     // Build WHERE clause
-    const whereConditions: string[] = [];
-    
+    const whereConditions: string[] = ['c.TenantId = @tenantId'];
+
+    const bind = (r: ReturnType<typeof db.request>) => {
+      r.input('tenantId', sql.UniqueIdentifier, auth.tenantId);
+      if (search.trim()) {
+        r.input('searchLike', sql.NVarChar(200), `%${search.trim()}%`);
+        const searchNum = parseInt(search, 10);
+        if (!isNaN(searchNum)) r.input('searchId', sql.Int, searchNum);
+      }
+      if (tierCode) r.input('tierCode', sql.NVarChar(50), tierCode);
+      return r;
+    };
+
     if (search.trim()) {
       const searchNum = parseInt(search, 10);
       if (!isNaN(searchNum)) {
-        whereConditions.push(`(c.ClientID = ${searchNum} OR c.[Name] LIKE N'%${search}%' OR c.Mobile LIKE N'%${search}%')`);
+        whereConditions.push(`(c.ClientID = @searchId OR c.[Name] LIKE @searchLike OR c.Mobile LIKE @searchLike)`);
       } else {
-        whereConditions.push(`(c.[Name] LIKE N'%${search}%' OR c.Mobile LIKE N'%${search}%')`);
+        whereConditions.push(`(c.[Name] LIKE @searchLike OR c.Mobile LIKE @searchLike)`);
       }
     }
     
     if (tierCode) {
-      whereConditions.push(`lt.TierCode = N'${tierCode}'`);
+      whereConditions.push(`lt.TierCode = @tierCode`);
     }
     
     if (hasPoints) {
       whereConditions.push(`cl.ClientLoyaltyID IS NOT NULL`);
     }
 
-    const whereClause = whereConditions.length > 0 
-      ? `WHERE ${whereConditions.join(' AND ')}` 
-      : '';
+    const whereClause = `WHERE ${whereConditions.join(' AND ')}`;
 
     // Get total count
     const countQuery = `
@@ -56,7 +70,7 @@ export async function GET(req: NextRequest) {
       ${whereClause}
     `;
     
-    const countResult = await db.request().query(countQuery);
+    const countResult = await bind(db.request()).query(countQuery);
     const totalCount = countResult.recordset[0]?.total || 0;
 
     // Get clients with loyalty data
@@ -91,7 +105,7 @@ export async function GET(req: NextRequest) {
       FETCH NEXT ${limit} ROWS ONLY
     `;
 
-    const result = await db.request().query(query);
+    const result = await bind(db.request()).query(query);
     
     const clients: LoyaltyClientListItem[] = result.recordset.map(row => ({
       ClientID: row.ClientID,

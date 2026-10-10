@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { liveCashMovePredicate } from '@/lib/treasury/liveCashMoveSql';
 import { getPool, sql } from '@/lib/db';
-import { getSession } from '@/lib/session';
 import type { CreateBudgetMonthPayload } from '@/lib/types';
+import { requireLegacyGlobalDataSession } from '@/lib/api-auth';
 
 // GET /api/budget — List all budget months with profit-driven aggregates
 export async function GET() {
+  const tenantSession = await requireLegacyGlobalDataSession('budget');
+  if (tenantSession instanceof NextResponse) return tenantSession;
   try {
     const db = await getPool();
 
@@ -102,7 +104,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'يجب تحديد سنة وشهر صحيحين' }, { status: 400 });
     }
 
-    const sessionUser = await getSession();
+    const sessionUser = await requireLegacyGlobalDataSession('budget');
+    if (sessionUser instanceof NextResponse) return sessionUser;
     const userID = sessionUser?.UserID ?? null;
 
     const db = await getPool();

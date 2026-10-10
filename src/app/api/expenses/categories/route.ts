@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
-import { getPool } from '@/lib/db';
+import { getPool, sql } from '@/lib/db';
+import { authenticate, isAuthResult } from '@/lib/api-auth';
 import { liveCashMoveAndClause } from '@/lib/treasury/liveCashMoveSql';
+import { requireTenantSession } from '@/lib/api-auth';
 
 // Smart category grouping based on common patterns
 function getCategoryGroup(catName: string): string {
@@ -77,11 +79,16 @@ function getCategoryGroup(catName: string): string {
 
 // GET /api/expenses/categories — Expense categories sorted by usage frequency with grouping
 export async function GET() {
+  const auth = await authenticate();
+  if (!isAuthResult(auth)) return auth;
+
   try {
     const db = await getPool();
     // Reversal columns exist only after DRVO-007 treasury migration; skip filter until then.
     const liveClause = await liveCashMoveAndClause(db);
-    const result = await db.request().query(`
+    const result = await db.request()
+      .input('tenantId', sql.UniqueIdentifier, auth.tenantId)
+      .query(`
       SELECT 
         cat.ExpINID, 
         cat.CatName,
@@ -104,7 +111,8 @@ export async function GET() {
           AND invDate = CAST(GETDATE() AS DATE)
         GROUP BY ExpINID
       ) daily ON cat.ExpINID = daily.ExpINID
-      WHERE cat.ExpINType = N'مصروفات'
+      WHERE cat.TenantId = @tenantId
+        AND cat.ExpINType = N'مصروفات'
         AND cat.IsActive = 1
       ORDER BY ISNULL(daily.DailyUsageCount, 0) DESC, ISNULL(usage.UsageCount, 0) DESC, cat.CatName
     `);

@@ -29,6 +29,49 @@ export {
   getOperationsSurfaceEntry,
   isAppEnabledForTenant,
 } from '../registry/AppRegistry';
+export {
+  getInstallableAppCatalog,
+  getAppInstallDependencies,
+  isInstallableAppCode,
+  type InstallableAppDefinition,
+} from '../apps/appCatalog';
+export type { IndustryPackDefinition, AppCustomizations } from '../packs/types';
+export {
+  evaluateSubscription,
+  SUBSCRIPTION_TRANSITIONS,
+} from '../commercial/subscriptionLifecycle';
+export {
+  SUBSCRIPTION_STATUSES,
+  DEFAULT_ONBOARDING_PLAN_CODE,
+  type SubscriptionStatus,
+  type SubscriptionEvaluation,
+  type SaaSPlanRecord,
+  type TenantSubscriptionRecord,
+  type CommercialAccessReport,
+} from '../commercial/types';
 export { resolveStaffTenantContext } from '../session/staffTenantContext';
-export type { StaffTenantContext } from '../session/staffTenantContext';
+export type { StaffTenantMembership } from '../session/staffTenantContext';
+export {
+  TenantContextError,
+  isTenantContextError,
+  requireActorTenantId,
+  buildJobTenantContext,
+  type TenantContext,
+  type StaffTenantContext,
+  type PublicTenantContext,
+  type JobTenantContext,
+  type TenantLocationRef,
+} from '../tenant/tenantContext';
+export { TenantScopedMemo, tenantIdempotencyKey } from '../tenant/tenantMemo';
+export {
+  claimPlatformOutboxBatch,
+  processPlatformOutboxTick,
+  PLATFORM_OUTBOX_MAX_ATTEMPTS,
+} from '../outbox/consumer';
+export type {
+  ClaimedPlatformOutboxEvent,
+  PlatformOutboxHandler,
+  PlatformOutboxTickSummary,
+} from '../outbox/consumer';
 export type { ActorContext, StaffActorContext, ActorType } from '../auth/actorContext';
+export { isAppInstalledForBranchTenant } from '../commercial/tenantAccessGate';

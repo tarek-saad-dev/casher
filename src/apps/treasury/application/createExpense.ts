@@ -54,9 +54,10 @@ export async function createExpenseThroughTreasury(
 
   const catRes = await new sql.Request(tx)
     .input('expINID', sql.Int, input.categoryId)
+    .input('tenantId', sql.UniqueIdentifier, ports.tenantId)
     .query(`
       SELECT ExpINID FROM dbo.TblExpINCat
-      WHERE ExpINID = @expINID AND ExpINType = N'مصروفات'
+      WHERE ExpINID = @expINID AND TenantId = @tenantId AND ExpINType = N'مصروفات'
     `);
   if (catRes.recordset.length === 0) {
     throw new Error('فئة المصروف غير صالحة');
@@ -64,7 +65,8 @@ export async function createExpenseThroughTreasury(
 
   const pmRes = await new sql.Request(tx)
     .input('pmId', sql.Int, input.paymentMethodId)
-    .query(`SELECT 1 FROM dbo.TblPaymentMethods WHERE PaymentID = @pmId`);
+    .input('tenantId', sql.UniqueIdentifier, ports.tenantId)
+    .query(`SELECT 1 FROM dbo.TblPaymentMethods WHERE PaymentID = @pmId AND TenantId = @tenantId`);
   if (pmRes.recordset.length === 0) {
     throw new Error('طريقة الدفع غير موجودة');
   }

@@ -4,6 +4,8 @@ import { isAuthResult, requirePageAccess } from '@/lib/api-auth';
 import { requireBranchOperationAccess, isActiveBranchContext } from '@/lib/branch/context';
 import { listUserValidBranchAccess } from '@/lib/branch/repository';
 import { evaluateDailyPayrollReadiness } from '@/lib/hr/dailyPayrollReadiness.service';
+import { listTenantHrBranches } from '@/lib/hr/hrTenantScope';
+import { isLegacyHrAllScopeBranch, isLegacyHrPrimaryBranch } from '@/lib/hr/legacyHrBranchPolicy';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const ATTENDANCE_BLOCKERS = new Set([
@@ -59,19 +61,14 @@ export async function GET(request: NextRequest) {
     const db = await getPool();
     await ensureManagerClosingStepTable();
 
-    const branchResult = await db.request().query(`
-      SELECT BranchID, BranchCode, BranchName
-      FROM dbo.TblBranch
-      WHERE BranchCode IN (N'GLEEM', N'CAMP_CAESAR')
-      ORDER BY CASE BranchCode WHEN N'GLEEM' THEN 0 WHEN N'CAMP_CAESAR' THEN 1 ELSE 9 END
-    `);
-
-    const branches = (branchResult.recordset as Array<Record<string, unknown>>)
-      .map((r) => ({
-        branchId: Number(r.BranchID),
-        branchCode: String(r.BranchCode ?? ''),
-        branchName: String(r.BranchName ?? ''),
-      }))
+    const tenantBranches = await listTenantHrBranches(auth.tenantId, undefined, { includeInactive: true });
+    const legacyPair = tenantBranches.filter((b) => isLegacyHrAllScopeBranch(b.branchCode));
+    const branches = (legacyPair.length > 0 ? legacyPair : tenantBranches.filter((b) => b.isActive))
+      .sort((a, b) =>
+        Number(!isLegacyHrPrimaryBranch(a.branchCode)) - Number(!isLegacyHrPrimaryBranch(b.branchCode)) ||
+        a.branchId - b.branchId,
+      )
+      .map((b) => ({ branchId: b.branchId, branchCode: b.branchCode, branchName: b.branchName }))
       .filter((b) => allowed.has(b.branchId));
 
     const results = [];

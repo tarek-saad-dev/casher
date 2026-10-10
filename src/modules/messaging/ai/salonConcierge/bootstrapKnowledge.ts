@@ -4,6 +4,7 @@
  * Does not invent capabilities, social URLs, or third-party prices.
  */
 import { getPool, sql } from '@/lib/db';
+import { bindMessagingTenant } from '@/modules/messaging/tenancy/tenantSql';
 import { isBarberJob } from '@/lib/booking/publicBookingBarberPolicy';
 import { isTestOrSmokeEmployeeName } from '@/lib/hr/testEmployeePolicy';
 import { DEFAULT_BRAND_VOICE } from './defaults';
@@ -22,6 +23,8 @@ import {
 } from './officialSite';
 import { conciergeHoursKnowledgeRows, CONCIERGE_FIXED_BRANCH_HOURS } from './branchBusinessHours';
 import { invalidateConciergeCache } from './cache';
+import { getCurrentTenantAiConfig, usesSalonConciergePack } from '@/modules/messaging/tenancy/tenantAiConfig';
+import { filterToCurrentTenantBranches } from '@/modules/messaging/tenancy/tenantBusinessScope';
 
 const WEBSITE_TEAM_HINTS = ['كريم', 'عمر', 'محمد', 'محمود', 'زياد'] as const;
 
@@ -84,8 +87,7 @@ function normAddr(s: string | null | undefined): string {
 
 async function mergeSource(name: string, type: string, url: string | null, branch: string | null, notes: string) {
   const pool = await getPool();
-  await pool
-    .request()
+  await bindMessagingTenant(pool.request(), 'salonConcierge.bootstrap.mergeSource')
     .input('name', sql.NVarChar(200), name)
     .input('type', sql.NVarChar(40), type)
     .input('url', sql.NVarChar(1000), url)
@@ -94,13 +96,13 @@ async function mergeSource(name: string, type: string, url: string | null, branc
     .query(`
       MERGE dbo.TblSalonKnowledgeSource AS t
       USING (SELECT @name AS SourceName) AS s
-      ON t.SourceName = s.SourceName
+      ON t.TenantId = @tenantId AND t.SourceName = s.SourceName
       WHEN MATCHED THEN UPDATE SET
         SourceType=@type, UrlOrRef=@url, BranchCode=@branch, Active=1,
         Notes=@notes, LastReviewedAt=SYSUTCDATETIME(), UpdatedAt=SYSUTCDATETIME()
       WHEN NOT MATCHED THEN INSERT
-        (SourceName, SourceType, UrlOrRef, BranchCode, Active, LastReviewedAt, Notes)
-      VALUES (@name, @type, @url, @branch, 1, SYSUTCDATETIME(), @notes);
+        (TenantId, SourceName, SourceType, UrlOrRef, BranchCode, Active, LastReviewedAt, Notes)
+      VALUES (@tenantId, @name, @type, @url, @branch, 1, SYSUTCDATETIME(), @notes);
     `);
 }
 
@@ -231,7 +233,18 @@ function categoryAliases(catName: string): { key: string; aliases: string[]; tit
   return null;
 }
 
+/**
+ * The bootstrap scrapes the CUT website and mirrors the tenant's own master data (TblCat/TblPro/
+ * TblServicePackage/TblEmp, all tenant-scoped since DRVO-015), so it only runs for a salon-pack tenant.
+ */
+async function assertBootstrapAllowedForCurrentTenant(): Promise<void> {
+  if (!usesSalonConciergePack(await getCurrentTenantAiConfig())) {
+    throw new Error('Concierge bootstrap requires the salon-concierge-v1 conversation pack');
+  }
+}
+
 export async function bootstrapSalonConciergeKnowledge(): Promise<BootstrapReport> {
+  await assertBootstrapAllowedForCurrentTenant();
   const site = await fetchOfficialSiteFacts();
   const pool = await getPool();
   const dbName = String((await pool.request().query(`SELECT DB_NAME() AS name`)).recordset[0]?.name || '');
@@ -250,7 +263,11 @@ export async function bootstrapSalonConciergeKnowledge(): Promise<BootstrapRepor
        OR ISNULL(IsActive, 0) = 1
     ORDER BY BranchID
   `);
-  const branches = (branchRes.recordset as BranchRow[]).map((r) => ({
+  const tenantBranchRows = await filterToCurrentTenantBranches(branchRes.recordset as BranchRow[], (r) => ({
+    branchId: Number(r.BranchID),
+    branchCode: String(r.BranchCode),
+  }));
+  const branches = tenantBranchRows.map((r) => ({
     branchId: Number(r.BranchID),
     branchCode: String(r.BranchCode),
     branchName: String(r.BranchName),
@@ -479,10 +496,11 @@ export async function bootstrapSalonConciergeKnowledge(): Promise<BootstrapRepor
     unknown.push('Official site landline not present on ERP branch phones — not seeded as ERP fact');
   }
 
-  const catRes = await pool.request().query(`
+  const catRes = await bindMessagingTenant(pool.request(), 'salonConcierge.bootstrap.categories').query(`
     SELECT DISTINCT c.CatID, c.CatName
     FROM dbo.TblCat c
-    INNER JOIN dbo.TblPro p ON p.CatID = c.CatID AND ISNULL(p.isDeleted, 0) = 0
+    INNER JOIN dbo.TblPro p ON p.CatID = c.CatID AND p.TenantId = c.TenantId AND ISNULL(p.isDeleted, 0) = 0
+    WHERE c.TenantId = @tenantId
   `);
   for (const row of catRes.recordset as Array<{ CatID: number; CatName: string }>) {
     const mapped = categoryAliases(String(row.CatName ?? ''));
@@ -504,10 +522,10 @@ export async function bootstrapSalonConciergeKnowledge(): Promise<BootstrapRepor
   let erpPkgs: Array<{ NameEn: string; NameAr: string | null; PackagePrice: number }> = [];
   const pkgTable = await pool.request().query(`SELECT OBJECT_ID(N'dbo.TblServicePackage') AS id`);
   if (pkgTable.recordset[0]?.id) {
-    const pkgRes = await pool.request().query(`
+    const pkgRes = await bindMessagingTenant(pool.request(), 'salonConcierge.bootstrap.packages').query(`
       SELECT PackageID, NameEn, NameAr, PackagePrice, isDeleted
       FROM dbo.TblServicePackage
-      WHERE ISNULL(isDeleted, 0) = 0
+      WHERE TenantId = @tenantId AND ISNULL(isDeleted, 0) = 0
     `);
     erpPkgs = pkgRes.recordset as Array<{ NameEn: string; NameAr: string | null; PackagePrice: number }>;
   }
@@ -604,11 +622,12 @@ export async function bootstrapSalonConciergeKnowledge(): Promise<BootstrapRepor
     campOfferSeeded = true;
   }
 
-  const empRes = await pool.request().query(`
+  const empRes = await bindMessagingTenant(pool.request(), 'salonConcierge.bootstrap.team').query(`
     SELECT DISTINCT e.EmpID, e.EmpName, e.Job
     FROM dbo.TblEmp e
     INNER JOIN dbo.TblEmpBranchAssignment a ON a.EmpID = e.EmpID
-    WHERE ISNULL(e.isActive, 1) = 1
+    WHERE e.TenantId = @tenantId
+      AND ISNULL(e.isActive, 1) = 1
       AND a.IsActive = 1
       AND a.CanReceiveBookings = 1
   `);
@@ -652,26 +671,30 @@ export async function bootstrapSalonConciergeKnowledge(): Promise<BootstrapRepor
     });
   }
 
-  const countsQ = await pool.request().query(`
-    SELECT 'Knowledge' AS kind, COUNT(*) AS n FROM dbo.TblSalonKnowledge
-    UNION ALL SELECT 'Capability', COUNT(*) FROM dbo.TblSalonCapability
-    UNION ALL SELECT 'Link', COUNT(*) FROM dbo.TblSalonExternalLink
-    UNION ALL SELECT 'Offer', COUNT(*) FROM dbo.TblSalonOffer
-    UNION ALL SELECT 'BrandVoice', COUNT(*) FROM dbo.TblSalonBrandVoice
-    UNION ALL SELECT 'Gap', COUNT(*) FROM dbo.TblSalonKnowledgeGap
-    UNION ALL SELECT 'VoiceExample', COUNT(*) FROM dbo.TblSalonBrandVoiceExample
-    UNION ALL SELECT 'Source', COUNT(*) FROM dbo.TblSalonKnowledgeSource
+  const countsQ = await bindMessagingTenant(pool.request(), 'salonConcierge.bootstrap.counts').query(`
+    SELECT 'Knowledge' AS kind, COUNT(*) AS n FROM dbo.TblSalonKnowledge WHERE TenantId = @tenantId
+    UNION ALL SELECT 'Capability', COUNT(*) FROM dbo.TblSalonCapability WHERE TenantId = @tenantId
+    UNION ALL SELECT 'Link', COUNT(*) FROM dbo.TblSalonExternalLink WHERE TenantId = @tenantId
+    UNION ALL SELECT 'Offer', COUNT(*) FROM dbo.TblSalonOffer WHERE TenantId = @tenantId
+    UNION ALL SELECT 'BrandVoice', COUNT(*) FROM dbo.TblSalonBrandVoice WHERE TenantId = @tenantId
+    UNION ALL SELECT 'Gap', COUNT(*) FROM dbo.TblSalonKnowledgeGap WHERE TenantId = @tenantId
+    UNION ALL SELECT 'VoiceExample', COUNT(*) FROM dbo.TblSalonBrandVoiceExample WHERE TenantId = @tenantId
+    UNION ALL SELECT 'Source', COUNT(*) FROM dbo.TblSalonKnowledgeSource WHERE TenantId = @tenantId
   `);
   const counts: Record<string, number> = {};
   for (const r of countsQ.recordset as Array<{ kind: string; n: number }>) {
     counts[r.kind] = Number(r.n);
   }
 
-  const dupK = await pool.request().query(`
-    SELECT ItemKey, COUNT(*) c FROM dbo.TblSalonKnowledge GROUP BY ItemKey HAVING COUNT(*) > 1
+  const dupK = await bindMessagingTenant(pool.request(), 'salonConcierge.bootstrap.dupKnowledge').query(`
+    SELECT ItemKey, COUNT(*) c FROM dbo.TblSalonKnowledge
+    WHERE TenantId = @tenantId
+    GROUP BY ItemKey HAVING COUNT(*) > 1
   `);
-  const dupL = await pool.request().query(`
-    SELECT LinkKey, COUNT(*) c FROM dbo.TblSalonExternalLink GROUP BY LinkKey HAVING COUNT(*) > 1
+  const dupL = await bindMessagingTenant(pool.request(), 'salonConcierge.bootstrap.dupLinks').query(`
+    SELECT LinkKey, COUNT(*) c FROM dbo.TblSalonExternalLink
+    WHERE TenantId = @tenantId
+    GROUP BY LinkKey HAVING COUNT(*) > 1
   `);
   const duplicates = [
     ...(dupK.recordset as Array<{ ItemKey: string }>).map((r) => `knowledge:${r.ItemKey}`),
@@ -679,16 +702,16 @@ export async function bootstrapSalonConciergeKnowledge(): Promise<BootstrapRepor
   ];
 
   const invalidOffers = (
-    await pool.request().query(`
+    await bindMessagingTenant(pool.request(), 'salonConcierge.bootstrap.invalidOffers').query(`
       SELECT OfferKey FROM dbo.TblSalonOffer
-      WHERE Status = N'active' AND ValidTo IS NOT NULL AND ValidTo < SYSUTCDATETIME()
+      WHERE TenantId = @tenantId AND Status = N'active' AND ValidTo IS NOT NULL AND ValidTo < SYSUTCDATETIME()
     `)
   ).recordset.map((r: { OfferKey: string }) => r.OfferKey);
 
   const brokenLinks = (
-    await pool.request().query(`
+    await bindMessagingTenant(pool.request(), 'salonConcierge.bootstrap.brokenLinks').query(`
       SELECT LinkKey FROM dbo.TblSalonExternalLink
-      WHERE Status = N'active' AND (Url IS NULL OR LTRIM(RTRIM(Url)) = N'')
+      WHERE TenantId = @tenantId AND Status = N'active' AND (Url IS NULL OR LTRIM(RTRIM(Url)) = N'')
     `)
   ).recordset.map((r: { LinkKey: string }) => r.LinkKey);
 

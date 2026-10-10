@@ -32,6 +32,6 @@ describe('bookingPublicCorsRouteMatrix', () => {
       path.join(process.cwd(), 'src/app/api/public/booking/create/route.ts'),
       'utf8',
     );
-    expect(create).toContain("PUBLIC_BOOKING_ROUTE_CORS['create']");
+    expect(create).toMatch(/PUBLIC_BOOKING_ROUTE_CORS\['create'\]|publicBookingTenantOptionsResponse\(req, 'create'\)/);
   });
 });

@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
   isWhatsAppInboxWebhookAuthResult,
+  recordInboundMessageUsage,
   requireWhatsAppInboxWebhookAuth,
+  runWithWebhookMessagingTenant,
 } from '@/modules/messaging/inbox/auth';
 import { ingestIncomingMessage } from '@/modules/messaging/inbox/application/ingestIncomingMessage';
 import { MessageInboxError } from '@/modules/messaging/inbox/domain/types';
@@ -82,17 +84,22 @@ function logPerf(input: {
 /**
  * POST /api/internal/messaging/inbox/whatsapp
  *
- * Ingest a normalized inbound WhatsApp event from the local bot adapter.
- * Auth: Authorization: Bearer $WHATSAPP_INBOX_WEBHOOK_TOKEN
+ * Ingest a normalized inbound WhatsApp event from a tenant's bridge.
+ * Auth: Authorization: Bearer <channel webhook token>. The tenant is the owner of the channel
+ * whose token hash matches; unknown tokens are rejected (401).
  */
 export async function POST(req: NextRequest) {
   const timer = InboxWebhookPerfTimer.start();
 
-  const auth = requireWhatsAppInboxWebhookAuth(req);
+  const auth = await requireWhatsAppInboxWebhookAuth(req);
   if (!isWhatsAppInboxWebhookAuthResult(auth)) return auth;
 
   timer.markAuthCompleted();
 
+  return runWithWebhookMessagingTenant(auth, 'inbox/whatsapp', () => ingest(req, timer));
+}
+
+async function ingest(req: NextRequest, timer: InboxWebhookPerfTimer) {
   let parsed:
     | ReturnType<typeof parseBody>
     | null = null;
@@ -103,6 +110,7 @@ export async function POST(req: NextRequest) {
     const adapterCorrelation = extractAdapterCorrelation(parsed.rawPayload);
 
     const result = await ingestIncomingMessage(parsed, timer);
+    if (!result.duplicate) await recordInboundMessageUsage();
     const httpStatus = result.duplicate ? 200 : 201;
 
     logPerf({

@@ -12,6 +12,7 @@ import {
   getInventoryItemById,
   useInventoryItem,
 } from "@/lib/store/inventory.service";
+import { requireTenantSession } from '@/lib/api-auth';
 
 export const runtime = "nodejs";
 
@@ -47,6 +48,8 @@ export async function OPTIONS(): Promise<NextResponse> {
 export async function POST(
   req: NextRequest,
 ): Promise<NextResponse<POSUseItemResponse | StoreErrorResponse>> {
+  const tenantSession = await requireTenantSession();
+  if (tenantSession instanceof NextResponse) return tenantSession as NextResponse<StoreErrorResponse>;
   try {
     // Parse body
     const body = await req.json();

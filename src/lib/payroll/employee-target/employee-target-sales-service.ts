@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { getPool, sql } from '@/lib/db';
+import { requireHrTenantId } from '@/lib/hr/hrTenantScope';
 import { roundMoney } from '@/lib/reportMonthUtils';
 import {
   allocateEmployeeInvoiceRevenue,
@@ -8,6 +9,7 @@ import {
   type InvoiceHeaderInput,
 } from '@/lib/services/employeeInvoiceAllocation';
 import { aggregateEmployeeServiceBreakdown } from '@/lib/services/employeeServiceBreakdown';
+import { resolveTenantServiceCatalog } from '@/lib/services/tenantServiceCatalog.server';
 import { assertValidWorkDate } from './target.validation';
 
 /** Same line expression as GET /api/reports/employee-services */
@@ -110,6 +112,7 @@ export async function getEmployeesNetServiceSalesByDateRange(
         ON h.invID = d.invID
        AND h.invType = d.invType
       LEFT JOIN dbo.TblEmp e ON e.EmpID = d.EmpID
+       AND e.TenantId IN (SELECT tloc.TenantId FROM dbo.Location tloc WHERE tloc.LegacyBranchId = @branchId)
       WHERE CAST(h.invDate AS date) >= @fromDate
         AND CAST(h.invDate AS date) <= @toDate
         AND h.invType = N'مبيعات'
@@ -251,6 +254,7 @@ export async function getEmployeeDailyNetServiceSalesMap(
         ON h.invID = d.invID
        AND h.invType = d.invType
       LEFT JOIN dbo.TblEmp e ON e.EmpID = d.EmpID
+       AND e.TenantId IN (SELECT tloc.TenantId FROM dbo.Location tloc WHERE tloc.LegacyBranchId = @branchId)
       WHERE CAST(h.invDate AS date) >= @fromDate
         AND CAST(h.invDate AS date) <= @toDate
         AND h.invType = N'مبيعات'
@@ -300,7 +304,8 @@ export async function getEmployeeNetServiceSalesByDate(
   const db = await getPool();
   const nameRes = await db.request()
     .input('empId', sql.Int, empId)
-    .query(`SELECT TOP 1 EmpName FROM dbo.TblEmp WHERE EmpID = @empId`);
+    .input('branchId', sql.Int, branchId)
+    .query(`SELECT TOP 1 EmpName FROM dbo.TblEmp WHERE EmpID = @empId AND TenantId IN (SELECT tloc.TenantId FROM dbo.Location tloc WHERE tloc.LegacyBranchId = @branchId)`);
 
   return {
     empId,
@@ -332,7 +337,8 @@ export interface EmployeeDayServiceCounts {
  */
 export async function getEmployeesServiceCountsByDate(
   workDate: string,
-  empIds?: number[] | null,
+  empIds: number[] | null | undefined,
+  tenantId: string,
 ): Promise<EmployeeDayServiceCounts[]> {
   assertValidWorkDate(workDate);
 
@@ -345,6 +351,7 @@ export async function getEmployeesServiceCountsByDate(
   const detailsResult = await db.request()
     .input('fromDate', sql.Date, workDate)
     .input('toDate', sql.Date, workDate)
+    .input('tenantId', sql.UniqueIdentifier, requireHrTenantId(tenantId, 'getEmployeesServiceCountsByDate'))
     .query(`
       SELECT
         d.EmpID AS empId,
@@ -356,7 +363,7 @@ export async function getEmployeesServiceCountsByDate(
       INNER JOIN dbo.TblinvServHead h
         ON h.invID = d.invID
        AND h.invType = d.invType
-      LEFT JOIN dbo.TblEmp e ON e.EmpID = d.EmpID
+      INNER JOIN dbo.TblEmp e ON e.EmpID = d.EmpID AND e.TenantId = @tenantId
       LEFT JOIN dbo.TblPro p ON p.ProID = d.ProID
       WHERE CAST(h.invDate AS date) >= @fromDate
         AND CAST(h.invDate AS date) <= @toDate
@@ -378,7 +385,8 @@ export async function getEmployeesServiceCountsByDate(
     lines = lines.filter((l) => allow.has(l.empId));
   }
 
-  return aggregateEmployeeServiceBreakdown(lines).map((row) => {
+  const catalog = await resolveTenantServiceCatalog(tenantId);
+  return aggregateEmployeeServiceBreakdown(lines, catalog).map((row) => {
     const basicCount = row.hairCount + row.hairBeardCount + row.beardCount;
     return {
       empId: row.employeeId,

@@ -28,6 +28,7 @@ async function main() {
 
   console.log(`month=${month} empId=${empId ?? 'all'} apply=${apply}`);
   const preview = await runEmployeeLedgerHistoricalSync({
+    tenantId: String(process.env.HR_TENANT_ID ?? ''),
     month,
     empId,
     dryRun: true,
@@ -48,6 +49,7 @@ async function main() {
   }
 
   const result = await runEmployeeLedgerHistoricalSync({
+    tenantId: String(process.env.HR_TENANT_ID ?? ''),
     month,
     empId,
     dryRun: false,

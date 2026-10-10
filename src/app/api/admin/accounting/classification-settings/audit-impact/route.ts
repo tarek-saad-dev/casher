@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
       ORDER BY cm.invDate DESC, cm.ID DESC
     `);
 
-    const settings = await loadClassificationSettings();
+    const settings = await loadClassificationSettings(auth.tenantId);
     const empty = emptySettingsBundle();
 
     let beforeReview = 0;

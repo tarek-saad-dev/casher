@@ -104,10 +104,11 @@ function findEffectivePlan(
 
 export async function getEmployeeTargetSettings(
   empId: number,
-  effectiveDate?: string | null,
-  branchId?: number | null,
+  effectiveDate: string | null | undefined,
+  branchId: number | null | undefined,
+  tenantId: string,
 ) {
-  const employee = await getEmployeeBasic(empId);
+  const employee = await getEmployeeBasic(empId, tenantId);
   if (!employee) {
     const err = new Error('الموظف غير موجود');
     (err as Error & { status?: number }).status = 404;
@@ -195,8 +196,9 @@ export async function saveEmployeeTargetPlan(
   body: TargetSaveBody,
   userId: number | null,
   branchId: number,
+  tenantId: string,
 ) {
-  const employee = await getEmployeeBasic(empId);
+  const employee = await getEmployeeBasic(empId, tenantId);
   if (!employee) {
     const err = new Error('الموظف غير موجود');
     (err as Error & { status?: number }).status = 404;
@@ -376,8 +378,9 @@ export async function deleteEmployeeTargetPlan(
   empId: number,
   planId: number,
   userId: number | null,
+  tenantId: string,
 ): Promise<{ deletedPlanId: number }> {
-  const employee = await getEmployeeBasic(empId);
+  const employee = await getEmployeeBasic(empId, tenantId);
   if (!employee) {
     const err = new Error('الموظف غير موجود');
     (err as Error & { status?: number }).status = 404;

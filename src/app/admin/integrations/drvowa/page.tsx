@@ -1,12 +1,16 @@
-import { redirect } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 
 import { DrvowaIntegrationCard } from '@/components/admin/DrvowaIntegrationCard';
 import { isAuthResult, requireAdmin } from '@/lib/api-auth';
+import { isDrvowaOwnerTenant } from '@/lib/integrations/drvowaTenant';
 
 export default async function DrvowaIntegrationPage() {
   const auth = await requireAdmin();
   if (!isAuthResult(auth)) {
     redirect('/login');
+  }
+  if (!(await isDrvowaOwnerTenant(auth.tenantId))) {
+    notFound();
   }
 
   return (

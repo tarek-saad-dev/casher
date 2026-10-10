@@ -67,6 +67,7 @@ export async function beginAttendanceTransaction(): Promise<{
 export async function loadBulkEmpDefaults(
   db: AttendanceDb,
   empIds: unknown[],
+  branchId: number,
 ): Promise<
   Array<{
     EmpID: number;
@@ -76,7 +77,7 @@ export async function loadBulkEmpDefaults(
   }>
 > {
   const empIdsSql = empIds.map((id) => Number(id)).join(',') || '0';
-  const empDefaults = await db.request().query(`
+  const empDefaults = await db.request().input('hrBranchId', sql.Int, branchId).query(`
         SELECT
           EmpID,
           EmpName,
@@ -84,6 +85,7 @@ export async function loadBulkEmpDefaults(
           CONVERT(VARCHAR(5), DefaultCheckOutTime, 108) AS DefaultCheckOutTime
         FROM dbo.TblEmp
         WHERE EmpID IN (${empIdsSql})
+          AND TenantId IN (SELECT tloc.TenantId FROM dbo.Location tloc WHERE tloc.LegacyBranchId = @hrBranchId)
       `);
   return empDefaults.recordset;
 }
@@ -226,6 +228,7 @@ export async function loadEmployeeScheduleForAdminPut(
           ORDER BY s.EffectiveFrom DESC, s.ScheduleID DESC
         ) ws
         WHERE e.EmpID = @empId
+          AND e.TenantId IN (SELECT tloc.TenantId FROM dbo.Location tloc WHERE tloc.LegacyBranchId = @branchId)
       `);
   return empResult.recordset[0] ?? null;
 }
@@ -298,11 +301,13 @@ export async function updateBranchDayAttendance(args: {
 export async function employeeExists(
   db: AttendanceDb,
   empId: unknown,
+  branchId: number,
 ): Promise<boolean> {
   const empCheck = await db
     .request()
     .input('empId', sql.Int, empId)
-    .query(`SELECT 1 FROM dbo.TblEmp WHERE EmpID = @empId`);
+    .input('hrBranchId', sql.Int, branchId)
+    .query(`SELECT 1 FROM dbo.TblEmp WHERE EmpID = @empId AND TenantId IN (SELECT tloc.TenantId FROM dbo.Location tloc WHERE tloc.LegacyBranchId = @hrBranchId)`);
   return empCheck.recordset.length > 0;
 }
 

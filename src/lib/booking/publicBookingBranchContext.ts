@@ -11,6 +11,7 @@ import {
   PUBLIC_BOOKING_ERROR_CATALOG,
   type PublicBookingErrorCode,
 } from '@/lib/booking/publicBookingErrorCatalog';
+import { resolvePublicBookingTenantIdForBranch } from '@/lib/booking/publicBookingTenancy';
 
 export type PublicBookingPurpose =
   | 'public_discovery'
@@ -18,6 +19,8 @@ export type PublicBookingPurpose =
   | 'internal_preview';
 
 export type PublicBookingBranchContext = {
+  /** DRVO-019: owning tenant (branch Location → Tenant, booking app installed). Never serialize. */
+  tenantId: string;
   branchId: number;
   branchCode: string;
   branchName: string;
@@ -98,8 +101,13 @@ function getCacheMap(): Map<string, CacheEntry> {
   return g[cacheRootKey]!;
 }
 
-function cacheKey(branchCode: string, purpose: PublicBookingPurpose, version: string): string {
-  return `${purpose}::${branchCode}::${version}`;
+function cacheKey(
+  tenantId: string,
+  branchCode: string,
+  purpose: PublicBookingPurpose,
+  version: string,
+): string {
+  return `${purpose}::${tenantId}::${branchCode}::${version}`;
 }
 
 function buildVersion(branch: BranchRecord, bookingEnabled: boolean): string {
@@ -175,11 +183,13 @@ async function loadQueueBookingEnabled(branchId: number): Promise<boolean> {
 }
 
 function toPublicContext(
+  tenantId: string,
   branch: BranchRecord,
   bookingEnabled: boolean,
   purpose: PublicBookingPurpose,
 ): PublicBookingBranchContext {
   const base: PublicBookingBranchContext = {
+    tenantId,
     branchId: branch.branchId,
     branchCode: branch.branchCode,
     branchName: branch.branchName,
@@ -252,6 +262,8 @@ export async function resolvePublicBookingBranchContext(args: {
   auth?: InternalPreviewAuth | null;
   /** Rejected — must not enable internal_preview */
   previewQueryParam?: string | null;
+  /** DRVO-019: the branch must belong to this tenant (a foreign branch is BRANCH_NOT_FOUND). */
+  expectedTenantId?: string | null;
 }): Promise<PublicBookingBranchContext> {
   if (args.previewQueryParam != null && String(args.previewQueryParam).length > 0) {
     // Query-param preview must never escalate privileges.
@@ -273,9 +285,20 @@ export async function resolvePublicBookingBranchContext(args: {
     throw new PublicBookingBranchContextError('BRANCH_NOT_FOUND');
   }
 
+  const tenantId = await resolvePublicBookingTenantIdForBranch(
+    branch.branchId,
+    `public-booking-branch-context:${args.purpose}`,
+  );
+  if (!tenantId) {
+    throw new PublicBookingBranchContextError('BRANCH_NOT_FOUND');
+  }
+  if (args.expectedTenantId && args.expectedTenantId.toLowerCase() !== tenantId.toLowerCase()) {
+    throw new PublicBookingBranchContextError('BRANCH_NOT_FOUND');
+  }
+
   const bookingEnabled = await loadQueueBookingEnabled(branch.branchId);
   const version = buildVersion(branch, bookingEnabled);
-  const key = cacheKey(code, args.purpose, version);
+  const key = cacheKey(tenantId, code, args.purpose, version);
   const map = getCacheMap();
   const hit = map.get(key);
   if (hit && hit.expiresAt > Date.now() && hit.version === version) {
@@ -300,7 +323,7 @@ export async function resolvePublicBookingBranchContext(args: {
   }
   // internal_preview: any existing branch is allowed once authorized
 
-  const ctx = toPublicContext(branch, bookingEnabled, args.purpose);
+  const ctx = toPublicContext(tenantId, branch, bookingEnabled, args.purpose);
 
   if (map.size >= CACHE_MAX) {
     const first = map.keys().next().value;

@@ -25,10 +25,16 @@ function makeFakeDb(results: { recordset: unknown[] }[]) {
   };
 }
 
+vi.mock('@/platform/masterData/tenantScope', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/platform/masterData/tenantScope')>()),
+  resolveLegacyBranchTenantId: vi.fn(async () => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'),
+  tenantIdForBranchContext: vi.fn(async () => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'),
+}));
 vi.mock('@/lib/db', () => ({
   getPool: vi.fn(async () => makeFakeDb([])),
   allocateInvID: vi.fn(async (...args: unknown[]) => fakeAllocateInvID(...args)),
   sql: {
+    UniqueIdentifier: () => ({ type: 'uniqueidentifier' }),
     Int: () => ({ type: 'int' }),
     Date: () => ({ type: 'date' }),
     Decimal: () => ({ type: 'decimal' }),
@@ -124,13 +130,13 @@ describe('employeeLedgerPayoutService helpers', () => {
     ];
     const transaction = new sql.Transaction({} as never);
 
-    const created = await ensurePayoutExpenseCategory(transaction);
+    const created = await ensurePayoutExpenseCategory(transaction, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
     expect(created).toBe(88);
     expect(txQueryIdx).toBe(2);
 
     txQueryIdx = 0;
     txQueryResults = [{ recordset: [{ ExpINID: 88 }] }];
-    const reused = await ensurePayoutExpenseCategory(transaction);
+    const reused = await ensurePayoutExpenseCategory(transaction, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
     expect(reused).toBe(88);
     expect(txQueryIdx).toBe(1);
     expect(PAYOUT_EXPENSE_CATEGORY_NAME).toBe('صرف مستحقات الموظفين');

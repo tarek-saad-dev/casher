@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { isAuthResult, requireDevelopmentAdmin } from '@/lib/api-auth';
-import { getPool } from '@/lib/db';
+import { getPool, sql } from '@/lib/db';
 
 export async function POST() {
   const __auth = await requireDevelopmentAdmin();
@@ -60,21 +60,22 @@ export async function POST() {
       try {
         // Check if service already exists
         const existingService = await db.request()
-          .input('ProName', service.name)
-          .query('SELECT ProID FROM [dbo].[TblPro] WHERE ProName = @ProName');
+          .input('tenantId', sql.UniqueIdentifier, __auth.tenantId).input('ProName', service.name)
+          .query('SELECT ProID FROM [dbo].[TblPro] WHERE ProName = @ProName AND TenantId = @tenantId');
         
         if (existingService.recordset.length === 0) {
           // Insert new service
           await db.request()
-            .input('ProName', service.name)
+            .input('tenantId', sql.UniqueIdentifier, __auth.tenantId).input('ProName', service.name)
             .input('ProNameAr', service.nameAr)
             .input('SPrice1', service.price)
             .input('Bonus', service.bonus)
             .input('CatID', service.catId)
             .input('isDeleted', 0)
             .query(`
-              INSERT INTO [dbo].[TblPro] (ProName, ProNameAr, SPrice1, Bonus, CatID, isDeleted)
-              VALUES (@ProName, @ProNameAr, @SPrice1, @Bonus, @CatID, @isDeleted)
+              INSERT INTO [dbo].[TblPro] (TenantId, ProName, ProNameAr, SPrice1, Bonus, CatID, isDeleted)
+              SELECT @tenantId, @ProName, @ProNameAr, @SPrice1, @Bonus, @CatID, @isDeleted
+              WHERE EXISTS (SELECT 1 FROM [dbo].[TblCat] WHERE CatID = @CatID AND TenantId = @tenantId)
             `);
           insertedCount++;
           console.log(`Inserted: ${service.name} - ${service.nameAr}`);

@@ -48,6 +48,7 @@ export async function POST(req: NextRequest) {
 
     try {
       await resolveOpsWriteBranch({
+        tenantId: sessionBranch.tenantId,
         userId: sessionBranch.userId,
         sessionBranchId: sessionBranch.branchId,
         empId,

@@ -1,16 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
-import { getSession } from '@/lib/session';
+import { requireTenantSession } from '@/lib/api-auth';
+import { requireMasterDataTenantId } from '@/platform/masterData/tenantScope';
+import { filterEmployeeIdsInTenant } from '@/lib/hr/hrTenantScope';
 
 // GET /api/expenses/distribute - Get staff distribution settings
 export async function GET(req: NextRequest) {
+  const tenantSession = await requireTenantSession();
+  if (tenantSession instanceof NextResponse) return tenantSession;
   try {
     const db = await getPool();
     const url = new URL(req.url);
     const categoryId = url.searchParams.get('categoryId');
 
+    const tenantId = requireMasterDataTenantId(tenantSession.TenantId, 'GET /api/expenses/distribute');
     let whereClause = "WHERE sd.IsActive = 1";
-    const request = db.request();
+    const request = db.request().input('tenantId', sql.UniqueIdentifier, tenantId);
 
     if (categoryId) {
       whereClause += ' AND sd.ExpenseCategoryID = @categoryId';
@@ -30,7 +35,7 @@ export async function GET(req: NextRequest) {
         sd.ModifiedDate
       FROM [dbo].[TblStaffExpenseDistribution] sd
       INNER JOIN [dbo].[TblExpINCat] cat ON sd.ExpenseCategoryID = cat.ExpINID
-      INNER JOIN [dbo].[TblEmp] e ON sd.StaffMemberID = e.EmpID
+      INNER JOIN [dbo].[TblEmp] e ON sd.StaffMemberID = e.EmpID AND e.TenantId = @tenantId
       ${whereClause}
       ORDER BY cat.CatName, e.EmpName
     `);
@@ -43,10 +48,10 @@ export async function GET(req: NextRequest) {
       ORDER BY CatName
     `);
 
-    const staffResult = await db.request().query(`
+    const staffResult = await db.request().input('tenantId', sql.UniqueIdentifier, tenantId).query(`
       SELECT EmpID, EmpName 
       FROM [dbo].[TblEmp]
-      WHERE IsActive = 1
+      WHERE TenantId = @tenantId AND IsActive = 1
       ORDER BY EmpName
     `);
 
@@ -65,10 +70,8 @@ export async function GET(req: NextRequest) {
 // POST /api/expenses/distribute - Create or update staff distribution
 export async function POST(req: NextRequest) {
   try {
-    const sessionUser = await getSession();
-    if (!sessionUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const sessionUser = await requireTenantSession();
+    if (sessionUser instanceof NextResponse) return sessionUser;
 
     const body = await req.json();
     const { expenseCategoryId, staffMemberId, distributionPercentage } = body;
@@ -82,6 +85,11 @@ export async function POST(req: NextRequest) {
     }
     if (!distributionPercentage || distributionPercentage <= 0 || distributionPercentage > 100) {
       return NextResponse.json({ error: 'Distribution percentage must be between 0 and 100' }, { status: 400 });
+    }
+
+    const tenantId = requireMasterDataTenantId(sessionUser.TenantId, 'POST /api/expenses/distribute');
+    if ((await filterEmployeeIdsInTenant(tenantId, [Number(staffMemberId)])).length === 0) {
+      return NextResponse.json({ error: 'Staff member not found' }, { status: 404 });
     }
 
     const db = await getPool();
@@ -144,16 +152,21 @@ export async function POST(req: NextRequest) {
 // PUT /api/expenses/distribute - Update multiple distributions at once
 export async function PUT(req: NextRequest) {
   try {
-    const sessionUser = await getSession();
-    if (!sessionUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const sessionUser = await requireTenantSession();
+    if (sessionUser instanceof NextResponse) return sessionUser;
 
     const body = await req.json();
     const { distributions } = body; // Array of {expenseCategoryId, staffMemberId, distributionPercentage}
 
     if (!Array.isArray(distributions) || distributions.length === 0) {
       return NextResponse.json({ error: 'Distributions array is required' }, { status: 400 });
+    }
+
+    const tenantId = requireMasterDataTenantId(sessionUser.TenantId, 'PUT /api/expenses/distribute');
+    const staffIds = distributions.map((d: { staffMemberId?: unknown }) => Number(d?.staffMemberId));
+    const inTenant = new Set(await filterEmployeeIdsInTenant(tenantId, staffIds));
+    if (staffIds.some((id: number) => !inTenant.has(id))) {
+      return NextResponse.json({ error: 'Staff member not found' }, { status: 404 });
     }
 
     const db = await getPool();
@@ -237,10 +250,8 @@ export async function PUT(req: NextRequest) {
 // DELETE /api/expenses/distribute - Remove a distribution
 export async function DELETE(req: NextRequest) {
   try {
-    const sessionUser = await getSession();
-    if (!sessionUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const sessionUser = await requireTenantSession();
+    if (sessionUser instanceof NextResponse) return sessionUser;
 
     const url = new URL(req.url);
     const expenseCategoryId = url.searchParams.get('expenseCategoryId');
@@ -248,6 +259,11 @@ export async function DELETE(req: NextRequest) {
 
     if (!expenseCategoryId || !staffMemberId) {
       return NextResponse.json({ error: 'Both expenseCategoryId and staffMemberId are required' }, { status: 400 });
+    }
+
+    const tenantId = requireMasterDataTenantId(sessionUser.TenantId, 'DELETE /api/expenses/distribute');
+    if ((await filterEmployeeIdsInTenant(tenantId, [parseInt(staffMemberId)])).length === 0) {
+      return NextResponse.json({ error: 'Staff member not found' }, { status: 404 });
     }
 
     const db = await getPool();

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isAuthResult, requirePageAccess } from '@/lib/api-auth';
+import { branchAdminTenantScopeResponse } from '@/lib/branch/context';
 import { listLaunchCoverageDashboard } from '@/lib/branch/launchRosterService';
 
 export const runtime = 'nodejs';
@@ -14,6 +15,8 @@ export async function GET(
   if (!Number.isFinite(branchId)) {
     return NextResponse.json({ error: 'معرف فرع غير صالح' }, { status: 400 });
   }
+  const outOfTenant = await branchAdminTenantScopeResponse(auth, branchId);
+  if (outOfTenant) return outOfTenant;
   try {
     const data = await listLaunchCoverageDashboard(branchId);
     return NextResponse.json({ ok: true, branchId, ...data });

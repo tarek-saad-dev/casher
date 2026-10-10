@@ -1,5 +1,6 @@
 import { classifyService, type ServiceCategory } from '@/lib/services/classifyService';
 import { roundMoney } from '@/lib/reportMonthUtils';
+import type { TenantServiceCatalogConfig } from '@/lib/services/tenantServiceCatalogConfig';
 
 export interface ServiceLineInput {
   empId: number;
@@ -12,6 +13,8 @@ export interface ServiceLineInput {
   discountValue?: number | null;
   sValue?: number | null;
   lineTotal?: number | null;
+  /** Already-classified line (e.g. from the report API); skips reclassification. */
+  serviceCategory?: ServiceCategory | null;
 }
 
 export interface EmployeeServiceBreakdown {
@@ -117,7 +120,10 @@ export function normalizeEmployeeServiceBreakdown(
   };
 }
 
-export function classifyServiceLines(lines: ServiceLineInput[]): ClassifiedServiceLine[] {
+export function classifyServiceLines(
+  lines: ServiceLineInput[],
+  catalog: TenantServiceCatalogConfig,
+): ClassifiedServiceLine[] {
   return lines.map((line) => {
     const lineTotal =
       line.lineTotal != null
@@ -127,19 +133,20 @@ export function classifyServiceLines(lines: ServiceLineInput[]): ClassifiedServi
     return {
       ...line,
       lineTotal,
-      serviceCategory: classifyService({
+      serviceCategory: line.serviceCategory ?? classifyService({
         proId: line.proId,
         serviceName: line.serviceName,
         serviceNameAr: line.serviceNameAr,
-      }),
+      }, catalog),
     };
   });
 }
 
 export function aggregateEmployeeServiceBreakdown(
-  lines: ServiceLineInput[]
+  lines: ServiceLineInput[],
+  catalog: TenantServiceCatalogConfig,
 ): EmployeeServiceBreakdown[] {
-  const classified = classifyServiceLines(lines);
+  const classified = classifyServiceLines(lines, catalog);
   const byEmployee = new Map<number, EmployeeServiceBreakdown>();
 
   for (const line of classified) {

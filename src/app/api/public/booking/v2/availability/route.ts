@@ -2,26 +2,19 @@
  * POST /api/public/booking/v2/availability
  * Compact FreeMask matrix for Emp×Branch×BusinessDate (Booking V2).
  */
-import { NextRequest } from 'next/server';
-import {
-  publicBookingOptionsResponse,
-  PUBLIC_BOOKING_ROUTE_CORS,
-} from '@/lib/booking/publicBookingCors';
+import { NextRequest, NextResponse } from 'next/server';
 import {
   gatePublicBookingRoute,
   finalizePublicBookingError,
   finalizePublicBookingJson,
+  publicBookingTenantOptionsResponse,
+  requirePublicBookingRouteTenancy,
 } from '@/lib/booking/publicBookingRouteGate';
 
 export const runtime = 'nodejs';
 
 export async function OPTIONS(req: NextRequest) {
-  const cors = PUBLIC_BOOKING_ROUTE_CORS['v2-availability'];
-  return publicBookingOptionsResponse({
-    request: req,
-    allowedMethods: [...cors.methods],
-    allowedHeaders: cors.headers,
-  });
+  return publicBookingTenantOptionsResponse(req, 'v2-availability');
 }
 
 export async function POST(req: NextRequest) {
@@ -62,21 +55,28 @@ export async function POST(req: NextRequest) {
       return undefined;
     };
 
+    const branchCodes = toStrArr(body.branchCodes);
+    const branchCode = body.branchCode != null ? String(body.branchCode) : undefined;
+    const tenancy = await requirePublicBookingRouteTenancy(req, gate, {
+      branchCode: branchCode ?? branchCodes?.[0] ?? null,
+      allowCutCompat: true,
+    });
+    if (tenancy instanceof NextResponse) return tenancy;
+
     const result = await buildPublicAvailabilityMatrix({
       employeeIds: toNumArr(body.employeeIds),
       employeeId: body.employeeId != null ? Number(body.employeeId) : undefined,
       branchIds: toNumArr(body.branchIds),
       branchId: body.branchId != null ? Number(body.branchId) : undefined,
-      branchCodes: toStrArr(body.branchCodes),
-      branchCode:
-        body.branchCode != null ? String(body.branchCode) : undefined,
+      branchCodes,
+      branchCode,
       fromBusinessDate: String(body.fromBusinessDate ?? body.from ?? ''),
       toBusinessDate: String(body.toBusinessDate ?? body.to ?? ''),
       serviceIds: toNumArr(body.serviceIds),
       serviceId: body.serviceId != null ? Number(body.serviceId) : undefined,
       durationMinutes:
         body.durationMinutes != null ? Number(body.durationMinutes) : undefined,
-    });
+    }, tenancy.tenantId);
 
     return finalizePublicBookingJson(req, gate, result.body, {
       cacheControl: 'private, max-age=15, stale-while-revalidate=30',

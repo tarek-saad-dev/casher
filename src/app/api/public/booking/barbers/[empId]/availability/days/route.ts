@@ -1,32 +1,26 @@
-import { NextRequest } from 'next/server';
-import {
-  publicBookingOptionsResponse,
-  PUBLIC_BOOKING_ROUTE_CORS,
-} from '@/lib/booking/publicBookingCors';
+import { NextRequest, NextResponse } from 'next/server';
 import {
   PublicBarberMultiBranchAvailabilityError,
   getBarberAvailabilityDays,
 } from '@/lib/booking/publicBarberMultiBranchAvailability';
+import { extractPublicBranchCode } from '@/lib/branch/bookingQueueOwnership';
 import {
   gatePublicBookingRoute,
   finalizePublicBookingError,
   finalizePublicBookingJson,
+  publicBookingTenantOptionsResponse,
+  requirePublicBookingRouteTenancy,
 } from '@/lib/booking/publicBookingRouteGate';
 
 export const runtime = 'nodejs';
 
 export async function OPTIONS(req: NextRequest) {
-  const cors = PUBLIC_BOOKING_ROUTE_CORS['barber-availability-days'];
-  return publicBookingOptionsResponse({
-    request: req,
-    allowedMethods: [...cors.methods],
-    allowedHeaders: cors.headers,
-  });
+  return publicBookingTenantOptionsResponse(req, 'barber-availability-days');
 }
 
 /**
  * POST /api/public/booking/barbers/[empId]/availability/days
- * Phase 1C — aggregate available days across public branches for one barber.
+ * Phase 1C — aggregate available days across the request tenant's public branches for one barber.
  */
 export async function POST(
   req: NextRequest,
@@ -46,7 +40,14 @@ export async function POST(
     void body.duration;
     void body.price;
 
+    const tenancy = await requirePublicBookingRouteTenancy(req, gate, {
+      branchCode: extractPublicBranchCode(new URL(req.url).searchParams, body),
+      allowCutCompat: true,
+    });
+    if (tenancy instanceof NextResponse) return tenancy;
+
     const result = await getBarberAvailabilityDays({
+      tenantId: tenancy.tenantId,
       empId,
       serviceIds: body.serviceIds,
       dateFrom: body.dateFrom,

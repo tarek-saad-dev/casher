@@ -13,6 +13,7 @@ import { getBranchByCode } from '@/lib/branch/repository';
 import { PublicBookingBranchContextError } from '@/lib/booking/publicBookingBranchContext';
 import { listOpsBookablePackages } from '@/lib/operations/opsBookablePackages';
 import type { OpsBookablePackagesResponse } from '@/lib/operations/opsBookablePackagesTypes';
+import { tenantIdForBranchContext } from '@/platform/masterData/tenantScope';
 
 export const runtime = 'nodejs';
 
@@ -26,7 +27,7 @@ export async function GET(req: NextRequest) {
   try {
     if (branchCode !== branch.branchCode.toUpperCase()) {
       const target = await getBranchByCode(branchCode);
-      const visible = target ? await listUserOpsVisibleBranchIds(branch.userId) : null;
+      const visible = target ? await listUserOpsVisibleBranchIds(branch.userId, branch.tenantId) : null;
       if (!target || !visible?.has(target.branchId)) {
         return NextResponse.json(
           { ok: false, error: 'لا تملك صلاحية على هذا الفرع', code: 'NO_BRANCH_ACCESS' },
@@ -38,6 +39,7 @@ export async function GET(req: NextRequest) {
 
     const result = await listOpsBookablePackages({
       branchCode,
+      tenantId: await tenantIdForBranchContext(branch),
       auth: { userId: branch.userId, canOperate: branch.canOperate },
     });
     const body: OpsBookablePackagesResponse = { ok: true, ...result };

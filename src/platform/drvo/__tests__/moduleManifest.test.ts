@@ -176,6 +176,8 @@ describe('DRVO rollout resolver precedence', () => {
     expect(DRVO_MODULE_ROLLOUT.map((m) => m.module).sort()).toEqual([
       'booking',
       'operational-calendar',
+      'platform-commercial',
+      'platform-master-data',
       'pos',
       'pos-sale-treasury',
       'pos-sale-treasury-mutation',

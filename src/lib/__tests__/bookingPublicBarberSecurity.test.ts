@@ -48,8 +48,8 @@ describe('bookingPublicBarberSecurity', () => {
   it('OPTIONS/CORS and nested errors exist', () => {
     expect(calendar).toContain('OPTIONS');
     expect(location).toContain('OPTIONS');
-    expect(calendar).toContain('publicBookingOptionsResponse');
-    expect(location).toContain('PUBLIC_BOOKING_ROUTE_CORS');
+    expect(calendar).toMatch(/publicBooking(Tenant)?OptionsResponse/);
+    expect(location).toMatch(/PUBLIC_BOOKING_ROUTE_CORS|publicBookingTenantOptionsResponse\(req, '/);
     for (const code of [
       'BARBER_NOT_FOUND',
       'INVALID_DATE',

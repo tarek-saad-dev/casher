@@ -78,6 +78,7 @@ export async function GET(request: NextRequest) {
     }
 
     const result = await getEmployeeLedgerSummary(month, filterBranchId, {
+      tenantId: auth.tenantId,
       accessibleBranchIds: accessible,
     });
     const legacyConfig = getLegacyPostToCashConfig();
@@ -108,6 +109,7 @@ export async function GET(request: NextRequest) {
         {
           error: 'جدول دفتر الموظفين غير موجود — شغّل db/migrations/create-tbl-emp-ledger-entry.sql',
           month: request.nextUrl.searchParams.get('month') ?? '',
+          tableBranches: [],
           employees: [],
           totals: {
             salaryCredits: 0,

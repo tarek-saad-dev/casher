@@ -6,6 +6,7 @@ import {
   isWhatsAppTemplateAdmin,
   requireWhatsAppTemplateAdmin,
 } from '../../access';
+import { runWithStaffMessagingTenant } from '@/modules/messaging/tenancy/staffScope';
 
 export const runtime = 'nodejs';
 
@@ -27,20 +28,21 @@ function decodeTemplateKey(raw: string | undefined): string {
 export async function POST(req: NextRequest, { params }: Ctx) {
   const admin = await requireWhatsAppTemplateAdmin();
   if (!isWhatsAppTemplateAdmin(admin)) return admin;
-
-  try {
-    const { templateKey: raw } = await params;
-    const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
-    const result = previewAdminWhatsAppTemplate({
-      templateKey: decodeTemplateKey(raw),
-      content: body.content,
-    });
-    return NextResponse.json(result);
-  } catch (err) {
-    if (err instanceof MessageTemplateAdminError) {
-      return NextResponse.json({ error: err.message, code: err.code }, { status: err.status });
+  return runWithStaffMessagingTenant(admin, 'admin/whatsapp/templates/[templateKey]/preview:POST', async () => {
+    try {
+      const { templateKey: raw } = await params;
+      const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+      const result = previewAdminWhatsAppTemplate({
+        templateKey: decodeTemplateKey(raw),
+        content: body.content,
+      });
+      return NextResponse.json(result);
+    } catch (err) {
+      if (err instanceof MessageTemplateAdminError) {
+        return NextResponse.json({ error: err.message, code: err.code }, { status: err.status });
+      }
+      console.error('[api/admin/whatsapp/templates/[templateKey]/preview POST]', err);
+      return NextResponse.json({ error: getUserFriendlyError(err) }, { status: 500 });
     }
-    console.error('[api/admin/whatsapp/templates/[templateKey]/preview POST]', err);
-    return NextResponse.json({ error: getUserFriendlyError(err) }, { status: 500 });
-  }
+  });
 }

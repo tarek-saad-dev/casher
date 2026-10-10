@@ -52,7 +52,7 @@ describe('bookingPublicBarberLocation', () => {
   );
   it('uses getPublicBarberLocation with nested errors', () => {
     expect(src).toContain('getPublicBarberLocation');
-    expect(src).toContain('publicBookingErrorResponse');
+    expect(src).toMatch(/publicBookingErrorResponse|finalizePublicBookingError/);
   });
 });
 

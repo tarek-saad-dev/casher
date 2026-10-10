@@ -151,7 +151,7 @@ async function main() {
   console.table(beforeTgt.byEmp);
 
   console.log('\n=== SYNC PAYROLL LEDGER (Aug all employees) ===');
-  const paySync = await runEmployeeLedgerHistoricalSync({
+  const paySync = await runEmployeeLedgerHistoricalSync({ tenantId: String(process.env.HR_TENANT_ID ?? ''),
     month: MONTH,
     empId: null,
     dryRun: false,

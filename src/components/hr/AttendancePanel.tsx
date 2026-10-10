@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import {
   Users, Clock, CheckCircle2, AlertCircle,
@@ -37,6 +37,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import { shortBranchName } from '@/lib/hr/dailyPayrollClosingUi';
+import { hrBranchPalette, parseHrBranchOptions, type HrBranchOption } from '@/lib/hr/hrBranchUi';
 import {
   shortAttendanceBranchLabel,
   type AttendanceTransferContext,
@@ -174,7 +175,8 @@ function EmploymentBadges({ row }: { row: AttendanceRow }) {
   );
 }
 
-type EmployeeScopeFilter = 'all' | 'GLEEM' | 'CAMP_CAESAR';
+/** 'all' or a tenant branch code from the API `scopeOptions`. */
+type EmployeeScopeFilter = string;
 
 function attendanceRowKey(empId: number, branchId: number | null | undefined): string {
   return `${empId}|${branchId ?? 0}`;
@@ -191,13 +193,10 @@ function sameAttendanceRow(
   return Number(row.BranchID) === Number(branchId);
 }
 
-function branchTone(code: string) {
-  if (code === 'GLEEM') return 'border-sky-500/25 bg-sky-500/10 text-sky-300/90';
-  if (code === 'CAMP_CAESAR') return 'border-amber-500/25 bg-amber-500/10 text-amber-300/90';
-  return 'border-zinc-600/40 bg-zinc-800/60 text-zinc-400';
-}
-
-function branchBadge(row: Pick<AttendanceRow, 'BranchCode' | 'BranchName'>) {
+function branchBadge(
+  row: Pick<AttendanceRow, 'BranchCode' | 'BranchName'>,
+  branchCodes: readonly string[],
+) {
   if (!row.BranchCode && !row.BranchName) return null;
   const code = String(row.BranchCode ?? '');
   const label = shortBranchName({
@@ -205,14 +204,21 @@ function branchBadge(row: Pick<AttendanceRow, 'BranchCode' | 'BranchName'>) {
     branchName: row.BranchName || code || '—',
   });
   return (
-    <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border ${branchTone(code)}`}>
+    <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border ${hrBranchPalette(code, branchCodes).badge}`}>
       {label}
     </span>
   );
 }
 
-function TodayBranchBadge({ transfer }: { transfer?: AttendanceTransferContext }) {
+function TodayBranchBadge({
+  transfer,
+  branchCodes,
+}: {
+  transfer?: AttendanceTransferContext;
+  branchCodes: readonly string[];
+}) {
   if (!transfer) return null;
+  const branchTone = (code: string) => hrBranchPalette(code, branchCodes).badge;
 
   if (!transfer.isTransferredToday) {
     const label = shortAttendanceBranchLabel(transfer.operationalBranch);
@@ -270,6 +276,8 @@ export default function AttendancePanel() {
       : getOperationalDate();
   const [date, setDate]               = useState(initialDate);
   const [employeeScope, setEmployeeScope] = useState<EmployeeScopeFilter>('all');
+  const [scopeOptions, setScopeOptions] = useState<HrBranchOption[]>([]);
+  const scopeCodes = useMemo(() => scopeOptions.map((o) => o.code), [scopeOptions]);
   const [attendance, setAttendance]   = useState<AttendanceRow[]>([]);
   const [summary, setSummary]         = useState<AttendanceSummary | null>(null);
   const [branchLabel, setBranchLabel] = useState<string | null>(null);
@@ -363,6 +371,7 @@ export default function AttendancePanel() {
         setAttendance(data.attendance);
         setSummary(data.summary ?? null);
         setTransferSummary(data.transferSummary ?? null);
+        setScopeOptions(parseHrBranchOptions(data.scopeOptions));
         if (data.employeeScope === 'all') {
           setBranchLabel('كل الفروع');
         } else {
@@ -896,13 +905,10 @@ export default function AttendancePanel() {
         </span>
         <span className="text-zinc-600">|</span>
         <span className="text-zinc-500">عرض الموظفين</span>
-        {(
-          [
-            { id: 'all' as const, label: 'كل الفروع' },
-            { id: 'GLEEM' as const, label: 'جليم' },
-            { id: 'CAMP_CAESAR' as const, label: 'كامب شيزار' },
-          ] as const
-        ).map((opt) => (
+        {[
+          { id: 'all', label: 'كل الفروع' },
+          ...scopeOptions.map((o) => ({ id: o.code, label: o.label })),
+        ].map((opt) => (
           <Button
             key={opt.id}
             type="button"
@@ -1001,8 +1007,8 @@ export default function AttendancePanel() {
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-1">
                         <span className="font-semibold text-white text-sm truncate max-w-[9rem]">{row.EmpName}</span>
-                        {employeeScope === 'all' ? branchBadge(row) : null}
-                        <TodayBranchBadge transfer={row.transfer} />
+                        {employeeScope === 'all' ? branchBadge(row, scopeCodes) : null}
+                        <TodayBranchBadge transfer={row.transfer} branchCodes={scopeCodes} />
                       </div>
                       <div className={`text-[10px] mt-0.5 ${row.scheduleWarning ? 'text-amber-500' : row.transfer?.isTransferredToday ? 'text-amber-400/90' : 'text-zinc-500'}`}>
                         {row.displayReason || (row.isScheduledWorkingDay ? 'يوم عمل' : 'إجازة') || row.scheduleWarning}

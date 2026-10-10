@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireBranchAdminAccess } from '@/lib/branch/context';
+import { branchAdminTenantScopeResponse, requireBranchAdminAccess } from '@/lib/branch/context';
 import { getBranchSmokeRun } from '@/lib/branch/branchSmokeService';
 import { BranchDomainError } from '@/lib/branch/types';
 
@@ -18,6 +18,8 @@ export async function GET(_req: NextRequest, ctx: Ctx) {
     if (!Number.isFinite(branchId) || !Number.isFinite(smokeRunId)) {
       return NextResponse.json({ ok: false, error: 'معرف غير صالح' }, { status: 400 });
     }
+    const outOfTenant = await branchAdminTenantScopeResponse(admin, branchId);
+    if (outOfTenant) return outOfTenant;
     const smokeRun = await getBranchSmokeRun(branchId, smokeRunId);
     return NextResponse.json({ ok: true, smokeRun });
   } catch (err) {

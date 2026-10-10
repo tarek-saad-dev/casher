@@ -143,7 +143,7 @@ export async function POST(req: NextRequest) {
       return rescheduleBookingMove(input);
     }
     if (!portHooks) {
-      const actor = await buildStaffActorContext(input.userId);
+      const actor = await buildStaffActorContext(input.userId, auth.tenantId);
       portHooks = await buildSchedulingPortHooksForActor(actor);
     }
     return rescheduleOpsBooking({ ...input, schedulingPortHooks: portHooks });

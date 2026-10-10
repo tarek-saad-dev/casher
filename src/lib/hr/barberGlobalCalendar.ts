@@ -31,6 +31,7 @@ function eachDate(from: string, to: string): string[] {
 }
 
 export async function buildBarberCalendar(args: {
+  tenantId: string;
   empId: number;
   from: string;
   to: string;
@@ -61,7 +62,8 @@ export async function buildBarberCalendar(args: {
   const emp = await db
     .request()
     .input('empId', sql.Int, args.empId)
-    .query(`SELECT EmpID, EmpName FROM dbo.TblEmp WHERE EmpID = @empId`);
+    .input('tenantId', sql.UniqueIdentifier, args.tenantId)
+    .query(`SELECT EmpID, EmpName FROM dbo.TblEmp WHERE EmpID = @empId AND TenantId = @tenantId`);
   if (!emp.recordset[0]) {
     throw new Error('EMP_NOT_FOUND');
   }
@@ -226,6 +228,7 @@ export async function listGlobalPublicBarbers(args?: {
     FROM dbo.TblEmp e
     INNER JOIN dbo.TblEmpBranchAssignment a ON a.EmpID = e.EmpID
     INNER JOIN dbo.TblBranch b ON b.BranchID = a.BranchID
+    INNER JOIN dbo.Location bl ON bl.LegacyBranchId = b.BranchID AND bl.TenantId = e.TenantId
     WHERE ISNULL(e.isActive, 1) = 1
       AND e.Job IN (N'حلاق', N'مساعد', N'Barber', N'barber')
       AND a.IsActive = 1 AND a.CanReceiveBookings = 1

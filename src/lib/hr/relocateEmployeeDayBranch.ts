@@ -42,7 +42,8 @@ export async function previewRelocateEmployeeDayBranch(args: {
   const emp = await db
     .request()
     .input('empId', sql.Int, args.empId)
-    .query(`SELECT EmpID, EmpName FROM dbo.TblEmp WHERE EmpID = @empId`);
+    .input('hrBranchId', sql.Int, args.fromBranchId)
+    .query(`SELECT EmpID, EmpName FROM dbo.TblEmp WHERE EmpID = @empId AND TenantId IN (SELECT tloc.TenantId FROM dbo.Location tloc WHERE tloc.LegacyBranchId = @hrBranchId)`);
   const empRow = emp.recordset[0];
   if (!empRow) {
     blockers.push({ code: 'EMPLOYEE_NOT_FOUND', message: 'الموظف غير موجود' });

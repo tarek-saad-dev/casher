@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'empId غير صالح' }, { status: 400 });
     }
 
-    const result = await getEmployeeLedgerWageSourceAudit(month, empId);
+    const result = await getEmployeeLedgerWageSourceAudit(month, empId, auth.tenantId);
     return NextResponse.json(result);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error';

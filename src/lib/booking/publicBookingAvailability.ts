@@ -189,6 +189,7 @@ function mapDurationError(err: BookingServiceDurationError): PublicBookingErrorC
 async function resolvePublicBranch(
   branchCode: string | null | undefined,
   previewQueryParam?: string | null,
+  expectedTenantId?: string | null,
 ): Promise<PublicBookingBranchContext> {
   if (!branchCode) throw new PublicBookingAvailabilityError('BRANCH_REQUIRED');
   try {
@@ -196,6 +197,7 @@ async function resolvePublicBranch(
       branchCode,
       purpose: 'public_booking',
       previewQueryParam,
+      expectedTenantId,
     });
     if (!ctx.bookingEnabled || !ctx.publicBookingEnabled) {
       throw new PublicBookingAvailabilityError('BRANCH_BOOKING_DISABLED');
@@ -210,12 +212,15 @@ async function resolvePublicBranch(
   }
 }
 
-async function loadEmpName(empId: number): Promise<string | null> {
+async function loadEmpName(empId: number, tenantId: string): Promise<string | null> {
   const db = await getPool();
   const r = await db
     .request()
     .input('empId', sql.Int, empId)
-    .query(`SELECT EmpName, ISNULL(isActive,1) AS isActive FROM dbo.TblEmp WHERE EmpID=@empId`);
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
+    .query(
+      `SELECT EmpName, ISNULL(isActive,1) AS isActive FROM dbo.TblEmp WHERE EmpID=@empId AND TenantId = @tenantId`,
+    );
   const row = r.recordset[0];
   if (!row || !row.isActive) return null;
   if (isEmployeeHiddenFromPublicBooking(row.EmpName)) return null;
@@ -321,11 +326,17 @@ export async function getPublicAvailableSlots(args: {
   previewQueryParam?: string | null;
   /** Stable canary key (client/session). Deterministic Legacy/V2 sticky assignment. */
   canaryKey?: string | null;
+  /** DRVO-019: tenant resolved by the route; the branch must belong to it. */
+  expectedTenantId?: string | null;
 }): Promise<PublicAvailableSlotsResponse> {
   if (!isValidDate(args.date)) {
     throw new PublicBookingAvailabilityError('INVALID_DATE');
   }
-  const branchCtx = await resolvePublicBranch(args.branchCode, args.previewQueryParam);
+  const branchCtx = await resolvePublicBranch(
+    args.branchCode,
+    args.previewQueryParam,
+    args.expectedTenantId,
+  );
 
   let selected: ResolvedSelectedBookingServices;
   try {
@@ -358,6 +369,7 @@ export async function getPublicAvailableSlots(args: {
   const cacheKey = [
     'slots',
     decision.serveV2 ? 'v2' : 'legacy',
+    branchCtx.tenantId,
     branchCtx.branchCode,
     args.date,
     mode,
@@ -370,7 +382,7 @@ export async function getPublicAvailableSlots(args: {
   if (cached) return cached;
 
   if (empId) {
-    const name = await loadEmpName(empId);
+    const name = await loadEmpName(empId, branchCtx.tenantId);
     if (!name) throw new PublicBookingAvailabilityError('BARBER_NOT_FOUND');
   }
 
@@ -766,6 +778,7 @@ async function listSlotsForPreloadedContext(args: {
   const summaryOnly = !!args.summaryOnly;
   const cacheKey = [
     summaryOnly ? 'slots-pre-summary' : 'slots-pre',
+    args.branchCtx.tenantId,
     args.branchCtx.branchCode,
     args.date,
     args.empId ?? 'ANY',
@@ -946,8 +959,14 @@ export async function getPublicAvailableDays(args: {
   to?: string | null;
   previewQueryParam?: string | null;
   canaryKey?: string | null;
+  /** DRVO-019: tenant resolved by the route; the branch must belong to it. */
+  expectedTenantId?: string | null;
 }): Promise<PublicAvailableDaysResponse> {
-  const branchCtx = await resolvePublicBranch(args.branchCode, args.previewQueryParam);
+  const branchCtx = await resolvePublicBranch(
+    args.branchCode,
+    args.previewQueryParam,
+    args.expectedTenantId,
+  );
   const settings = await getPublicSettings(branchCtx.branchId);
   const today = getCairoBusinessDate();
   const from = args.from && isValidDate(args.from) ? args.from : today;
@@ -983,7 +1002,7 @@ export async function getPublicAvailableDays(args: {
       ? Number(args.empId)
       : null;
   if (empId) {
-    const name = await loadEmpName(empId);
+    const name = await loadEmpName(empId, branchCtx.tenantId);
     if (!name) throw new PublicBookingAvailabilityError('BARBER_NOT_FOUND');
   }
 
@@ -1001,6 +1020,7 @@ export async function getPublicAvailableDays(args: {
   const cacheKey = [
     'days',
     decision.serveV2 ? 'v2' : 'legacy',
+    branchCtx.tenantId,
     branchCtx.branchCode,
     from,
     to,
@@ -1065,6 +1085,7 @@ export async function getPublicAvailableDays(args: {
   const legacyT0 = performance.now();
   const probes = await summarizeAvailableDaysRange({
     dates: probeDates,
+    tenantId: branchCtx.tenantId,
     branchId: branchCtx.branchId,
     serviceIds: selected.serviceIds,
     durationMinutes: selected.totalDurationMinutes,

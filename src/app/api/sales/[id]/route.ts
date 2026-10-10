@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
-import { getSession } from "@/lib/session";
 import { executeAuditedAction, isAuditedActionError } from '@/lib/sensitiveActionAudit';
 import type { InvoiceItemInput } from '@/lib/actions/invoiceActions';
 import { parseGroomPackageMetadataNote } from '@/lib/booking/groomPackageBooking';
@@ -25,6 +24,7 @@ import {
   loadInvoiceOwnership,
   requireActiveBranchContext,
 } from '@/lib/branch';
+import { requireTenantSession } from '@/lib/api-auth';
 
 // GET /api/sales/[id] — Get sale by invID for printing
 export async function GET(
@@ -141,8 +141,8 @@ export async function PUT(
     const invID = parseInt(id);
     if (isNaN(invID)) return NextResponse.json({ error: 'Invalid invID' }, { status: 400 });
 
-    const sessionUser = await getSession();
-    if (!sessionUser) return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
+    const sessionUser = await requireTenantSession();
+    if (sessionUser instanceof NextResponse) return sessionUser;
     const userID = sessionUser.UserID;
 
     const body = await req.json();
@@ -316,8 +316,8 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const session = await getSession();
-    if (!session) return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
+    const session = await requireTenantSession();
+    if (session instanceof NextResponse) return session;
 
     const { id } = await params;
     const invID = parseInt(id);

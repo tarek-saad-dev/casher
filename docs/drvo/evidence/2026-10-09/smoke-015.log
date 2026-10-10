@@ -1,0 +1,58 @@
+  live database: last132_agent (drvo_agent)
+Scenario 1 — migration 10 verify + NULL TenantId verification
+  ok: migration 10 schema verified (NOT NULL, trusted FKs, tenant uniques, indexes)
+  ok: zero NULL TenantId ({"TblClient":0,"TblPro":0,"TblCat":0,"TblServicePackage":0,"TblServicePackageItem":0,"TblPaymentMethods":0,"TblExpINCat":0,"TblEmp":0})
+  ok: platform bootstrap verified (clean)
+Scenario 2 — CUT backfill proof
+[db:cloud] Connection attempt 1/3 server=127.0.0.1 db=last132_agent auth=sql
+[db:cloud] Connected to SQL Server successfully
+  TblServicePackageItem: total=64 CASHER_BOOT=64
+  TblServicePackage: total=6 CASHER_BOOT=6
+  TblPro: total=73 CASHER_BOOT=73
+  TblCat: total=16 CASHER_BOOT=16
+  TblClient: total=3113 CASHER_BOOT=3113
+  TblPaymentMethods: total=9 CASHER_BOOT=9
+  TblExpINCat: total=108 CASHER_BOOT=108
+  TblEmp: total=177 CASHER_BOOT=177
+  ok: TblClient CUT rows are owned by CASHER_BOOT
+  ok: TblPro CUT rows are owned by CASHER_BOOT
+  ok: TblServicePackage CUT rows are owned by CASHER_BOOT
+Scenario 3 — the database fails closed
+  ok: a master-data row without TenantId is rejected (NOT NULL) (SQL error 515)
+Scenario 4 — provision two tenants; minimal default seed
+  ok: two distinct non-boot tenants
+  ok: tenant A seeded with minimal defaults (pm=2 fin=2 cat=1)
+  ok: tenant A received no CUT customers or services
+  ok: tenant B seeded with minimal defaults (pm=2 fin=2 cat=1)
+  ok: tenant B received no CUT customers or services
+Scenario 5 — same-named master data in both tenants
+  ok: same-named customer, category, service and package exist independently in A and B
+Scenario 6 — neither tenant sees or updates the other
+  ok: phone lookup in A returns A customer
+  ok: phone lookup in B returns B customer
+  ok: public website lookup scoped to A
+  ok: booking upsert in A reuses A customer only
+  ok: tenant A cannot update tenant B customer by id
+  ok: tenant A cannot use tenant B category
+  ok: tenant B service is foreign to A
+  ok: tenant A by-id package read of B is not-found
+  ok: tenant A cannot delete tenant B package
+  ok: tenant A package list has only its own package
+  ok: a package item cannot attach to another tenant package (composite FK) (SQL error 547)
+  ok: tenant B customer row unchanged
+Scenario 7 — cleanup; CASHER_BOOT unchanged
+[pages-sync] Registry synced ✓
+[roles-sync] Partner role synced ✓
+  cleanup: removed DRVO015_A
+  cleanup: removed DRVO015_B
+  ok: no DRVO015 residue
+  ok: TblServicePackageItem CASHER_BOOT count unchanged (64)
+  ok: TblServicePackage CASHER_BOOT count unchanged (6)
+  ok: TblPro CASHER_BOOT count unchanged (73)
+  ok: TblCat CASHER_BOOT count unchanged (16)
+  ok: TblClient CASHER_BOOT count unchanged (3113)
+  ok: TblPaymentMethods CASHER_BOOT count unchanged (9)
+  ok: TblExpINCat CASHER_BOOT count unchanged (108)
+  ok: TblEmp CASHER_BOOT count unchanged (177)
+  ok: still zero NULL TenantId after the smoke
+DRVO-015 smoke PASS

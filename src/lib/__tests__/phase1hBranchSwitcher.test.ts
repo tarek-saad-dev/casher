@@ -65,6 +65,26 @@ function branchRecord(overrides: Partial<Record<string, unknown>> = {}) {
   };
 }
 
+const TENANT_A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+const TENANT_B = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+/** Two synthetic tenants: A owns branches 1–3, B owns branch 7. */
+const TENANT_BRANCHES: Record<string, number[]> = { [TENANT_A]: [1, 2, 3], [TENANT_B]: [7] };
+
+function mockTenantContext() {
+  vi.doMock('@/platform/tenant/tenantContext', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@/platform/tenant/tenantContext')>();
+    return {
+      ...actual,
+      listTenantLegacyBranchIds: vi.fn(async (tenantId: string) => new Set(TENANT_BRANCHES[tenantId] ?? [])),
+      assertLegacyBranchInTenant: vi.fn(async (tenantId: string, branchId: number) => {
+        if (!(TENANT_BRANCHES[tenantId] ?? []).includes(branchId)) {
+          throw new actual.TenantContextError('LOCATION_NOT_IN_TENANT', 'cross-tenant');
+        }
+      }),
+    };
+  });
+}
+
 function sessionUser(overrides: Partial<Record<string, unknown>> = {}) {
   return {
     UserID: 10,
@@ -73,6 +93,8 @@ function sessionUser(overrides: Partial<Record<string, unknown>> = {}) {
     ActiveBranchID: 1,
     ActiveBranchCode: 'GLEEM',
     BranchSessionVersion: 1,
+    TenantId: TENANT_A,
+    MembershipId: 'm-a-10',
     ...overrides,
   };
 }
@@ -83,6 +105,7 @@ function sessionUser(overrides: Partial<Record<string, unknown>> = {}) {
 describe('Phase 1H — listSwitchableBranchesForUser (mocked repository)', () => {
   beforeEach(() => {
     vi.resetModules();
+    mockTenantContext();
   });
 
   it('includes only CanOperate=true rows on active branches, excludes inactive branch, marks current', async () => {
@@ -112,7 +135,7 @@ describe('Phase 1H — listSwitchableBranchesForUser (mocked repository)', () =>
     }));
 
     const { listSwitchableBranchesForUser } = await import('@/lib/branch/switchBranch');
-    const result = await listSwitchableBranchesForUser(10, 1);
+    const result = await listSwitchableBranchesForUser(10, 1, TENANT_A);
 
     expect(result).toHaveLength(1);
     expect(result[0]).toMatchObject({ branchId: 1, branchCode: 'GLEEM', isCurrent: true });
@@ -133,11 +156,30 @@ describe('Phase 1H — listSwitchableBranchesForUser (mocked repository)', () =>
     }));
 
     const { listSwitchableBranchesForUser } = await import('@/lib/branch/switchBranch');
-    const result = await listSwitchableBranchesForUser(10, 2);
+    const result = await listSwitchableBranchesForUser(10, 2, TENANT_A);
 
     expect(result.map((b) => b.branchId)).toEqual([2, 1]); // current sorts first
     expect(result.find((b) => b.branchId === 2)?.isCurrent).toBe(true);
     expect(result.find((b) => b.branchId === 1)?.isCurrent).toBe(false);
+  });
+
+  it('DRVO-013: never lists a branch of another tenant even with an operable access row', async () => {
+    vi.doMock('@/lib/branch/repository', () => ({
+      getUserActiveStatus: vi.fn(async () => ({
+        exists: true,
+        isDeleted: false,
+        userName: 'Cashier',
+        userLevel: 'user',
+      })),
+      listUserValidBranchAccess: vi.fn(async () => [
+        accessRow({ branchId: 1, branchCode: 'AAAA', canOperate: true }),
+        accessRow({ branchId: 7, branchCode: 'TENB', canOperate: true, isDefault: false }),
+      ]),
+    }));
+
+    const { listSwitchableBranchesForUser } = await import('@/lib/branch/switchBranch');
+    expect((await listSwitchableBranchesForUser(10, 1, TENANT_A)).map((b) => b.branchId)).toEqual([1]);
+    expect((await listSwitchableBranchesForUser(10, 7, TENANT_B)).map((b) => b.branchId)).toEqual([7]);
   });
 
   it('throws USER_DELETED (401) for a soft-deleted or missing user', async () => {
@@ -152,7 +194,7 @@ describe('Phase 1H — listSwitchableBranchesForUser (mocked repository)', () =>
     }));
 
     const { listSwitchableBranchesForUser } = await import('@/lib/branch/switchBranch');
-    await expect(listSwitchableBranchesForUser(10, 1)).rejects.toMatchObject({
+    await expect(listSwitchableBranchesForUser(10, 1, TENANT_A)).rejects.toMatchObject({
       code: 'USER_DELETED',
       status: 401,
     });
@@ -210,6 +252,7 @@ function mockSwitchDeps(opts: {
 }) {
   const createSession = vi.fn(opts.createSessionImpl ?? (async () => undefined));
   const auditWrite = vi.fn(async () => 1);
+  mockTenantContext();
 
   vi.doMock('@/lib/session', () => ({
     verifySessionCookie: vi.fn(async () => opts.verified ?? { ok: true }),
@@ -268,7 +311,13 @@ describe('Phase 1H — switchActiveBranch (mocked session/DB, no live cookie API
 
     expect(result).toMatchObject({ ok: true, changed: true, activeBranch: { branchId: 2, branchCode: 'BR2' } });
     expect(createSession).toHaveBeenCalledWith(
-      expect.objectContaining({ ActiveBranchID: 2, ActiveBranchCode: 'BR2', BranchSessionVersion: 1 }),
+      expect.objectContaining({
+        ActiveBranchID: 2,
+        ActiveBranchCode: 'BR2',
+        BranchSessionVersion: 1,
+        TenantId: TENANT_A,
+        MembershipId: 'm-a-10',
+      }),
     );
     expect(auditWrite).toHaveBeenCalledWith(
       expect.objectContaining({ actionType: 'BRANCH_SESSION_SWITCH', executionStatus: 'success' }),
@@ -361,6 +410,42 @@ describe('Phase 1H — switchActiveBranch (mocked session/DB, no live cookie API
     const result = await switchActiveBranch({ branchId: 2 });
 
     expect(result).toMatchObject({ ok: false, status: 401, code: 'USER_DELETED' });
+  });
+
+  it('DRVO-013: a branch of another tenant is a non-disclosing 404 even with an operable access row', async () => {
+    const { createSession, auditWrite } = mockSwitchDeps({
+      session: sessionUser({ ActiveBranchID: 1, ActiveBranchCode: 'GLEEM' }),
+      branchesById: { 7: branchRecord({ branchId: 7, branchCode: 'TENB', isActive: true }) },
+      access: { canOperate: true },
+    });
+
+    const { switchActiveBranch } = await import('@/lib/branch/switchBranch');
+    const result = await switchActiveBranch({ branchId: 7 });
+
+    expect(result).toEqual({
+      ok: false,
+      status: 404,
+      code: 'BRANCH_NOT_FOUND',
+      message: 'الفرع غير متاح',
+    });
+    expect(createSession).not.toHaveBeenCalled();
+    expect(auditWrite).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actionType: 'BRANCH_SESSION_SWITCH_DENIED',
+        reason: 'BRANCH_NOT_IN_TENANT',
+        newData: expect.objectContaining({ requestedBranchId: 7 }),
+      }),
+    );
+  });
+
+  it('DRVO-013: a session without a tenant binding cannot switch (no default tenant)', async () => {
+    const { createSession } = mockSwitchDeps({
+      session: sessionUser({ TenantId: undefined, MembershipId: undefined }),
+    });
+    const { switchActiveBranch } = await import('@/lib/branch/switchBranch');
+    const result = await switchActiveBranch({ branchId: 2 });
+    expect(result).toMatchObject({ ok: false, status: 401, code: 'SESSION_INVALID' });
+    expect(createSession).not.toHaveBeenCalled();
   });
 
   it('rejects a non-finite / non-positive branchId as 400 INVALID_BRANCH', async () => {

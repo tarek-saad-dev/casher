@@ -435,6 +435,8 @@ async function loadBookingsBusyRange(
  */
 export async function summarizeAvailableDaysRange(args: {
   dates: string[];
+  /** DRVO-019: tenant owning `branchId`. */
+  tenantId: string;
   branchId: number;
   serviceIds: number[];
   durationMinutes: number;
@@ -502,7 +504,10 @@ export async function summarizeAvailableDaysRange(args: {
   ] = await Promise.all([
     db
       .request()
-      .query(`SELECT EmpID, EmpName FROM dbo.TblEmp WHERE EmpID IN (${barberIds.join(',')})`)
+      .input('tenantId', sql.UniqueIdentifier, args.tenantId)
+      .query(
+        `SELECT EmpID, EmpName FROM dbo.TblEmp WHERE EmpID IN (${barberIds.join(',')}) AND TenantId = @tenantId`,
+      )
       .catch(() => ({ recordset: [] as Array<{ EmpID: number; EmpName: string }> })),
     loadDayOffAbsentRange(db, barberIds, from, to),
     loadOverridesForDateRange(db, barberIds, from, to),

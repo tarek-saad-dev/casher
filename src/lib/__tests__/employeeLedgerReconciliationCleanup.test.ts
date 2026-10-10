@@ -3,6 +3,8 @@ import { NextRequest } from 'next/server';
 
 vi.mock('server-only', () => ({}));
 
+const TENANT_ID = '11111111-1111-4111-8111-111111111111';
+
 let fakeCommit = vi.fn();
 let fakeRollback = vi.fn();
 let poolQueryResults: Array<{ recordset?: unknown[]; rowsAffected?: number[] }> = [];
@@ -102,7 +104,7 @@ describe('upsertAdvanceCategoryMapping', () => {
     ];
 
     const { upsertAdvanceCategoryMapping } = await import('@/lib/services/employeeLedgerReconciliationCleanupService');
-    const result = await upsertAdvanceCategoryMapping(10, 3);
+    const result = await upsertAdvanceCategoryMapping(10, 3, TENANT_ID);
 
     expect(result.success).toBe(true);
     expect(result.expInId).toBe(10);
@@ -123,7 +125,7 @@ describe('upsertAdvanceCategoryMapping', () => {
     ];
 
     const { upsertAdvanceCategoryMapping } = await import('@/lib/services/employeeLedgerReconciliationCleanupService');
-    const result = await upsertAdvanceCategoryMapping(10, 3);
+    const result = await upsertAdvanceCategoryMapping(10, 3, TENANT_ID);
 
     expect(result.created).toBe(false);
     expect(result.reactivated).toBe(true);
@@ -151,7 +153,7 @@ describe('voidReconciliationLedgerEntry', () => {
     ];
 
     const { voidReconciliationLedgerEntry } = await import('@/lib/services/employeeLedgerReconciliationCleanupService');
-    const result = await voidReconciliationLedgerEntry(23, 'تصنيف غير تابع لموظف');
+    const result = await voidReconciliationLedgerEntry(23, 'تصنيف غير تابع لموظف', TENANT_ID);
 
     expect(result.success).toBe(true);
     expect(result.ledgerEntryId).toBe(23);
@@ -175,7 +177,7 @@ describe('voidReconciliationLedgerEntry', () => {
     const { voidReconciliationLedgerEntry, EmployeeLedgerCleanupError } =
       await import('@/lib/services/employeeLedgerReconciliationCleanupService');
 
-    await expect(voidReconciliationLedgerEntry(23, 'test'))
+    await expect(voidReconciliationLedgerEntry(23, 'test', TENANT_ID))
       .rejects.toBeInstanceOf(EmployeeLedgerCleanupError);
   });
 
@@ -195,7 +197,7 @@ describe('voidReconciliationLedgerEntry', () => {
     const { voidReconciliationLedgerEntry, EmployeeLedgerCleanupError } =
       await import('@/lib/services/employeeLedgerReconciliationCleanupService');
 
-    await expect(voidReconciliationLedgerEntry(23, 'test'))
+    await expect(voidReconciliationLedgerEntry(23, 'test', TENANT_ID))
       .rejects.toBeInstanceOf(EmployeeLedgerCleanupError);
   });
 
@@ -215,7 +217,7 @@ describe('voidReconciliationLedgerEntry', () => {
     const { voidReconciliationLedgerEntry, EmployeeLedgerCleanupError } =
       await import('@/lib/services/employeeLedgerReconciliationCleanupService');
 
-    await expect(voidReconciliationLedgerEntry(23, 'test'))
+    await expect(voidReconciliationLedgerEntry(23, 'test', TENANT_ID))
       .rejects.toBeInstanceOf(EmployeeLedgerCleanupError);
   });
 });

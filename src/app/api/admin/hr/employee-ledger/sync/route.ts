@@ -28,6 +28,7 @@ export async function POST(request: NextRequest) {
     }
 
     const result = await runEmployeeLedgerHistoricalSync({
+      tenantId: auth.tenantId,
       month,
       empId,
       dryRun,
