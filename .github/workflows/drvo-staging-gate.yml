@@ -19,8 +19,7 @@ jobs:
       (github.event_name == 'workflow_dispatch') ||
       (
         github.event.pull_request.head.repo.full_name == github.repository &&
-        (github.event.pull_request.head.ref == 'drvo-012-commercial-plans-tenant-apps' ||
-         github.event.pull_request.head.ref == 'drvo-customer-onboarding-wizard-v1')
+        github.event.pull_request.head.ref == 'drvo-012-commercial-plans-tenant-apps'
       )
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -194,14 +193,6 @@ jobs:
 
       - name: DRVO-011 regression smoke
         run: npm run drvo-011:smoke
-
-      - name: DRVO onboarding wizard focused tests
-        if: github.event.pull_request.head.ref == 'drvo-customer-onboarding-wizard-v1'
-        run: npx vitest run src/platform/__tests__/onboardingWizard.test.ts src/platform/__tests__/onboardingWizardStages.test.ts src/components/platform/onboarding/__tests__/OnboardingWizard.test.tsx
-
-      - name: DRVO onboarding wizard real staging pilot
-        if: github.event.pull_request.head.ref == 'drvo-customer-onboarding-wizard-v1'
-        run: npx tsx scripts/drvo/drvo-onboarding-wizard-staging-pilot.ts
 
       - name: Cleanup proof
         run: |
