@@ -1,6 +1,6 @@
 import path from 'path';
 import type { ConnectionPool } from 'mssql';
-import { checksumFile } from '../checksum';
+import { checksumFile, legacyCrlfChecksumFile } from '../checksum';
 import { executeSqlFile } from '../sqlBatch';
 import type { DrvoMigrationDefinition } from '../types';
 
@@ -74,6 +74,7 @@ export const treasuryMovementRegistryMigration: DrvoMigrationDefinition = {
   name: 'DRVO-007 Treasury movement registry',
   dependencies: ['platform-bootstrap'],
   checksum: checksumFile(SCHEMA),
+  legacyChecksums: [legacyCrlfChecksumFile(SCHEMA)],
   control: {
     kind: 'mixed',
     risk: 'HIGH',

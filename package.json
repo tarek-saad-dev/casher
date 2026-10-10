@@ -42,6 +42,8 @@
     "drvo:reconcile-bootstrap": "tsx scripts/drvo/reconcile-platform-bootstrap.ts",
     "integrations:migrate-drvowa": "tsx scripts/run-drvowa-integration-migration.ts",
     "drvo-011:smoke": "tsx scripts/drvo/drvo-011-tenant-onboarding-smoke.ts",
+    "drvo-012:smoke": "tsx scripts/drvo/drvo-012-commercial-smoke.ts",
+    "drvo-012:reconcile-subscriptions": "tsx scripts/drvo/drvo-012-reconcile-subscriptions.ts",
     "drvo-003:migrate": "tsx scripts/run-drvo-003-platform-core-migration.ts --expected-database=last132_agent",
     "drvo-003:seed": "tsx scripts/seed-drvo-003-bootstrap-tenant.ts --expected-database=last132_agent",
     "drvo-003:migrate-production": "tsx scripts/run-drvo-003-platform-core-production.ts",

@@ -1,6 +1,6 @@
 export {
+  SALON_PACK,
   SALON_PACK_CODE,
-  SALON_PACK_ENABLED_APPS,
   SALON_PACK_SURFACES,
-  getSalonPackManifest,
+  getBootstrapSalonManifest,
 } from '../manifest';

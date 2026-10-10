@@ -1,7 +1,14 @@
 import 'server-only';
 import type { ConnectionPool } from 'mssql';
 import { getPool, sql } from '@/lib/db';
-import { ALL_KNOWN_APP_CODES } from '@/platform/registry/constants';
+import { findMissingDependencies } from '@/platform/apps/appCatalog';
+import {
+  getTenantPackState,
+  installedAppCodes,
+  listTenantApps,
+  type PackResolver,
+} from '@/platform/apps/tenantApps';
+import { getPlan, getTenantSubscription } from '@/platform/commercial/planRepository';
 import type { ReadinessCheck, TenantReadinessReport } from './types';
 
 async function loadTenant(
@@ -28,6 +35,7 @@ async function loadTenant(
 export async function evaluateTenantReadiness(
   tenantId: string,
   pool?: ConnectionPool,
+  opts: { resolvePack?: PackResolver } = {},
 ): Promise<TenantReadinessReport> {
   const db = pool ?? (await getPool());
   const checks: ReadinessCheck[] = [];
@@ -219,36 +227,62 @@ export async function evaluateTenantReadiness(
     });
   }
 
-  const apps = [...ALL_KNOWN_APP_CODES];
-  for (const code of apps) {
-    const reg = await db
-      .request()
-      .input('code', sql.NVarChar(64), code)
-      .query(`SELECT 1 AS ok FROM dbo.AppRegistry WITH (NOLOCK) WHERE AppCode = @code;`);
+  const sub = await getTenantSubscription(db, tenantId);
+  checks.push({
+    id: 'commercial_subscription',
+    pass: sub != null,
+    detail: sub ? `Subscription ${sub.planCode}/${sub.status}` : 'Missing TenantSubscription',
+  });
+  if (sub) {
+    const plan = await getPlan(db, sub.planCode);
     checks.push({
-      id: `app_registry_${code}`,
-      pass: reg.recordset.length > 0,
-      detail:
-        reg.recordset.length > 0
-          ? `AppRegistry has ${code}`
-          : `Missing AppRegistry row for ${code}`,
+      id: 'commercial_plan_valid',
+      pass: plan != null,
+      detail: plan ? `Plan ${plan.planCode} exists` : `Unknown plan ${sub.planCode}`,
     });
+  }
 
-    const ent = await db
-      .request()
-      .input('tenantId', sql.UniqueIdentifier, tenantId)
-      .input('code', sql.NVarChar(64), code)
-      .query(`
-        SELECT Enabled FROM dbo.TenantAppEntitlement WITH (NOLOCK)
-        WHERE TenantId = @tenantId AND AppCode = @code;
-      `);
+  const registry = await db.request().query(`SELECT AppCode FROM dbo.AppRegistry WITH (NOLOCK);`);
+  const registered = new Set(
+    (registry.recordset as Array<{ AppCode: string }>).map((r) => String(r.AppCode)),
+  );
+  const installed = installedAppCodes(await listTenantApps(tenantId, { executor: db }));
+  const unregistered = installed.filter((code) => !registered.has(code));
+  checks.push({
+    id: 'installed_apps_registered',
+    pass: installed.length > 0 && unregistered.length === 0,
+    detail:
+      installed.length === 0
+        ? 'No installed apps'
+        : unregistered.length
+          ? `Installed app(s) missing from AppRegistry: ${unregistered.join(', ')}`
+          : `${installed.length} installed app(s): ${installed.join(', ')}`,
+  });
+
+  const missingDeps = findMissingDependencies(installed);
+  checks.push({
+    id: 'installed_apps_dependencies',
+    pass: missingDeps.length === 0,
+    detail: missingDeps.length
+      ? missingDeps.map((m) => `${m.appCode} requires ${m.missing.join(', ')}`).join('; ')
+      : 'Installed app dependencies satisfied',
+  });
+
+  const packState = await getTenantPackState(db, tenantId);
+  checks.push({
+    id: 'industry_pack_recorded',
+    pass: packState != null,
+    detail: packState ? `Industry pack ${packState.packCode}` : 'Missing TenantIndustryPack',
+  });
+  const packDef = packState && opts.resolvePack ? opts.resolvePack(packState.packCode) : null;
+  if (packDef) {
+    const missingRequired = packDef.required.filter((code) => !installed.includes(code));
     checks.push({
-      id: `tenant_entitlement_${code}`,
-      pass: ent.recordset.length > 0,
-      detail:
-        ent.recordset.length > 0
-          ? `TenantAppEntitlement has ${code}`
-          : `Missing TenantAppEntitlement for ${code}`,
+      id: 'pack_required_apps_installed',
+      pass: missingRequired.length === 0,
+      detail: missingRequired.length
+        ? `Pack ${packDef.packCode} required app(s) not installed: ${missingRequired.join(', ')}`
+        : `Pack ${packDef.packCode} required apps installed`,
     });
   }
 

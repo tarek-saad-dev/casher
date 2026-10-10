@@ -8,7 +8,12 @@ import { verifyPlatformBootstrap } from './platformBootstrap';
 import { verifyPlatformCoreStructure } from './platformCoreSchema';
 import { verifyTreasuryMovementSchema } from './migrations/006-treasury-movement-registry';
 import { verifyInsCashMoveSalesGuard } from './migrations/008-ins-cash-move-sales-guard';
+import {
+  COMMERCIAL_MIGRATION_KEY,
+  verifyCommercialSubscriptionSchema,
+} from './migrations/009-commercial-subscription-tenant-apps';
 import { listAppliedDrvoMigrations } from './registry';
+import { isAcceptedChecksum } from './checksum';
 import type { DrvoModuleReadinessReport, DrvoReadinessCheck } from './types';
 import {
   assertAllDrvoRolloutContracts,
@@ -120,6 +125,7 @@ export async function verifyDrvoReadiness(
     module === 'pos' ||
     module === 'pos-sale-treasury' ||
     module === 'pos-sale-treasury-mutation' ||
+    module === 'platform-commercial' ||
     module === 'platform-core'
   ) {
     const bootstrap = await verifyPlatformBootstrap(pool);
@@ -149,6 +155,19 @@ export async function verifyDrvoReadiness(
       id: 'treasury.sale-trigger-guard',
       ok: guard.ok,
       detail: guard.ok ? 'InsCashMoveSales coexistence guard ready' : guard.failures.join('; '),
+    });
+  }
+
+  if (module === 'platform-commercial') {
+    const commercial = appliedKeys.has(COMMERCIAL_MIGRATION_KEY)
+      ? await verifyCommercialSubscriptionSchema(pool)
+      : { ok: false, failures: [`Migration ${COMMERCIAL_MIGRATION_KEY} not applied`] };
+    checks.push({
+      id: 'platform.commercial',
+      ok: commercial.ok,
+      detail: commercial.ok
+        ? 'Commercial plans, subscriptions and tenant app state ready'
+        : commercial.failures.join('; '),
     });
   }
 
@@ -191,7 +210,7 @@ export async function verifyDrvoSystem(pool: ConnectionPool): Promise<DrvoVerify
   const checksumMismatches: string[] = [];
   for (const row of appliedRows) {
     const def = DRVO_MIGRATIONS.find((m) => m.migrationKey === row.MigrationKey);
-    if (def && def.checksum !== row.Checksum) {
+    if (def && !isAcceptedChecksum(def, row.Checksum)) {
       checksumMismatches.push(row.MigrationKey);
     }
   }

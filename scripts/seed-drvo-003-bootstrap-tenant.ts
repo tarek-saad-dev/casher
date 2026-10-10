@@ -6,7 +6,7 @@
 import path from 'path';
 import dotenv from 'dotenv';
 import sql from 'mssql';
-import { getSalonPackManifest } from '../src/packs/salon/manifest';
+import { getBootstrapSalonManifest } from '../src/packs/salon/manifest';
 
 dotenv.config({ path: path.join(__dirname, '..', '.env') });
 dotenv.config({ path: path.join(__dirname, '..', '.env.local'), override: true });
@@ -172,7 +172,7 @@ async function main() {
       }
 
       const registryApps = [
-        ...getSalonPackManifest().enabledApps.map((code) => ({
+        ...getBootstrapSalonManifest().enabledApps.map((code) => ({
           code,
           name: code,
           entitled: 1,
@@ -198,7 +198,7 @@ async function main() {
           `);
       }
 
-      const manifestJson = JSON.stringify(getSalonPackManifest());
+      const manifestJson = JSON.stringify(getBootstrapSalonManifest());
       await new sql.Request(tx)
         .input('tenantId', sql.UniqueIdentifier, tenantId)
         .input('manifest', sql.NVarChar(sql.MAX), manifestJson)

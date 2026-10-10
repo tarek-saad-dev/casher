@@ -2,8 +2,15 @@ import 'server-only';
 import type { Transaction } from 'mssql';
 import { getPool, sql } from '@/lib/db';
 import { assertBranchIdentityAvailable } from '@/lib/branch/bootstrap';
+import { resolveTenantComposition } from '@/platform/apps/compositionResolver';
+import { applyCompositionInTransaction } from '@/platform/apps/tenantApps';
+import { assertCanAddBranch, assertCanAddUser } from '@/platform/commercial/limits';
+import {
+  createOnboardingSubscriptionInTransaction,
+  resolveOnboardingPlan,
+} from '@/platform/commercial/subscriptionService';
+import { DEFAULT_ONBOARDING_PLAN_CODE } from '@/platform/commercial/types';
 import { publishPlatformOutboxEvent } from '@/platform/outbox/publisher';
-import { seedTenantRegistry } from '@/platform/registry/seedTenantRegistry';
 import { tenantLockResource } from '@/platform/tenant/tenantLockResource';
 import { TenantOnboardingError } from './errors';
 import { ensureLegacyIdMapInTransaction } from './legacyIdMap';
@@ -191,7 +198,12 @@ export async function provisionTenant(
 ): Promise<ProvisionTenantResult> {
   const tenantCode = assertValidTenantCode(input.tenantCode);
   const branchCode = normalizeBranchCode(input.firstBranchCode);
-  const packCode = (input.packCode ?? 'salon').trim().toLowerCase() || 'salon';
+  const pack = input.industryPack;
+  const composition = resolveTenantComposition(pack, input.appCustomizations ?? {});
+  const planCode =
+    (input.planCode ?? DEFAULT_ONBOARDING_PLAN_CODE).trim().toLowerCase() ||
+    DEFAULT_ONBOARDING_PLAN_CODE;
+  const subscriptionStatus = input.subscriptionStatus ?? 'trial';
   const ownerLoginName = input.ownerLoginName.trim();
   const ownerUserName = input.ownerUserName.trim();
   const ownerPassword = input.ownerPassword;
@@ -238,8 +250,10 @@ export async function provisionTenant(
   await tx.begin();
 
   try {
+    const now = new Date();
     await assertTenantCodeAvailable(tx, tenantCode);
     await assertOwnerLoginAvailable(tx, ownerLoginName);
+    const plan = await resolveOnboardingPlan(tx, planCode);
 
     const tenantInsert = await new sql.Request(tx)
       .input('code', sql.NVarChar(64), tenantCode)
@@ -252,6 +266,15 @@ export async function provisionTenant(
       `);
     const tenantId = String((tenantInsert.recordset[0] as { tenantId: string }).tenantId);
 
+    const subscription = await createOnboardingSubscriptionInTransaction(tx, {
+      tenantId,
+      plan,
+      status: subscriptionStatus,
+      now,
+      actor: { actorUserId: actor.actorUserId },
+    });
+
+    await assertCanAddBranch(tx, tenantId, now);
     const branch = await createBranchInTransaction(tx, {
       branchCode,
       branchName: input.firstBranchName.trim(),
@@ -291,6 +314,7 @@ export async function provisionTenant(
       authoritativeDrvoId: locationId,
     });
 
+    await assertCanAddUser(tx, tenantId, now);
     const ownerUserId = await createOwnerUserInTransaction(tx, {
       userName: ownerUserName,
       loginName: ownerLoginName,
@@ -319,7 +343,14 @@ export async function provisionTenant(
       authoritativeDrvoId: membershipId,
     });
 
-    await seedTenantRegistry(tx, tenantId, packCode);
+    await applyCompositionInTransaction(tx, {
+      tenantId,
+      pack,
+      composition,
+      now,
+      actor: { actorUserId: actor.actorUserId },
+      reason: 'onboarding',
+    });
 
     await publishPlatformOutboxEvent(tx, {
       tenantId,
@@ -332,6 +363,10 @@ export async function provisionTenant(
         legacyBranchId: branch.branchId,
         ownerUserId,
         ownerLoginName,
+        industryPackCode: pack.packCode,
+        apps: composition.apps,
+        planCode: plan.planCode,
+        subscriptionStatus: subscription.status,
         actorUserId: actor.actorUserId,
         lockResource: tenantLockResource(tenantId, ['onboarding', tenantCode]),
       }),
@@ -341,7 +376,9 @@ export async function provisionTenant(
 
     await tx.commit();
 
-    const readiness = await evaluateTenantReadiness(tenantId, pool);
+    const readiness = await evaluateTenantReadiness(tenantId, pool, {
+      resolvePack: (code) => (code === pack.packCode ? pack : null),
+    });
     return {
       tenantId,
       tenantCode,
@@ -351,6 +388,11 @@ export async function provisionTenant(
       legacyUserId: ownerUserId,
       branchCode: branch.branchCode,
       ownerLoginName,
+      industryPackCode: pack.packCode,
+      apps: composition.apps,
+      planCode: plan.planCode,
+      subscriptionStatus: subscription.status,
+      trialEndsAt: subscription.trialEndsAt?.toISOString() ?? null,
       readiness,
     };
   } catch (err) {

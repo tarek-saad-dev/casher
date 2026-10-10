@@ -6,7 +6,7 @@ import {
   getOperationsSurfaceEntry,
   isAppEnabledForTenant,
 } from '@/platform/public';
-import { getSalonPackManifest } from '@/packs/salon/public';
+import { getBootstrapSalonManifest, SALON_PACK } from '@/packs/salon/public';
 
 describe('App registry + Salon manifest', () => {
   it('lists initial app codes from DRVO-002', () => {
@@ -31,16 +31,21 @@ describe('App registry + Salon manifest', () => {
     expect(getOperationsSurfaceEntry().entitledSeparately).toBe(false);
   });
 
-  it('keeps entitlement enforcement off in DRVO-003', () => {
+  it('keeps route-level entitlement enforcement off until DRVO-013', () => {
     expect(ENTITLEMENT_ENFORCEMENT_ENABLED).toBe(false);
     expect(isAppEnabledForTenant('tenant', 'pos', false)).toBe(true);
   });
 
-  it('salon manifest references only valid app codes plus operations surface', () => {
-    const manifest = getSalonPackManifest();
-    for (const code of manifest.enabledApps) {
-      expect(APP_REGISTRY_CODES).toContain(code);
-    }
+  it('bootstrap compatibility manifest derives every registered app from the registry', () => {
+    const manifest = getBootstrapSalonManifest();
+    expect(manifest.enabledApps).toEqual([...APP_REGISTRY_CODES]);
     expect(manifest.compositionSurfaces).toEqual(['operations']);
+  });
+
+  it('salon pack references only installable app codes and never operations', () => {
+    for (const code of [...SALON_PACK.required, ...SALON_PACK.recommended, ...SALON_PACK.optional]) {
+      expect(APP_REGISTRY_CODES).toContain(code);
+      expect(code).not.toBe('operations');
+    }
   });
 });

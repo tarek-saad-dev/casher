@@ -269,6 +269,29 @@ export const DRVO_MODULE_ROLLOUT: DrvoModuleRolloutSpec[] = [
     compatEnvFlag: 'POS_SALE_TREASURY_MUTATION_PORT',
     forcePathEnv: 'DRVO_FORCE_POS_SALE_TREASURY_MUTATION_PATH',
   },
+  {
+    module: 'platform-commercial',
+    drvoId: 'DRVO-012',
+    rollout: 'extracted',
+    classification: 'always_on_infrastructure',
+    classificationRationale:
+      'DRVO-012 commercial plans, tenant subscriptions, industry pack state and installed-app state. Platform control-plane and onboarding only; no strangler path. Route-wide commercial/app enforcement is DRVO-013. CASHER_BOOT is grandfathered internal/active by migration.',
+    requiredMigrationKeys: [
+      'platform-core',
+      'platform-bootstrap',
+      'commercial-subscription-tenant-apps',
+    ],
+    dependencies: ['platform-core'],
+    readinessCheckIds: [
+      'migration.platform-core',
+      'migration.platform-bootstrap',
+      'migration.commercial-subscription-tenant-apps',
+      'platform.bootstrap',
+      'platform.core.structure',
+      'platform.commercial',
+    ],
+    rollbackRollout: 'extracted',
+  },
 ];
 
 export function getDrvoModuleRolloutSpec(module: string): DrvoModuleRolloutSpec {
