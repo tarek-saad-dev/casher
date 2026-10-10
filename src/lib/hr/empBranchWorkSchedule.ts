@@ -4,6 +4,7 @@
  */
 import 'server-only';
 import { getPool, sql } from '@/lib/db';
+import { LEGACY_HR_PRIMARY_BRANCH_CODE } from '@/lib/hr/legacyHrBranchPolicy';
 
 export const BRANCH_SCHEDULE_POLICY = 'ONE_OPERATIONAL_BRANCH_PER_EMPLOYEE_PER_WORKDATE' as const;
 
@@ -155,9 +156,12 @@ export async function backfillGleemBranchSchedulesFromLegacy(args?: {
     args?.gleemBranchId ??
     Number(
       (
-        await db.request().query(`
-          SELECT TOP 1 BranchID FROM dbo.TblBranch WHERE BranchCode = N'GLEEM'
-        `)
+        await db
+          .request()
+          .input('legacyPrimaryCode', sql.NVarChar(40), LEGACY_HR_PRIMARY_BRANCH_CODE)
+          .query(`
+            SELECT TOP 1 BranchID FROM dbo.TblBranch WHERE BranchCode = @legacyPrimaryCode
+          `)
       ).recordset[0]?.BranchID,
     );
   const effectiveFrom = args?.effectiveFrom ?? '2020-01-01';
@@ -191,6 +195,9 @@ export async function backfillGleemBranchSchedulesFromLegacy(args?: {
         ws.EmpID, @branchId, ws.DayOfWeek, ws.IsWorkingDay, ws.StartTime, ws.EndTime,
         @from, NULL, 1, 1, N'phase1q-backfill-from-legacy', @actor
       FROM dbo.TblEmpWorkSchedule ws
+      INNER JOIN dbo.TblEmp e
+        ON e.EmpID = ws.EmpID
+       AND e.TenantId IN (SELECT l.TenantId FROM dbo.Location l WHERE l.LegacyBranchId = @branchId)
       WHERE NOT EXISTS (
         SELECT 1 FROM dbo.TblEmpBranchWorkSchedule b
         WHERE b.EmpID = ws.EmpID AND b.BranchID = @branchId AND b.DayOfWeek = ws.DayOfWeek
@@ -207,21 +214,6 @@ export async function backfillGleemBranchSchedulesFromLegacy(args?: {
       SELECT COUNT(*) AS Cnt FROM dbo.TblEmpBranchWorkSchedule WHERE BranchID = @branchId AND IsActive=1
     `);
   const fingerprintAfter = Number(after.recordset[0].Cnt);
-
-  // Safety: CC and PH1GTEST must still have zero real (non-smoke) schedules from this backfill
-  const other = await db.request().query(`
-    SELECT b.BranchCode, COUNT(*) AS Cnt
-    FROM dbo.TblEmpBranchWorkSchedule s
-    INNER JOIN dbo.TblBranch b ON b.BranchID = s.BranchID
-    WHERE b.BranchCode IN (N'CAMP_CAESAR', N'PH1GTEST')
-      AND (s.Notes IS NULL OR s.Notes NOT LIKE N'%[SMOKE%' AND s.Notes NOT LIKE N'%phase1q-smoke%')
-    GROUP BY b.BranchCode
-  `);
-  for (const row of other.recordset) {
-    if (Number(row.Cnt) > 0 && String(row.BranchCode) !== 'CAMP_CAESAR') {
-      // PH1GTEST should be 0 from this backfill; smoke may add later
-    }
-  }
 
   return { inserted, skipped, fingerprintBefore, fingerprintAfter };
 }

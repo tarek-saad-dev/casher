@@ -61,6 +61,7 @@ export async function POST(request: NextRequest) {
       amountPaid: result.amountPaid,
       newBalance: result.newBalance,
       paymentMethodId,
+      branchId: owned.ownership.branchId,
     });
 
     return NextResponse.json({ ...result, tipWhatsApp: true }, { status: 201 });

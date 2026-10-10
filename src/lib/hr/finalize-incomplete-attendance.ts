@@ -18,6 +18,7 @@ import {
   type AttendanceTimeFillRow,
 } from '@/lib/hr/attendance-default-fill';
 import { sqlTimeToHHmm } from '@/lib/timeUtils';
+import { bindEmpTenantPredicate } from '@/lib/hr/hrTenantScope';
 import { persistNightlyDefaultFillAttendance } from '@/modules/attendance';
 
 /** Ops shorthand: D = Default fill (same as /admin/hr?tab=attendance). */
@@ -151,7 +152,7 @@ export async function finalizeIncompleteAttendanceWithDefaults(
   }
 
   const db = await getPool();
-  const { missing } = await validateDailyPayrollAttendance(db, workDate);
+  const { missing } = await validateDailyPayrollAttendance(db, workDate, { empScope: { branchId } });
   const toFix = selectIncompleteAttendanceMissing(missing);
 
   const emptyResult = (
@@ -177,6 +178,7 @@ export async function finalizeIncompleteAttendanceWithDefaults(
   const dayOfWeek = new Date(`${workDate}T12:00:00Z`).getDay();
 
   const defaultsReq = db.request().input('dayOfWeek', sql.TinyInt, dayOfWeek);
+  const empTenantSql = bindEmpTenantPredicate(defaultsReq, 'e', { branchId });
   const placeholders = empIds.map((id, i) => {
     const name = `e${i}`;
     defaultsReq.input(name, sql.Int, id);
@@ -193,7 +195,7 @@ export async function finalizeIncompleteAttendanceWithDefaults(
     FROM dbo.TblEmp e
     LEFT JOIN dbo.TblEmpWorkSchedule ws
       ON ws.EmpID = e.EmpID AND ws.DayOfWeek = @dayOfWeek
-    WHERE e.EmpID IN (${placeholders.join(',')})
+    WHERE e.EmpID IN (${placeholders.join(',')}) AND ${empTenantSql}
   `);
 
   const defaultsByEmp = new Map<
@@ -468,7 +470,7 @@ export async function finalizeIncompleteAttendanceWithDefaults(
     }
   }
 
-  const after = await validateDailyPayrollAttendance(db, workDate);
+  const after = await validateDailyPayrollAttendance(db, workDate, { empScope: { branchId } });
   return emptyResult(after.missing, filled, skippedNoDefault);
 }
 

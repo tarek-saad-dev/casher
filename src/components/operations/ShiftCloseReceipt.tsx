@@ -3,6 +3,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { Printer, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { getPrintBrandHtml, usePrintBrand } from '@/lib/tenant/tenantBrandClient';
 import {
   Dialog,
   DialogContent,
@@ -36,7 +37,7 @@ interface ShiftCloseReceiptProps {
   onClose: () => void;
 }
 
-// ──── CUT SALON Shift Close Receipt CSS ────
+// ──── Shift Close Receipt CSS ────
 const THERMAL_CSS = `
   @page {
     size: 72mm auto;
@@ -368,11 +369,13 @@ const THERMAL_CSS = `
 `;
 
 export default function ShiftCloseReceipt({ open, data, onClose }: ShiftCloseReceiptProps) {
+  const printBrand = usePrintBrand();
   const [printing, setPrinting] = useState(false);
   const printWindowRef = useRef<Window | null>(null);
 
   const buildReceiptHTML = useCallback(() => {
     if (!data) return '';
+    const brand = getPrintBrandHtml();
 
     const fmtDate = () => {
       try { return new Date().toLocaleDateString('ar-EG', { day: '2-digit', month: '2-digit', year: 'numeric' }); }
@@ -411,15 +414,15 @@ export default function ShiftCloseReceipt({ open, data, onClose }: ShiftCloseRec
         <div class="barber-pole"></div>
         <div class="logo-circle">
           <div class="crown">👑</div>
-          <div class="logo-text">CUT</div>
+          <div class="logo-text">${brand.wordmark}</div>
           <div class="mustache">〰</div>
           <div class="scissors">✂</div>
         </div>
         <div class="barber-pole"></div>
       </div>
-      <div class="salon-name-main">CUT SALON</div>
-      <div class="salon-name-ar">صالون كت للرجال</div>
-      <div class="salon-phone">📞 01012126899</div>
+      <div class="salon-name-main">${brand.title}</div>
+      ${brand.address ? `<div class="salon-name-ar">${brand.address}</div>` : ''}
+      ${brand.primaryPhone ? `<div class="salon-phone">📞 ${brand.primaryPhone}</div>` : ''}
     </div>
     
     <!-- Divider -->
@@ -548,7 +551,7 @@ export default function ShiftCloseReceipt({ open, data, onClose }: ShiftCloseRec
         <span class="star-icon">★</span>
       </div>
       <div class="footer-tagline">تم إغلاق الوردية بنجاح</div>
-      <div class="footer-contact">📞 01012126899 - 035861483</div>
+      ${brand.phone ? `<div class="footer-contact">📞 ${brand.phone}</div>` : ''}
     </div>
     
     <!-- Bottom Ornament -->
@@ -632,15 +635,15 @@ export default function ShiftCloseReceipt({ open, data, onClose }: ShiftCloseRec
                     <div className="w-4 h-8 border-2 border-black rounded-full" style={{ background: 'repeating-linear-gradient(45deg, #fff, #fff 2px, #000 2px, #000 4px, #dc2626 4px, #dc2626 6px, #000 6px, #000 8px)' }}></div>
                     <div className="w-20 h-20 border-[3px] border-black rounded-full flex flex-col items-center justify-center bg-white">
                       <span className="text-lg">👑</span>
-                      <span className="font-black text-xl tracking-wider">CUT</span>
+                      <span className="font-black text-xl tracking-wider">{printBrand.wordmark}</span>
                       <span className="text-lg">〰</span>
                       <span className="text-xs">✂</span>
                     </div>
                     <div className="w-4 h-8 border-2 border-black rounded-full" style={{ background: 'repeating-linear-gradient(45deg, #fff, #fff 2px, #000 2px, #000 4px, #dc2626 4px, #dc2626 6px, #000 6px, #000 8px)' }}></div>
                   </div>
-                  <p className="font-black text-2xl tracking-widest mb-1">CUT SALON</p>
-                  <p className="font-bold text-base mb-1">صالون كت للرجال</p>
-                  <p className="font-bold text-sm">📞 01012126899</p>
+                  <p className="font-black text-2xl tracking-widest mb-1">{printBrand.title}</p>
+                  {printBrand.address && <p className="font-bold text-base mb-1">{printBrand.address}</p>}
+                  {printBrand.primaryPhone && <p className="font-bold text-sm">📞 {printBrand.primaryPhone}</p>}
                 </div>
 
                 {/* Title */}

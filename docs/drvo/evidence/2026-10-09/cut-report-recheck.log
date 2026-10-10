@@ -1,0 +1,2 @@
+login=200 full-day=200 bytes=9267 keys=workDate,workDateLabelAr,timezone,sales,incomes,expenses,payroll,profit,ownerDay,employeeAccounts,treasury,paymentMix
+PASS [hr_report] full-day report for CUT with CanViewReports

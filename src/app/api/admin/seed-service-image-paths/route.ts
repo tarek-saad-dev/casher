@@ -4,21 +4,19 @@
  * Idempotent — only updates rows with empty ImageUrl.
  */
 import { NextResponse } from 'next/server';
-import { getPool } from '@/lib/db';
-import { getSession } from '@/lib/session';
+import { getPool, sql } from '@/lib/db';
+import { requirePlatformOperator } from '@/lib/api-auth';
+import { resolveLegacyBootstrapTenantId } from '@/platform/tenant/legacyBootstrapSeam';
 import { SERVICE_IMAGE_BY_PRO_NAME } from '@/lib/serviceImages';
 
 export const runtime = 'nodejs';
 
 export async function POST() {
   try {
-    const session = await getSession();
-    if (!session || session.UserLevel !== 'admin') {
-      return NextResponse.json(
-        { ok: false, error: 'غير مصرح - يتطلب صلاحيات المدير' },
-        { status: 403 }
-      );
-    }
+    const operator = await requirePlatformOperator();
+    if (operator instanceof NextResponse) return operator;
+    // Service image names are CASHER_BOOT's catalog; operators are members of that tenant.
+    const tenantId = await resolveLegacyBootstrapTenantId('platform-operator-tenant');
 
     const db = await getPool();
 
@@ -36,8 +34,8 @@ export async function POST() {
 
     for (const [proName, imageUrl] of Object.entries(SERVICE_IMAGE_BY_PRO_NAME)) {
       const existing = await db.request()
-        .input('ProName', proName)
-        .query(`SELECT ProID, ImageUrl FROM [dbo].[TblPro] WHERE ProName = @ProName`);
+        .input('tenantId', sql.UniqueIdentifier, tenantId).input('ProName', proName)
+        .query(`SELECT ProID, ImageUrl FROM [dbo].[TblPro] WHERE ProName = @ProName AND TenantId = @tenantId`);
 
       if (existing.recordset.length === 0) {
         details.push({ proName, imageUrl, status: 'not_found' });
@@ -53,9 +51,9 @@ export async function POST() {
       }
 
       await db.request()
-        .input('ProName', proName)
+        .input('tenantId', sql.UniqueIdentifier, tenantId).input('ProName', proName)
         .input('ImageUrl', imageUrl)
-        .query(`UPDATE [dbo].[TblPro] SET ImageUrl = @ImageUrl WHERE ProName = @ProName`);
+        .query(`UPDATE [dbo].[TblPro] SET ImageUrl = @ImageUrl WHERE ProName = @ProName AND TenantId = @tenantId`);
 
       updated++;
       details.push({ proName, imageUrl, status: 'updated' });

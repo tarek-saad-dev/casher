@@ -1,0 +1,52 @@
+  live database: last132_agent (drvo_agent)
+PASS: preflight — every CASHER_BOOT user has a membership and every branch a Location
+  cleanup: removed DRVO013_A
+  cleanup: removed DRVO013_B
+Scenario 1 — provision two synthetic tenants
+[db:cloud] Connection attempt 1/3 server=127.0.0.1 db=last132_agent auth=sql
+[db:cloud] Connected to SQL Server successfully
+  ok: two distinct tenants provisioned
+Scenario 2 — canonical resolver
+  ok: owner A resolves to tenant A
+  ok: owner B resolves to tenant B
+  ok: owner A cannot claim tenant B (got TENANT_MEMBERSHIP_MISMATCH)
+  ok: staff A context on A location
+Scenario 3 — cross-tenant branch / user / location
+  ok: owner A cannot activate branch B (got LOCATION_NOT_IN_TENANT)
+  ok: tenant A cannot address branch B (got LOCATION_NOT_IN_TENANT)
+  ok: tenant B cannot address user A (got USER_NOT_IN_TENANT)
+  ok: tenant A branch list excludes B
+  ok: tenant B branch list excludes A
+Scenario 4 — public tenant derivation
+  ok: public branch code A derives tenant A
+  ok: public branch code B derives tenant B
+  ok: unknown public branch resolves no tenant (got TENANT_CONTEXT_UNRESOLVED)
+Scenario 5 — DRVO-012 gates via the authoritative tenant
+  ok: both subscriptions active through their own tenant
+  ok: salon tenant A has booking
+  ok: supermarket tenant B is denied booking (got APP_NOT_INSTALLED)
+  ok: booking route family passes for tenant A
+  ok: booking route family denied for tenant B (got APP_NOT_INSTALLED)
+  ok: core routes are not app-gated
+  ok: Loyalty stays off for a generic tenant (POS earn fail-closed)
+Scenario 5b — system jobs fan out tenant by tenant
+  ok: cron fan-out gives tenant A only its own branches
+  ok: cron fan-out skips tenant B for an app it lacks
+  ok: session-triggered job is limited to the caller tenant
+Scenario 6 — tenant-scoped applocks
+  ok: same parts lock independently per tenant
+  ok: a second holder in the same tenant (any id casing) blocks
+Scenario 7 — PlatformOutbox preserves TenantId
+  ok: tenant-scoped claim returns only B rows
+  ok: all smoke events delivered
+  ok: every handler context carries its row TenantId
+  ok: two events dispatched for A, one for B
+Scenario 8 — CASHER_BOOT seams + cleanup
+  ok: CASHER_BOOT seam resolves CASHER_BOOT, not a synthetic tenant
+[pages-sync] Registry synced ✓
+[roles-sync] Partner role synced ✓
+  cleanup: removed DRVO013_A
+  cleanup: removed DRVO013_B
+  ok: no DRVO013 residue
+  ok: CASHER_BOOT bootstrap verify (clean)
+DRVO-013 smoke PASS

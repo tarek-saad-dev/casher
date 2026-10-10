@@ -6,6 +6,9 @@ import { bridgeAcquireEmpIntervalLock } from '@/lib/booking/schedulingPortLegacy
 
 const rescheduleOpsBooking = vi.fn();
 
+vi.mock('@/lib/api-auth', async (importOriginal) =>
+  (await import('@/lib/__tests__/helpers/tenantSessionAuthMock')).tenantSessionAuthMock(await importOriginal()),
+);
 vi.mock('@/lib/session', () => ({
   getSession: vi.fn(async () => ({ UserID: 13 })),
 }));

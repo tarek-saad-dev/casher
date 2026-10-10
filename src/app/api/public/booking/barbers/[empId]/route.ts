@@ -1,31 +1,25 @@
-import { NextRequest } from 'next/server';
-import {
-  publicBookingOptionsResponse,
-  PUBLIC_BOOKING_ROUTE_CORS,
-} from '@/lib/booking/publicBookingCors';
+import { NextRequest, NextResponse } from 'next/server';
 import {
   PublicBookingBarberError,
   getPublicBarberProfileById,
 } from '@/lib/booking/publicBookingBarbers';
+import { extractPublicBranchCode } from '@/lib/branch/bookingQueueOwnership';
 import {
   gatePublicBookingRoute,
   finalizePublicBookingError,
   finalizePublicBookingJson,
+  publicBookingTenantOptionsResponse,
+  requirePublicBookingRouteTenancy,
 } from '@/lib/booking/publicBookingRouteGate';
 
 export const runtime = 'nodejs';
 
 export async function OPTIONS(req: NextRequest) {
-  const cors = PUBLIC_BOOKING_ROUTE_CORS['barbers'] ?? PUBLIC_BOOKING_ROUTE_CORS['location'];
-  return publicBookingOptionsResponse({
-    request: req,
-    allowedMethods: [...cors.methods],
-    allowedHeaders: cors.headers,
-  });
+  return publicBookingTenantOptionsResponse(req, 'barbers');
 }
 
 /**
- * GET /api/public/booking/barbers/[empId]
+ * GET /api/public/booking/barbers/[empId][?branchCode=]
  * Single public barber profile (branches + serviceIds) — no full roster.
  */
 export async function GET(
@@ -40,8 +34,17 @@ export async function GET(
     const empId = Number(empIdRaw);
     const { searchParams } = new URL(req.url);
     const preview = searchParams.get('preview');
+    const branchCode = extractPublicBranchCode(searchParams);
+
+    const tenancy = await requirePublicBookingRouteTenancy(req, gate, {
+      branchCode,
+      allowCutCompat: true,
+    });
+    if (tenancy instanceof NextResponse) return tenancy;
 
     const result = await getPublicBarberProfileById({
+      tenantId: tenancy.tenantId,
+      branchCode,
       empId,
       previewQueryParam: preview,
     });

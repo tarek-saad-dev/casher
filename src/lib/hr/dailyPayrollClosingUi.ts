@@ -11,6 +11,7 @@ import type {
   DailyPayrollReadinessResult,
 } from '@/lib/hr/dailyPayrollReadiness.types';
 import { READINESS_BLOCKER_LABELS } from '@/lib/hr/dailyPayrollReadiness.recommend';
+import { hrBranchLabel } from '@/lib/hr/legacyHrBranchPolicy';
 
 export const EMPLOYEE_STATUS_LABELS = {
   ready: 'جاهز',
@@ -115,9 +116,7 @@ export function formatWorkDateAr(workDate: string): string {
 }
 
 export function shortBranchName(item: Pick<DailyPayrollOpenDayItem, 'branchCode' | 'branchName'>): string {
-  if (item.branchCode === 'GLEEM') return 'جليم';
-  if (item.branchCode === 'CAMP_CAESAR') return 'كامب شيزار';
-  return item.branchName || item.branchCode;
+  return hrBranchLabel(item);
 }
 
 export function openDayChipLabel(item: DailyPayrollOpenDayItem): string {

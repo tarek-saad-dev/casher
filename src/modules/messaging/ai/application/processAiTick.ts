@@ -4,6 +4,7 @@ import {
   recoverStaleAiProcessing,
 } from '../infra/aiTurnRepository';
 import { processAiTurn } from './processAiTurn';
+import { runWithMessagingJobTenant } from '../../tenancy/messagingTenantScope';
 
 export type ProcessAiTickInput = {
   batchSize: number;
@@ -40,8 +41,15 @@ export async function processAiTick(input: ProcessAiTickInput): Promise<ProcessA
   const modelClient = createGeminiModelClient();
 
   for (const turn of claimed) {
+    if (!turn.tenantId) {
+      console.error('[messaging-ai] claimed turn without TenantId; skipping', { turnId: turn.turnId });
+      summary.skipped += 1;
+      continue;
+    }
     try {
-      const result = await processAiTurn(turn, { modelClient });
+      const result = await runWithMessagingJobTenant(turn.tenantId, `messaging-ai:${turn.turnId}`, () =>
+        processAiTurn(turn, { modelClient }),
+      );
       if (result.skipped) summary.skipped += 1;
       else summary.processed += 1;
     } catch {

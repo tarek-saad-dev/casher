@@ -3,6 +3,7 @@ import { isAuthResult, requirePageAccess } from '@/lib/api-auth';
 import { requireBranchOperationAccess, isActiveBranchContext } from '@/lib/branch/context';
 import { getEmployeeMonthlySheet } from '@/lib/reports/employee-monthly-sheet';
 import { validateReportParams } from '@/lib/reports/employee-monthly-sheet.types';
+import { listTenantHrBranchOptions } from '@/lib/hr/hrTenantScope';
 
 /**
  * GET /api/admin/hr/employee-monthly-sheet?employeeId=&year=&month=
@@ -40,6 +41,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       ...sheet,
+      branchOptions: await listTenantHrBranchOptions(auth.tenantId),
       branch: {
         branchId: branch.branchId,
         branchCode: branch.branchCode,

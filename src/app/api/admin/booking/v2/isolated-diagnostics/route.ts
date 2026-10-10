@@ -6,6 +6,7 @@
 import { NextResponse } from 'next/server';
 import { assertBookingV2WriteTestSafety } from '@/lib/booking/bookingV2WriteSafety';
 import { getDbConnectionInfo } from '@/lib/db';
+import { requirePlatformOperator } from '@/lib/api-auth';
 
 export const runtime = 'nodejs';
 
@@ -15,6 +16,8 @@ function allowed(): boolean {
 }
 
 export async function GET() {
+  const operator = await requirePlatformOperator();
+  if (operator instanceof NextResponse) return operator;
   if (!allowed()) {
     return NextResponse.json(
       { ok: false, error: 'ISOLATED_DIAGNOSTICS_DENIED' },

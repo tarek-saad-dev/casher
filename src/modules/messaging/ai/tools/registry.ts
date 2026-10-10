@@ -14,6 +14,7 @@ import { executeGetBusinessHours } from './getBusinessHours';
 import { executeGetAvailability } from './getAvailability';
 import { executeGetCustomerContext } from './getCustomerContext';
 import { executeGetUpcomingBookings } from './getUpcomingBookings';
+import { isBranchInCurrentTenant } from '@/modules/messaging/tenancy/tenantBusinessScope';
 
 const NAME_SET = new Set<string>(AI_BUSINESS_TOOL_NAMES);
 
@@ -26,6 +27,17 @@ export async function executeAiBusinessTool(
   ctx: AiToolExecutionContext,
 ): Promise<AiToolResult> {
   const started = performance.now();
+  const requestedBranch = request.branchCode ? String(request.branchCode).trim() : '';
+  if (requestedBranch && !(await isBranchInCurrentTenant({ branchCode: requestedBranch }))) {
+    return {
+      name: request.name,
+      ok: false,
+      input: { branchCode: requestedBranch },
+      errorCode: 'BRANCH_NOT_IN_TENANT',
+      errorMessage: 'Requested branch is not available for this business',
+      durationMs: Math.max(0, Math.round(performance.now() - started)),
+    };
+  }
   let partial: Omit<AiToolResult, 'durationMs'>;
   switch (request.name) {
     case 'list_branches':

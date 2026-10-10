@@ -1,5 +1,6 @@
 import 'server-only';
 import { getPool, sql } from '@/lib/db';
+import { requireMasterDataTenantId } from '@/platform/masterData/tenantScope';
 import {
   TBL_CLIENT_MOBILE_SUFFIX_SQL,
   getClientMobileLookupSuffix,
@@ -34,6 +35,7 @@ function mapProfileRow(
 }
 
 export async function lookupClientByMobile(
+  tenantId: string,
   mobile: string,
 ): Promise<PublicClientWebsiteProfile | null> {
   const suffix = getClientMobileLookupSuffix(mobile);
@@ -45,6 +47,7 @@ export async function lookupClientByMobile(
 
   const result = await db
     .request()
+    .input('tenantId', sql.UniqueIdentifier, requireMasterDataTenantId(tenantId, 'client website lookup'))
     .input('suffix', sql.NVarChar(10), suffix)
     .query(`
       SELECT TOP 1
@@ -55,7 +58,7 @@ export async function lookupClientByMobile(
         Address AS address
         ${emailSelect}
       FROM dbo.TblClient
-      WHERE ${TBL_CLIENT_MOBILE_SUFFIX_SQL} = @suffix
+      WHERE TenantId = @tenantId AND ${TBL_CLIENT_MOBILE_SUFFIX_SQL} = @suffix
     `);
 
   const row = result.recordset[0] as Record<string, unknown> | undefined;
@@ -64,6 +67,7 @@ export async function lookupClientByMobile(
 }
 
 export async function updateClientWebsiteProfile(
+  tenantId: string,
   input: PublicClientWebsiteUpdateInput,
 ): Promise<{ ok: true } | { ok: false; message: string }> {
   const { clientId, name, phone, mobile, address, email } = input;
@@ -85,7 +89,9 @@ export async function updateClientWebsiteProfile(
   }
 
   const setClauses: string[] = [];
-  const request = db.request().input('clientID', sql.Int, clientId);
+  const request = db.request()
+    .input('tenantId', sql.UniqueIdentifier, requireMasterDataTenantId(tenantId, 'client website update'))
+    .input('clientID', sql.Int, clientId);
 
   if (name !== undefined) {
     setClauses.push('[Name] = @name');
@@ -115,7 +121,7 @@ export async function updateClientWebsiteProfile(
   const updateResult = await request.query(`
     UPDATE dbo.TblClient
     SET ${setClauses.join(', ')}
-    WHERE ClientID = @clientID
+    WHERE ClientID = @clientID AND TenantId = @tenantId
   `);
 
   const rowsAffected = updateResult.rowsAffected?.[0] ?? 0;

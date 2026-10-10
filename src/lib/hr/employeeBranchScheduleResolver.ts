@@ -11,6 +11,8 @@ import {
   type EmpBranchWorkScheduleRow,
 } from '@/lib/hr/empBranchWorkSchedule';
 import { getBarberWorkingWindow } from '@/lib/barberAvailability';
+import { isLegacyHrPrimaryBranch } from '@/lib/hr/legacyHrBranchPolicy';
+import { legacyPrimaryBranchIdForEmployee } from '@/lib/hr/hrTenantScope';
 import {
   isTransferDestinationActive,
   isTransferSourceInactive,
@@ -300,9 +302,9 @@ export async function resolveEmployeeBranchSchedule(args: {
     return resolveFromRow(row, args.workDate, 'branch_table');
   }
 
-  // Legacy fallback: only for GLEEM when branch table has no row (pre-backfill safety)
+  // Legacy fallback: only for CUT's primary branch when branch table has no row (pre-backfill safety)
   const branch = await getBranchById(args.branchId);
-  if (branch?.branchCode === 'GLEEM') {
+  if (branch && isLegacyHrPrimaryBranch(branch.branchCode)) {
     const dateObj = new Date(`${args.workDate}T12:00:00Z`);
     const legacy = await getBarberWorkingWindow(args.empId, dateObj);
     if (legacy.isWorkingDay && legacy.startTime && legacy.endTime) {
@@ -389,13 +391,11 @@ export async function resolveEmployeeGlobalSchedule(args: {
     if (destActive) branchIds.add(transfer.toBranchId);
   }
 
-  // Include GLEEM legacy if no branch-table rows and GLEEM allowed
+  // Include CUT's legacy primary branch if no branch-table rows (CUT employees only)
   if (workingRows.length === 0 && !transfer) {
     const db = await getPool();
-    const gleem = await db.request().query(`
-      SELECT TOP 1 BranchID FROM dbo.TblBranch WHERE BranchCode = N'GLEEM'
-    `);
-    if (gleem.recordset[0]) branchIds.add(Number(gleem.recordset[0].BranchID));
+    const legacyPrimaryId = await legacyPrimaryBranchIdForEmployee(db, args.empId);
+    if (legacyPrimaryId != null) branchIds.add(legacyPrimaryId);
   }
 
   let ids = [...branchIds];

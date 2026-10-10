@@ -8,6 +8,7 @@
 
 import type { Transaction } from 'mssql';
 import { getPool, sql } from '@/lib/db';
+import { requireHrTenantId } from '@/lib/hr/hrTenantScope';
 import { resolveIsFreelance } from '@/lib/hr/attendance-eligibility';
 import { normalizeEmploymentType } from '@/lib/hr/employee-hr-model';
 import { isPayableAttendanceStatus } from '@/lib/payroll/dailyPayrollHrRules';
@@ -121,7 +122,12 @@ export function shouldUnlockFreelanceForBooking(input: {
 export async function loadFreelanceBookingUnlocks(
   empIds: number[],
   dateStr: string,
-  options?: { excludeEmpIds?: Set<number>; transaction?: Transaction },
+  options?: {
+    excludeEmpIds?: Set<number>;
+    transaction?: Transaction;
+    /** Caller-supplied ids are already tenant-scoped; when given, rows of other tenants are dropped too. */
+    tenantId?: string;
+  },
 ): Promise<Map<number, FreelanceUnlockWindow>> {
   const result = new Map<number, FreelanceUnlockWindow>();
   if (!empIds.length) return result;
@@ -136,6 +142,13 @@ export async function loadFreelanceBookingUnlocks(
   const db = (transaction ?? (await getPool())) as Awaited<ReturnType<typeof getPool>>;
   const onTx = !!transaction;
   const idList = ids.join(',');
+  const tenantId = options?.tenantId ? requireHrTenantId(options.tenantId, 'loadFreelanceBookingUnlocks') : null;
+  const empTenantSql = tenantId ? 'AND TenantId = @tenantId' : '';
+  const empRequest = () => {
+    const r = db.request();
+    if (tenantId) r.input('tenantId', sql.UniqueIdentifier, tenantId);
+    return r;
+  };
 
   try {
     const empSql = `
@@ -146,7 +159,7 @@ export async function loadFreelanceBookingUnlocks(
           CASE WHEN DefaultCheckInTime  IS NOT NULL THEN LEFT(CONVERT(VARCHAR(8), DefaultCheckInTime,  108), 5) ELSE NULL END AS DefaultCheckInTime,
           CASE WHEN DefaultCheckOutTime IS NOT NULL THEN LEFT(CONVERT(VARCHAR(8), DefaultCheckOutTime, 108), 5) ELSE NULL END AS DefaultCheckOutTime
         FROM dbo.TblEmp
-        WHERE EmpID IN (${idList})
+        WHERE EmpID IN (${idList}) ${empTenantSql}
       `;
     const attSql = `
         SELECT
@@ -161,11 +174,11 @@ export async function loadFreelanceBookingUnlocks(
     let empRes: { recordset: any[] };
     let attRes: { recordset: any[] };
     if (onTx) {
-      empRes = await db.request().query(empSql);
+      empRes = await empRequest().query(empSql);
       attRes = await db.request().input('workDate', sql.Date, dateStr).query(attSql);
     } else {
       [empRes, attRes] = await Promise.all([
-        db.request().query(empSql),
+        empRequest().query(empSql),
         db.request().input('workDate', sql.Date, dateStr).query(attSql),
       ]);
     }

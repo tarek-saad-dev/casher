@@ -32,7 +32,9 @@ describe('bookingPhase10cCrossBranchAvailability', () => {
 
   it('exposes POST route with gate/CORS/finalize pattern', () => {
     expect(route).toContain("gatePublicBookingRoute(req, 'cross-branch-availability')");
-    expect(route).toContain("PUBLIC_BOOKING_ROUTE_CORS['cross-branch-availability']");
+    expect(route).toMatch(
+      /PUBLIC_BOOKING_ROUTE_CORS\['cross-branch-availability'\]|publicBookingTenantOptionsResponse\(req, 'cross-branch-availability'\)/,
+    );
     expect(route).toContain('getPublicCrossBranchBarberAvailability');
     expect(route).toContain('finalizePublicBookingJson');
     expect(route).toContain('finalizePublicBookingError');

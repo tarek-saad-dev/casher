@@ -16,6 +16,7 @@ async function main() {
   );
 
   const result = await runEmployeeFundingBackfill({
+    tenantId: String(process.env.HR_TENANT_ID ?? ''),
     month,
     empId: null,
     dryRun,

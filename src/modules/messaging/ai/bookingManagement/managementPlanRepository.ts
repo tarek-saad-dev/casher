@@ -1,5 +1,6 @@
 import 'server-only';
 import { getPool, sql } from '@/lib/db';
+import { bindMessagingTenant } from '@/modules/messaging/tenancy/tenantSql';
 import type {
   BookingManagementOperation,
   BookingManagementPlanSnapshot,
@@ -58,13 +59,13 @@ export async function getActiveManagementPlan(
   conversationId: number,
 ): Promise<BookingManagementPlanSnapshot | null> {
   const pool = await getPool();
-  const result = await pool
-    .request()
+  const result = await bindMessagingTenant(pool.request(), 'bookingManagement.getActiveManagementPlan')
     .input('cid', sql.BigInt, conversationId)
     .query(`
       SELECT TOP 1 *
       FROM dbo.TblBotBookingManagementPlan
       WHERE ConversationID = @cid
+        AND TenantId = @tenantId
         AND CompletedAt IS NULL
         AND Stage NOT IN (N'COMPLETED', N'FAILED', N'ABANDONED')
       ORDER BY PlanID DESC
@@ -98,8 +99,7 @@ export async function upsertManagementPlan(input: {
   if (existing || input.planId != null) {
     const planId = input.planId ?? existing!.planId;
     const version = (input.version ?? existing?.version ?? 1) + (input.planId ? 0 : 1);
-    await pool
-      .request()
+    await bindMessagingTenant(pool.request(), 'bookingManagement.upsertManagementPlan.update')
       .input('planId', sql.BigInt, planId)
       .input('op', sql.NVarChar(20), input.operation)
       .input('stage', sql.NVarChar(40), input.stage)
@@ -138,20 +138,18 @@ export async function upsertManagementPlan(input: {
             UpdatedAt = SYSUTCDATETIME(),
             CompletedAt = CASE WHEN @stage IN (N'COMPLETED', N'FAILED', N'ABANDONED')
               THEN SYSUTCDATETIME() ELSE NULL END
-        WHERE PlanID = @planId
+        WHERE PlanID = @planId AND TenantId = @tenantId
       `);
     const again = await getActiveManagementPlan(input.conversationId);
     if (again) return again;
     const pool2 = await getPool();
-    const loaded = await pool2
-      .request()
+    const loaded = await bindMessagingTenant(pool2.request(), 'bookingManagement.upsertManagementPlan.load')
       .input('planId', sql.BigInt, planId)
-      .query(`SELECT TOP 1 * FROM dbo.TblBotBookingManagementPlan WHERE PlanID = @planId`);
+      .query(`SELECT TOP 1 * FROM dbo.TblBotBookingManagementPlan WHERE PlanID = @planId AND TenantId = @tenantId`);
     return mapRow(loaded.recordset[0] as Record<string, unknown>);
   }
 
-  const inserted = await pool
-    .request()
+  const inserted = await bindMessagingTenant(pool.request(), 'bookingManagement.upsertManagementPlan.insert')
     .input('cid', sql.BigInt, input.conversationId)
     .input('op', sql.NVarChar(20), input.operation)
     .input('stage', sql.NVarChar(40), input.stage)
@@ -174,24 +172,24 @@ export async function upsertManagementPlan(input: {
     .input('turnId', sql.BigInt, input.lastTurnId ?? null)
     .query(`
       INSERT INTO dbo.TblBotBookingManagementPlan
-        (ConversationID, Operation, Stage, ConfirmationVersion, TargetBookingID, TargetBookingCode,
+        (TenantId, ConversationID, Operation, Stage, ConfirmationVersion, TargetBookingID, TargetBookingCode,
          OriginalSnapshotJson, DesiredChangesJson, ValidatedDesiredStateJson,
          CandidateAlternativesJson, IdempotencyKey, LastTurnID)
       OUTPUT INSERTED.*
-      VALUES (@cid, @op, @stage, @conf, @tid, @tcode, @orig, @desired, @validated, @alts, @idem, @turnId)
+      VALUES (@tenantId, @cid, @op, @stage, @conf, @tid, @tcode, @orig, @desired, @validated, @alts, @idem, @turnId)
     `);
   return mapRow(inserted.recordset[0] as Record<string, unknown>);
 }
 
 export async function abandonManagementPlan(conversationId: number): Promise<void> {
   const pool = await getPool();
-  await pool
-    .request()
+  await bindMessagingTenant(pool.request(), 'bookingManagement.abandonManagementPlan')
     .input('cid', sql.BigInt, conversationId)
     .query(`
       UPDATE dbo.TblBotBookingManagementPlan
       SET Stage = N'ABANDONED', CompletedAt = SYSUTCDATETIME(), UpdatedAt = SYSUTCDATETIME()
       WHERE ConversationID = @cid
+        AND TenantId = @tenantId
         AND CompletedAt IS NULL
         AND Stage NOT IN (N'COMPLETED', N'FAILED', N'ABANDONED')
     `);

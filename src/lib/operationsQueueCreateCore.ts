@@ -34,6 +34,7 @@ import {
   QUICK_QUEUE_ENABLED,
 } from '@/lib/quickQueueConfig';
 import type { CreateQueueResponse } from '@/lib/operationsQueueTypes';
+import { resolveLegacyBranchTenantId } from '@/platform/masterData/tenantScope';
 
 export interface CreateOperationsQueueInput {
   empId: number;
@@ -103,6 +104,7 @@ export async function assignQueueCustomerThroughPort(
   portCtx: QueuePortBridgeContext,
   transaction: sql.Transaction,
   customer: { name?: string; phone: string },
+  branchId = 0,
 ): Promise<{ clientId: number; name: string | null; phone: string }> {
   if (!portCtx.queuePortHooks) {
     throw new Error('QUEUE_CUSTOMER_PORT_REQUIRED');
@@ -114,6 +116,7 @@ export async function assignQueueCustomerThroughPort(
     transaction,
     displayName,
     phone,
+    branchId,
   );
   return {
     clientId,
@@ -344,24 +347,40 @@ export async function createOperationsQueueTicket(
     let resolvedCustomerPhone = customer?.phone || null;
 
     if (customer?.clientId && schema.hasClientID) {
+      const clientTenantId = await resolveLegacyBranchTenantId(branchId, transaction);
+      const owned = await transaction
+        .request()
+        .input('clientId', sql.Int, customer.clientId)
+        .input('tenantId', sql.UniqueIdentifier, clientTenantId)
+        .query(`SELECT 1 AS ok FROM [dbo].[TblClient] WHERE ClientID = @clientId AND TenantId = @tenantId`);
+      if (owned.recordset.length === 0) {
+        throw new CreateOperationsQueueError(404, 'العميل غير موجود');
+      }
       clientId = customer.clientId;
     } else if (customer?.phone?.trim() && portCtx.queuePortHooks) {
-      const assigned = await assignQueueCustomerThroughPort(portCtx, transaction, {
-        name: customer.name,
-        phone: customer.phone,
-      });
+      const assigned = await assignQueueCustomerThroughPort(
+        portCtx,
+        transaction,
+        {
+          name: customer.name,
+          phone: customer.phone,
+        },
+        branchId,
+      );
       clientId = assigned.clientId;
       resolvedCustomerName = assigned.name;
       resolvedCustomerPhone = assigned.phone;
     } else if (customer?.phone) {
       try {
+        const clientTenantId = await resolveLegacyBranchTenantId(branchId, transaction);
         const findClient = await transaction
           .request()
           .input('phone', sql.NVarChar, customer.phone)
+          .input('tenantId', sql.UniqueIdentifier, clientTenantId)
           .query(`
             SELECT TOP 1 ClientID, Name, Mobile
             FROM [dbo].[TblClient]
-            WHERE Mobile = @phone OR Mobile2 = @phone
+            WHERE TenantId = @tenantId AND (Mobile = @phone OR Mobile2 = @phone)
           `);
 
         if (findClient.recordset.length > 0) {
@@ -373,10 +392,11 @@ export async function createOperationsQueueTicket(
             .request()
             .input('name', sql.NVarChar, customer.name)
             .input('phone', sql.NVarChar, customer.phone)
+            .input('tenantId', sql.UniqueIdentifier, clientTenantId)
             .query(`
-              INSERT INTO [dbo].[TblClient] (Name, Mobile)
+              INSERT INTO [dbo].[TblClient] (TenantId, Name, Mobile)
               OUTPUT INSERTED.ClientID
-              VALUES (@name, @phone);
+              VALUES (@tenantId, @name, @phone);
             `);
           if (createClient.recordset.length > 0) {
             clientId = createClient.recordset[0].ClientID;

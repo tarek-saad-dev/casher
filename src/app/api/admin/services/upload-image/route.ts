@@ -4,12 +4,12 @@
  * Admin session required. Uploads to Cloudinary folder `services/` and returns secure_url.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { getSession } from '@/lib/session';
 import {
   formatCloudinaryError,
   isCloudinaryConfigured,
   uploadServiceImageBuffer,
 } from '@/lib/cloudinary';
+import { requireTenantSession } from '@/lib/api-auth';
 
 export const runtime = 'nodejs';
 
@@ -18,8 +18,9 @@ const ALLOWED = new Set(['image/jpeg', 'image/jpg', 'image/png', 'image/webp', '
 
 export async function POST(req: NextRequest) {
   try {
-    const session = await getSession();
-    if (!session || session.UserLevel !== 'admin') {
+    const session = await requireTenantSession();
+    if (session instanceof NextResponse) return session;
+    if (session.UserLevel !== 'admin') {
       return NextResponse.json(
         { ok: false, error: 'غير مصرح - يتطلب صلاحيات المدير' },
         { status: 403 },

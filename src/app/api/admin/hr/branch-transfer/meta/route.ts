@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
 import { isAuthResult, requireTemporaryTransferAccess } from '@/lib/api-auth';
-import { getPool } from '@/lib/db';
+import { getPool, sql } from '@/lib/db';
+import { requireMasterDataTenantId } from '@/platform/masterData/tenantScope';
 import { listActiveBranches } from '@/lib/branch/repository';
+import { listTenantLegacyBranchIds } from '@/platform/tenant/tenantContext';
 
 export const runtime = 'nodejs';
 
@@ -15,16 +17,18 @@ export async function GET() {
 
   try {
     const db = await getPool();
-    const emps = await db.request().query(`
+    const tenantId = requireMasterDataTenantId(auth.tenantId, 'GET /api/admin/hr/branch-transfer/meta');
+    const emps = await db.request().input('tenantId', sql.UniqueIdentifier, tenantId).query(`
       SELECT EmpID, EmpName, Job
       FROM dbo.TblEmp
-      WHERE ISNULL(isActive, 1) = 1
+      WHERE TenantId = @tenantId AND ISNULL(isActive, 1) = 1
       ORDER BY EmpName
     `);
 
+    const tenantBranchIds = await listTenantLegacyBranchIds(tenantId);
     const branches = await listActiveBranches();
     const destinations = branches
-      .filter((b) => b.lifecycleStatus !== 'SETUP')
+      .filter((b) => b.lifecycleStatus !== 'SETUP' && tenantBranchIds.has(b.branchId))
       .map((b) => ({
         branchId: b.branchId,
         branchCode: b.branchCode,

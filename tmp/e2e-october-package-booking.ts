@@ -69,7 +69,7 @@ async function main() {
     throw new Error(`Test phone ${TEST_PHONE} belongs to a real client — aborting`);
   }
 
-  const catalog = await getPublicPackagesCatalog();
+  const catalog = await getPublicPackagesCatalog({ tenantId: await (await import('../src/platform/tenant/legacyBootstrapSeam')).resolveLegacyBootstrapTenantId('casher-boot-operator-script') });
   const oct = catalog.packages.find((p) => p.packageId === PACKAGE_ID);
   check(!!oct && oct.price === 333, `public packages catalog lists October @333 (kind=${oct?.kind})`);
 

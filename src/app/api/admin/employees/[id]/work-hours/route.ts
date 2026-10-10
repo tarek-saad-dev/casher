@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isAuthResult, requireAdmin } from '@/lib/api-auth';
 import { getPool } from '@/lib/db';
 import sql from 'mssql';
+import { requireMasterDataTenantId } from '@/platform/masterData/tenantScope';
 
 export async function PATCH(
   req: NextRequest,
@@ -62,6 +63,7 @@ export async function PATCH(
       return NextResponse.json({ error: "يجب تحديد وقت البدء والانتهاء معاً" }, { status: 400 });
     }
 
+    const tenantId = requireMasterDataTenantId(__auth.tenantId, 'PATCH /api/admin/employees/[id]/work-hours');
     const db = await getPool();
     const transaction = new sql.Transaction(db);
     await transaction.begin();
@@ -70,7 +72,8 @@ export async function PATCH(
       // Check if employee exists
       const empCheck = await new sql.Request(transaction)
         .input("empId", sql.Int, empId)
-        .query("SELECT EmpID, EmpName FROM dbo.TblEmp WHERE EmpID = @empId");
+        .input("tenantId", sql.UniqueIdentifier, tenantId)
+        .query("SELECT EmpID, EmpName FROM dbo.TblEmp WHERE EmpID = @empId AND TenantId = @tenantId");
 
       if (empCheck.recordset.length === 0) {
         await transaction.rollback();
@@ -128,10 +131,11 @@ export async function PATCH(
         const updateQuery = `
           UPDATE dbo.TblEmp 
           SET ${updateFields.join(", ")}
-          WHERE EmpID = @empId
+          WHERE EmpID = @empId AND TenantId = @tenantId
         `;
         
         request.input("empId", sql.Int, empId);
+        request.input("tenantId", sql.UniqueIdentifier, tenantId);
         await request.query(updateQuery);
       }
 
@@ -140,6 +144,7 @@ export async function PATCH(
       // Get updated employee data
       const updatedResult = await db.request()
         .input("empId", sql.Int, empId)
+        .input("tenantId", sql.UniqueIdentifier, tenantId)
         .query(`
           SELECT 
             EmpID, EmpName,
@@ -156,7 +161,7 @@ export async function PATCH(
               THEN WorkScheduleNotes ELSE NULL 
             END AS WorkScheduleNotes
           FROM dbo.TblEmp 
-          WHERE EmpID = @empId
+          WHERE EmpID = @empId AND TenantId = @tenantId
         `);
 
       const updatedEmployee = updatedResult.recordset[0];

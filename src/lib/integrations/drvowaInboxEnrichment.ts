@@ -2,6 +2,7 @@ import 'server-only';
 
 import { getPool, sql } from '@/lib/db';
 import type { DrvowaInboxListItem } from '@/lib/integrations/drvowaClient';
+import { requireMessagingTenantId } from '@/modules/messaging/tenancy/messagingTenantScope';
 
 function digits(value: string | null | undefined): string {
   return String(value ?? '').replace(/\D/g, '');
@@ -34,6 +35,7 @@ export async function enrichDrvowaInboxContacts(
   }
 
   const request = (await getPool()).request();
+  request.input('tenantId', sql.UniqueIdentifier, requireMessagingTenantId('enrichDrvowaInboxContacts'));
   const placeholders = keys.map((key, index) => {
     request.input(`p${index}`, sql.NVarChar(16), key);
     return `@p${index}`;
@@ -49,13 +51,14 @@ export async function enrichDrvowaInboxContacts(
       [Name],
       Mobile
     FROM dbo.TblClient
-    WHERE RIGHT(
-      REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
-        ISNULL(Mobile, N''),
-        N'+', N''
-      ), N' ', N''), N'-', N''), N'(', N''), N')', N''),
-      10
-    ) IN (${placeholders.join(',')})
+    WHERE TenantId = @tenantId
+      AND RIGHT(
+        REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+          ISNULL(Mobile, N''),
+          N'+', N''
+        ), N' ', N''), N'-', N''), N'(', N''), N')', N''),
+        10
+      ) IN (${placeholders.join(',')})
     ORDER BY ClientID DESC;
   `);
 

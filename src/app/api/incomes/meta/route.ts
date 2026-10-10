@@ -1,20 +1,27 @@
 import { NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
 import { getSession } from '@/lib/session';
+import { authenticate, isAuthResult } from '@/lib/api-auth';
 import { getActiveBranchContext } from '@/lib/branch/context';
 import { getUserOpenShiftForBranch } from '@/lib/branch/shiftSession';
 
 // GET /api/incomes/meta — categories, payment methods, open shift (active branch)
 export async function GET() {
+  const auth = await authenticate();
+  if (!isAuthResult(auth)) return auth;
+
   try {
     const session = await getSession();
     const db = await getPool();
 
     // Categories — active income categories only for new-entry form
-    const catRes = await db.request().query(`
+    const catRes = await db.request()
+      .input('tenantId', sql.UniqueIdentifier, auth.tenantId)
+      .query(`
       SELECT ExpINID, ExpINType, CatName
       FROM dbo.TblExpINCat
-      WHERE CatName IS NOT NULL
+      WHERE TenantId = @tenantId
+        AND CatName IS NOT NULL
         AND IsActive = 1
         AND ExpINType = N'\u0627\u064a\u0631\u0627\u062f\u0627\u062a'
       ORDER BY CatName ASC
@@ -32,10 +39,11 @@ export async function GET() {
     // Payment methods — exclude internal split-payment clearing account by ID
     const pmRes = await db.request()
       .input('clearingId', sql.Int, clearingId)
+      .input('tenantId', sql.UniqueIdentifier, auth.tenantId)
       .query(`
         SELECT PaymentID, PaymentMethod
         FROM dbo.TblPaymentMethods
-        WHERE PaymentID <> @clearingId
+        WHERE TenantId = @tenantId AND PaymentID <> @clearingId
         ORDER BY PaymentID ASC
       `);
 

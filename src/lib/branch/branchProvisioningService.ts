@@ -12,7 +12,10 @@ import {
   seedPartnerSharesFromSourceBranch,
   type SeedQueueSettingsInput,
 } from './bootstrap';
-import { getBranchById } from './repository';
+import { getBranchByCode, getBranchById } from './repository';
+import { assertCanAddBranch } from '@/platform/commercial/limits';
+import { ensureLegacyIdMapInTransaction } from '@/platform/onboarding/legacyIdMap';
+import { assertLegacyBranchInTenant, isTenantContextError } from '@/platform/tenant/tenantContext';
 import type { BranchRecord } from './types';
 import { BranchDomainError } from './types';
 
@@ -71,9 +74,69 @@ function rejectEscalationFields(input: ProvisionBranchInput): void {
   }
 }
 
+/**
+ * DRVO-013: a branch exists for the platform only as a Location of exactly one tenant.
+ * The tenant branch limit (DRVO-012) is taken first and held while the legacy branch row is
+ * created; the Location + LegacyIdMap rows are written in the same tenant transaction. If the
+ * tenant attach fails, the just-created SETUP branch is removed so no tenant-less branch remains.
+ */
+async function createBranchForTenant(
+  tenantId: string,
+  create: () => Promise<BranchRecord>,
+): Promise<BranchRecord> {
+  const pool = await getPool();
+  const tx = new sql.Transaction(pool);
+  await tx.begin();
+  let branch: BranchRecord | null = null;
+  try {
+    await assertCanAddBranch(tx, tenantId);
+    branch = await create();
+    const location = await new sql.Request(tx)
+      .input('tenantId', sql.UniqueIdentifier, tenantId)
+      .input('legacyBranchId', sql.Int, branch.branchId)
+      .input('branchCode', sql.NVarChar(64), branch.branchCode)
+      .input('tz', sql.NVarChar(64), branch.timeZone || 'Africa/Cairo')
+      .query(`
+        INSERT INTO dbo.Location (TenantId, LegacyBranchId, BranchCode, Timezone, Status)
+        OUTPUT INSERTED.LocationId AS locationId
+        VALUES (@tenantId, @legacyBranchId, @branchCode, @tz, N'active');
+      `);
+    await ensureLegacyIdMapInTransaction(tx, {
+      tenantId,
+      entityName: 'branch',
+      legacyKey: String(branch.branchId),
+      authoritativeDrvoId: String((location.recordset[0] as { locationId: string }).locationId),
+    });
+    await tx.commit();
+    return branch;
+  } catch (err) {
+    try {
+      await tx.rollback();
+    } catch {
+      /* already rolled back */
+    }
+    if (branch) {
+      await pool
+        .request()
+        .input('branchId', sql.Int, branch.branchId)
+        .query(`
+          DELETE FROM dbo.TblBranch
+          WHERE BranchID = @branchId AND LifecycleStatus = N'SETUP' AND IsActive = 0;
+        `)
+        .catch((cleanupErr: unknown) => {
+          console.error('[branch.provision] tenant attach cleanup failed', {
+            branchId: branch?.branchId,
+            error: cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
+          });
+        });
+    }
+    throw err;
+  }
+}
+
 export async function provisionBranch(
   input: ProvisionBranchInput,
-  authenticatedUser: { userId: number },
+  authenticatedUser: { userId: number; tenantId: string },
 ): Promise<ProvisionBranchResult> {
   const started = Date.now();
   console.info(
@@ -94,21 +157,39 @@ export async function provisionBranch(
     });
 
     const sourceCode = input.template?.sourceBranchCode?.trim().toUpperCase();
+    if (sourceCode) {
+      // Templates may only be copied from a branch of the same tenant (non-disclosing).
+      const source = await getBranchByCode(sourceCode);
+      const inTenant = source
+        ? await assertLegacyBranchInTenant(authenticatedUser.tenantId, source.branchId).then(
+            () => true,
+            (err: unknown) => {
+              if (isTenantContextError(err)) return false;
+              throw err;
+            },
+          )
+        : false;
+      if (!inTenant) {
+        throw new BranchDomainError('BRANCH_NOT_FOUND', 'فرع القالب غير موجود', 404);
+      }
+    }
 
-    const branch = await createBranchRecord({
-      branchCode: input.branchCode,
-      branchName: input.branchName,
-      shortName: input.shortName,
-      address: input.address,
-      phone: input.phone,
-      timeZone: input.timeZone,
-      businessDayCutoffTime: input.businessDayCutoffTime,
-      defaultOpenTime: input.defaultOpenTime,
-      defaultCloseTime: input.defaultCloseTime,
-      createdByUserId: authenticatedUser.userId,
-      // ignored by create — kept for type compat
-      isActive: false,
-    });
+    const branch = await createBranchForTenant(authenticatedUser.tenantId, () =>
+      createBranchRecord({
+        branchCode: input.branchCode,
+        branchName: input.branchName,
+        shortName: input.shortName,
+        address: input.address,
+        phone: input.phone,
+        timeZone: input.timeZone,
+        businessDayCutoffTime: input.businessDayCutoffTime,
+        defaultOpenTime: input.defaultOpenTime,
+        defaultCloseTime: input.defaultCloseTime,
+        createdByUserId: authenticatedUser.userId,
+        // ignored by create — kept for type compat
+        isActive: false,
+      }),
+    );
 
     const seedOpts: SeedQueueSettingsInput = {
       bookingEnabled: false,

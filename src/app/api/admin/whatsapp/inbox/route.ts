@@ -12,11 +12,10 @@ import {
   type InboxFilter,
   type InboxListItem,
 } from '@/modules/messaging/handoff/domain/inboxRanking';
-import {
-  isDrvowaEventMessagingActive,
-  listDrvowaInboxConversations,
-} from '@/lib/integrations/drvowaClient';
+import { listDrvowaInboxConversations } from '@/lib/integrations/drvowaClient';
 import { enrichDrvowaInboxContacts } from '@/lib/integrations/drvowaInboxEnrichment';
+import { isDrvowaActiveForMessagingTenant } from '@/lib/integrations/drvowaTenant';
+import { runWithStaffMessagingTenant } from '@/modules/messaging/tenancy/staffScope';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -27,47 +26,48 @@ export const dynamic = 'force-dynamic';
 export async function GET(req: NextRequest) {
   const admin = await requireWhatsAppTemplateAdmin();
   if (!isWhatsAppTemplateAdmin(admin)) return admin;
+  return runWithStaffMessagingTenant(admin, 'admin/whatsapp/inbox:GET', async () => {
+    try {
+      const { searchParams } = new URL(req.url);
+      const filter = (searchParams.get('filter') || 'all') as InboxFilter;
+      const q = searchParams.get('q') || '';
+      const limit = Number(searchParams.get('limit') || 80);
+      if (await isDrvowaActiveForMessagingTenant('admin/whatsapp/inbox:GET')) {
+        const remoteLimit = q.trim() ? 500 : Math.max(limit, 200);
+        const remote = await listDrvowaInboxConversations(remoteLimit);
+        const enriched = await enrichDrvowaInboxContacts(remote);
+        const mapped: InboxListItem[] = enriched.map((item) => {
+          const human = item.aiMode === 'HUMAN_PAUSED';
+          const paused = item.aiMode === 'SAFETY_PAUSED';
+          return {
+            conversationId: item.conversationId,
+            phone: item.phone,
+            displayName: item.displayName,
+            lastMessagePreview: item.lastMessagePreview,
+            lastMessageAt: item.lastMessageAt,
+            unreadCount: item.unread ? 1 : 0,
+            mode: human ? 'HUMAN' : paused ? 'PAUSED' : 'BOT',
+            takeoverSource: human ? 'ERP' : null,
+            takenOverByUserId: null,
+            takenOverByName: human ? 'موظف' : null,
+            controlVersion: 1,
+          };
+        });
+        const items = sortInboxItems(
+          mapped.filter(
+            (item) =>
+              matchesInboxFilter(item, filter)
+              && matchesInboxSearch(item, q),
+          ),
+        );
+        return NextResponse.json({ ok: true, source: 'DRVOWA', items });
+      }
 
-  try {
-    const { searchParams } = new URL(req.url);
-    const filter = (searchParams.get('filter') || 'all') as InboxFilter;
-    const q = searchParams.get('q') || '';
-    const limit = Number(searchParams.get('limit') || 80);
-    if (await isDrvowaEventMessagingActive()) {
-      const remoteLimit = q.trim() ? 500 : Math.max(limit, 200);
-      const remote = await listDrvowaInboxConversations(remoteLimit);
-      const enriched = await enrichDrvowaInboxContacts(remote);
-      const mapped: InboxListItem[] = enriched.map((item) => {
-        const human = item.aiMode === 'HUMAN_PAUSED';
-        const paused = item.aiMode === 'SAFETY_PAUSED';
-        return {
-          conversationId: item.conversationId,
-          phone: item.phone,
-          displayName: item.displayName,
-          lastMessagePreview: item.lastMessagePreview,
-          lastMessageAt: item.lastMessageAt,
-          unreadCount: item.unread ? 1 : 0,
-          mode: human ? 'HUMAN' : paused ? 'PAUSED' : 'BOT',
-          takeoverSource: human ? 'ERP' : null,
-          takenOverByUserId: null,
-          takenOverByName: human ? 'موظف' : null,
-          controlVersion: 1,
-        };
-      });
-      const items = sortInboxItems(
-        mapped.filter(
-          (item) =>
-            matchesInboxFilter(item, filter)
-            && matchesInboxSearch(item, q),
-        ),
-      );
-      return NextResponse.json({ ok: true, source: 'DRVOWA', items });
+      const result = await listWhatsAppInbox({ filter, q, limit });
+      return NextResponse.json({ ok: true, source: 'LOCAL', ...result });
+    } catch (err) {
+      console.error('[api/admin/whatsapp/inbox GET]', err);
+      return NextResponse.json({ error: getUserFriendlyError(err) }, { status: 500 });
     }
-
-    const result = await listWhatsAppInbox({ filter, q, limit });
-    return NextResponse.json({ ok: true, source: 'LOCAL', ...result });
-  } catch (err) {
-    console.error('[api/admin/whatsapp/inbox GET]', err);
-    return NextResponse.json({ error: getUserFriendlyError(err) }, { status: 500 });
-  }
+  });
 }

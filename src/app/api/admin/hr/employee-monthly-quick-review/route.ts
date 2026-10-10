@@ -40,6 +40,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       ...report,
       employeeScope: viewScope.employeeScope,
+      scopeOptions: viewScope.scopeOptions,
       branchIds: viewScope.branchIds,
     });
   } catch (err: unknown) {

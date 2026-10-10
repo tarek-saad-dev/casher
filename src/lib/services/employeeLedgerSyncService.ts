@@ -2,6 +2,7 @@ import 'server-only';
 import { liveCashMovePredicate } from '@/lib/treasury/liveCashMoveSql';
 
 import { getPool, sql } from '@/lib/db';
+import { requireHrTenantId } from '@/lib/hr/hrTenantScope';
 import {
   EMP_LEDGER_REASON_ADVANCE,
   EMP_LEDGER_REASON_HOURLY_WAGE,
@@ -74,6 +75,7 @@ function sameNullable(a: unknown, b: unknown): boolean {
 }
 
 export async function runEmployeeLedgerHistoricalSync(params: {
+  tenantId: string;
   month: string;
   empId?: number | null;
   dryRun?: boolean;
@@ -90,6 +92,7 @@ export async function runEmployeeLedgerHistoricalSync(params: {
   const syncPayrollCredits = params.syncPayrollCredits !== false;
   const syncAdvanceDebits = params.syncAdvanceDebits !== false;
   const empId = params.empId && params.empId > 0 ? params.empId : null;
+  const tenantId = requireHrTenantId(params.tenantId, 'runEmployeeLedgerHistoricalSync');
 
   const [yearStr, monthStr] = params.month.split('-');
   const monthStart = `${params.month}-01`;
@@ -110,7 +113,7 @@ export async function runEmployeeLedgerHistoricalSync(params: {
 
   try {
     if (syncPayrollCredits) {
-      const payrollRows = await fetchPayrollRows(reqBase(), monthStart, monthEnd, empId);
+      const payrollRows = await fetchPayrollRows(reqBase(), monthStart, monthEnd, empId, tenantId);
       const existing = await fetchExistingByRef(
         reqBase(),
         EMP_LEDGER_REF_TYPE_DAILY_PAYROLL,
@@ -193,7 +196,7 @@ export async function runEmployeeLedgerHistoricalSync(params: {
     }
 
     if (syncAdvanceDebits) {
-      const advanceRows = await fetchAdvanceRows(reqBase(), monthStart, monthEnd, empId);
+      const advanceRows = await fetchAdvanceRows(reqBase(), monthStart, monthEnd, empId, tenantId);
       const existing = await fetchExistingByRef(
         reqBase(),
         EMP_LEDGER_REF_TYPE_CASH_MOVE,
@@ -298,15 +301,16 @@ async function fetchPayrollRows(
   monthStart: string,
   monthEnd: string,
   empId: number | null,
+  tenantId: string,
 ): Promise<PayrollSourceRow[]> {
-  req.input('monthStart', sql.Date, monthStart).input('monthEnd', sql.Date, monthEnd);
+  req.input('monthStart', sql.Date, monthStart).input('monthEnd', sql.Date, monthEnd).input('tenantId', sql.UniqueIdentifier, tenantId);
   if (empId) req.input('empId', sql.Int, empId);
   const whereEmp = empId ? 'AND p.EmpID = @empId' : '';
   const result = await req.query(`
     SELECT p.ID AS payrollId, p.EmpID AS empId, p.BranchID AS branchId, e.EmpName AS empName, p.WorkDate AS workDate,
            p.AttendanceID AS attendanceId, p.DailyWage AS dailyWage
     FROM dbo.TblEmpDailyPayroll p
-    INNER JOIN dbo.TblEmp e ON e.EmpID = p.EmpID
+    INNER JOIN dbo.TblEmp e ON e.EmpID = p.EmpID AND e.TenantId = @tenantId
     WHERE p.WorkDate >= @monthStart
       AND p.WorkDate <= @monthEnd
       AND p.Status = N'Generated'
@@ -328,8 +332,9 @@ async function fetchAdvanceRows(
   monthStart: string,
   monthEnd: string,
   empId: number | null,
+  tenantId: string,
 ): Promise<AdvanceSourceRow[]> {
-  req.input('monthStart', sql.Date, monthStart).input('monthEnd', sql.Date, monthEnd);
+  req.input('monthStart', sql.Date, monthStart).input('monthEnd', sql.Date, monthEnd).input('tenantId', sql.UniqueIdentifier, tenantId);
   if (empId) req.input('empId', sql.Int, empId);
   const whereEmp = empId ? 'AND m.EmpID = @empId' : '';
   const result = await req.query(`
@@ -340,7 +345,7 @@ async function fetchAdvanceRows(
       ON m.ExpINID = cm.ExpINID
      AND m.TxnKind = N'advance'
      AND m.IsActive = 1
-    INNER JOIN dbo.TblEmp e ON e.EmpID = m.EmpID
+    INNER JOIN dbo.TblEmp e ON e.EmpID = m.EmpID AND e.TenantId = @tenantId
     WHERE cm.invType = N'مصروفات'
       AND cm.inOut = N'out'
       AND ${liveCashMovePredicate('cm')}

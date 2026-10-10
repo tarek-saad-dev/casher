@@ -15,6 +15,7 @@ import {
   getMonthlyExpensesByCategory,
 } from '@/lib/services/monthlyExpensesReportService';
 import { getEmployeeLedgerSummary } from '@/lib/services/employeeLedgerService';
+import { resolveLegacyBranchTenantId } from '@/platform/masterData/tenantScope';
 import {
   computeEmployeeWithdrawalBuckets,
   computePartnersAdvanceExcess,
@@ -76,12 +77,14 @@ export async function buildPartnersMonthlyReport(
     getEmployeeServicesRevenue(year, month, branchId),
     getEmployeeServicesRevenueByEmployee(year, month, branchId),
     getEmployeeActualInvoiceRevenueByEmployee(year, month, branchId),
-    getEmployeeJobById(),
-    getEmployeeNamesById(),
+    getEmployeeJobById(branchId),
+    getEmployeeNamesById(branchId),
     getMonthlyExpensesByCategory(year, month, branchId),
     getMonthlyEmployeeAdvances(year, month, branchId),
     loadPartnersEmployeeOverridesForBranch(branch.branchId, branch.branchCode),
-    getEmployeeLedgerSummary(ledgerMonth, branchId),
+    resolveLegacyBranchTenantId(branchId).then((tenantId) =>
+      getEmployeeLedgerSummary(ledgerMonth, branchId, { tenantId }),
+    ),
     getEffectiveBranchPartnerShares(branchId, period.endDate),
   ]);
 
@@ -239,11 +242,13 @@ export async function buildPartnersEmployeeControlSheet(
     ledgerSummary,
   ] = await Promise.all([
     getEmployeeActualInvoiceRevenueByEmployee(year, month, branchId),
-    getEmployeeJobById(),
-    getEmployeeNamesById(),
+    getEmployeeJobById(branchId),
+    getEmployeeNamesById(branchId),
     getMonthlyEmployeeAdvances(year, month, branchId),
     loadPartnersEmployeeOverridesForBranch(branch.branchId, branch.branchCode),
-    getEmployeeLedgerSummary(ledgerMonth, branchId),
+    resolveLegacyBranchTenantId(branchId).then((tenantId) =>
+      getEmployeeLedgerSummary(ledgerMonth, branchId, { tenantId }),
+    ),
   ]);
 
   const { controlRows } = mapPartnersEmployeeRows({

@@ -13,6 +13,7 @@ import {
 import { createPublicBooking } from '@/lib/booking/publicBookingCreate';
 import { cancelPublicBooking } from '@/lib/booking/publicBookingCancellation';
 import { reschedulePublicBooking } from '@/lib/booking/publicBookingReschedule';
+import { resolveDrvowaOwnerTenantId } from '@/lib/integrations/drvowaTenant';
 
 export const runtime = 'nodejs';
 
@@ -64,6 +65,8 @@ export async function POST(request: Request, context: Context) {
   let tool = '';
   try {
     await requireDrvowaIntegrationAuth(request);
+    // The DRVOWA pairing is instance-wide and belongs to CASHER_BOOT; tools never reach other tenants.
+    const tenantId = await resolveDrvowaOwnerTenantId();
     tool = (await context.params).tool;
     const body = record(await request.json().catch(() => ({})));
     const input = record(body.input);
@@ -71,6 +74,7 @@ export async function POST(request: Request, context: Context) {
 
     if (tool === 'booking.get_upcoming') {
       const result = await listPublicUpcomingBookings({
+        tenantId,
         phone: input.phone,
         fromDate: input.fromDate,
         limit: input.limit,
@@ -80,6 +84,7 @@ export async function POST(request: Request, context: Context) {
 
     if (tool === 'booking.get_by_code') {
       const result = await getPublicBookingByCode({
+        tenantId,
         code: stringValue(input.code),
         phone: stringValue(input.phone),
       });
@@ -109,7 +114,7 @@ export async function POST(request: Request, context: Context) {
           Number.isFinite(Number(input.durationMinutes)) && Number(input.durationMinutes) > 0
             ? Number(input.durationMinutes)
             : undefined,
-      });
+      }, tenantId);
       return ok(tool, result.body);
     }
 
@@ -125,6 +130,7 @@ export async function POST(request: Request, context: Context) {
         empId: input.empId,
         mode: input.mode,
         purpose: 'plan',
+        expectedTenantId: tenantId,
       });
       if (!evaluation.available) {
         return fail(
@@ -178,12 +184,14 @@ export async function POST(request: Request, context: Context) {
         idempotencyKeyHeader: stringValue(input.idempotencyKey) || requestId,
         suppressNotification: true,
         bookingSource: 'online',
+        expectedTenantId: tenantId,
       });
       return ok(tool, result.body);
     }
 
     if (tool === 'booking.cancel') {
       const result = await cancelPublicBooking({
+        tenantId,
         code: stringValue(input.code),
         phone: stringValue(input.phone),
         reasonCode: stringValue(input.reasonCode) || null,

@@ -1,0 +1,44 @@
+identity: last132_agent / drvo_agent / last132 access=0
+totals before: {"cashMoves":15400,"cashTotal":7707252.44,"invHeads":9688,"invTotal":1985028.78,"bookings":1542,"cutClients":3113,"cutEmps":177,"users":12,"days":478,"gleemOpenDays":1,"shiftMoves":1526,"openShifts":4}
+[db:cloud] Connection attempt 1/3 server=127.0.0.1 db=last132_agent auth=sql
+[db:cloud] Connected to SQL Server successfully
+A. CUT LOGIN
+  PASS [cut_login] CUT admin logs in on GLEEM (hashed password) ΓÇö branch=GLEEM roles=admin
+  PASS [cut_login] wrong password rejected (401)
+  PASS [cut_login] CUT legacy plaintext row upgrades to hash on login ΓÇö plaintext ΓåÆ 200 ΓåÆ s1$ ΓåÆ 200
+  PASS [cut_login] session reads CUT data (employees list) ΓÇö CUT employee visible
+D. DAY CATCH-UP + SHIFT OPEN
+  PASS [shift_close] rollover-check catches GLEEM up from stale day 5573 ΓÇö 5573 closed, stale shifts closed, open day=5586 (2026-10-09)
+  PASS [shift_close] CUT admin opens a shift on the new day ΓÇö shift=12491
+B. POS
+  PASS [pos] synthetic CUT customer + employee (GLEEM assignment) ΓÇö client=15092 emp=2249 both CASHER_BOOT
+  PASS [pos] POS cash sale of CUT service 9 on GLEEM ΓÇö inv=9632 head=32116 day=5586 shift=12491 cashMoves=1/200
+  PASS [pos] treasury/current reachable for CUT ΓÇö {"currentDay":{"id":5586,"newDay":"2026-10-09","dayDate":"2026-10-09","isOpen":false},"currentShift"
+C. PUBLIC BOOKING
+[pages-sync] Registry synced Γ£ô
+[roles-sync] Partner role synced Γ£ô
+  PASS [booking] GLEEM public booking: days ΓåÆ slot ΓåÆ check ΓåÆ plan ΓåÆ create ΓåÆ replay ΓåÆ lookup ΓåÆ cancel ΓÇö date=2026-10-10 11:00 booking=4494 barber=7 replay=ok lookup=200 cancel=200 status=cancelled
+D. SHIFT / DAY CLOSE
+  PASS [shift_close] shift summary shows the sale ΓÇö {"shiftMoveID":12491,"userName":"DRVOGA CUT Admin","shiftName":"╪º┘ä┘ê╪▒╪»┘è╪⌐ ╪º┘ä╪º┘ê┘ä┘ë","startTime":"08:41 AM","endTime":null,"status":1,"salesCount":1,"totalRevenue":2
+  PASS [shift_close] close own shift ΓÇö shift Status=0 with EndDate
+  PASS [shift_close] day summary for the business day ΓÇö {"dayID":5586,"date":"2026-10-09","status":1,"shiftsCount":1,"shifts":[{"ID":12491,"UserID":68,"UserName":"DRVOGA CUT Admin","ShiftID":1,"ShiftName":"╪º┘ä┘ê╪▒╪»┘è╪⌐ ╪º┘ä
+  PASS [shift_close] close business day (no open shifts left) ΓÇö day 5586 closed
+  PASS [shift_close] POS write blocked or re-caught-up after day close ΓÇö rollover-check 200; open GLEEM days now=[5586]
+E. NIGHTLY CLOSE
+  PASS [nightly_close] POST nightly-close dryRun workDate=2026-09-27 (CUT session scope) ΓÇö http=422 ok=false payroll=dry_run attendance=5 sent=0
+  PASS [nightly_close] GET nightly-close preview ΓÇö http=422 previewOnly
+F. HR REPORTS
+  PASS [hr_report] employee daily report preview ΓÇö summary={"total":15,"readyToSend":10,"skippedNoPhone":0,"skippedOther":5}
+  PASS [hr_report] employee monthly report (real CUT employee, read-only) ΓÇö emp=5 bytes=30419
+  FAIL [hr_report] full-day report for CUT ΓÇö status 403 {"error":"╪║┘è╪▒ ┘à╪╡╪▒╪¡ ΓÇö ┘ä╪º ╪¬┘à┘ä┘â ╪╡┘ä╪º╪¡┘è╪⌐ ╪¬┘é╪º╪▒┘è╪▒ ┘ç╪░╪º ╪º┘ä┘ü╪▒╪╣","code":"REPORT_NOT_ALLOWED"}
+G. MESSAGING
+  PASS [messaging] employee daily WhatsApp POST dryRun ΓåÆ nothing sent ΓÇö http=200 dryRun=10 sent=0
+  PASS [messaging] owner full-day WhatsApp POST dryRun ΓåÆ not sent ΓÇö http=200 status=dry_run
+  PASS [messaging] POS quick-send with integration disabled ΓåÆ not delivered ΓÇö http=400 {"ok":false,"error":"┘ä┘à ┘è╪¬┘à ╪▒╪¿╪╖ ┘é┘å╪º╪⌐ ┘ê╪º╪¬╪│╪º╪¿ ┘ä┘ç╪░╪º ╪º┘ä┘å╪┤╪º╪╖ ╪¿╪╣╪»","result":{"sent":false,"skipped":true,"reason":"channel_not
+  PASS [messaging] real CUT channel on staging ΓåÆ skipped channel_not_configured ΓÇö skipped: channel_not_configured
+  PASS [messaging] fake transport receives CUT send; no network ΓÇö captured=1 tenant=CASHER_BOOT external=0
+  PASS [messaging] no external network call during in-process messaging ΓÇö external=0
+totals during: {"cashMoves":15401,"cashTotal":7707452.44,"invHeads":9689,"invTotal":1985228.78,"bookings":1543,"cutClients":3115,"cutEmps":178,"users":13,"days":479,"gleemOpenDays":1,"shiftMoves":1527,"openShifts":2}
+
+CUT REGRESSION: 25/26 PASS
+VERDICT: FAIL

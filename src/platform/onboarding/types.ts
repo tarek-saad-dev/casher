@@ -1,3 +1,16 @@
+import type { AppCustomizations, IndustryPackDefinition } from '@/platform/packs/types';
+
+/** Optional brand fields captured at onboarding; display name and timezone default from the tenant. */
+export type ProvisionTenantBrandInput = {
+  logoUrl?: string | null;
+  phone?: string | null;
+  address?: string | null;
+  primaryColor?: string | null;
+  accentColor?: string | null;
+  receiptFooter?: string | null;
+  publicBookingOrigins?: string[];
+};
+
 export type ProvisionTenantInput = {
   tenantCode: string;
   tenantDisplayName: string;
@@ -5,14 +18,21 @@ export type ProvisionTenantInput = {
   ownerUserName: string;
   ownerLoginName: string;
   ownerPassword: string;
-  ownerUserLevel?: string;
   firstBranchCode: string;
   firstBranchName: string;
   branchAddress?: string | null;
   branchPhone?: string | null;
   branchDefaultOpenTime?: string | null;
   branchDefaultCloseTime?: string | null;
-  packCode?: string;
+  /** Resolved Industry Pack definition (injected by the caller; platform does not import packs). */
+  industryPack: IndustryPackDefinition;
+  /** Customizations applied on top of the pack default app set. */
+  appCustomizations?: AppCustomizations;
+  /** Commercial plan; defaults to starter. */
+  planCode?: string;
+  /** Defaults to trial. */
+  subscriptionStatus?: 'trial' | 'active';
+  brand?: ProvisionTenantBrandInput;
 };
 
 export type ProvisionTenantActor = {
@@ -29,6 +49,12 @@ export type ProvisionTenantResult = {
   legacyUserId: number;
   branchCode: string;
   ownerLoginName: string;
+  ownerRole: string;
+  industryPackCode: string;
+  apps: string[];
+  planCode: string;
+  subscriptionStatus: string;
+  trialEndsAt: string | null;
   readiness: TenantReadinessReport;
 };
 
@@ -52,5 +78,9 @@ export type TenantSummary = {
   status: string;
   defaultTimezone: string;
   locationCount: number;
+  userCount: number;
+  planCode: string | null;
+  subscriptionStatus: string | null;
+  industryPackCode: string | null;
   createdAt: string;
 };

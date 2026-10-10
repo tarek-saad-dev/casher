@@ -157,11 +157,12 @@ export async function replaceSteps(
   return listStepsByProId(db, proId);
 }
 
-export async function proExists(db: ConnectionPool, proId: number): Promise<boolean> {
+export async function proExists(db: ConnectionPool, tenantId: string, proId: number): Promise<boolean> {
   const result = await db
     .request()
     .input('ProID', sql.Int, proId)
-    .query(`SELECT TOP 1 ProID FROM dbo.TblPro WHERE ProID = @ProID`);
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
+    .query(`SELECT TOP 1 ProID FROM dbo.TblPro WHERE ProID = @ProID AND TenantId = @tenantId`);
   return Boolean(result.recordset[0]);
 }
 

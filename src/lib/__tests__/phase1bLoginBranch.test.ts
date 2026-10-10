@@ -31,7 +31,7 @@ describe('Phase 1B login branch gating', () => {
         request: () => {
           const api = {
             input: () => api,
-            query: async () => ({ recordset: user ? [user] : [] }),
+            query: async () => ({ recordset: user ? [{ StoredPassword: 'x', ...user }] : [] }),
           };
           return api;
         },

@@ -41,6 +41,7 @@ export async function GET(req: NextRequest) {
     }
 
     const transfers = await listTemporaryBranchTransfers({
+      tenantId: auth.tenantId,
       fromDate: from,
       toDate: to,
       empId: empId != null && Number.isFinite(empId) ? empId : null,

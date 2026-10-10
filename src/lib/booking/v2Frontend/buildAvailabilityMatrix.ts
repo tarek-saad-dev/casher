@@ -11,10 +11,9 @@ import {
   isBusinessDateString,
 } from '@/lib/booking/domain/BusinessDate';
 import { getCairoBusinessDate, shiftCalendarDate } from '@/lib/businessDate';
-import {
-  listPublicDiscoverableBranches,
-  resolvePublicBookingBranchContext,
-} from '@/lib/booking/publicBookingBranchContext';
+import { resolvePublicBookingBranchContext } from '@/lib/booking/publicBookingBranchContext';
+import { listPublicDiscoverableBranchesForTenant } from '@/lib/booking/publicBookingTenancy';
+import { listTenantLegacyBranchIds } from '@/platform/tenant/tenantContext';
 import { listBookableEmployeeIdsForBranch } from '@/lib/branch/bookingQueueOwnership';
 import { getPublicSettings } from '@/lib/publicBookingHelpers';
 import { getPublicBookingServicesCatalog } from '@/lib/booking/publicBookingServices';
@@ -69,6 +68,7 @@ function inclusiveSpan(from: string, to: string): number {
 
 async function resolveBranchCodes(
   req: V2PublicAvailabilityMatrixRequest,
+  tenantId: string,
 ): Promise<string[]> {
   const codes = [
     ...(req.branchCodes ?? []),
@@ -83,7 +83,7 @@ async function resolveBranchCodes(
     ...(req.branchId != null ? [req.branchId] : []),
   ]);
   if (ids.length) {
-    const all = await listPublicDiscoverableBranches();
+    const all = await listPublicDiscoverableBranchesForTenant(tenantId);
     const out: string[] = [];
     for (const id of ids) {
       const hit = all.find((b) => b.branchId === id);
@@ -97,6 +97,7 @@ async function resolveBranchCodes(
 }
 
 async function loadWarmContextForCode(args: {
+  tenantId: string;
   branchCode: string;
   asOfDate: string;
   needRoster: boolean;
@@ -114,6 +115,7 @@ async function loadWarmContextForCode(args: {
       const ctx = await resolvePublicBookingBranchContext({
         branchCode: args.branchCode,
         purpose: 'public_booking',
+        expectedTenantId: args.tenantId,
       });
       const settings = await getPublicSettings(ctx.branchId);
       const rosterEmpIds = args.needRoster
@@ -170,6 +172,7 @@ async function loadWarmContextForCode(args: {
 async function resolveDurationMinutes(args: {
   req: V2PublicAvailabilityMatrixRequest;
   branchCode: string;
+  tenantId: string;
 }): Promise<number | null> {
   if (
     args.req.durationMinutes != null &&
@@ -187,6 +190,7 @@ async function resolveDurationMinutes(args: {
   const ctx = await resolvePublicBookingBranchContext({
     branchCode: args.branchCode,
     purpose: 'public_booking',
+    expectedTenantId: args.tenantId,
   });
   const catalog = await getPublicBookingServicesCatalog(ctx);
   let total = 0;
@@ -204,6 +208,7 @@ async function resolveDurationMinutes(args: {
  */
 export async function buildPublicAvailabilityMatrix(
   req: V2PublicAvailabilityMatrixRequest,
+  tenantId: string,
 ): Promise<{
   body: V2PublicAvailabilityMatrixResponse;
   metrics: {
@@ -229,17 +234,23 @@ export async function buildPublicAvailabilityMatrix(
   ]);
   const needRoster = explicitEmps.length === 0;
 
-  const codes = await resolveBranchCodes(req);
+  const codes = await resolveBranchCodes(req, tenantId);
   const tCtx0 = performance.now();
   const contexts = await Promise.all(
     codes.map((branchCode) =>
       loadWarmContextForCode({
+        tenantId,
         branchCode,
         asOfDate: from,
         needRoster,
       }),
     ),
   );
+  // Warm-context hits skip branch resolution, so re-check ownership on every request.
+  const ownedBranchIds = await listTenantLegacyBranchIds(tenantId);
+  if (contexts.some((c) => !ownedBranchIds.has(c.branch.branchId))) {
+    throw new BookingV2MatrixError('BRANCH_NOT_FOUND');
+  }
   const branchSettingsMs = performance.now() - tCtx0;
   const contextCacheHit = contexts.every((c) => c.cacheHit);
 
@@ -302,7 +313,7 @@ export async function buildPublicAvailabilityMatrix(
 
   // Skip catalog unless caller asked for service-based duration.
   const durationMinutes =
-    (await resolveDurationMinutes({ req, branchCode: primary.branch.branchCode })) ??
+    (await resolveDurationMinutes({ req, branchCode: primary.branch.branchCode, tenantId })) ??
     30;
 
   const { resolveBookingAvailabilityV2 } = await import(

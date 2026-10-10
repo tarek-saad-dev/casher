@@ -1,32 +1,27 @@
-import { NextRequest } from 'next/server';
-import {
-  publicBookingOptionsResponse,
-  PUBLIC_BOOKING_ROUTE_CORS,
-} from '@/lib/booking/publicBookingCors';
+import { NextRequest, NextResponse } from 'next/server';
 import {
   PublicBarberMultiBranchAvailabilityError,
   getBarberAvailabilitySlots,
 } from '@/lib/booking/publicBarberMultiBranchAvailability';
+import { extractPublicBranchCode } from '@/lib/branch/bookingQueueOwnership';
 import {
   gatePublicBookingRoute,
   finalizePublicBookingError,
   finalizePublicBookingJson,
+  publicBookingTenantOptionsResponse,
+  requirePublicBookingRouteTenancy,
 } from '@/lib/booking/publicBookingRouteGate';
 
 export const runtime = 'nodejs';
 
 export async function OPTIONS(req: NextRequest) {
-  const cors = PUBLIC_BOOKING_ROUTE_CORS['barber-availability-slots'];
-  return publicBookingOptionsResponse({
-    request: req,
-    allowedMethods: [...cors.methods],
-    allowedHeaders: cors.headers,
-  });
+  return publicBookingTenantOptionsResponse(req, 'barber-availability-slots');
 }
 
 /**
  * POST /api/public/booking/barbers/[empId]/availability/slots
- * Phase 1C — aggregate available slots across public branches for one barber + date.
+ * Phase 1C — aggregate available slots across the request tenant's public branches for one
+ * barber + date.
  */
 export async function POST(
   req: NextRequest,
@@ -46,7 +41,14 @@ export async function POST(
     void body.duration;
     void body.price;
 
+    const tenancy = await requirePublicBookingRouteTenancy(req, gate, {
+      branchCode: extractPublicBranchCode(new URL(req.url).searchParams, body),
+      allowCutCompat: true,
+    });
+    if (tenancy instanceof NextResponse) return tenancy;
+
     const result = await getBarberAvailabilitySlots({
+      tenantId: tenancy.tenantId,
       empId,
       serviceIds: body.serviceIds,
       date: body.date,

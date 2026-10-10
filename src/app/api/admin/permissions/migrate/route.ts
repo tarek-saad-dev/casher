@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
 import { getPool } from '@/lib/db';
-import { isAuthResult, requireAdmin } from '@/lib/api-auth';
+import { isAuthResult, requirePlatformOperator } from '@/lib/api-auth';
 
 export const runtime = 'nodejs';
 
+/** Creates global permission tables — platform operator only. */
 export async function POST() {
-  const auth = await requireAdmin();
+  const auth = await requirePlatformOperator();
   if (!isAuthResult(auth)) return auth;
 
   try {

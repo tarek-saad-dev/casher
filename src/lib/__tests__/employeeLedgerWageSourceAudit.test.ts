@@ -86,7 +86,7 @@ describe('getEmployeeLedgerWageSourceAudit', () => {
     }));
 
     const { getEmployeeLedgerWageSourceAudit } = await import('@/lib/services/employeeLedgerWageSourceAuditService');
-    const result = await getEmployeeLedgerWageSourceAudit('2026-07');
+    const result = await getEmployeeLedgerWageSourceAudit('2026-07', null, '11111111-1111-4111-8111-111111111111');
 
     expect(result.readOnly).toBe(true);
     expect(result.dailyPayrollGeneratedTotal).toBe(300);
@@ -131,7 +131,7 @@ describe('getEmployeeLedgerWageSourceAudit', () => {
     }));
 
     const { getEmployeeLedgerWageSourceAudit } = await import('@/lib/services/employeeLedgerWageSourceAuditService');
-    const result = await getEmployeeLedgerWageSourceAudit('2026-07');
+    const result = await getEmployeeLedgerWageSourceAudit('2026-07', null, '11111111-1111-4111-8111-111111111111');
 
     expect(result.cashWageExpenseTotal).toBe(150);
     expect(result.cashWageExpenses).toHaveLength(1);
@@ -184,7 +184,7 @@ describe('getEmployeeLedgerWageSourceAudit', () => {
     }));
 
     const { getEmployeeLedgerWageSourceAudit } = await import('@/lib/services/employeeLedgerWageSourceAuditService');
-    const result = await getEmployeeLedgerWageSourceAudit('2026-07');
+    const result = await getEmployeeLedgerWageSourceAudit('2026-07', null, '11111111-1111-4111-8111-111111111111');
 
     expect(result.possibleIncomeMirrorTotal).toBe(150);
     expect(result.incomeMirrors).toHaveLength(1);
@@ -213,7 +213,7 @@ describe('getEmployeeLedgerWageSourceAudit', () => {
     }));
 
     const { getEmployeeLedgerWageSourceAudit } = await import('@/lib/services/employeeLedgerWageSourceAuditService');
-    const result = await getEmployeeLedgerWageSourceAudit('2026-07');
+    const result = await getEmployeeLedgerWageSourceAudit('2026-07', null, '11111111-1111-4111-8111-111111111111');
 
     expect(result.suggestedSource).toBe('NoneFound');
     expect(result.ledgerSalaryCreditTotal).toBe(0);

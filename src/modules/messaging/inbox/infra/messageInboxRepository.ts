@@ -1,6 +1,8 @@
 /**
  * Access to dbo.TblMessageInbox.
- * Idempotency is enforced by UQ_TblMessageInbox_ProviderMessage, not SELECT-then-INSERT.
+ * Idempotency is enforced by the tenant-leading unique index (TenantId, Provider, ProviderMessageID),
+ * not SELECT-then-INSERT. Every statement is tenant-filtered; only the worker claim / stale
+ * recovery span tenants, and they never touch rows without a TenantId.
  */
 import { getPool, sql } from '@/lib/db';
 import {
@@ -9,6 +11,7 @@ import {
   type MessageInboxRow,
   type MessageInboxStatus,
 } from '../domain/types';
+import { bindMessagingTenant } from '../../tenancy/tenantSql';
 
 export type InboxInsertRecord = {
   provider: string;
@@ -28,8 +31,12 @@ export type InboxListFilters = {
   fetchLimit: number;
 };
 
+/** Inbox row plus its owning tenant; the worker runs each claimed row inside that tenant's scope. */
+export type TenantMessageInboxRow = MessageInboxRow & { tenantId: string | null };
+
 type RawInboxRow = {
   ID: number | string;
+  TenantId: string | null;
   Provider: string;
   ProviderMessageID: string;
   Phone: string;
@@ -50,6 +57,7 @@ type RawInboxRow = {
 
 const INBOX_ROW_COLUMNS = `
   [ID],
+  [TenantId],
   [Provider],
   [ProviderMessageID],
   [Phone],
@@ -85,15 +93,16 @@ function isUniqueConstraintError(err: unknown): boolean {
   };
   const number = e?.number ?? e?.originalError?.info?.number;
   if (number === 2627 || number === 2601) return true;
-  return /UQ_TblMessageInbox_ProviderMessage|UNIQUE KEY|duplicate key/i.test(
+  return /U[XQ]_TblMessageInbox_\w*ProviderMessage|UNIQUE KEY|duplicate key/i.test(
     String(e?.message ?? e?.originalError?.message ?? ''),
   );
 }
 
-export function mapInboxRow(row: RawInboxRow): MessageInboxRow {
+export function mapInboxRow(row: RawInboxRow): TenantMessageInboxRow {
   const status = isMessageInboxStatus(row.Status) ? row.Status : 'pending';
   return {
     id: Number(row.ID),
+    tenantId: row.TenantId ? String(row.TenantId).toLowerCase() : null,
     provider: String(row.Provider),
     providerMessageId: String(row.ProviderMessageID),
     phone: String(row.Phone),
@@ -137,10 +146,9 @@ export function mapInboxListItem(row: RawInboxRow): MessageInboxListItem {
 export async function getByProviderMessage(
   provider: string,
   providerMessageId: string,
-): Promise<MessageInboxRow | null> {
+): Promise<TenantMessageInboxRow | null> {
   const pool = await getPool();
-  const result = await pool
-    .request()
+  const result = await bindMessagingTenant(pool.request(), 'inbox.getByProviderMessage')
     .input('provider', sql.NVarChar(50), provider)
     .input('providerMessageId', sql.NVarChar(250), providerMessageId)
     .query(`
@@ -148,19 +156,19 @@ export async function getByProviderMessage(
       FROM [dbo].[TblMessageInbox]
       WHERE [Provider] = @provider
         AND [ProviderMessageID] = @providerMessageId
+        AND [TenantId] = @tenantId
     `);
   const row = result.recordset[0] as RawInboxRow | undefined;
   return row ? mapInboxRow(row) : null;
 }
 
 export async function insert(record: InboxInsertRecord): Promise<{
-  row: MessageInboxRow;
+  row: TenantMessageInboxRow;
   duplicate: boolean;
 }> {
   const pool = await getPool();
   try {
-    const result = await pool
-      .request()
+    const result = await bindMessagingTenant(pool.request(), 'inbox.insert')
       .input('provider', sql.NVarChar(50), record.provider)
       .input('providerMessageId', sql.NVarChar(250), record.providerMessageId)
       .input('phone', sql.NVarChar(50), record.phone)
@@ -173,6 +181,7 @@ export async function insert(record: InboxInsertRecord): Promise<{
       .input('receivedAt', sql.DateTime2, record.receivedAt)
       .query(`
         INSERT INTO [dbo].[TblMessageInbox] (
+          [TenantId],
           [Provider],
           [ProviderMessageID],
           [Phone],
@@ -188,6 +197,7 @@ export async function insert(record: InboxInsertRecord): Promise<{
         )
         OUTPUT ${INBOX_OUTPUT_COLUMNS}
         VALUES (
+          @tenantId,
           @provider,
           @providerMessageId,
           @phone,
@@ -218,15 +228,15 @@ export async function insert(record: InboxInsertRecord): Promise<{
 export async function list(filters: InboxListFilters): Promise<MessageInboxListItem[]> {
   const fetchLimit = Math.max(1, Math.min(200, Math.floor(filters.fetchLimit)));
   const pool = await getPool();
-  const result = await pool
-    .request()
+  const result = await bindMessagingTenant(pool.request(), 'inbox.list')
     .input('status', sql.NVarChar(20), filters.status ?? null)
     .input('fetchLimit', sql.Int, fetchLimit)
     .query(`
       SELECT TOP (@fetchLimit)
         ${INBOX_ROW_COLUMNS}
       FROM [dbo].[TblMessageInbox]
-      WHERE (@status IS NULL OR [Status] = @status)
+      WHERE [TenantId] = @tenantId
+        AND (@status IS NULL OR [Status] = @status)
       ORDER BY [ReceivedAt] DESC, [ID] DESC
     `);
   return (result.recordset as RawInboxRow[]).map(mapInboxListItem);
@@ -237,8 +247,7 @@ export async function countByProviderMessage(
   providerMessageId: string,
 ): Promise<number> {
   const pool = await getPool();
-  const result = await pool
-    .request()
+  const result = await bindMessagingTenant(pool.request(), 'inbox.countByProviderMessage')
     .input('provider', sql.NVarChar(50), provider)
     .input('providerMessageId', sql.NVarChar(250), providerMessageId)
     .query(`
@@ -246,13 +255,18 @@ export async function countByProviderMessage(
       FROM [dbo].[TblMessageInbox]
       WHERE [Provider] = @provider
         AND [ProviderMessageID] = @providerMessageId
+        AND [TenantId] = @tenantId
     `);
   return Number(result.recordset[0]?.cnt ?? 0);
 }
 
+/**
+ * Worker claim across tenants. Rows without a TenantId are never claimed; the caller runs each
+ * returned row inside that row's tenant scope.
+ */
 export async function claimPendingBatch(input: {
   batchSize: number;
-}): Promise<MessageInboxRow[]> {
+}): Promise<TenantMessageInboxRow[]> {
   const batchSize = Math.max(1, Math.min(50, Math.floor(input.batchSize)));
   const pool = await getPool();
   const transaction = new sql.Transaction(pool);
@@ -263,9 +277,10 @@ export async function claimPendingBatch(input: {
       .query(`
         ;WITH claim AS (
           SELECT TOP (@batchSize)
-            [ID]
+            [ID], [TenantId]
           FROM [dbo].[TblMessageInbox] WITH (UPDLOCK, READPAST, ROWLOCK)
           WHERE [Status] = N'pending'
+            AND [TenantId] IS NOT NULL
             AND [IsGroup] = 0
           ORDER BY [ReceivedAt] ASC, [ID] ASC
         )
@@ -276,7 +291,7 @@ export async function claimPendingBatch(input: {
           i.[UpdatedAt] = SYSUTCDATETIME()
         OUTPUT ${INBOX_OUTPUT_COLUMNS}
         FROM [dbo].[TblMessageInbox] AS i
-        INNER JOIN claim AS c ON c.[ID] = i.[ID]
+        INNER JOIN claim AS c ON c.[ID] = i.[ID] AND c.[TenantId] = i.[TenantId]
       `);
     await transaction.commit();
     return (result.recordset as RawInboxRow[]).map(mapInboxRow);
@@ -293,19 +308,22 @@ export async function claimPendingBatch(input: {
 export async function markCompleted(
   input: { id: number },
   transaction?: sql.Transaction,
-): Promise<MessageInboxRow | null> {
+): Promise<TenantMessageInboxRow | null> {
   const exec = async (req: sql.Request) => {
-    const result = await req.input('id', sql.BigInt, input.id).query(`
-      UPDATE [dbo].[TblMessageInbox]
-      SET
-        [Status] = N'completed',
-        [ProcessedAt] = SYSUTCDATETIME(),
-        [UpdatedAt] = SYSUTCDATETIME(),
-        [LastError] = NULL
-      OUTPUT ${INBOX_OUTPUT_COLUMNS}
-      WHERE [ID] = @id
-        AND [Status] IN (N'processing', N'pending')
-    `);
+    const result = await bindMessagingTenant(req, 'inbox.markCompleted')
+      .input('id', sql.BigInt, input.id)
+      .query(`
+        UPDATE [dbo].[TblMessageInbox]
+        SET
+          [Status] = N'completed',
+          [ProcessedAt] = SYSUTCDATETIME(),
+          [UpdatedAt] = SYSUTCDATETIME(),
+          [LastError] = NULL
+        OUTPUT ${INBOX_OUTPUT_COLUMNS}
+        WHERE [ID] = @id
+          AND [TenantId] = @tenantId
+          AND [Status] IN (N'processing', N'pending')
+      `);
     const row = result.recordset[0] as RawInboxRow | undefined;
     return row ? mapInboxRow(row) : null;
   };
@@ -317,10 +335,9 @@ export async function markCompleted(
 export async function markFailed(input: {
   id: number;
   lastError: string;
-}): Promise<MessageInboxRow | null> {
+}): Promise<TenantMessageInboxRow | null> {
   const pool = await getPool();
-  const result = await pool
-    .request()
+  const result = await bindMessagingTenant(pool.request(), 'inbox.markFailed')
     .input('id', sql.BigInt, input.id)
     .input('lastError', sql.NVarChar(sql.MAX), String(input.lastError ?? '').slice(0, 4000))
     .query(`
@@ -331,12 +348,14 @@ export async function markFailed(input: {
         [LastError] = @lastError
       OUTPUT ${INBOX_OUTPUT_COLUMNS}
       WHERE [ID] = @id
+        AND [TenantId] = @tenantId
         AND [Status] = N'processing'
     `);
   const row = result.recordset[0] as RawInboxRow | undefined;
   return row ? mapInboxRow(row) : null;
 }
 
+/** Worker maintenance across tenants: only resets status, never moves a row between tenants. */
 export async function recoverStaleProcessing(input: {
   staleMs: number;
 }): Promise<{ completed: number; requeued: number }> {
@@ -350,10 +369,13 @@ export async function recoverStaleProcessing(input: {
       i.[ProcessedAt] = SYSUTCDATETIME(),
       i.[UpdatedAt] = SYSUTCDATETIME(),
       i.[LastError] = NULL
-    OUTPUT INSERTED.[ID]
+    OUTPUT INSERTED.[ID], INSERTED.[TenantId]
     FROM [dbo].[TblMessageInbox] AS i
-    INNER JOIN [dbo].[TblBotMessage] AS m ON m.[InboxID] = i.[ID]
+    INNER JOIN [dbo].[TblBotMessage] AS m
+      ON m.[InboxID] = i.[ID]
+      AND m.[TenantId] = i.[TenantId]
     WHERE i.[Status] = N'processing'
+      AND i.[TenantId] IS NOT NULL
       AND i.[ProcessingStartedAt] IS NOT NULL
       AND i.[ProcessingStartedAt] < DATEADD(MILLISECOND, -@staleMs, SYSUTCDATETIME())
   `);
@@ -366,34 +388,35 @@ export async function recoverStaleProcessing(input: {
       i.[UpdatedAt] = SYSUTCDATETIME(),
       i.[RetryCount] = i.[RetryCount] + 1,
       i.[LastError] = N'stale_processing_recovered'
-    OUTPUT INSERTED.[ID]
+    OUTPUT INSERTED.[ID], INSERTED.[TenantId]
     FROM [dbo].[TblMessageInbox] AS i
     WHERE i.[Status] = N'processing'
+      AND i.[TenantId] IS NOT NULL
       AND i.[ProcessingStartedAt] IS NOT NULL
       AND i.[ProcessingStartedAt] < DATEADD(MILLISECOND, -@staleMs, SYSUTCDATETIME())
       AND NOT EXISTS (
         SELECT 1
         FROM [dbo].[TblBotMessage] AS m
         WHERE m.[InboxID] = i.[ID]
+          AND m.[TenantId] = i.[TenantId]
       )
   `);
 
   return {
-    completed: (completed.recordset as Array<{ ID: number }>).length,
-    requeued: (requeued.recordset as Array<{ ID: number }>).length,
+    completed: (completed.recordset as Array<{ ID: number; TenantId: string | null }>).length,
+    requeued: (requeued.recordset as Array<{ ID: number; TenantId: string | null }>).length,
   };
 }
 
-export async function getById(id: number): Promise<MessageInboxRow | null> {
+export async function getById(id: number): Promise<TenantMessageInboxRow | null> {
   if (!Number.isFinite(id) || id <= 0) return null;
   const pool = await getPool();
-  const result = await pool
-    .request()
+  const result = await bindMessagingTenant(pool.request(), 'inbox.getById')
     .input('id', sql.BigInt, id)
     .query(`
       SELECT ${INBOX_ROW_COLUMNS}
       FROM [dbo].[TblMessageInbox]
-      WHERE [ID] = @id
+      WHERE [ID] = @id AND [TenantId] = @tenantId
     `);
   const row = result.recordset[0] as RawInboxRow | undefined;
   return row ? mapInboxRow(row) : null;

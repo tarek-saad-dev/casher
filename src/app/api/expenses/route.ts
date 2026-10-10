@@ -189,7 +189,7 @@ export async function POST(req: NextRequest) {
     const invTime = getCairoInvTimeDotStr();
     const notesText = body.notes || catName;
 
-    const actor = await buildStaffActorContext(userID);
+    const actor = await buildStaffActorContext(userID, sessionUser.TenantId);
     const treasuryPorts = await buildTreasuryWritePorts(actor);
     const idempotencyKey =
       typeof body.idempotencyKey === 'string' && body.idempotencyKey.trim()

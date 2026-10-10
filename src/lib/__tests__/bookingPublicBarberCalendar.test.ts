@@ -64,9 +64,22 @@ vi.mock('@/lib/hr/employeeBranchScheduleResolver', () => ({
 
 vi.mock('@/lib/branch/publicBranchVisibility', () => ({
   canBranchAppearInPublicBooking: (...a: unknown[]) => canBranchAppearInPublicBooking(...a),
+  canBranchesAppearInPublicBooking: async (ids: number[]) => {
+    const out = new Map<number, boolean>();
+    for (const id of ids) out.set(id, Boolean(await canBranchAppearInPublicBooking(id)));
+    return out;
+  },
+}));
+
+const TENANT = '11111111-1111-4111-8111-111111111111';
+
+vi.mock('@/platform/tenant/tenantContext', () => ({
+  isTenantContextError: () => false,
+  listTenantLegacyBranchIds: async () => new Set([1]),
 }));
 
 vi.mock('@/lib/branch/repository', () => ({
+  listActiveBranches: async () => [{ branchId: 1, branchCode: 'GLEEM', branchName: 'GLEEM', isActive: true }],
   getBranchById: async () => ({
     branchId: 1,
     branchCode: 'GLEEM',
@@ -124,13 +137,13 @@ describe('bookingPublicBarberCalendar / Location / BranchMode', () => {
     const mod = await import('@/lib/booking/publicBookingBarbers');
     mod.invalidatePublicBookingBarbersCache();
     await expect(
-      mod.listPublicBookingBarbers({ mode: 'branch', branchCode: 'CAMP_CAESAR' }),
+      mod.listPublicBookingBarbers({ tenantId: TENANT, mode: 'branch', branchCode: 'CAMP_CAESAR' }),
     ).rejects.toMatchObject({ code: 'BRANCH_NOT_PUBLIC' });
   });
 
   it('branch mode requires branchCode', async () => {
     const mod = await import('@/lib/booking/publicBookingBarbers');
-    await expect(mod.listPublicBookingBarbers({ mode: 'branch' })).rejects.toMatchObject({
+    await expect(mod.listPublicBookingBarbers({ tenantId: TENANT, mode: 'branch' })).rejects.toMatchObject({
       code: 'BRANCH_REQUIRED',
     });
   });
@@ -166,6 +179,7 @@ describe('bookingPublicBarberCalendar / Location / BranchMode', () => {
     // But loadPublicEmployeeOrThrow queries TblEmp only — our mock returns assignment-shaped rows.
     // Patch: the mock returns EmpID/EmpName which works for SELECT EmpID, EmpName...
     const cal = await mod.getPublicBarberCalendar({
+      tenantId: TENANT,
       empId: 12,
       from: '2026-08-01',
       to: '2026-08-02',
@@ -176,7 +190,7 @@ describe('bookingPublicBarberCalendar / Location / BranchMode', () => {
     expect(cal.days[1]?.status).toBe('day_off');
 
     await expect(
-      mod.getPublicBarberCalendar({ empId: 12, from: '2026-08-01', to: '2026-09-15' }),
+      mod.getPublicBarberCalendar({ tenantId: TENANT, empId: 12, from: '2026-08-01', to: '2026-09-15' }),
     ).rejects.toMatchObject({ code: 'DATE_RANGE_TOO_LARGE' });
   });
 
@@ -206,7 +220,7 @@ describe('bookingPublicBarberCalendar / Location / BranchMode', () => {
       };
     });
 
-    const loc = await mod.getPublicBarberLocation({ empId: 12, date: '2026-08-05' });
+    const loc = await mod.getPublicBarberLocation({ tenantId: TENANT, empId: 12, date: '2026-08-05' });
     expect(loc.isWorking).toBe(false);
     expect(loc.status).toBe('not_available_publicly');
     expect(loc.branch).toBeNull();
@@ -217,6 +231,7 @@ describe('bookingPublicBarberCalendar / Location / BranchMode', () => {
     const mod = await import('@/lib/booking/publicBookingBarbers');
     await expect(
       mod.listPublicBookingBarbers({
+        tenantId: TENANT,
         mode: 'global',
         serviceIds: [999999],
       }),
@@ -242,8 +257,8 @@ describe('bookingPublicBarberCalendar / Location / BranchMode', () => {
     });
     const mod = await import('@/lib/booking/publicBookingBarbers');
     mod.invalidatePublicBookingBarbersCache();
-    const a = await mod.listPublicBookingBarbers({ mode: 'branch', branchCode: 'GLEEM' });
-    const b = await mod.listPublicBookingBarbers({ mode: 'branch', branchCode: 'GLEEM' });
+    const a = await mod.listPublicBookingBarbers({ tenantId: TENANT, mode: 'branch', branchCode: 'GLEEM' });
+    const b = await mod.listPublicBookingBarbers({ tenantId: TENANT, mode: 'branch', branchCode: 'GLEEM' });
     expect(a.meta.count).toBe(b.meta.count);
     expect(a.barbers.every((x) => !String(x.name).includes('[TEST]'))).toBe(true);
     mod.invalidatePublicBookingBarbersCache();

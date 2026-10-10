@@ -1,9 +1,14 @@
+/**
+ * Access to dbo.TblBotConversation. Identity is unique per tenant via
+ * UX_TblBotConversation_TenantIdentity (TenantId, Channel, Provider, ExternalContactKey).
+ */
 import { getPool, sql } from '@/lib/db';
 import {
   isBotConversationControlMode,
   type BotConversationListItem,
   type BotConversationRow,
 } from '../domain/types';
+import { bindMessagingTenant } from '../../tenancy/tenantSql';
 
 type RawConversationRow = {
   ConversationID: number | string;
@@ -54,7 +59,7 @@ export function isConversationUniqueConstraintError(err: unknown): boolean {
   };
   const number = e?.number ?? e?.originalError?.info?.number;
   if (number === 2627 || number === 2601) return true;
-  return /UQ_TblBotConversation_Identity|UNIQUE KEY|duplicate key/i.test(
+  return /UQ_TblBotConversation_Identity|UX_TblBotConversation_TenantIdentity|UNIQUE KEY|duplicate key/i.test(
     String(e?.message ?? e?.originalError?.message ?? ''),
   );
 }
@@ -103,14 +108,15 @@ export async function getConversationByIdentity(
   transaction?: sql.Transaction,
 ): Promise<BotConversationRow | null> {
   const exec = async (req: sql.Request) => {
-    const result = await req
+    const result = await bindMessagingTenant(req, 'botConversation.getConversationByIdentity')
       .input('channel', sql.NVarChar(30), input.channel)
       .input('provider', sql.NVarChar(50), input.provider)
       .input('externalContactKey', sql.NVarChar(100), input.externalContactKey)
       .query(`
         SELECT TOP 1 ${CONVERSATION_COLUMNS}
         FROM [dbo].[TblBotConversation]
-        WHERE [Channel] = @channel
+        WHERE [TenantId] = @tenantId
+          AND [Channel] = @channel
           AND [Provider] = @provider
           AND [ExternalContactKey] = @externalContactKey
       `);
@@ -135,7 +141,7 @@ export async function createConversation(
   },
   transaction: sql.Transaction,
 ): Promise<BotConversationRow> {
-  const result = await new sql.Request(transaction)
+  const result = await bindMessagingTenant(new sql.Request(transaction), 'botConversation.createConversation')
     .input('channel', sql.NVarChar(30), input.channel)
     .input('provider', sql.NVarChar(50), input.provider)
     .input('externalContactKey', sql.NVarChar(100), input.externalContactKey)
@@ -145,6 +151,7 @@ export async function createConversation(
     .input('lastMessageAt', sql.DateTime2, input.lastMessageAt)
     .query(`
       INSERT INTO [dbo].[TblBotConversation] (
+        [TenantId],
         [Channel],
         [Provider],
         [ExternalContactKey],
@@ -158,6 +165,7 @@ export async function createConversation(
       )
       OUTPUT ${CONVERSATION_OUTPUT_COLUMNS}
       VALUES (
+        @tenantId,
         @channel,
         @provider,
         @externalContactKey,
@@ -179,7 +187,7 @@ export async function touchConversationLastMessage(
   input: { conversationId: number; lastMessageAt: Date },
   transaction: sql.Transaction,
 ): Promise<void> {
-  await new sql.Request(transaction)
+  await bindMessagingTenant(new sql.Request(transaction), 'botConversation.touchConversationLastMessage')
     .input('conversationId', sql.BigInt, input.conversationId)
     .input('lastMessageAt', sql.DateTime2, input.lastMessageAt)
     .query(`
@@ -187,7 +195,7 @@ export async function touchConversationLastMessage(
       SET
         [LastMessageAt] = @lastMessageAt,
         [UpdatedAt] = SYSUTCDATETIME()
-      WHERE [ConversationID] = @conversationId
+      WHERE [ConversationID] = @conversationId AND [TenantId] = @tenantId
     `);
 }
 
@@ -196,12 +204,12 @@ export async function listConversations(filters: {
 }): Promise<BotConversationListItem[]> {
   const fetchLimit = Math.max(1, Math.min(200, Math.floor(filters.fetchLimit)));
   const pool = await getPool();
-  const result = await pool
-    .request()
+  const result = await bindMessagingTenant(pool.request(), 'botConversation.listConversations')
     .input('fetchLimit', sql.Int, fetchLimit)
     .query(`
       SELECT TOP (@fetchLimit) ${CONVERSATION_COLUMNS}
       FROM [dbo].[TblBotConversation]
+      WHERE [TenantId] = @tenantId
       ORDER BY [LastMessageAt] DESC, [ConversationID] DESC
     `);
   return (result.recordset as RawConversationRow[]).map(mapConversationListItem);
@@ -212,13 +220,12 @@ export async function getConversationById(
 ): Promise<BotConversationRow | null> {
   if (!Number.isFinite(conversationId) || conversationId <= 0) return null;
   const pool = await getPool();
-  const result = await pool
-    .request()
+  const result = await bindMessagingTenant(pool.request(), 'botConversation.getConversationById')
     .input('conversationId', sql.BigInt, conversationId)
     .query(`
       SELECT ${CONVERSATION_COLUMNS}
       FROM [dbo].[TblBotConversation]
-      WHERE [ConversationID] = @conversationId
+      WHERE [ConversationID] = @conversationId AND [TenantId] = @tenantId
     `);
   const row = result.recordset[0] as RawConversationRow | undefined;
   return row ? mapConversationRow(row) : null;

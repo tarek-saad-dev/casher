@@ -2,6 +2,7 @@
 
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas-pro';
+import { getPrintBrandHtml } from '@/lib/tenant/tenantBrandClient';
 
 interface CategoryPdfData {
   categoryName: string;
@@ -59,6 +60,7 @@ export async function exportCategoryToPdf(data: CategoryPdfData) {
       <td style="padding: 10px 12px; font-size: 13px; text-align: right; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${t.Notes || '—'}</td>
     </tr>
   `).join('');
+  const brand = getPrintBrandHtml();
 
   container.innerHTML = `
     <div style="margin-bottom: 24px; padding-bottom: 16px; border-bottom: 3px solid #D6A84F;">
@@ -68,7 +70,7 @@ export async function exportCategoryToPdf(data: CategoryPdfData) {
           <p style="font-size: 13px; color: #888; margin: 0;">${data.count} معاملة — الإجمالي: <span style="font-weight: 700; color: #dc2626;">${formatCurrency(data.totalAmount)}</span></p>
         </div>
         <div style="text-align: left;">
-          <p style="font-size: 12px; color: #aaa; margin: 0;">Cut Salon</p>
+          <p style="font-size: 12px; color: #aaa; margin: 0;">${brand.name}</p>
           <p style="font-size: 11px; color: #ccc; margin: 0;">${new Date().toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
         </div>
       </div>
@@ -100,7 +102,7 @@ export async function exportCategoryToPdf(data: CategoryPdfData) {
     </table>
 
     <div style="margin-top: 20px; text-align: center;">
-      <p style="font-size: 11px; color: #bbb;">تم التصدير من نظام نقاط البيع — Cut Salon</p>
+      <p style="font-size: 11px; color: #bbb;">تم التصدير من نظام نقاط البيع${brand.name ? ` — ${brand.name}` : ''}</p>
     </div>
   `;
 

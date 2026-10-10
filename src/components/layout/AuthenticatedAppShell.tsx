@@ -8,6 +8,8 @@ import ShiftOperationalGateProvider from '@/components/session/ShiftOperationalG
 import { OperationalToastProvider } from '@/components/session/OperationalToast';
 import PartnerOnlyShell from '@/components/layout/PartnerOnlyShell';
 import { MobileNavProvider } from '@/components/layout/MobileNavContext';
+import TenantShellProvider from '@/components/tenant/TenantShellProvider';
+import { TenantShellGate, TenantSubscriptionBanner } from '@/components/tenant/TenantShellGate';
 import { cn } from '@/lib/utils';
 import WhatsAppAttentionProvider from '@/components/layout/WhatsAppAttentionProvider';
 import type { UserAccess } from '@/lib/hooks/useMyAccess';
@@ -33,12 +35,19 @@ export default function AuthenticatedAppShell({
   isWhatsAppInboxPage = false,
 }: AuthenticatedAppShellProps) {
   if (access.isPartnerOnly) {
-    return <PartnerOnlyShell>{children}</PartnerOnlyShell>;
+    return (
+      <TenantShellProvider>
+        <PartnerOnlyShell>
+          <TenantShellGate>{children}</TenantShellGate>
+        </PartnerOnlyShell>
+      </TenantShellProvider>
+    );
   }
 
   const lockMainToViewport = isOperationsPage || isWhatsAppInboxPage;
 
   return (
+    <TenantShellProvider>
     <OperationalToastProvider>
       <WhatsAppAttentionProvider>
       <ShiftOperationalGateProvider>
@@ -47,6 +56,7 @@ export default function AuthenticatedAppShell({
           <ActiveSessionBar />
         </div>
         <OperationalStaleBanner />
+        <TenantSubscriptionBanner />
         <ViewBranchSwitchIndicator />
         <div className="flex flex-col lg:flex-row flex-1 overflow-hidden">
           <MainNav suppressMobileChrome={isPosPage} />
@@ -60,12 +70,13 @@ export default function AuthenticatedAppShell({
                   : 'overflow-y-auto',
             )}
           >
-            {children}
+            <TenantShellGate>{children}</TenantShellGate>
           </main>
         </div>
         </MobileNavProvider>
       </ShiftOperationalGateProvider>
       </WhatsAppAttentionProvider>
     </OperationalToastProvider>
+    </TenantShellProvider>
   );
 }

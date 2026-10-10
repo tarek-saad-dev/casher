@@ -6,6 +6,7 @@ import 'server-only';
 import { getPool, sql } from '@/lib/db';
 import { getBranchById, listActiveBranches } from '@/lib/branch/repository';
 import { ensureEmpBranchWorkScheduleTable } from '@/lib/hr/empBranchWorkSchedule';
+import { isLegacyHrPrimaryBranch } from '@/lib/hr/legacyHrBranchPolicy';
 import { getOperationsDayStateVersion } from '@/lib/hr/scheduleAvailabilityInvalidation';
 import { BARBER_JOBS_SQL_LIST } from '@/lib/availabilityEngine';
 import {
@@ -114,6 +115,7 @@ export async function listOperationalPresenceForBranch(
         FROM dbo.TblEmp e
         INNER JOIN dbo.TblEmpBranchAssignment ea ON ea.EmpID = e.EmpID
         WHERE ISNULL(e.isActive, 1) = 1
+          AND e.TenantId IN (SELECT tloc.TenantId FROM dbo.Location tloc WHERE tloc.LegacyBranchId = @branchId)
           AND e.Job IN (${BARBER_JOBS_SQL_LIST})
           AND ea.BranchID = @branchId AND ea.IsActive = 1
           AND ea.EffectiveFrom <= @day
@@ -129,6 +131,7 @@ export async function listOperationalPresenceForBranch(
                e.EmpName
         FROM dbo.TblEmpTemporaryBranchTransfer t
         INNER JOIN dbo.TblEmp e ON e.EmpID = t.EmpID
+          AND e.TenantId IN (SELECT tloc.TenantId FROM dbo.Location tloc WHERE tloc.LegacyBranchId = @branchId)
         WHERE t.WorkDate = @day AND t.IsActive = 1
           AND (t.FromBranchID = @branchId OR t.ToBranchID = @branchId)
           AND ISNULL(e.isActive, 1) = 1
@@ -168,7 +171,7 @@ export async function listOperationalPresenceForBranch(
           AND (EffectiveTo IS NULL OR EffectiveTo >= @day)
       `)
       .catch(() => ({ recordset: [] as Record<string, unknown>[] })),
-    session.branchCode === 'GLEEM'
+    isLegacyHrPrimaryBranch(session.branchCode)
       ? db
           .request()
           .input('dow', sql.TinyInt, dow)
@@ -306,7 +309,7 @@ export async function listOperationalPresenceForBranch(
       continue;
     }
 
-    if (session.branchCode === 'GLEEM') {
+    if (isLegacyHrPrimaryBranch(session.branchCode)) {
       const legacy = legacyAtGleem.get(empId);
       if (legacy && nameById.has(empId)) {
         present.push({
@@ -380,10 +383,11 @@ export async function loadOperationsDayState(args: {
     branchName: session.branchName,
   });
 
-  const barbersRes = await db.request().query(`
+  const barbersRes = await db.request().input('branchId', sql.Int, args.sessionBranchId).query(`
     SELECT EmpID, EmpName
     FROM dbo.TblEmp
-    WHERE ISNULL(isActive, 1) = 1 AND Job IN (${BARBER_JOBS_SQL_LIST})
+    WHERE TenantId IN (SELECT tloc.TenantId FROM dbo.Location tloc WHERE tloc.LegacyBranchId = @branchId)
+      AND ISNULL(isActive, 1) = 1 AND Job IN (${BARBER_JOBS_SQL_LIST})
     ORDER BY EmpName
   `);
   const barbers = barbersRes.recordset as Array<{ EmpID: number; EmpName: string }>;
@@ -569,7 +573,7 @@ export async function loadOperationsDayState(args: {
   }
 
   const gleemId =
-    [...branchMeta.values()].find((b) => b.branchCode === 'GLEEM')?.branchId ?? null;
+    [...branchMeta.values()].find((b) => isLegacyHrPrimaryBranch(b.branchCode))?.branchId ?? null;
   const legacyByEmp = new Map<number, { start: string | null; end: string | null }>();
   for (const r of legacyRes.recordset) {
     legacyByEmp.set(Number(r.EmpID), {

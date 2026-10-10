@@ -1,9 +1,8 @@
-import {
-  listPublicDiscoverableBranches,
-  resolvePublicBookingBranchContext,
-} from '@/lib/booking/publicBookingBranchContext';
+import { resolvePublicBookingBranchContext } from '@/lib/booking/publicBookingBranchContext';
+import { listTenantDiscoverableBranches } from '@/modules/messaging/ai/tenantBookingDirectory';
 import { getPublicBookingServicesCatalog } from '@/lib/booking/publicBookingServices';
 import { listPublicBookingBarbers } from '@/lib/booking/publicBookingBarbers';
+import { resolveMessagingBookingTenantId } from '../tools/messagingBookingTenant';
 import { resolveCustomerDateText, scoreServiceMatch, textMatchesQuery } from '../tools/dateText';
 
 export type ResolvedService = {
@@ -30,7 +29,7 @@ export async function defaultPublicBranch(): Promise<{
   branchId: number;
   branchName: string;
 } | null> {
-  const pubs = await listPublicDiscoverableBranches();
+  const pubs = await listTenantDiscoverableBranches();
   const first = pubs[0];
   if (!first) return null;
   return {
@@ -46,7 +45,7 @@ export async function resolveBranchByText(branchText: string | null | undefined)
   branchName: string | null;
   ambiguous: Array<{ branchCode: string; branchName: string }>;
 }> {
-  const pubs = await listPublicDiscoverableBranches();
+  const pubs = await listTenantDiscoverableBranches();
   if (!branchText?.trim()) {
     const d = pubs[0];
     return d
@@ -132,6 +131,7 @@ export async function resolveEmployeeByText(args: {
   date?: string | null;
 }): Promise<ResolveEmployeeResult> {
   const list = await listPublicBookingBarbers({
+    tenantId: await resolveMessagingBookingTenantId(),
     mode: 'branch',
     branchCode: args.branchCode,
     date: args.date ?? null,

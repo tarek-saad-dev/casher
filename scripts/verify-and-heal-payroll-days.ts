@@ -239,12 +239,18 @@ async function main() {
   console.log('#'.repeat(72));
 
   const { runNightlyClose } = await import('@/lib/hr/nightly-close.service');
+  const { resolveLegacyBootstrapTenantId } = await import('@/platform/tenant/legacyBootstrapSeam');
+  const { listTenantLegacyBranchIds } = await import('@/platform/tenant/tenantContext');
+  const bootTenantId = await resolveLegacyBootstrapTenantId('casher-boot-operator-script');
+  const branchIds = [...(await listTenantLegacyBranchIds(bootTenantId))];
   for (const date of dates) {
     console.log(`\n>>> nightly-close ${date}`);
     const result = await runNightlyClose({
+      tenantId: bootTenantId,
       workDate: date,
       dryRun: false,
       skipWhatsApp: true,
+      branchIds,
     });
     console.log(
       `attendance filled=${result.steps.attendanceClose?.filled?.length ?? 0} payroll=${result.steps.payroll?.status} targets gen=${result.steps.targets?.generated ?? 0}`,
@@ -261,6 +267,7 @@ async function main() {
     '@/lib/services/employeeLedgerSyncService'
   );
   const sync = await runEmployeeLedgerHistoricalSync({
+    tenantId: bootTenantId,
     month,
     empId: null,
     dryRun: false,

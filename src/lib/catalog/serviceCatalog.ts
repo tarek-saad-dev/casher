@@ -1,4 +1,5 @@
-import { getPool } from '@/lib/db';
+import { getPool, sql } from '@/lib/db';
+import { requireMasterDataTenantId } from '@/platform/masterData/tenantScope';
 import { ensureTblProImageUrlColumn, tblProImageUrlSelect } from '@/lib/migrations/ensureServiceImageUrl';
 import {
   ensureTblCatSortOrderColumn,
@@ -166,8 +167,10 @@ export function buildCatalogMeta(
 }
 
 export async function fetchServiceCatalog(
+  tenantId: string,
   query: ServiceCatalogQuery = {},
 ): Promise<ServiceCatalogResponse> {
+  const tid = requireMasterDataTenantId(tenantId, 'fetchServiceCatalog');
   const opts = normalizeCatalogQuery(query);
   const db = await getPool();
   const hasImageUrl = await ensureTblProImageUrlColumn(db);
@@ -179,7 +182,7 @@ export async function fetchServiceCatalog(
     ? 'ISNULL(c.SortOrder, 999999)'
     : '999999';
 
-  const result = await db.request().query(`
+  const result = await db.request().input('tenantId', sql.UniqueIdentifier, tid).query(`
     SELECT
       p.ProID,
       p.ProName,
@@ -195,12 +198,13 @@ export async function fetchServiceCatalog(
       c.CatType,
       ${sortOrderCol}
     FROM [dbo].[TblPro] p
-    LEFT JOIN [dbo].[TblCat] c ON p.CatID = c.CatID
+    LEFT JOIN [dbo].[TblCat] c ON p.CatID = c.CatID AND c.TenantId = p.TenantId
     LEFT JOIN (
       SELECT ProID, COUNT(*) AS SalesCount
       FROM [dbo].[TblinvServDetail]
       GROUP BY ProID
     ) pop ON p.ProID = pop.ProID
+    WHERE p.TenantId = @tenantId
     ORDER BY ${orderBySort}, c.CatName, ISNULL(pop.SalesCount, 0) DESC, p.ProName
   `);
 

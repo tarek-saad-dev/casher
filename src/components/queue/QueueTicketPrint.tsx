@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { normalizeCustomersAhead } from '@/lib/queueCustomersAhead';
+import { usePrintBrand } from '@/lib/tenant/tenantBrandClient';
 
 export interface QueueTicketPrintData {
   ticketCode: string;
@@ -153,6 +154,7 @@ const PRINT_CSS = `
 `;
 
 export function QueueTicketPrint({ data, preview = false }: Props) {
+  const brand = usePrintBrand();
   const {
     ticketCode,
     clientName,
@@ -202,21 +204,23 @@ export function QueueTicketPrint({ data, preview = false }: Props) {
     <div className="queue-receipt">
 
       {/* ── Logo ── */}
-      <div className="r-logo-wrap">
-        <img
-          src="/cutsalon.png"
-          alt="Cut Salon"
-          style={{ maxHeight: '16mm', maxWidth: '32mm', objectFit: 'contain' }}
-          onError={e => {
-            const el = e.target as HTMLImageElement;
-            el.style.display = 'none';
-          }}
-        />
-      </div>
+      {brand.logoUrl && (
+        <div className="r-logo-wrap">
+          <img
+            src={brand.logoUrl}
+            alt={brand.name}
+            style={{ maxHeight: '16mm', maxWidth: '32mm', objectFit: 'contain' }}
+            onError={e => {
+              const el = e.target as HTMLImageElement;
+              el.style.display = 'none';
+            }}
+          />
+        </div>
+      )}
 
-      {/* ── Salon name ── */}
-      <div className="r-salon-name">Cut Salon</div>
-      <div className="r-salon-sub">صالون كَت للحلاقة</div>
+      {/* ── Brand name ── */}
+      <div className="r-salon-name">{brand.name}</div>
+      {brand.address && <div className="r-salon-sub">{brand.address}</div>}
 
       <hr className="r-dashes" />
 
@@ -308,7 +312,7 @@ export function QueueTicketPrint({ data, preview = false }: Props) {
         <div>برجاء الاحتفاظ برقم الدور</div>
         <div>سيتم النداء عليك عند اقتراب موعدك</div>
       </div>
-      <div className="r-brand">شكراً لاختياركم Cut Salon ✂</div>
+      {brand.footer && <div className="r-brand">{brand.footer} ✂</div>}
 
     </div>
   );

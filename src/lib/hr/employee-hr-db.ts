@@ -98,11 +98,13 @@ export async function upsertEmployeeSchedule(
 
 /** Builds INSERT column list + inputs for HR-mode employee create. */
 export function buildHrInsertQuery(
+  tenantId: string,
   empName: string,
   isActive: boolean,
   cols: HrDbColumnValues,
 ): { sql: string; bind: (req: sql.Request) => void } {
   const bind = (req: sql.Request) => {
+    req.input('tenantId', sql.UniqueIdentifier, tenantId);
     req.input('empName', sql.NVarChar(200), empName);
     req.input('isActive', sql.Bit, isActive ? 1 : 0);
     req.input('employmentType', sql.NVarChar(20), cols.EmploymentType);
@@ -122,13 +124,13 @@ export function buildHrInsertQuery(
 
   const sqlText = `
     INSERT INTO dbo.TblEmp (
-      EmpName, isActive,
+      TenantId, EmpName, isActive,
       EmploymentType, PayrollMethod, DayOffPolicy, IsPayrollEnabled, IsAttendanceExempt,
       DefaultCheckInTime, DefaultCheckOutTime, HireDate,
       ManualHourlyRate, DailyRate, BaseSalary, Salary, SalaryType
     )
     VALUES (
-      @empName, @isActive,
+      @tenantId, @empName, @isActive,
       @employmentType, @payrollMethod, @dayOffPolicy, @isPayrollEnabled, @isAttendanceExempt,
       CASE WHEN @checkIn  IS NULL THEN NULL ELSE CONVERT(time, @checkIn)  END,
       CASE WHEN @checkOut IS NULL THEN NULL ELSE CONVERT(time, @checkOut) END,
@@ -138,7 +140,7 @@ export function buildHrInsertQuery(
 
     SELECT EmpID, EmpName, isActive
     FROM dbo.TblEmp
-    WHERE EmpID = SCOPE_IDENTITY();
+    WHERE EmpID = SCOPE_IDENTITY() AND TenantId = @tenantId;
   `;
 
   return { sql: sqlText, bind };
@@ -196,6 +198,7 @@ export const EMPLOYEE_LIST_SELECT = `
       AND cat.ExpINType = N'ايرادات'
     ORDER BY m.ModifiedDate DESC, m.ID DESC
   ) rev
+  WHERE e.TenantId = @tenantId
 `;
 
 export const EMPLOYEE_SELECT_BY_ID = `
@@ -225,5 +228,5 @@ export const EMPLOYEE_SELECT_BY_ID = `
     END AS DisplaySortOrder,
     Mobile
   FROM dbo.TblEmp
-  WHERE EmpID = @empID
+  WHERE EmpID = @empID AND TenantId = @tenantId
 `;

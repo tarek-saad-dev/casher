@@ -4,11 +4,6 @@ import {
   readInternalOpsBookingSource,
   resolveInternalOpsBookingRequest,
 } from '@/lib/booking/internalOpsBookingRequest';
-import { publicBookingErrorResponse } from '@/lib/booking/publicBookingErrorCatalog';
-import {
-  publicBookingOptionsResponse,
-  PUBLIC_BOOKING_ROUTE_CORS,
-} from '@/lib/booking/publicBookingCors';
 import {
   PublicBookingSelectionError,
   evaluatePublicBookingSelection,
@@ -17,17 +12,14 @@ import {
   gatePublicBookingRoute,
   finalizePublicBookingError,
   finalizePublicBookingJson,
+  publicBookingTenantOptionsResponse,
+  requirePublicBookingRouteTenancy,
 } from '@/lib/booking/publicBookingRouteGate';
 
 export const runtime = 'nodejs';
 
 export async function OPTIONS(req: NextRequest) {
-  const cors = PUBLIC_BOOKING_ROUTE_CORS['plan'];
-  return publicBookingOptionsResponse({
-    request: req,
-    allowedMethods: [...cors.methods],
-    allowedHeaders: cors.headers,
-  });
+  return publicBookingTenantOptionsResponse(req, 'plan');
 }
 
 /**
@@ -63,6 +55,8 @@ export async function POST(req: NextRequest) {
       branchCode = internal.branchCode;
       internalAuth = internal.auth;
     }
+    const tenancy = await requirePublicBookingRouteTenancy(req, gate, { branchCode });
+    if (tenancy instanceof NextResponse) return tenancy;
 
     const evaluation = await evaluatePublicBookingSelection({
       branchCode,
@@ -77,6 +71,7 @@ export async function POST(req: NextRequest) {
       purpose: internalAuth ? 'internal_preview' : 'plan',
       auth: internalAuth,
       previewQueryParam: searchParams.get('preview') ?? (body.preview as string | undefined) ?? null,
+      expectedTenantId: tenancy.tenantId,
     });
 
     if (!evaluation.available) {

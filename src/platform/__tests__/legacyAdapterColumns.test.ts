@@ -20,8 +20,8 @@ describe('bootstrap seed and salon manifest load path', () => {
 describe('legacy adapter columns match live tables', () => {
   it('customers read and write TblClient.Name and Mobile', () => {
     const src = source('src/shared/customers/internal/legacyAdapter.ts');
-    expect(src).toContain('INSERT INTO dbo.TblClient ([Name], Mobile, RegisterDate)');
-    expect(src).toContain('WHERE Mobile = @phone');
+    expect(src).toContain('INSERT INTO dbo.TblClient (TenantId, [Name], Mobile, RegisterDate)');
+    expect(src).toContain('WHERE TenantId = @tenantId AND Mobile = @phone');
     expect(src).toContain('SELECT ClientID, [Name], Mobile');
     expect(src).not.toContain('ClientName');
     expect(src).not.toContain('isDeleted');
@@ -31,7 +31,7 @@ describe('legacy adapter columns match live tables', () => {
     const src = source('src/shared/catalog/internal/legacyAdapter.ts');
     expect(src).toContain('SPrice1');
     expect(src).toContain('DurationMinutes');
-    expect(src).toContain('LEFT JOIN dbo.TblCat c ON c.CatID = p.CatID');
+    expect(src).toContain('LEFT JOIN dbo.TblCat c ON c.CatID = p.CatID AND c.TenantId = p.TenantId');
     expect(src).not.toContain('ProPrice');
     expect(src).not.toContain('CatPrice');
     expect(src).not.toContain('FROM dbo.TblCat');

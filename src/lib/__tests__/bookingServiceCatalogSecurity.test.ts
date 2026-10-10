@@ -71,8 +71,8 @@ describe('bookingServiceCatalogSecurity', () => {
 
   it('OPTIONS and CORS headers exist; no cost/stock/supplier fields in catalog', () => {
     expect(routeSrc).toContain('OPTIONS');
-    expect(routeSrc).toContain('publicBookingOptionsResponse');
-    expect(routeSrc).toContain('PUBLIC_BOOKING_ROUTE_CORS');
+    expect(routeSrc).toMatch(/publicBooking(Tenant)?OptionsResponse/);
+    expect(routeSrc).toMatch(/PUBLIC_BOOKING_ROUTE_CORS|publicBookingTenantOptionsResponse\(req, '/);
 
     const catalog = buildPublicServicesCatalog(
       [

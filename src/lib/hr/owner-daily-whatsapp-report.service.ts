@@ -14,6 +14,7 @@ import { listActiveBranches } from '@/lib/branch';
 import { composeOwnerDailyWhatsAppMessage } from '@/lib/hr/owner-daily-whatsapp-message';
 import { dailyWaReasonAr } from '@/lib/hr/employee-daily-whatsapp-reasons';
 import { JobType } from '@/lib/types';
+import { listTenantHrBranches } from '@/lib/hr/hrTenantScope';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const OWNER_PREFERRED_NAME = 'طارق';
@@ -39,10 +40,11 @@ export type OwnerBranchWhatsAppSendResult = OwnerBranchWhatsAppMessage & {
  *
  * SETUP / inactive branches are excluded so each live salon gets its own message.
  */
-async function resolveOwnerReportBranchIds(): Promise<
+async function resolveOwnerReportBranchIds(tenantId: string): Promise<
   Array<{ branchId: number; branchCode: string; branchName: string }>
 > {
-  const active = await listActiveBranches();
+  const tenantBranchIds = new Set((await listTenantHrBranches(tenantId)).map((b) => b.branchId));
+  const active = (await listActiveBranches()).filter((b) => tenantBranchIds.has(b.branchId));
   const operational = active.filter(
     (b) => b.isActive && b.lifecycleStatus !== 'SETUP',
   );
@@ -57,7 +59,7 @@ async function resolveOwnerReportBranchIds(): Promise<
   }));
 }
 
-async function resolveOwnerPhone(): Promise<{
+async function resolveOwnerPhone(tenantId: string): Promise<{
   phone: string | null;
   name: string;
   empId: number | null;
@@ -69,6 +71,7 @@ async function resolveOwnerPhone(): Promise<{
     // Prefer registered manager employee (Job=مدير), match طارق first when multiple
     const managerResult = await db
       .request()
+      .input('tenantId', sql.UniqueIdentifier, tenantId)
       .input('job', sql.NVarChar(50), JobType.MANAGER)
       .input('preferredName', sql.NVarChar(100), OWNER_PREFERRED_NAME)
       .query(`
@@ -79,7 +82,8 @@ async function resolveOwnerPhone(): Promise<{
         Mobile,
         Job
       FROM dbo.TblEmp
-      WHERE ISNULL(isActive, 1) = 1
+      WHERE TenantId = @tenantId
+        AND ISNULL(isActive, 1) = 1
         AND LTRIM(RTRIM(ISNULL(Job, N''))) = @job
       ORDER BY
         CASE
@@ -113,10 +117,12 @@ async function resolveOwnerPhone(): Promise<{
     const namedResult = await db
       .request()
       .input('name', sql.NVarChar(100), OWNER_PREFERRED_NAME)
+      .input('tenantId', sql.UniqueIdentifier, tenantId)
       .query(`
         SELECT TOP 1 EmpID, EmpName, WhatsApp, Mobile
         FROM dbo.TblEmp
-        WHERE ISNULL(isActive, 1) = 1
+        WHERE TenantId = @tenantId
+          AND ISNULL(isActive, 1) = 1
           AND (
             EmpName = @name
             OR EmpName LIKE @name + N'%'
@@ -178,7 +184,7 @@ export interface OwnerReportRecipient {
  * الأساس: كل موظف نشط دوره "مدير" (Job=مدير). المستلم الأساسي يفضّل طارق.
  * fallback: لو مفيش مدير مسجّل، نرجّع الموظف المسمى طارق.
  */
-export async function resolveOwnerReportRecipients(): Promise<{
+export async function resolveOwnerReportRecipients(tenantId: string): Promise<{
   recipients: OwnerReportRecipient[];
   primaryEmpId: number | null;
   roleLabel: string;
@@ -189,12 +195,14 @@ export async function resolveOwnerReportRecipients(): Promise<{
 
     const managersResult = await db
       .request()
+      .input('tenantId', sql.UniqueIdentifier, tenantId)
       .input('job', sql.NVarChar(50), JobType.MANAGER)
       .input('preferredName', sql.NVarChar(100), OWNER_PREFERRED_NAME)
       .query(`
         SELECT EmpID, EmpName, WhatsApp, Mobile, Job
         FROM dbo.TblEmp
-        WHERE ISNULL(isActive, 1) = 1
+        WHERE TenantId = @tenantId
+          AND ISNULL(isActive, 1) = 1
           AND LTRIM(RTRIM(ISNULL(Job, N''))) = @job
         ORDER BY
           CASE
@@ -215,7 +223,7 @@ export async function resolveOwnerReportRecipients(): Promise<{
     }>;
 
     if (managerRows.length > 0) {
-      const owner = await resolveOwnerPhone();
+      const owner = await resolveOwnerPhone(tenantId);
       const primaryEmpId = owner.empId ?? Number(managerRows[0].EmpID);
       const recipients: OwnerReportRecipient[] = managerRows.map((r) => {
         const phone = resolveEmployeeWhatsAppPhone(r.WhatsApp, r.Mobile);
@@ -232,7 +240,7 @@ export async function resolveOwnerReportRecipients(): Promise<{
     }
 
     // Fallback: employee named طارق even if role not set to مدير
-    const owner = await resolveOwnerPhone();
+    const owner = await resolveOwnerPhone(tenantId);
     if (owner.empId != null) {
       return {
         recipients: [
@@ -259,8 +267,9 @@ export async function resolveOwnerReportRecipients(): Promise<{
 
 async function buildOwnerBranchMessages(
   workDate: string,
+  tenantId: string,
 ): Promise<OwnerBranchWhatsAppMessage[]> {
-  const branches = await resolveOwnerReportBranchIds();
+  const branches = await resolveOwnerReportBranchIds(tenantId);
   const messages: OwnerBranchWhatsAppMessage[] = [];
   for (const b of branches) {
     const report = await getFullDayReport(workDate, b.branchId);
@@ -277,7 +286,10 @@ async function buildOwnerBranchMessages(
   return messages;
 }
 
-export async function previewOwnerDailyWhatsApp(workDate: string): Promise<{
+export async function previewOwnerDailyWhatsApp(
+  workDate: string,
+  tenantId: string,
+): Promise<{
   workDate: string;
   ownerName: string;
   empId: number | null;
@@ -295,11 +307,11 @@ export async function previewOwnerDailyWhatsApp(workDate: string): Promise<{
   }
 
   const cfg = getConfig();
-  const messages = await buildOwnerBranchMessages(workDate);
+  const messages = await buildOwnerBranchMessages(workDate, tenantId);
   const message = messages
     .map((m) => `—— ${m.branchName} (${m.branchCode}) ——\n${m.message}`)
     .join('\n\n');
-  const owner = await resolveOwnerPhone();
+  const owner = await resolveOwnerPhone(tenantId);
 
   let skipReason: string | null = null;
   if (!owner.phone) skipReason = 'no_phone';
@@ -320,6 +332,7 @@ export async function previewOwnerDailyWhatsApp(workDate: string): Promise<{
 }
 
 export async function sendOwnerDailyWhatsApp(params: {
+  tenantId: string;
   workDate: string;
   dryRun?: boolean;
 }): Promise<{
@@ -336,7 +349,7 @@ export async function sendOwnerDailyWhatsApp(params: {
   sentCount: number;
   failedCount: number;
 }> {
-  const preview = await previewOwnerDailyWhatsApp(params.workDate);
+  const preview = await previewOwnerDailyWhatsApp(params.workDate, params.tenantId);
   const dryRun = Boolean(params.dryRun);
 
   if (dryRun) {

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   isWhatsAppInboxWebhookAuthResult,
   requireWhatsAppInboxWebhookAuth,
+  runWithWebhookMessagingTenant,
 } from '@/modules/messaging/inbox/auth';
 import { observeManualOutbound } from '@/modules/messaging/handoff/application/observeManualOutbound';
 
@@ -21,12 +22,15 @@ type Body = {
  * POST /api/internal/messaging/outbound-observed/whatsapp
  *
  * Baileys fromMe observation from the WhatsApp gateway.
- * Auth: Authorization: Bearer $WHATSAPP_INBOX_WEBHOOK_TOKEN
+ * Auth: Authorization: Bearer <channel webhook token> (same tenant channel identity as inbound).
  */
 export async function POST(req: NextRequest) {
-  const auth = requireWhatsAppInboxWebhookAuth(req);
+  const auth = await requireWhatsAppInboxWebhookAuth(req);
   if (!isWhatsAppInboxWebhookAuthResult(auth)) return auth;
+  return runWithWebhookMessagingTenant(auth, 'outbound-observed/whatsapp', () => observe(req));
+}
 
+async function observe(req: NextRequest) {
   try {
     const body = (await req.json()) as Body;
     const providerMessageId = String(body.providerMessageId ?? '').trim();

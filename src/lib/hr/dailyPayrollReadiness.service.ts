@@ -26,7 +26,7 @@ import {
 import { loadEmpBranchDayAttendanceAggregates } from '@/lib/payroll/attendancePayrollAggregate';
 import { isPayableAttendanceStatus } from '@/lib/payroll/dailyPayrollHrRules';
 import { EMP_LEDGER_REASON_HOURLY_WAGE, EMP_LEDGER_REF_TYPE_DAILY_PAYROLL } from '@/lib/services/employeeLedgerDualWrite';
-import { CAMP_CAESAR_BRANCH_CODE, GLEEM_BRANCH_CODE } from '@/lib/branch/smokeBranchPolicy';
+import { bindEmpTenantPredicate, listTenantHrBranches } from '@/lib/hr/hrTenantScope';
 import { roundMoney } from '@/lib/reportMonthUtils';
 
 const DEFAULT_LOOKBACK_DAYS = 45;
@@ -98,6 +98,7 @@ async function loadAttendanceDispositionGaps(
        AND ws.IsWorkingDay = 1
       WHERE e.isActive = 1
         AND e.IsPayrollEnabled = 1
+        AND e.TenantId IN (SELECT l.TenantId FROM dbo.Location l WHERE l.LegacyBranchId = @branchId)
         AND NOT EXISTS (
           SELECT 1
           FROM dbo.TblEmpAttendance a
@@ -136,7 +137,10 @@ export async function evaluateDailyPayrollReadiness(args: {
   const [branch, closeView, validation, aggregates, dispositionGaps] = await Promise.all([
     loadBranchMeta(args.branchId),
     getEmpBranchWorkDayCloseState(args.branchId, args.workDate),
-    validateDailyPayrollAttendance(db, args.workDate, { branchId: args.branchId }),
+    validateDailyPayrollAttendance(db, args.workDate, {
+      empScope: { branchId: args.branchId },
+      branchId: args.branchId,
+    }),
     loadEmpBranchDayAttendanceAggregates(db, args.workDate, args.branchId),
     loadAttendanceDispositionGaps(args.branchId, args.workDate),
   ]);
@@ -160,6 +164,7 @@ export async function evaluateDailyPayrollReadiness(args: {
           CASE WHEN l.ID IS NULL THEN 0 ELSE 1 END AS HasLedgerCredit
         FROM dbo.TblEmpDailyPayroll p
         INNER JOIN dbo.TblEmp e ON e.EmpID = p.EmpID
+          AND e.TenantId IN (SELECT tl.TenantId FROM dbo.Location tl WHERE tl.LegacyBranchId = @branchId)
         LEFT JOIN dbo.TblEmpLedgerEntry l
           ON l.RefType = @refType
          AND l.RefID = p.ID
@@ -180,6 +185,7 @@ export async function evaluateDailyPayrollReadiness(args: {
           t.Status AS TargetStatus
         FROM dbo.TblEmpDailyTarget t
         INNER JOIN dbo.TblEmp e ON e.EmpID = t.EmpID
+          AND e.TenantId IN (SELECT l.TenantId FROM dbo.Location l WHERE l.LegacyBranchId = @branchId)
         WHERE t.BranchID = @branchId
           AND t.WorkDate = @workDate
           AND t.Status <> N'voided'
@@ -284,12 +290,13 @@ export async function evaluateDailyPayrollReadiness(args: {
   const missingNames = [...empIds].filter((id) => !nameByEmp.has(id));
   if (missingNames.length > 0) {
     const req = db.request();
+    const empTenantSql = bindEmpTenantPredicate(req, '', { branchId: args.branchId });
     const ph = missingNames.map((id, i) => {
       req.input(`n${i}`, sql.Int, id);
       return `@n${i}`;
     });
     const nameResult = await req.query(`
-      SELECT EmpID, EmpName FROM dbo.TblEmp WHERE EmpID IN (${ph.join(',')})
+      SELECT EmpID, EmpName FROM dbo.TblEmp WHERE EmpID IN (${ph.join(',')}) AND ${empTenantSql}
     `);
     for (const r of nameResult.recordset as Array<Record<string, unknown>>) {
       nameByEmp.set(Number(r.EmpID), String(r.EmpName ?? ''));
@@ -408,47 +415,37 @@ export async function evaluateDailyPayrollReadiness(args: {
 }
 
 /**
- * Discover unresolved BranchID+WorkDate for GLEEM + CAMP_CAESAR.
+ * Discover unresolved BranchID+WorkDate across the tenant's active HR branches.
  * CLOSED persisted states are excluded. Never mutates close table.
  *
  * Date window:
  * - Prefer fromWorkDate/toWorkDate when provided
  * - Else lookbackDays from today (default 45, max 90)
  */
-export async function listDailyPayrollOpenDays(args?: {
+export async function listDailyPayrollOpenDays(args: {
+  tenantId: string;
   lookbackDays?: number;
   fromWorkDate?: string;
   toWorkDate?: string;
   branchIds?: number[];
 }): Promise<DailyPayrollOpenDaysResult> {
   const started = Date.now();
-  const fromErr = args?.fromWorkDate ? validateWorkDateYmd(args.fromWorkDate) : null;
+  const fromErr = args.fromWorkDate ? validateWorkDateYmd(args.fromWorkDate) : null;
   if (fromErr) {
     throw new EmpBranchWorkDayCloseError('INVALID_WORK_DATE', fromErr);
   }
-  const toErr = args?.toWorkDate ? validateWorkDateYmd(args.toWorkDate) : null;
+  const toErr = args.toWorkDate ? validateWorkDateYmd(args.toWorkDate) : null;
   if (toErr) {
     throw new EmpBranchWorkDayCloseError('INVALID_WORK_DATE', toErr);
   }
 
-  const lookbackDays = Math.min(Math.max(args?.lookbackDays ?? DEFAULT_LOOKBACK_DAYS, 1), 90);
-  const fromWorkDate = args?.fromWorkDate ?? null;
-  const toWorkDate = args?.toWorkDate ?? null;
+  const lookbackDays = Math.min(Math.max(args.lookbackDays ?? DEFAULT_LOOKBACK_DAYS, 1), 90);
+  const fromWorkDate = args.fromWorkDate ?? null;
+  const toWorkDate = args.toWorkDate ?? null;
   const db = await getPool();
 
-  const branchesResult = await db.request().query(`
-    SELECT BranchID, BranchCode, BranchName
-    FROM dbo.TblBranch
-    WHERE BranchCode IN (N'${GLEEM_BRANCH_CODE}', N'${CAMP_CAESAR_BRANCH_CODE}')
-      AND IsActive = 1
-    ORDER BY CASE BranchCode WHEN N'${GLEEM_BRANCH_CODE}' THEN 0 ELSE 1 END
-  `);
-  let branches = (branchesResult.recordset as Array<Record<string, unknown>>).map((r) => ({
-    branchId: Number(r.BranchID),
-    branchCode: String(r.BranchCode ?? ''),
-    branchName: String(r.BranchName ?? ''),
-  }));
-  if (args?.branchIds?.length) {
+  let branches = await listTenantHrBranches(args.tenantId, db);
+  if (args.branchIds?.length) {
     const allow = new Set(args.branchIds);
     branches = branches.filter((b) => allow.has(b.branchId));
   }
@@ -591,6 +588,7 @@ export async function listDailyPayrollOpenDays(args?: {
  * Read-only — never mutates close table.
  */
 export async function evaluateDailyPayrollReadinessByDate(args: {
+  tenantId: string;
   workDate: string;
   branchIds?: number[];
 }): Promise<DailyPayrollReadinessByDateResult> {
@@ -601,18 +599,7 @@ export async function evaluateDailyPayrollReadinessByDate(args: {
   }
 
   const db = await getPool();
-  const branchesResult = await db.request().query(`
-    SELECT BranchID, BranchCode, BranchName
-    FROM dbo.TblBranch
-    WHERE BranchCode IN (N'${GLEEM_BRANCH_CODE}', N'${CAMP_CAESAR_BRANCH_CODE}')
-      AND IsActive = 1
-    ORDER BY CASE BranchCode WHEN N'${GLEEM_BRANCH_CODE}' THEN 0 ELSE 1 END
-  `);
-  let branches = (branchesResult.recordset as Array<Record<string, unknown>>).map((r) => ({
-    branchId: Number(r.BranchID),
-    branchCode: String(r.BranchCode ?? ''),
-    branchName: String(r.BranchName ?? ''),
-  }));
+  let branches = await listTenantHrBranches(args.tenantId, db);
   if (args.branchIds?.length) {
     const allow = new Set(args.branchIds);
     branches = branches.filter((b) => allow.has(b.branchId));

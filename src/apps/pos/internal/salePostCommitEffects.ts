@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { getPool, sql } from '@/lib/db';
+import { isAppInstalledForBranchTenant } from '@/platform/public';
 import {
   CUSTOMER_FIRST_TIME_TEMPLATE_KEY,
   SALE_EMPLOYEE_NOTIFICATION_TEMPLATE_KEY,
@@ -55,7 +56,8 @@ export function runSalePostCommitEffects(input: SalePostCommitEffectsInput): voi
   }
 
   void (async () => {
-    if (clientId) {
+    // Loyalty tables are global CASHER_BOOT data (DRVO-013 V1): earn only for tenants with Loyalty.
+    if (clientId && (await isAppInstalledForBranchTenant(branchId, 'loyalty'))) {
       try {
         const loyaltyDb = await getPool();
         await loyaltyDb.request()

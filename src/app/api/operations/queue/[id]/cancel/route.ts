@@ -57,6 +57,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
 
     if (
       !(await userCanManageOpsBranchRecord({
+        tenantId: branch.tenantId,
         userId: branch.userId,
         sessionBranchId: branch.branchId,
         recordBranchId: checkRes.recordset[0].BranchID,
@@ -75,7 +76,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
 
     let result;
     if (isQueueSchedulingPortEnabled()) {
-      const actor = await buildStaffActorContext(branch.userId);
+      const actor = await buildStaffActorContext(branch.userId, branch.tenantId);
       const queuePortHooks = await buildQueuePortHooksForActor(actor);
       result = await cancelQueueTicket({
         ...cancelInput,

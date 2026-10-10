@@ -1,16 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
-import { getSession } from "@/lib/session";
+import { requireTenantSession } from '@/lib/api-auth';
+import { requireMasterDataTenantId } from '@/platform/masterData/tenantScope';
 
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
-    }
+    const session = await requireTenantSession();
+    if (session instanceof NextResponse) return session;
 
     const { id } = await params;
     const empId = parseInt(id);
@@ -23,10 +22,11 @@ export async function PATCH(
     const result = await db
       .request()
       .input("empId", sql.Int, empId)
+      .input("tenantId", sql.UniqueIdentifier, requireMasterDataTenantId(session.TenantId, 'PATCH /api/admin/employees/[id]/deactivate'))
       .query(`
         UPDATE dbo.TblEmp
         SET isActive = 0
-        WHERE EmpID = @empId
+        WHERE EmpID = @empId AND TenantId = @tenantId
       `);
 
     if (result.rowsAffected[0] === 0) {

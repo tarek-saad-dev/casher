@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
-import { getSession } from "@/lib/session";
+import { requireTenantSession } from '@/lib/api-auth';
+import { requireMasterDataTenantId } from '@/platform/masterData/tenantScope';
 
 async function ensureScheduleTable(db: any) {
   await db.request().query(`
@@ -61,10 +62,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
-    }
+    const session = await requireTenantSession();
+    if (session instanceof NextResponse) return session;
 
     const { id } = await params;
     const empId = parseInt(id);
@@ -75,8 +74,10 @@ export async function GET(
     const db = await getPool();
 
     // Get employee basic info - handle missing columns gracefully
+    const tenantId = requireMasterDataTenantId(session.TenantId, 'GET /api/admin/employees/[id]/profile');
     const empResult = await db.request()
       .input("empId", sql.Int, empId)
+      .input("tenantId", sql.UniqueIdentifier, tenantId)
       .query(`
         SELECT 
           EmpID, EmpName, Job, Mobile, CardNO, Notes,
@@ -118,7 +119,7 @@ export async function GET(
           IsPayrollEnabled,
           isActive
         FROM dbo.TblEmp 
-        WHERE EmpID = @empId
+        WHERE EmpID = @empId AND TenantId = @tenantId
       `);
 
     if (empResult.recordset.length === 0) {
@@ -204,10 +205,8 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
-    }
+    const session = await requireTenantSession();
+    if (session instanceof NextResponse) return session;
 
     const { id } = await params;
     const empId = parseInt(id);
@@ -241,6 +240,7 @@ export async function PATCH(
       return NextResponse.json({ error: "اسم الموظف مطلوب" }, { status: 400 });
     }
 
+    const tenantId = requireMasterDataTenantId(session.TenantId, 'PATCH /api/admin/employees/[id]/profile');
     const db = await getPool();
     const transaction = new sql.Transaction(db);
     await transaction.begin();
@@ -249,7 +249,8 @@ export async function PATCH(
       // Check if employee exists
       const empCheck = await new sql.Request(transaction)
         .input("empId", sql.Int, empId)
-        .query("SELECT EmpID FROM dbo.TblEmp WHERE EmpID = @empId");
+        .input("tenantId", sql.UniqueIdentifier, tenantId)
+        .query("SELECT EmpID FROM dbo.TblEmp WHERE EmpID = @empId AND TenantId = @tenantId");
 
       if (empCheck.recordset.length === 0) {
         await transaction.rollback();
@@ -355,10 +356,11 @@ export async function PATCH(
         const updateQuery = `
           UPDATE dbo.TblEmp 
           SET ${updateFields.join(", ")}
-          WHERE EmpID = @empId
+          WHERE EmpID = @empId AND TenantId = @tenantId
         `;
         
         request.input("empId", sql.Int, empId);
+        request.input("tenantId", sql.UniqueIdentifier, tenantId);
         await request.query(updateQuery);
       }
 
@@ -367,6 +369,7 @@ export async function PATCH(
       // Get updated employee data - handle missing columns gracefully
       const updatedResult = await db.request()
         .input("empId", sql.Int, empId)
+        .input("tenantId", sql.UniqueIdentifier, tenantId)
         .query(`
           SELECT 
             EmpID, EmpName, Job, Mobile, CardNO, Notes,
@@ -408,7 +411,7 @@ export async function PATCH(
             IsPayrollEnabled,
             isActive
           FROM dbo.TblEmp 
-          WHERE EmpID = @empId
+          WHERE EmpID = @empId AND TenantId = @tenantId
         `);
 
       return NextResponse.json({

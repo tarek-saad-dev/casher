@@ -2,8 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import { Scissors, Sparkles } from 'lucide-react';
+import { usePrintBrand } from '@/lib/tenant/tenantBrandClient';
 
 export default function BarberLoading() {
+  const brand = usePrintBrand();
   const [dots, setDots] = useState('');
 
   useEffect(() => {
@@ -42,14 +44,13 @@ export default function BarberLoading() {
 
         {/* Loading text */}
         <div className="text-center space-y-3">
-          <h1 className="text-3xl font-bold text-amber-100 tracking-wide">
-            Cut Salon
-          </h1>
+          {brand.name && (
+            <h1 className="text-3xl font-bold text-amber-100 tracking-wide">
+              {brand.name}
+            </h1>
+          )}
           <p className="text-xl text-amber-200/80 font-medium">
             جاري التحضير{dots}
-          </p>
-          <p className="text-sm text-amber-300/60">
-            صالون حلاقة راقي
           </p>
         </div>
 

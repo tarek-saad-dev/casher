@@ -14,25 +14,14 @@ function buildSalonManifestJson(packCode: string): string {
   });
 }
 
-/**
- * Idempotent AppRegistry + TenantAppEntitlement + SalonPackConfig seed for one tenant.
- * SalonPackConfig is insert-only (never overwrites existing ManifestJson).
- */
-export async function seedTenantRegistry(
-  transaction: Transaction,
-  tenantId: string,
-  packCode = 'salon',
-): Promise<void> {
-  const registryApps = [
-    ...APP_REGISTRY_CODES.map((code) => ({
-      code,
-      name: code,
-      entitled: 1,
-    })),
-    { code: OPERATIONS_SURFACE_CODE, name: 'Operations', entitled: 0 },
-  ];
+const REGISTRY_APPS = [
+  ...APP_REGISTRY_CODES.map((code) => ({ code, name: code, entitled: 1 })),
+  { code: OPERATIONS_SURFACE_CODE, name: 'Operations', entitled: 0 },
+];
 
-  for (const app of registryApps) {
+/** Idempotent, insert-only AppRegistry catalog rows (global, not tenant state). */
+export async function ensureAppRegistryRows(transaction: Transaction): Promise<void> {
+  for (const app of REGISTRY_APPS) {
     await new sql.Request(transaction)
       .input('code', sql.NVarChar(64), app.code)
       .input('name', sql.NVarChar(256), app.name)
@@ -42,6 +31,23 @@ export async function seedTenantRegistry(
           INSERT INTO dbo.AppRegistry (AppCode, DisplayName, EntitledSeparately)
           VALUES (@code, @name, @entitled);
       `);
+  }
+}
+
+/**
+ * CASHER_BOOT bootstrap compatibility seed (DRVO-003 behavior, unchanged):
+ * idempotent AppRegistry + TenantAppEntitlement (every registered app) + SalonPackConfig.
+ * SalonPackConfig is insert-only (never overwrites existing ManifestJson).
+ * New tenants are composed via platform/apps/tenantApps instead.
+ */
+export async function seedTenantRegistry(
+  transaction: Transaction,
+  tenantId: string,
+  packCode = 'salon',
+): Promise<void> {
+  await ensureAppRegistryRows(transaction);
+
+  for (const app of REGISTRY_APPS) {
     await new sql.Request(transaction)
       .input('tenantId', sql.UniqueIdentifier, tenantId)
       .input('code', sql.NVarChar(64), app.code)

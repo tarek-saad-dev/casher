@@ -132,6 +132,7 @@ async function fetchEligibleMonthlyEmployees(
       e.EmploymentType AS employmentType
     FROM dbo.TblEmpBranchPayrollPlan p
     INNER JOIN dbo.TblEmp e ON e.EmpID = p.EmpID
+      AND e.TenantId IN (SELECT tloc.TenantId FROM dbo.Location tloc WHERE tloc.LegacyBranchId = @BranchID)
     WHERE p.BranchID = @BranchID
       AND p.IsActive = 1
       AND p.PayType = N'monthly'

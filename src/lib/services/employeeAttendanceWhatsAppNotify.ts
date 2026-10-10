@@ -30,9 +30,10 @@ const QUEUE_GAP_MS = 2000;
 
 async function fetchEmployeeWhatsAppContact(
   empId: number,
+  branchId?: number,
 ): Promise<{ phone: string; employeeName: string } | null> {
   const db = await getPool();
-  const result = await db.request().input('empId', sql.Int, empId).query(`
+  const result = await db.request().input('empId', sql.Int, empId).input('hrBranchId', sql.Int, branchId ?? null).query(`
     SELECT
       CASE
         WHEN EXISTS (
@@ -45,6 +46,7 @@ async function fetchEmployeeWhatsAppContact(
       e.EmpName
     FROM dbo.TblEmp e
     WHERE e.EmpID = @empId
+      AND (@hrBranchId IS NULL OR e.TenantId IN (SELECT tloc.TenantId FROM dbo.Location tloc WHERE tloc.LegacyBranchId = @hrBranchId))
   `);
 
   if (result.recordset.length === 0) return null;
@@ -63,7 +65,7 @@ export async function notifyEmployeeAttendanceWhatsApp(
   input: EmployeeAttendanceWhatsAppNotifyInput,
 ): Promise<void> {
   try {
-    const contact = await fetchEmployeeWhatsAppContact(input.empId);
+    const contact = await fetchEmployeeWhatsAppContact(input.empId, input.branchId);
     if (!contact) {
       console.log(
         `[pos-api]   ℹ️ Attendance WhatsApp skipped: no phone for EmpID=${input.empId}`,

@@ -13,6 +13,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { computePreview } from "@/lib/scheduleControlPreview";
 import type { OverrideType } from "@/lib/scheduleOverrides";
+import { requireTenantSession } from '@/lib/api-auth';
 
 export const runtime = "nodejs";
 
@@ -28,6 +29,8 @@ function isValidTime(t: string) {
 }
 
 export async function POST(req: NextRequest) {
+  const tenantSession = await requireTenantSession();
+  if (tenantSession instanceof NextResponse) return tenantSession;
   try {
     const body = await req.json();
     const { empId, date, type, startTime, endTime } = body as {

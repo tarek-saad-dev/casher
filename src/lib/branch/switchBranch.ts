@@ -15,6 +15,11 @@ import {
 } from '@/lib/session';
 import type { SessionUser } from '@/lib/session-types';
 import { BRANCH_SESSION_VERSION, BranchDomainError } from '@/lib/branch/types';
+import {
+  assertLegacyBranchInTenant,
+  isTenantContextError,
+  listTenantLegacyBranchIds,
+} from '@/platform/tenant/tenantContext';
 
 export type SwitchableBranch = {
   branchId: number;
@@ -60,19 +65,26 @@ function toSafe(branch: {
 
 /**
  * Branches the authenticated user may switch the session to.
- * Requires: user not deleted, branch active, access active/effective, CanOperate=1.
+ * Requires: user not deleted, branch active, access active/effective, CanOperate=1,
+ * and the branch must be a Location of the session tenant (DRVO-013).
  */
 export async function listSwitchableBranchesForUser(
   userId: number,
   currentBranchId: number,
+  tenantId: string,
 ): Promise<SwitchableBranch[]> {
   const status = await getUserActiveStatus(userId);
   if (!status.exists || status.isDeleted) {
     throw new BranchDomainError('USER_DELETED', 'تم تعطيل الحساب', 401);
   }
 
-  const rows = await listUserValidBranchAccess(userId);
-  const operable = rows.filter((r) => r.canOperate && r.branchIsActive && r.isActive);
+  const [rows, tenantBranchIds] = await Promise.all([
+    listUserValidBranchAccess(userId),
+    listTenantLegacyBranchIds(tenantId),
+  ]);
+  const operable = rows.filter(
+    (r) => r.canOperate && r.branchIsActive && r.isActive && tenantBranchIds.has(r.branchId),
+  );
 
   const mapped: SwitchableBranch[] = operable.map((r) => ({
     branchId: r.branchId,
@@ -151,7 +163,7 @@ export async function switchActiveBranch(args: {
   }
 
   const sessionUser = await getSession();
-  if (!sessionUser) {
+  if (!sessionUser || !sessionUser.TenantId || !sessionUser.MembershipId) {
     return {
       ok: false,
       status: 401,
@@ -207,6 +219,32 @@ export async function switchActiveBranch(args: {
       ok: true,
       changed: false,
       activeBranch: toSafe(current),
+    };
+  }
+
+  const tenantId = sessionUser.TenantId;
+  const membershipId = sessionUser.MembershipId;
+
+  // Non-disclosing: a branch of another tenant is indistinguishable from an unknown branch.
+  try {
+    await assertLegacyBranchInTenant(tenantId, args.branchId);
+  } catch (err) {
+    if (!isTenantContextError(err)) throw err;
+    await auditSwitch({
+      user: sessionUser,
+      request: args.request,
+      success: false,
+      reasonCode: 'BRANCH_NOT_IN_TENANT',
+      oldBranchId,
+      oldBranchCode,
+      newBranchId: args.branchId,
+      newBranchCode: null,
+    });
+    return {
+      ok: false,
+      status: 404,
+      code: 'BRANCH_NOT_FOUND',
+      message: 'الفرع غير متاح',
     };
   }
 
@@ -292,6 +330,8 @@ export async function switchActiveBranch(args: {
       ActiveBranchID: target.branchId,
       ActiveBranchCode: target.branchCode,
       BranchSessionVersion: BRANCH_SESSION_VERSION,
+      TenantId: tenantId,
+      MembershipId: membershipId,
     });
   } catch {
     await auditSwitch({

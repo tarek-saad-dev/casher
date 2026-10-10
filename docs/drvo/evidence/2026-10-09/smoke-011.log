@@ -1,0 +1,17 @@
+  live database: last132_agent (drvo_agent)
+  cleanup: removed DRVO011_SMOKE
+Scenario 1 — create tenant
+[db:cloud] Connection attempt 1/3 server=127.0.0.1 db=last132_agent auth=sql
+[db:cloud] Connected to SQL Server successfully
+  tenantId=35C9423E-F36B-1410-8822-009EC495C7E1 readiness=PASS
+  CASHER_BOOT verify OK (tenantCount=6)
+Scenario 2 — duplicate protection
+  duplicate tenant code rejected
+Scenario 3 — cleanup
+[pages-sync] Registry synced ✓
+[roles-sync] Partner role synced ✓
+  cleanup: removed DRVO011_SMOKE
+  no DRVO011 residue
+Scenario 4 — CASHER_BOOT verify after cleanup
+  baseline CASHER_BOOT verify OK
+DRVO-011 smoke PASS

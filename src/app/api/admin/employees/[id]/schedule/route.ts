@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
-import { getSession } from "@/lib/session";
+import { requireTenantSession } from '@/lib/api-auth';
 
 async function ensureScheduleTable(db: Awaited<ReturnType<typeof getPool>>) {
   await db.request().query(`
@@ -66,10 +66,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
-    }
+    const session = await requireTenantSession();
+    if (session instanceof NextResponse) return session;
 
     const { id } = await params;
     const empId = parseInt(id, 10);
@@ -148,10 +146,8 @@ export async function PUT(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await getSession();
-  if (!session) {
-    return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
-  }
+  const session = await requireTenantSession();
+  if (session instanceof NextResponse) return session;
 
   const { id } = await params;
   const empId = parseInt(id, 10);

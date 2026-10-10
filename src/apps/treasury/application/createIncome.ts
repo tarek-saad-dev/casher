@@ -54,14 +54,16 @@ export async function createIncomeThroughTreasury(
 
   const catRes = await new sql.Request(tx)
     .input('expInId', sql.Int, input.categoryId)
-    .query(`SELECT 1 FROM dbo.TblExpINCat WHERE ExpINID = @expInId`);
+    .input('tenantId', sql.UniqueIdentifier, ports.tenantId)
+    .query(`SELECT 1 FROM dbo.TblExpINCat WHERE ExpINID = @expInId AND TenantId = @tenantId`);
   if (catRes.recordset.length === 0) {
     throw new Error('تصنيف الإيراد غير موجود');
   }
 
   const pmRes = await new sql.Request(tx)
     .input('pmId', sql.Int, input.paymentMethodId)
-    .query(`SELECT 1 FROM dbo.TblPaymentMethods WHERE PaymentID = @pmId`);
+    .input('tenantId', sql.UniqueIdentifier, ports.tenantId)
+    .query(`SELECT 1 FROM dbo.TblPaymentMethods WHERE PaymentID = @pmId AND TenantId = @tenantId`);
   if (pmRes.recordset.length === 0) {
     throw new Error('طريقة الدفع غير موجودة');
   }

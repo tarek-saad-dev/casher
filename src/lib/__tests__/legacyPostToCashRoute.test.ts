@@ -27,9 +27,15 @@ function makeFakeDb() {
 
 const fakeGetPool = vi.fn(async () => makeFakeDb());
 
+vi.mock('@/platform/masterData/tenantScope', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/platform/masterData/tenantScope')>()),
+  resolveLegacyBranchTenantId: vi.fn(async () => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'),
+  tenantIdForBranchContext: vi.fn(async () => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'),
+}));
 vi.mock('@/lib/db', () => ({
   getPool: () => fakeGetPool(),
   sql: {
+    UniqueIdentifier: () => ({ type: 'uniqueidentifier' }),
     Int: () => ({ type: 'int' }),
     Date: () => ({ type: 'date' }),
     Decimal: () => ({ type: 'decimal' }),

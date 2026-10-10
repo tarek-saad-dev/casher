@@ -3,6 +3,8 @@ import { NextRequest } from 'next/server';
 
 vi.mock('server-only', () => ({}));
 
+const TENANT_ID = '11111111-1111-4111-8111-111111111111';
+
 type QueryResult = { recordset?: unknown[]; rowsAffected?: number[] };
 
 let queryPlan: QueryResult[] = [];
@@ -73,7 +75,7 @@ describe('employee ledger sync service', () => {
       { recordset: [] },
     ];
     const { runEmployeeLedgerHistoricalSync } = await import('@/lib/services/employeeLedgerSyncService');
-    const res = await runEmployeeLedgerHistoricalSync({ month: '2026-07', dryRun: true });
+    const res = await runEmployeeLedgerHistoricalSync({ tenantId: TENANT_ID, month: '2026-07', dryRun: true });
     expect(res.success).toBe(true);
     expect(res.counts.payrollCreditsToInsert).toBe(1);
     expect(queryTexts.some((q) => q.includes('INSERT INTO dbo.TblEmpLedgerEntry'))).toBe(false);
@@ -85,7 +87,7 @@ describe('employee ledger sync service', () => {
       { recordset: [] },
     ];
     const { runEmployeeLedgerHistoricalSync } = await import('@/lib/services/employeeLedgerSyncService');
-    const res = await runEmployeeLedgerHistoricalSync({ month: '2026-07', dryRun: false, syncAdvanceDebits: false });
+    const res = await runEmployeeLedgerHistoricalSync({ tenantId: TENANT_ID, month: '2026-07', dryRun: false, syncAdvanceDebits: false });
     expect(res.counts.payrollCreditsToInsert).toBe(1);
     expect(committed).toBe(true);
   });
@@ -96,7 +98,7 @@ describe('employee ledger sync service', () => {
       { recordset: [] },
     ];
     const { runEmployeeLedgerHistoricalSync } = await import('@/lib/services/employeeLedgerSyncService');
-    const res = await runEmployeeLedgerHistoricalSync({ month: '2026-07', dryRun: false, syncPayrollCredits: false });
+    const res = await runEmployeeLedgerHistoricalSync({ tenantId: TENANT_ID, month: '2026-07', dryRun: false, syncPayrollCredits: false });
     expect(res.counts.advanceDebitsToInsert).toBe(1);
     expect(committed).toBe(true);
   });
@@ -109,7 +111,7 @@ describe('employee ledger sync service', () => {
       { recordset: [] },
     ];
     const { runEmployeeLedgerHistoricalSync } = await import('@/lib/services/employeeLedgerSyncService');
-    const res = await runEmployeeLedgerHistoricalSync({ month: '2026-07', dryRun: true, syncPayrollCredits: false });
+    const res = await runEmployeeLedgerHistoricalSync({ tenantId: TENANT_ID, month: '2026-07', dryRun: true, syncPayrollCredits: false });
     expect(res.counts.advanceDebitsToInsert).toBe(0);
   });
 
@@ -121,7 +123,7 @@ describe('employee ledger sync service', () => {
       { recordset: [] },
     ];
     const { runEmployeeLedgerHistoricalSync } = await import('@/lib/services/employeeLedgerSyncService');
-    const res = await runEmployeeLedgerHistoricalSync({ month: '2026-07', dryRun: true, syncAdvanceDebits: false });
+    const res = await runEmployeeLedgerHistoricalSync({ tenantId: TENANT_ID, month: '2026-07', dryRun: true, syncAdvanceDebits: false });
     expect(res.counts.payrollCreditsToInsert).toBe(0);
     expect(res.counts.payrollCreditsToUpdate).toBe(0);
     expect(res.counts.skipped).toBeGreaterThan(0);
@@ -133,7 +135,7 @@ describe('employee ledger sync service', () => {
       { recordset: [] },
     ];
     const { runEmployeeLedgerHistoricalSync } = await import('@/lib/services/employeeLedgerSyncService');
-    await runEmployeeLedgerHistoricalSync({ month: '2026-07', dryRun: true, empId: 5, syncAdvanceDebits: false });
+    await runEmployeeLedgerHistoricalSync({ tenantId: TENANT_ID, month: '2026-07', dryRun: true, empId: 5, syncAdvanceDebits: false });
     expect(queryTexts.some((q) => q.includes('AND p.EmpID = @empId'))).toBe(true);
   });
 
@@ -156,7 +158,7 @@ describe('employee ledger sync service', () => {
       }
     };
     const { runEmployeeLedgerHistoricalSync } = await import('@/lib/services/employeeLedgerSyncService');
-    await expect(runEmployeeLedgerHistoricalSync({ month: '2026-07', dryRun: false, syncAdvanceDebits: false }))
+    await expect(runEmployeeLedgerHistoricalSync({ tenantId: TENANT_ID, month: '2026-07', dryRun: false, syncAdvanceDebits: false }))
       .rejects
       .toThrow('insert failed');
     expect(rolledBack).toBe(true);

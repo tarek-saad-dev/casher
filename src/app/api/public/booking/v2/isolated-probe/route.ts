@@ -57,15 +57,28 @@ export async function GET() {
     const { buildPublicBookingV2Bootstrap } = await import(
       '@/lib/booking/v2Frontend/buildPublicBootstrap'
     );
-    const boot = await buildPublicBookingV2Bootstrap({ forceRefresh: true });
-    steps.push({
-      step: 'bootstrap',
-      ok: true,
-      detail: {
-        branches: boot.body.branches.length,
-        employees: boot.body.employees.length,
-      },
-    });
+    const { resolvePublicBookingTenantIdForBranch } = await import(
+      '@/lib/booking/publicBookingTenancy'
+    );
+    const probeTenantId = gleem
+      ? await resolvePublicBookingTenantIdForBranch(gleem.branchId, 'public/booking/v2/isolated-probe')
+      : null;
+    if (probeTenantId) {
+      const boot = await buildPublicBookingV2Bootstrap({
+        tenantId: probeTenantId,
+        forceRefresh: true,
+      });
+      steps.push({
+        step: 'bootstrap',
+        ok: true,
+        detail: {
+          branches: boot.body.branches.length,
+          employees: boot.body.employees.length,
+        },
+      });
+    } else {
+      steps.push({ step: 'bootstrap', ok: false, detail: 'no booking tenant for GLEEM' });
+    }
   } catch (e) {
     steps.push({
       step: 'error',

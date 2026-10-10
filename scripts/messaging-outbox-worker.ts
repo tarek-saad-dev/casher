@@ -41,6 +41,8 @@ async function main() {
   const once = process.argv.includes('--once');
   const config = getOutboxWorkerConfig();
   const id = workerId();
+  // DRVO-018: rows carry TenantId; each claimed row is delivered inside its own tenant scope
+  // through that tenant's channel. The worker has no tenant of its own.
   let stopping = false;
   let inTick = false;
 

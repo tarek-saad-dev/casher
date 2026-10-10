@@ -131,7 +131,12 @@ async function main() {
         partnerShares: false,
       },
     },
-    { userId: args.actorUserId },
+    {
+      userId: args.actorUserId,
+      tenantId: await (
+        await import('../src/platform/tenant/legacyBootstrapSeam')
+      ).resolveLegacyBootstrapTenantId('casher-boot-operator-script'),
+    },
   );
 
   const branch = result.branch;

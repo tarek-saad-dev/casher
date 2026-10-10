@@ -5,6 +5,7 @@ import { requireActiveBranchContext } from '@/lib/branch/context';
 export type WhatsAppTemplateAdminContext = {
   userId: number;
   branchId: number;
+  tenantId: string;
 };
 
 export async function requireWhatsAppTemplateAdmin(): Promise<
@@ -19,6 +20,7 @@ export async function requireWhatsAppTemplateAdmin(): Promise<
   return {
     userId: auth.userId,
     branchId: branch.branchId,
+    tenantId: auth.tenantId,
   };
 }
 

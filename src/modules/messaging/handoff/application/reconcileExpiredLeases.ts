@@ -17,16 +17,17 @@ import {
   type ControlCommandDeps,
 } from './commands';
 import { getConversationById } from '@/modules/messaging/conversation/infra/botConversationRepository';
+import { runWithMessagingJobTenant } from '@/modules/messaging/tenancy/messagingTenantScope';
+import { bindMessagingTenant } from '@/modules/messaging/tenancy/tenantSql';
 
 async function loadTimeline(conversationId: number): Promise<TimelineMessage[]> {
   const pool = await getPool();
-  const result = await pool
-    .request()
+  const result = await bindMessagingTenant(pool.request(), 'handoff.loadTimeline')
     .input('cid', sql.BigInt, conversationId)
     .query(`
       SELECT MessageID, Direction, Origin, OccurredAt
       FROM dbo.TblBotMessage
-      WHERE ConversationID = @cid
+      WHERE ConversationID = @cid AND TenantId = @tenantId
       ORDER BY OccurredAt ASC, MessageID ASC
     `);
   return (result.recordset as Array<{
@@ -119,35 +120,43 @@ export async function reconcileExpiredLeases(
   let expiredCount = 0;
   let resumed = 0;
   for (const row of expired) {
+    const rowTenantId = row.tenantId;
+    if (!rowTenantId) continue;
     try {
-      const canary = getHumanHandoffCanaryPhones();
-      if (canary.length > 0) {
-        const conv = await getConversationById(row.conversationId);
-        if (!isHumanHandoffActiveForPhone(conv?.phone ?? null)) {
-          continue;
-        }
-      }
-      const result = await returnToBotAndMaybeResume(
-        {
-          conversationId: row.conversationId,
-          actorUserId: null,
-          reason: 'lease_expired',
+      await runWithMessagingJobTenant(
+        rowTenantId,
+        `messaging-lease-reconcile:${row.conversationId}`,
+        async () => {
+          const canary = getHumanHandoffCanaryPhones();
+          if (canary.length > 0) {
+            const conv = await getConversationById(row.conversationId);
+            if (!isHumanHandoffActiveForPhone(conv?.phone ?? null)) {
+              return;
+            }
+          }
+          const result = await returnToBotAndMaybeResume(
+            {
+              conversationId: row.conversationId,
+              actorUserId: null,
+              reason: 'lease_expired',
+            },
+            deps,
+          );
+          if (result.returned) {
+            expiredCount += 1;
+            logHandoffEvent('human_lease_expired', {
+              conversationId: row.conversationId,
+              previousMode: row.mode,
+            });
+            logHandoffEvent('bot_control_restored', {
+              conversationId: row.conversationId,
+              previousMode: row.mode,
+              reason: 'lease_expired',
+            });
+          }
+          if (result.resumed) resumed += 1;
         },
-        deps,
       );
-      if (result.returned) {
-        expiredCount += 1;
-        logHandoffEvent('human_lease_expired', {
-          conversationId: row.conversationId,
-          previousMode: row.mode,
-        });
-        logHandoffEvent('bot_control_restored', {
-          conversationId: row.conversationId,
-          previousMode: row.mode,
-          reason: 'lease_expired',
-        });
-      }
-      if (result.resumed) resumed += 1;
     } catch (err) {
       console.error(
         JSON.stringify({

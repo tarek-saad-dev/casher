@@ -80,13 +80,13 @@ describe('bookingCheckSlot', () => {
     expect(route).not.toContain('resolvePublicBranchCode');
     expect(route).not.toContain('validateBookingSlot');
     expect(route).toMatch(/OPTIONS/);
-    expect(route).toContain('publicBookingOptionsResponse');
+    expect(route).toMatch(/publicBooking(Tenant)?OptionsResponse/);
   });
 
   it('keeps HTTP 200 for business unavailability compatibility', () => {
     expect(route).toContain('available: false');
     expect(route).toContain('status: 200');
-    expect(route).toContain('publicBookingErrorResponse');
+    expect(route).toMatch(/publicBookingErrorResponse|finalizePublicBookingError/);
   });
 
   it('ignores client BranchID/price/duration/preview drivers', () => {
@@ -113,8 +113,8 @@ describe('bookingPlan', () => {
 
   it('OPTIONS + CORS present', () => {
     expect(route).toMatch(/OPTIONS/);
-    expect(route).toContain('publicBookingOptionsResponse');
-    expect(route).toContain('PUBLIC_BOOKING_ROUTE_CORS');
+    expect(route).toMatch(/publicBooking(Tenant)?OptionsResponse/);
+    expect(route).toMatch(/PUBLIC_BOOKING_ROUTE_CORS|publicBookingTenantOptionsResponse\(req, '/);
   });
 });
 

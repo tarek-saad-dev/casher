@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
-import { getSession } from '@/lib/session';
 import { getCairoBusinessDate } from '@/lib/businessDate';
 import {
   usesHrModelPayload,
@@ -21,6 +20,7 @@ import {
   upsertEmployeeSchedule,
 } from '@/lib/hr/employee-hr-db';
 import { ensureEmployeeAdvanceMapping } from '@/lib/hr/employee-hr-advance';
+import { requireMasterDataTenantId } from '@/platform/masterData/tenantScope';
 import { getEmployeesTargetSummaryBatch } from '@/lib/payroll/employee-target';
 import { ensureTblEmpImageUrlColumn } from '@/lib/migrations/ensureEmployeeImageUrl';
 import { ensureTblEmpArchivedColumn } from '@/lib/migrations/ensureEmployeeArchived';
@@ -37,10 +37,13 @@ import {
   syncHrRatesToActiveBranchPlans,
   type BranchPayrollPayType,
 } from '@/lib/payroll/branchPayrollPlan';
+import { requireTenantSession } from '@/lib/api-auth';
 
 // GET /api/employees — list employees with finance mapping
 // Query params: ?inactive=true to get inactive employees
 export async function GET(req: NextRequest) {
+  const tenantSession = await requireTenantSession();
+  if (tenantSession instanceof NextResponse) return tenantSession;
   try {
     const { searchParams } = new URL(req.url);
     const showInactive = searchParams.get('inactive') === 'true';
@@ -54,9 +57,10 @@ export async function GET(req: NextRequest) {
     const orderBy = hasSort
       ? 'ISNULL(e.DisplaySortOrder, 999), e.EmpName'
       : 'e.EmpName';
-    const result = await db.request().query(`
+    const tenantId = requireMasterDataTenantId(tenantSession.TenantId, 'GET /api/employees');
+    const result = await db.request().input('tenantId', sql.UniqueIdentifier, tenantId).query(`
       ${EMPLOYEE_LIST_SELECT}
-      WHERE ISNULL(e.isActive, 1) = ${showInactive ? '0' : '1'}
+        AND ISNULL(e.isActive, 1) = ${showInactive ? '0' : '1'}
         AND ISNULL(e.IsArchived, 0) = 0
       ORDER BY ${orderBy}
     `);
@@ -73,7 +77,7 @@ export async function GET(req: NextRequest) {
       }
     >();
     try {
-      targetSummary = await getEmployeesTargetSummaryBatch(getCairoBusinessDate());
+      targetSummary = await getEmployeesTargetSummaryBatch(getCairoBusinessDate(), tenantId);
     } catch (summaryErr: unknown) {
       console.warn(
         '[api/employees] target summary skipped:',
@@ -115,10 +119,8 @@ export async function GET(req: NextRequest) {
 // HR model: optional full payload with employmentType, payrollMethod, scheduleConfig, etc.
 export async function POST(req: NextRequest) {
   try {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
-    }
+    const session = await requireTenantSession();
+    if (session instanceof NextResponse) return session;
 
     const body = (await req.json()) as EmployeeHrPayload & {
       imageUrl?: string | null;
@@ -161,6 +163,7 @@ export async function POST(req: NextRequest) {
 
     const name = String(body.empName).trim();
     const isActive = body.isActive !== false;
+    const tenantId = requireMasterDataTenantId(session.TenantId, 'POST /api/employees');
 
     const db = await getPool();
     const transaction = new sql.Transaction(db);
@@ -171,7 +174,7 @@ export async function POST(req: NextRequest) {
 
       if (isHrPayload && validation.normalized) {
         const dbCols = mapNormalizedToDbColumns(validation.normalized);
-        const { sql: insertSql, bind } = buildHrInsertQuery(name, isActive, dbCols);
+        const { sql: insertSql, bind } = buildHrInsertQuery(tenantId, name, isActive, dbCols);
         const insertReq = new sql.Request(transaction);
         bind(insertReq);
         const empRes = await insertReq.query(insertSql);
@@ -190,11 +193,12 @@ export async function POST(req: NextRequest) {
         }
       } else {
         const empRes = await new sql.Request(transaction)
+          .input('tenantId', sql.UniqueIdentifier, tenantId)
           .input('empName', sql.NVarChar(200), name)
           .input('isActive', sql.Bit, isActive ? 1 : 0)
           .query(`
-            INSERT INTO dbo.TblEmp (EmpName, isActive)
-            VALUES (@empName, @isActive);
+            INSERT INTO dbo.TblEmp (TenantId, EmpName, isActive)
+            VALUES (@tenantId, @empName, @isActive);
 
             SELECT EmpID, EmpName, isActive
             FROM dbo.TblEmp
@@ -214,7 +218,8 @@ export async function POST(req: NextRequest) {
         await new sql.Request(transaction)
           .input('empId', sql.Int, newEmpID)
           .input('imageUrl', sql.NVarChar(1000), imageUrlValue)
-          .query(`UPDATE dbo.TblEmp SET ImageUrl = @imageUrl WHERE EmpID = @empId`);
+          .input('tenantId', sql.UniqueIdentifier, tenantId)
+          .query(`UPDATE dbo.TblEmp SET ImageUrl = @imageUrl WHERE EmpID = @empId AND TenantId = @tenantId`);
       }
 
       if (empNameEnValue !== undefined) {
@@ -225,7 +230,8 @@ export async function POST(req: NextRequest) {
         await new sql.Request(transaction)
           .input('empId', sql.Int, newEmpID)
           .input('empNameEn', sql.NVarChar(200), empNameEnValue)
-          .query(`UPDATE dbo.TblEmp SET EmpNameEn = @empNameEn WHERE EmpID = @empId`);
+          .input('tenantId', sql.UniqueIdentifier, tenantId)
+          .query(`UPDATE dbo.TblEmp SET EmpNameEn = @empNameEn WHERE EmpID = @empId AND TenantId = @tenantId`);
       }
 
       if (displaySortOrderValue !== undefined) {
@@ -238,13 +244,15 @@ export async function POST(req: NextRequest) {
         await new sql.Request(transaction)
           .input('empId', sql.Int, newEmpID)
           .input('displaySortOrder', sql.Int, displaySortOrderValue)
+          .input('tenantId', sql.UniqueIdentifier, tenantId)
           .query(
-            `UPDATE dbo.TblEmp SET DisplaySortOrder = @displaySortOrder WHERE EmpID = @empId`,
+            `UPDATE dbo.TblEmp SET DisplaySortOrder = @displaySortOrder WHERE EmpID = @empId AND TenantId = @tenantId`,
           );
       }
 
       const { expINID, catName } = await ensureEmployeeAdvanceMapping(
         transaction,
+        tenantId,
         newEmpID,
         name,
       );

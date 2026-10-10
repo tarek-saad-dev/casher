@@ -24,7 +24,7 @@ async function main() {
     '@/lib/services/employeeLedgerSyncService'
   );
 
-  const preview = await runEmployeeLedgerHistoricalSync({
+  const preview = await runEmployeeLedgerHistoricalSync({ tenantId: String(process.env.HR_TENANT_ID ?? ''),
     month: MONTH,
     empId: EMP_ID,
     dryRun: true,
@@ -34,7 +34,7 @@ async function main() {
   });
   console.log('PREVIEW:', JSON.stringify(preview, null, 2));
 
-  const applied = await runEmployeeLedgerHistoricalSync({
+  const applied = await runEmployeeLedgerHistoricalSync({ tenantId: String(process.env.HR_TENANT_ID ?? ''),
     month: MONTH,
     empId: EMP_ID,
     dryRun: false,

@@ -131,6 +131,7 @@ export async function listEnabledPlansCoveringDate(
       p.EffectiveTo
     FROM dbo.TblEmpTargetPlan p
     INNER JOIN dbo.TblEmp e ON e.EmpID = p.EmpID
+      AND e.TenantId IN (SELECT tloc.TenantId FROM dbo.Location tloc WHERE tloc.LegacyBranchId = @branchId)
     WHERE p.IsEnabled = 1
       AND p.BranchID = @branchId
       AND p.EffectiveFrom <= @workDate

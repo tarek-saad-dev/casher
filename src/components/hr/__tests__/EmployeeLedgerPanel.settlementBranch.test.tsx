@@ -114,6 +114,10 @@ function summaryPayload() {
       { branchId: 1, branchCode: 'GLEEM', branchName: 'جليم' },
       { branchId: 3, branchCode: 'CAMP_CAESAR', branchName: 'كامب شيزار' },
     ],
+    tableBranches: [
+      { branchId: 1, branchCode: 'GLEEM', branchName: 'جليم', label: 'جليم' },
+      { branchId: 3, branchCode: 'CAMP_CAESAR', branchName: 'كامب شيزار', label: 'كامب شيزار' },
+    ],
     employees: [employeeRow],
     totals: {
       salaryCredits: 500,

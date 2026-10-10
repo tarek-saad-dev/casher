@@ -3,6 +3,7 @@ import {
   getClientMobileLookupSuffix,
   TBL_CLIENT_MOBILE_SUFFIX_SQL,
 } from '@/lib/client/publicClientWebsite.helpers';
+import { requireMasterDataTenantId } from '@/platform/masterData/tenantScope';
 
 export type ClientPhoneLookupResult = {
   clientId: number | null;
@@ -14,7 +15,11 @@ export type ClientPhoneLookupResult = {
  * Read-only ERP client resolution by phone suffix.
  * Reuses canonical TblClient mobile suffix matching — no customer creation.
  */
-export async function lookupClientIdByPhone(phone: string): Promise<ClientPhoneLookupResult> {
+export async function lookupClientIdByPhone(
+  tenantId: string,
+  phone: string,
+): Promise<ClientPhoneLookupResult> {
+  const tid = requireMasterDataTenantId(tenantId, 'lookupClientIdByPhone');
   const suffix = getClientMobileLookupSuffix(phone);
   if (!suffix) {
     return { clientId: null, ambiguous: false, matchCount: 0 };
@@ -24,10 +29,11 @@ export async function lookupClientIdByPhone(phone: string): Promise<ClientPhoneL
   const result = await pool
     .request()
     .input('suffix', sql.NVarChar(10), suffix)
+    .input('tenantId', sql.UniqueIdentifier, tid)
     .query(`
       SELECT [ClientID] AS clientId
       FROM [dbo].[TblClient]
-      WHERE ${TBL_CLIENT_MOBILE_SUFFIX_SQL} = @suffix
+      WHERE TenantId = @tenantId AND ${TBL_CLIENT_MOBILE_SUFFIX_SQL} = @suffix
     `);
 
   const rows = result.recordset as Array<{ clientId: number | string }>;

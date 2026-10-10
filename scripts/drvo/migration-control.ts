@@ -4,7 +4,7 @@ import type {
   DrvoMigrationDefinition,
   DrvoMigrationRisk,
 } from './types';
-import { sha256Hex } from './checksum';
+import { isAcceptedChecksum, sha256Hex } from './checksum';
 
 export type DrvoProductionMigrationPlanItem = {
   migrationId: number;
@@ -68,7 +68,7 @@ export function buildDrvoProductionMigrationPlan(args: {
   const checksumMismatches: string[] = [];
   for (const migration of migrations) {
     const row = appliedByKey.get(migration.migrationKey);
-    if (row && row.Checksum !== migration.checksum) {
+    if (row && !isAcceptedChecksum(migration, row.Checksum)) {
       checksumMismatches.push(migration.migrationKey);
     }
   }

@@ -25,11 +25,11 @@ import {
   type EmployeeDailyWhatsAppSendResponse,
 } from '@/lib/hr/employee-daily-whatsapp-report.service';
 import { sendOwnerDailyWhatsApp } from '@/lib/hr/owner-daily-whatsapp-report.service';
-import {
-  checkWhatsAppStatus,
-  isWhatsAppEnabled,
-} from '@/lib/integrations/whatsapp';
-import { listActiveBranches } from '@/lib/branch';
+import { isWhatsAppEnabled } from '@/lib/integrations/whatsapp';
+import { listActiveBranchesIn } from '@/lib/branch';
+import { runWithMessagingTenant } from '@/modules/messaging/tenancy/messagingTenantScope';
+import { resolveSingleTenantForLegacyBranches } from '@/modules/messaging/tenancy/branchTenantScope';
+import { tenantChannelStatus } from '@/modules/messaging/tenancy/transport';
 import { postMonthlySalaryEntitlements } from '@/lib/services/employeeLedgerMonthlySalaryService';
 import { isEmployeeLedgerDualWriteEnabled } from '@/lib/employeeLedgerConfig';
 
@@ -176,15 +176,39 @@ async function logNightlyClose(
   }
 }
 
-export async function runNightlyClose(params?: {
+async function validateAttendanceForBranches(
+  db: Awaited<ReturnType<typeof getPool>>,
+  workDate: string,
+  branchIds: readonly number[],
+): Promise<Awaited<ReturnType<typeof validateDailyPayrollAttendance>>['missing']> {
+  const missing: Awaited<ReturnType<typeof validateDailyPayrollAttendance>>['missing'] = [];
+  for (const branchId of branchIds) {
+    missing.push(...(await validateDailyPayrollAttendance(db, workDate, { empScope: { branchId }, branchId })).missing);
+  }
+  return missing;
+}
+
+export async function runNightlyClose(params: {
   workDate?: string | null;
   dryRun?: boolean;
   skipWhatsApp?: boolean;
   now?: Date;
+  /** The tenant this run belongs to (DRVO-016); only its employees are touched. */
+  tenantId: string;
+  /** One tenant's active Location branch ids (DRVO-013); the job never touches other branches. */
+  branchIds: readonly number[];
+  /** Tenant HR time zone for the default work date (DRVO-016); Africa/Cairo when omitted. */
+  timeZone?: string;
+  /** TblAutoGenLog has no TenantId; only the CASHER_BOOT run may write it. */
+  legacyJobLog?: boolean;
 }): Promise<NightlyCloseResult> {
   const dryRun = Boolean(params?.dryRun);
   const skipWhatsApp = Boolean(params?.skipWhatsApp);
-  const workDate = resolveNightlyCloseWorkDate(params?.workDate, params?.now ?? new Date());
+  const workDate = resolveNightlyCloseWorkDate(
+    params?.workDate,
+    params?.now ?? new Date(),
+    params.timeZone,
+  );
   const errors: string[] = [];
 
   const result: NightlyCloseResult = {
@@ -218,14 +242,15 @@ export async function runNightlyClose(params?: {
   // ── 1) Incomplete attendance → Default fill (D) per active branch ───────
   // Topology (Phase 1K): finalize independently per branch, then payroll/targets once.
   try {
-    const activeBranches = await listActiveBranches();
+    const activeBranches = await listActiveBranchesIn(params.branchIds);
     if (activeBranches.length === 0) {
       throw new Error('لا يوجد فرع نشط لإنهاء الحضور');
     }
+    const scopedBranchIds = activeBranches.map((b) => b.branchId);
 
     if (dryRun) {
       const db = await getPool();
-      const { missing } = await validateDailyPayrollAttendance(db, workDate);
+      const missing = await validateAttendanceForBranches(db, workDate, scopedBranchIds);
       const incomplete = missing.filter(
         (m) =>
           m.reason === 'no_attendance' ||
@@ -296,7 +321,7 @@ export async function runNightlyClose(params?: {
       }
 
       const db = await getPool();
-      const after = await validateDailyPayrollAttendance(db, workDate);
+      const remainingMissing = await validateAttendanceForBranches(db, workDate, scopedBranchIds);
       result.steps.attendanceClose = {
         workDate,
         statusCode: 'D',
@@ -305,7 +330,7 @@ export async function runNightlyClose(params?: {
         filled: mergedFilled,
         closed: mergedFilled,
         skippedNoDefault: mergedSkipped,
-        remainingMissing: after.missing,
+        remainingMissing,
       };
     }
     console.log(
@@ -315,14 +340,14 @@ export async function runNightlyClose(params?: {
     const message = err instanceof Error ? err.message : String(err);
     errors.push(`attendance: ${message}`);
     result.error = message;
-    await logNightlyClose(workDate, false, result);
+    if (params.legacyJobLog) await logNightlyClose(workDate, false, result);
     return result;
   }
 
   // ── 2) Daily payroll generate per active branch (Phase 1L) ──────────────
   try {
     const db = await getPool();
-    const payrollBranches = await listActiveBranches();
+    const payrollBranches = await listActiveBranchesIn(params.branchIds);
     let totalEmployees = 0;
     let totalHours = 0;
     let totalWages = 0;
@@ -356,6 +381,7 @@ export async function runNightlyClose(params?: {
       }
 
       const { missing } = await validateDailyPayrollAttendance(db, payDay, {
+        empScope: { branchId: branch.branchId },
         branchId: branch.branchId,
       });
       if (missing.length > 0) {
@@ -492,7 +518,7 @@ export async function runNightlyClose(params?: {
         eligibleEmployees: 0,
       };
     } else {
-      const targetBranches = await listActiveBranches();
+      const targetBranches = await listActiveBranchesIn(params.branchIds);
       let generated = 0;
       let recalculated = 0;
       let totalTargetAmount = 0;
@@ -573,7 +599,7 @@ export async function runNightlyClose(params?: {
       };
       console.log('[nightly-close] monthly salary skipped (ledger dual-write off)');
     } else {
-      const salaryBranches = await listActiveBranches();
+      const salaryBranches = await listActiveBranchesIn(params.branchIds);
       let inserted = 0;
       let branchesOk = 0;
       for (const branch of salaryBranches) {
@@ -638,17 +664,27 @@ export async function runNightlyClose(params?: {
       if (!isWhatsAppEnabled() && !dryRun) {
         errors.push('WhatsApp integration disabled (development_only)');
       } else {
-        const status = await checkWhatsAppStatus();
+        const branchIds = (await listActiveBranchesIn(params.branchIds)).map((b) => b.branchId);
+        const messagingTenantId = await resolveSingleTenantForLegacyBranches(branchIds);
+        if (!messagingTenantId) {
+          throw new Error('messaging tenant unresolved: active branches do not belong to exactly one tenant');
+        }
+        const status = await runWithMessagingTenant(
+          { tenantId: messagingTenantId, source: 'job', detail: 'hr.nightly-close' },
+          () => tenantChannelStatus(),
+        );
         whatsappReady =
           dryRun ||
           ('whatsappReady' in status && status.whatsappReady === true);
 
-        const preview = await buildEmployeeDailyWhatsAppPreview({ workDate });
+        const preview = await buildEmployeeDailyWhatsAppPreview({ tenantId: params.tenantId, workDate });
         employeesReady = preview.summary.readyToSend;
 
         const empSend = await sendEmployeeDailyWhatsAppReports({
+          tenantId: params.tenantId,
           workDate,
           dryRun,
+          messagingTenantId,
         });
         result.steps.employeesWhatsApp = empSend;
         employeesSent = empSend.summary.sent;
@@ -657,7 +693,7 @@ export async function runNightlyClose(params?: {
           employeesSent = empSend.summary.dryRun;
         }
 
-        const owner = await sendOwnerDailyWhatsApp({ workDate, dryRun });
+        const owner = await sendOwnerDailyWhatsApp({ tenantId: params.tenantId, workDate, dryRun });
         result.steps.ownerWhatsApp = {
           status: owner.status,
           ownerName: owner.ownerName,
@@ -703,7 +739,7 @@ export async function runNightlyClose(params?: {
     result.error = errors[0] ?? 'nightly close failed';
   }
 
-  await logNightlyClose(workDate, result.ok, {
+  if (params.legacyJobLog) await logNightlyClose(workDate, result.ok, {
     dryRun,
     ok: result.ok,
     steps: {

@@ -74,7 +74,7 @@ async function ensureAttendanceTable(db: { request: () => sql.Request }) {
   await ensureAttendanceBreakTimeSchema(db);
 }
 
-// GET /api/admin/attendance?date=YYYY-MM-DD&employeeScope=all|GLEEM|CAMP_CAESAR&onlyPayrollEnabled=true&includeFreelance=false
+// GET /api/admin/attendance?date=YYYY-MM-DD&employeeScope=all|<tenant branch code>&onlyPayrollEnabled=true&includeFreelance=false
 // employeeScope is read-only visibility — does not switch session branch.
 // Omitted employeeScope → active session branch only (legacy callers / smart-fix).
 export async function GET(req: NextRequest) {
@@ -222,6 +222,7 @@ export async function GET(req: NextRequest) {
         ) xferOut
         LEFT JOIN dbo.TblBranch xferTo ON xferTo.BranchID = xferOut.ToBranchID
         WHERE ISNULL(e.isActive, 1) = 1
+          AND e.TenantId IN (SELECT tloc.TenantId FROM dbo.Location tloc WHERE tloc.LegacyBranchId = @branchId)
           ${payrollFilter}
           AND (
             (ws.IsWorkingDay = 1 AND EXISTS (
@@ -303,6 +304,7 @@ export async function GET(req: NextRequest) {
       success: true,
       date: dateStr,
       employeeScope: viewScope.employeeScope,
+      scopeOptions: viewScope.scopeOptions,
       branchIds: viewScope.branchIds,
       branches: viewScope.branches,
       branchId: sessionBranch.branchId,

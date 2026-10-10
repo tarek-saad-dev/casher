@@ -294,8 +294,8 @@ describe('bookingPublicCorsRouteMatrix / security', () => {
     ];
     for (const f of files) {
       const src = read(f);
-      expect(src).toContain('publicBookingOptionsResponse');
-      expect(src).toContain('PUBLIC_BOOKING_ROUTE_CORS');
+      expect(src).toMatch(/publicBooking(Tenant)?OptionsResponse/);
+      expect(src).toMatch(/PUBLIC_BOOKING_ROUTE_CORS|publicBookingTenantOptionsResponse\(req, '/);
       expect(src).not.toContain('PUBLIC_CORS_HEADERS');
       expect(src).not.toContain('Access-Control-Allow-Origin": "*"');
     }

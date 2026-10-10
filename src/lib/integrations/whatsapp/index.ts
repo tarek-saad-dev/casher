@@ -9,6 +9,7 @@
 
 export {
   sendWhatsAppMessage,
+  sendWhatsAppMessageViaDrvowa,
   sendWhatsAppGroupMessage,
   checkWhatsAppStatus,
   checkWhatsAppBotHealth,
@@ -24,4 +25,5 @@ export type {
   GenericWhatsAppGroupMessageInput,
   GenericWhatsAppSendResult,
   GenericWhatsAppGroupSendResult,
+  WhatsAppEndpoint,
 } from './types';

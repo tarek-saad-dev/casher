@@ -2,8 +2,9 @@ import 'server-only';
 
 import { getPool, sql } from '@/lib/db';
 import { loadBookingCustomerContact } from '@/lib/booking/bookingCustomerContact';
-import { sendWhatsAppMessage } from '@/lib/integrations/whatsapp';
 import { composeMessage } from '@/modules/messaging/application/composeMessage';
+import { runWithMessagingTenant } from '@/modules/messaging/tenancy/messagingTenantScope';
+import { sendViaTenantChannel } from '@/modules/messaging/tenancy/transport';
 import {
   BOOKING_CANCELLATION_TEMPLATE_KEY,
   BOOKING_CONFIRMATION_TEMPLATE_KEY,
@@ -185,7 +186,7 @@ async function deliverBookingEvent(row: PlatformOutboxRow): Promise<void> {
     },
   });
 
-  const result = await sendWhatsAppMessage({
+  const result = await sendViaTenantChannel({
     phone: contact.phone,
     message: composed.text,
     idempotencyKey:
@@ -218,7 +219,11 @@ async function deliverRow(row: PlatformOutboxRow): Promise<void> {
     || row.EventType === 'booking.cancelled'
     || row.EventType === 'booking.rescheduled'
   ) {
-    await deliverBookingEvent(row);
+    if (!row.TenantId) throw new Error('PLATFORM_OUTBOX_TENANT_MISSING');
+    await runWithMessagingTenant(
+      { tenantId: String(row.TenantId), source: 'job', detail: `platform-outbox:${row.EventType}` },
+      () => deliverBookingEvent(row),
+    );
     return;
   }
   throw new Error('PLATFORM_OUTBOX_EVENT_UNSUPPORTED');

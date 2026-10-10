@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 
 import { isAuthResult, requireAdmin } from '@/lib/api-auth';
 import { pairWithDrvowa } from '@/lib/integrations/drvowaPairing';
+import { isDrvowaOwnerTenant } from '@/lib/integrations/drvowaTenant';
 
 export const runtime = 'nodejs';
 
@@ -34,6 +35,12 @@ function resolveErpPublicBaseUrl(request: Request): string {
 export async function POST(request: Request) {
   const auth = await requireAdmin();
   if (!isAuthResult(auth)) return auth;
+  if (!(await isDrvowaOwnerTenant(auth.tenantId))) {
+    return NextResponse.json(
+      { ok: false, code: 'DRVOWA_NOT_AVAILABLE_FOR_TENANT', error: 'DRVOWA is not available for this tenant' },
+      { status: 403 },
+    );
+  }
 
   try {
     const body = await request.json().catch(() => ({})) as Record<string, unknown>;

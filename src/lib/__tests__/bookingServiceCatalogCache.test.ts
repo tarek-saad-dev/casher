@@ -31,6 +31,7 @@ vi.mock('@/lib/migrations/ensureCategorySortOrder', () => ({
 
 function ctx(code: string, name: string) {
   return {
+    tenantId: '11111111-1111-4111-8111-111111111111',
     branchId: code === 'GLEEM' ? 1 : 3,
     branchCode: code,
     branchName: name,

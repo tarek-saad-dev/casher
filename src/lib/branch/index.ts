@@ -13,6 +13,7 @@ export {
   getEmployeeHomeBranch,
   getUserDefaultBranch,
   listActiveBranches,
+  listActiveBranchesIn,
   listAllBranches,
   listEmployeeActiveBranchAssignments,
   listUserValidBranchAccess,

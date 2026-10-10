@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
-import { getSession } from '@/lib/session';
 import {
   validateContactPayload,
   toFollowUpMonthDate,
   type ContactPayload,
 } from '@/lib/customerFollowUpValidation';
+import { requireTenantSession } from '@/lib/api-auth';
 
 export const runtime = 'nodejs';
 
@@ -14,10 +14,8 @@ export const runtime = 'nodejs';
 export async function PUT(req: NextRequest) {
   try {
     // ── Auth ────────────────────────────────────────────────────────────────
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ error: 'غير مصرح — يرجى تسجيل الدخول' }, { status: 401 });
-    }
+    const session = await requireTenantSession();
+    if (session instanceof NextResponse) return session;
 
     // ── Parse body ──────────────────────────────────────────────────────────
     let body: ContactPayload;
@@ -55,9 +53,13 @@ export async function PUT(req: NextRequest) {
     const db = await getPool();
 
     // ── Verify client exists ────────────────────────────────────────────────
+    if (!session.TenantId) {
+      return NextResponse.json({ error: 'غير مصرح — يرجى تسجيل الدخول' }, { status: 401 });
+    }
     const clientCheck = await db.request()
       .input('clientId', sql.Int, clientId)
-      .query(`SELECT 1 FROM dbo.TblClient WHERE ClientID = @clientId`);
+      .input('tenantId', sql.UniqueIdentifier, session.TenantId)
+      .query(`SELECT 1 FROM dbo.TblClient WHERE ClientID = @clientId AND TenantId = @tenantId`);
 
     if (clientCheck.recordset.length === 0) {
       return NextResponse.json({ error: 'العميل غير موجود' }, { status: 404 });

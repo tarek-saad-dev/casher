@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { updateClientWebsiteProfile } from '@/lib/client/publicClientWebsite.service';
+import { resolvePublicCatalogTenantId } from '@/lib/catalog/publicCatalogTenant';
 import {
   pickEditableClientUpdateFields,
   validateClientWebsiteEmail,
@@ -68,7 +69,16 @@ export async function PATCH(req: NextRequest) {
   }
 
   try {
-    const result = await updateClientWebsiteProfile({
+    const tenantParams = new URLSearchParams(req.nextUrl.searchParams);
+    if (typeof body.branchCode === 'string' && !tenantParams.has('branchCode')) {
+      tenantParams.set('branchCode', body.branchCode);
+    }
+    const tenantId = await resolvePublicCatalogTenantId(tenantParams, 'PATCH /api/client/update');
+    if (!tenantId) {
+      return NextResponse.json({ ok: false, message: 'Client not found' }, { status: 404 });
+    }
+
+    const result = await updateClientWebsiteProfile(tenantId, {
       clientId,
       ...fields,
     });

@@ -36,13 +36,20 @@ export function isEmployeeFundingLikeCategoryName(
 async function resolveEmployeeByCategoryNameHint(
   transaction: sql.Transaction,
   categoryName: string,
+  cashMoveId: number,
 ): Promise<{ empId: number; empName: string } | null> {
   const result = await ledgerRequest(transaction)
     .input('CatName', sql.NVarChar(200), categoryName.trim())
+    .input('HintCashMoveID', sql.Int, cashMoveId)
     .query(`
       SELECT TOP 1 e.EmpID, e.EmpName
       FROM dbo.TblEmp e
       WHERE ISNULL(e.isActive, 1) = 1
+        AND e.TenantId IN (
+          SELECT tloc.TenantId FROM dbo.Location tloc
+          INNER JOIN dbo.TblCashMove hcm ON hcm.BranchID = tloc.LegacyBranchId
+          WHERE hcm.ID = @HintCashMoveID
+        )
         AND e.EmpName IS NOT NULL
         AND LEN(LTRIM(RTRIM(e.EmpName))) >= 2
         AND (
@@ -354,7 +361,7 @@ export async function syncEmployeeFundingFromCashMove(
     if (resolution.kind === 'not_revenue') {
       if (isEmployeeFundingLikeCategoryName(cashMove.CategoryName)) {
         const hint = cashMove.CategoryName
-          ? await resolveEmployeeByCategoryNameHint(transaction, cashMove.CategoryName)
+          ? await resolveEmployeeByCategoryNameHint(transaction, cashMove.CategoryName, cashMoveId)
           : null;
         if (hint) {
           resolution = {

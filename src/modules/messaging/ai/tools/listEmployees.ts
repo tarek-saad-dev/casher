@@ -1,6 +1,7 @@
 import 'server-only';
 import { listPublicBookingBarbers } from '@/lib/booking/publicBookingBarbers';
 import { getPublicBarberCalendar } from '@/lib/booking/publicBookingBarbers';
+import { resolveMessagingBookingTenantId } from './messagingBookingTenant';
 import { MAX_EMPLOYEES_RETURNED, type AiToolCallRequest, type AiToolResult } from './types';
 import { resolveCustomerDateText, textMatchesQuery } from './dateText';
 
@@ -17,7 +18,9 @@ export async function executeListEmployees(
 
   try {
     const mode = request.branchCode ? 'branch' : 'global';
+    const tenantId = await resolveMessagingBookingTenantId();
     const list = await listPublicBookingBarbers({
+      tenantId,
       mode,
       branchCode: request.branchCode ?? null,
       date: dateResolved.date,
@@ -50,6 +53,7 @@ export async function executeListEmployees(
     if (bounded.length === 1 && dateResolved.date) {
       try {
         const cal = await getPublicBarberCalendar({
+          tenantId,
           empId: bounded[0]!.empId,
           from: dateResolved.date,
           to: dateResolved.date,

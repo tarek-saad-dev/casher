@@ -15,7 +15,7 @@ export async function POST() {
 
     let portOptions: { queuePortHooks?: Awaited<ReturnType<typeof buildQueuePortHooksForActor>>; useExtractedEventDelivery?: boolean } | undefined;
     if (isQueueSchedulingPortEnabled()) {
-      const actor = await buildStaffActorContext(branch.userId);
+      const actor = await buildStaffActorContext(branch.userId, branch.tenantId);
       portOptions = {
         queuePortHooks: await buildQueuePortHooksForActor(actor),
         useExtractedEventDelivery: true,

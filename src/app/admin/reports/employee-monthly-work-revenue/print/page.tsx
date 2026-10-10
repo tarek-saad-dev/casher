@@ -11,6 +11,9 @@ import {
   getCairoGeneratedAtLabel,
   sanitizeFilenamePart,
 } from '@/lib/reports/reportFormatters';
+import { getSession } from '@/lib/session';
+import { toPrintBrand } from '@/platform/branding/brandProfile';
+import { getTenantBrandProfileCached } from '@/platform/branding/brandRepository';
 import AutoPrint from './AutoPrint';
 import './print.css';
 
@@ -51,6 +54,10 @@ export default async function EmployeeMonthlyWorkRevenuePrintPage({ searchParams
     redirect('/admin/reports/employee-monthly-work-revenue');
   }
 
+  const session = await getSession();
+  const brand = toPrintBrand(
+    session?.TenantId ? await getTenantBrandProfileCached(session.TenantId) : null,
+  );
   const filename = `employee-work-revenue-${sanitizeFilenamePart(report.employee.name)}-${validated.year}-${String(validated.month).padStart(2, '0')}.pdf`;
   const generatedAt = getCairoGeneratedAtLabel();
 
@@ -61,9 +68,9 @@ export default async function EmployeeMonthlyWorkRevenuePrintPage({ searchParams
         <div className="emp-work-print-report">
           <div className="emp-work-print-header">
             <div className="emp-work-print-logo-block">
-              <div className="emp-work-print-logo-circle">CUT</div>
+              <div className="emp-work-print-logo-circle">{brand.wordmark}</div>
               <div>
-                <div className="emp-work-print-brand-title">Cut Salon</div>
+                <div className="emp-work-print-brand-title">{brand.name}</div>
                 <div className="emp-work-print-report-title">تقرير مواعيد العمل والإيرادات الشهرية</div>
               </div>
             </div>

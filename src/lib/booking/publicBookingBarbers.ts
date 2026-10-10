@@ -32,7 +32,9 @@ import {
 } from '@/lib/hr/testEmployeePolicy';
 import { resolveEmployeeGlobalSchedule } from '@/lib/hr/employeeBranchScheduleResolver';
 import { canBranchAppearInPublicBooking } from '@/lib/branch/publicBranchVisibility';
-import { getBranchById } from '@/lib/branch/repository';
+import { getBranchById, listActiveBranches } from '@/lib/branch/repository';
+import { listTenantLegacyBranchIds } from '@/platform/tenant/tenantContext';
+import { tenantLocationBranchSql } from '@/lib/booking/publicBookingTenancy';
 import { getPublicSettings, isValidDate } from '@/lib/publicBookingHelpers';
 import { getCairoBusinessDate } from '@/lib/businessDate';
 import type { PublicBookingErrorCode } from '@/lib/booking/publicBookingErrorCatalog';
@@ -87,19 +89,20 @@ export function invalidatePublicBookingBarberRelatedCaches(): void {
   invalidatePublicBookingServicesCache();
 }
 
-function cacheGet<T>(key: string): T | null {
-  const hit = getCacheMap().get(key);
+/** DRVO-019: every entry is namespaced by the tenant it was computed for. */
+function cacheGet<T>(tenantId: string, key: string): T | null {
+  const hit = getCacheMap().get(`${tenantId}::${key}`);
   if (!hit || hit.expiresAt <= Date.now()) return null;
   return hit.value as T;
 }
 
-function cacheSet(key: string, value: unknown): void {
+function cacheSet(tenantId: string, key: string, value: unknown): void {
   const map = getCacheMap();
   if (map.size >= CACHE_MAX) {
     const first = map.keys().next().value;
     if (first) map.delete(first);
   }
-  map.set(key, { expiresAt: Date.now() + CACHE_TTL_MS, value });
+  map.set(`${tenantId}::${key}`, { expiresAt: Date.now() + CACHE_TTL_MS, value });
 }
 
 export class PublicBookingBarberError extends Error {
@@ -219,25 +222,63 @@ type CandidateRow = {
   IsActiveAssign: boolean | number;
 };
 
-async function loadPublicServiceIds(): Promise<number[]> {
-  // Use GLEEM as catalog host when public — prices/services are global.
-  let ctx: PublicBookingBranchContext;
+async function tryTenantBranch(
+  tenantId: string,
+  branchCode: string,
+): Promise<PublicBookingBranchContext | null> {
   try {
-    ctx = await resolvePublicBookingBranchContext({
-      branchCode: 'GLEEM',
+    return await resolvePublicBookingBranchContext({
+      branchCode,
       purpose: 'public_booking',
+      expectedTenantId: tenantId,
     });
   } catch {
-    // No public branch → empty catalog
-    return [];
+    return null;
   }
+}
+
+/**
+ * Catalogue / settings host for tenant-wide barber reads: the requested branch, else the tenant's
+ * first (lowest BranchID) active branch that resolves for public booking. The catalogue itself is
+ * tenant-wide, so the host only decides which branch context loads it.
+ */
+async function resolveTenantHostBranch(
+  tenantId: string,
+  preferredBranchCode?: string | null,
+): Promise<PublicBookingBranchContext | null> {
+  if (preferredBranchCode) {
+    const preferred = await tryTenantBranch(tenantId, preferredBranchCode);
+    if (preferred) return preferred;
+  }
+  const tenantBranchIds = await listTenantLegacyBranchIds(tenantId);
+  const candidates = (await listActiveBranches())
+    .filter((b) => tenantBranchIds.has(b.branchId))
+    .sort((a, b) => a.branchId - b.branchId);
+  for (const b of candidates) {
+    const ctx = await tryTenantBranch(tenantId, b.branchCode);
+    if (ctx) return ctx;
+  }
+  return null;
+}
+
+async function loadPublicServiceIds(
+  tenantId: string,
+  preferredBranchCode?: string | null,
+): Promise<number[]> {
+  const ctx = await resolveTenantHostBranch(tenantId, preferredBranchCode);
+  // No public branch → empty catalog
+  if (!ctx) return [];
   const catalog = await getPublicBookingServicesCatalog(ctx);
   return catalog.services.map((s) => s.serviceId);
 }
 
-async function assertRequestedServicesPublic(serviceIds: number[]): Promise<number[]> {
+async function assertRequestedServicesPublic(
+  tenantId: string,
+  serviceIds: number[],
+  preferredBranchCode?: string | null,
+): Promise<number[]> {
   if (!serviceIds.length) return [];
-  const publicIds = new Set(await loadPublicServiceIds());
+  const publicIds = new Set(await loadPublicServiceIds(tenantId, preferredBranchCode));
   for (const id of serviceIds) {
     if (!publicIds.has(id)) {
       throw new PublicBookingBarberError('SERVICE_NOT_AVAILABLE_AT_BRANCH');
@@ -253,7 +294,7 @@ function resolvePublicBarberNameEn(
   return normalizeEmpNameEn(dbNameEn) ?? getBarberNameEnByArabicName(nameAr);
 }
 
-async function loadAssignmentCandidates(day: string): Promise<CandidateRow[]> {
+async function loadAssignmentCandidates(day: string, tenantId: string): Promise<CandidateRow[]> {
   const db = await getPool();
   const hasImageUrl = await ensureTblEmpImageUrlColumn(db);
   const hasNameEn = await ensureTblEmpNameEnColumn(db);
@@ -264,7 +305,11 @@ async function loadAssignmentCandidates(day: string): Promise<CandidateRow[]> {
   const orderBySort = hasSort
     ? 'ISNULL(e.DisplaySortOrder, 999),'
     : '';
-  const res = await db.request().input('day', sql.Date, day).query(`
+  const res = await db
+    .request()
+    .input('day', sql.Date, day)
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
+    .query(`
     SELECT
       e.EmpID, e.EmpName, e.Job,
       ${imageUrlCol},
@@ -276,7 +321,9 @@ async function loadAssignmentCandidates(day: string): Promise<CandidateRow[]> {
     FROM dbo.TblEmp e
     INNER JOIN dbo.TblEmpBranchAssignment a ON a.EmpID = e.EmpID
     INNER JOIN dbo.TblBranch b ON b.BranchID = a.BranchID
-    WHERE ISNULL(e.isActive, 1) = 1
+    WHERE e.TenantId = @tenantId
+      AND ${tenantLocationBranchSql('b.BranchID')}
+      AND ISNULL(e.isActive, 1) = 1
       AND e.Job IN (N'حلاق', N'مساعد', N'Barber', N'barber')
       AND a.IsActive = 1
       AND a.CanReceiveBookings = 1
@@ -288,7 +335,7 @@ async function loadAssignmentCandidates(day: string): Promise<CandidateRow[]> {
   return res.recordset as CandidateRow[];
 }
 
-async function loadPublicEmployeeOrThrow(empId: number): Promise<{
+async function loadPublicEmployeeOrThrow(empId: number, tenantId: string): Promise<{
   empId: number;
   name: string;
   nameEn: string | null;
@@ -309,9 +356,10 @@ async function loadPublicEmployeeOrThrow(empId: number): Promise<{
   const res = await db
     .request()
     .input('empId', sql.Int, empId)
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
     .query(`
       SELECT EmpID, EmpName, ISNULL(isActive, 1) AS isActive, Job, ${imageSelect}, ${nameEnSelect}
-      FROM dbo.TblEmp WHERE EmpID = @empId
+      FROM dbo.TblEmp WHERE EmpID = @empId AND TenantId = @tenantId
     `);
   const row = res.recordset[0];
   if (!row) throw new PublicBookingBarberError('BARBER_NOT_FOUND');
@@ -323,7 +371,7 @@ async function loadPublicEmployeeOrThrow(empId: number): Promise<{
   }
   // Must have at least one public-bookable assignment historically/currently
   const day = getCairoBusinessDate();
-  const candidates = await loadAssignmentCandidates(day);
+  const candidates = await loadAssignmentCandidates(day, tenantId);
   const mine = candidates.filter((c) => Number(c.EmpID) === empId);
   let anyPublic = false;
   for (const c of mine) {
@@ -382,14 +430,17 @@ function addDaysYmd(ymd: string, days: number): string {
 }
 
 export async function listPublicBookingBarbers(args: {
+  /** DRVO-019: resolved request tenant; global mode lists this tenant's barbers only. */
+  tenantId: string;
   mode: 'global' | 'branch';
   branchCode?: string | null;
   date?: string | null;
   serviceIds?: number[];
   previewQueryParam?: string | null;
 }): Promise<PublicBarbersListResponse> {
-  const serviceIds = await assertRequestedServicesPublic(args.serviceIds ?? []);
-  const publicServiceIds = await loadPublicServiceIds();
+  const tenantId = args.tenantId;
+  const serviceIds = await assertRequestedServicesPublic(tenantId, args.serviceIds ?? [], args.branchCode);
+  const publicServiceIds = await loadPublicServiceIds(tenantId, args.branchCode);
   if (publicServiceIds.length === 0) {
     throw new PublicBookingBarberError('SERVICES_NOT_CONFIGURED');
   }
@@ -408,6 +459,7 @@ export async function listPublicBookingBarbers(args: {
         branchCode: args.branchCode,
         purpose: 'public_booking',
         previewQueryParam: args.previewQueryParam,
+        expectedTenantId: tenantId,
       });
     } catch (err) {
       if (err instanceof PublicBookingBranchContextError) {
@@ -430,10 +482,10 @@ export async function listPublicBookingBarbers(args: {
     PUBLIC_BOOKING_BARBER_CONTRACT_VERSION,
     publicServiceIds.length,
   ].join('::');
-  const cached = cacheGet<PublicBarbersListResponse>(cacheKey);
+  const cached = cacheGet<PublicBarbersListResponse>(tenantId, cacheKey);
   if (cached) return cached;
 
-  const candidates = await loadAssignmentCandidates(rosterDay);
+  const candidates = await loadAssignmentCandidates(rosterDay, tenantId);
   const byEmp = new Map<
     number,
     {
@@ -573,7 +625,7 @@ export async function listPublicBookingBarbers(args: {
       dateFilter,
     },
   };
-  cacheSet(cacheKey, response);
+  cacheSet(tenantId, cacheKey, response);
   return response;
 }
 
@@ -684,6 +736,7 @@ async function classifyCalendarDay(args: {
 }
 
 export async function getPublicBarberCalendar(args: {
+  tenantId: string;
   empId: number;
   from: string;
   to: string;
@@ -691,6 +744,7 @@ export async function getPublicBarberCalendar(args: {
   serviceIds?: number[];
   previewQueryParam?: string | null;
 }): Promise<PublicBarberCalendarResponse> {
+  const tenantId = args.tenantId;
   if (!isValidDate(args.from) || !isValidDate(args.to)) {
     throw new PublicBookingBarberError('INVALID_DATE');
   }
@@ -702,11 +756,11 @@ export async function getPublicBarberCalendar(args: {
     throw new PublicBookingBarberError('DATE_RANGE_TOO_LARGE');
   }
 
-  const serviceIds = await assertRequestedServicesPublic(args.serviceIds ?? []);
-  const emp = await loadPublicEmployeeOrThrow(args.empId);
+  const serviceIds = await assertRequestedServicesPublic(tenantId, args.serviceIds ?? [], args.branchCode);
+  const emp = await loadPublicEmployeeOrThrow(args.empId, tenantId);
 
   let branchFilterId: number | null = null;
-  let settingsBranchId = 1;
+  let settingsBranchId: number | null = null;
   if (args.branchCode) {
     let ctx: PublicBookingBranchContext;
     try {
@@ -714,6 +768,7 @@ export async function getPublicBarberCalendar(args: {
         branchCode: args.branchCode,
         purpose: 'public_booking',
         previewQueryParam: args.previewQueryParam,
+        expectedTenantId: tenantId,
       });
     } catch (err) {
       if (err instanceof PublicBookingBranchContextError) {
@@ -724,15 +779,10 @@ export async function getPublicBarberCalendar(args: {
     branchFilterId = ctx.branchId;
     settingsBranchId = ctx.branchId;
   } else {
-    try {
-      const gleem = await resolvePublicBookingBranchContext({
-        branchCode: 'GLEEM',
-        purpose: 'public_booking',
-      });
-      settingsBranchId = gleem.branchId;
-    } catch {
-      /* keep 1 */
-    }
+    settingsBranchId = (await resolveTenantHostBranch(tenantId))?.branchId ?? null;
+  }
+  if (settingsBranchId == null) {
+    throw new PublicBookingBarberError('BRANCH_NOT_FOUND');
   }
 
   const settings = await getPublicSettings(settingsBranchId);
@@ -748,7 +798,7 @@ export async function getPublicBarberCalendar(args: {
     horizonEnd,
     PUBLIC_BOOKING_BARBER_CONTRACT_VERSION,
   ].join('::');
-  const cached = cacheGet<PublicBarberCalendarResponse>(cacheKey);
+  const cached = cacheGet<PublicBarberCalendarResponse>(tenantId, cacheKey);
   if (cached) return cached;
 
   const days: PublicBarberCalendarDayWire[] = [];
@@ -801,16 +851,19 @@ export async function getPublicBarberCalendar(args: {
     presenceOnly: serviceIds.length === 0,
     days,
   };
-  cacheSet(cacheKey, response);
+  cacheSet(tenantId, cacheKey, response);
   return response;
 }
 
 export async function getPublicBarberLocation(args: {
+  tenantId: string;
+  branchCode?: string | null;
   empId: number;
   date: string;
   serviceIds?: number[];
   previewQueryParam?: string | null;
 }): Promise<PublicBarberLocationResponse> {
+  const tenantId = args.tenantId;
   if (!isValidDate(args.date)) {
     throw new PublicBookingBarberError('INVALID_DATE');
   }
@@ -821,11 +874,11 @@ export async function getPublicBarberLocation(args: {
     args.date,
     (args.serviceIds ?? []).join(',') || 'ALL',
   ].join('::');
-  const locCached = cacheGet<PublicBarberLocationResponse>(locKey);
+  const locCached = cacheGet<PublicBarberLocationResponse>(tenantId, locKey);
   if (locCached) return locCached;
 
-  await assertRequestedServicesPublic(args.serviceIds ?? []);
-  const emp = await loadPublicEmployeeOrThrow(args.empId);
+  await assertRequestedServicesPublic(tenantId, args.serviceIds ?? [], args.branchCode);
+  const emp = await loadPublicEmployeeOrThrow(args.empId, tenantId);
 
   if (args.previewQueryParam) {
     // ignored — never escalates
@@ -850,7 +903,7 @@ export async function getPublicBarberLocation(args: {
       schedule: null,
       reason: day.status,
     };
-    cacheSet(locKey, off);
+    cacheSet(tenantId, locKey, off);
     return off;
   }
 
@@ -881,7 +934,7 @@ export async function getPublicBarberLocation(args: {
       endDayOffset: br.endDayOffset,
     },
   };
-  cacheSet(locKey, value);
+  cacheSet(tenantId, locKey, value);
   return value;
 }
 
@@ -889,6 +942,8 @@ export async function getPublicBarberLocation(args: {
  * Single-barber public profile — avoids shipping the full global roster.
  */
 export async function getPublicBarberProfileById(args: {
+  tenantId: string;
+  branchCode?: string | null;
   empId: number;
   previewQueryParam?: string | null;
 }): Promise<{
@@ -897,22 +952,23 @@ export async function getPublicBarberProfileById(args: {
   meta: { generatedAt: string; contractVersion: string };
 }> {
   void args.previewQueryParam;
+  const tenantId = args.tenantId;
   const cacheKey = `profile::${args.empId}::${PUBLIC_BOOKING_BARBER_CONTRACT_VERSION}`;
   const cached = cacheGet<{
     ok: true;
     barber: PublicBarberWire;
     meta: { generatedAt: string; contractVersion: string };
-  }>(cacheKey);
+  }>(tenantId, cacheKey);
   if (cached) return cached;
 
-  const emp = await loadPublicEmployeeOrThrow(args.empId);
-  const publicServiceIds = await loadPublicServiceIds();
+  const emp = await loadPublicEmployeeOrThrow(args.empId, tenantId);
+  const publicServiceIds = await loadPublicServiceIds(tenantId, args.branchCode);
   if (publicServiceIds.length === 0) {
     throw new PublicBookingBarberError('SERVICES_NOT_CONFIGURED');
   }
 
   const day = getCairoBusinessDate();
-  const candidates = await loadAssignmentCandidates(day);
+  const candidates = await loadAssignmentCandidates(day, tenantId);
   const branches: PublicBarberBranchWire[] = [];
   const seen = new Set<string>();
   for (const row of candidates) {
@@ -954,7 +1010,7 @@ export async function getPublicBarberProfileById(args: {
       contractVersion: PUBLIC_BOOKING_BARBER_CONTRACT_VERSION,
     },
   };
-  cacheSet(cacheKey, value);
+  cacheSet(tenantId, cacheKey, value);
   return value;
 }
 

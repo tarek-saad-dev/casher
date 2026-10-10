@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'سبب الإلغاء مطلوب' }, { status: 400 });
     }
 
-    const result = await voidReconciliationLedgerEntry(ledgerEntryId, reason);
+    const result = await voidReconciliationLedgerEntry(ledgerEntryId, reason, auth.tenantId);
     return NextResponse.json(result);
   } catch (error) {
     if (error instanceof EmployeeLedgerCleanupError) {

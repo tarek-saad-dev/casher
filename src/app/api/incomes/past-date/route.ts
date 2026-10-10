@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
     const branchId = historical.ownership.branchId;
     const businessDayId = historical.ownership.businessDayId;
 
-    const actor = await buildStaffActorContext(session.UserID);
+    const actor = await buildStaffActorContext(session.UserID, session.TenantId);
     const treasuryPorts = await buildTreasuryWritePorts(actor);
     const idempotencyKey =
       typeof body.idempotencyKey === 'string' && body.idempotencyKey.trim()

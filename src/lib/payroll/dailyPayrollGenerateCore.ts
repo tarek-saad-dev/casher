@@ -18,6 +18,7 @@ import {
   loadEmpDayAttendanceAggregates,
 } from '@/lib/payroll/attendancePayrollAggregate';
 import { loadBranchDayPayrollPlans } from '@/lib/payroll/branchPayrollPlan';
+import { bindEmpTenantPredicate, type HrEmpTenantScope } from '@/lib/hr/hrTenantScope';
 
 export interface ValidationMissing {
   empId: number;
@@ -140,15 +141,19 @@ const EXCLUDED_INFO_REASONS = new Set<PayrollValidationReason>([
 export async function validateDailyPayrollAttendance(
   pool: { request: () => sql.Request },
   workDate: string,
-  options?: { branchId?: number; empIds?: number[] },
+  options: {
+    /** Whose employees are validated (DRVO-016); never all tenants. */
+    empScope: HrEmpTenantScope;
+    branchId?: number;
+    empIds?: number[];
+  },
 ): Promise<DailyPayrollValidationResult> {
   const dayOfWeek = new Date(`${workDate}T12:00:00Z`).getDay();
-  const branchId = options?.branchId;
+  const branchId = options.branchId;
 
-  const eligibleResult = await pool
-    .request()
-    .input('dayOfWeek', sql.TinyInt, dayOfWeek)
-    .query(`
+  const eligibleReq = pool.request().input('dayOfWeek', sql.TinyInt, dayOfWeek);
+  const empTenantSql = bindEmpTenantPredicate(eligibleReq, 'e', options.empScope);
+  const eligibleResult = await eligibleReq.query(`
       SELECT
         e.EmpID,
         e.EmpName,
@@ -171,7 +176,7 @@ export async function validateDailyPayrollAttendance(
       FROM dbo.TblEmp e
       LEFT JOIN dbo.TblEmpWorkSchedule ws
         ON ws.EmpID = e.EmpID AND ws.DayOfWeek = @dayOfWeek
-      WHERE e.isActive = 1 AND e.IsPayrollEnabled = 1
+      WHERE e.isActive = 1 AND e.IsPayrollEnabled = 1 AND ${empTenantSql}
     `);
 
   const aggregates =
@@ -273,7 +278,7 @@ export async function validateDailyPayrollAttendance(
     }
   }
 
-  const focusEmpIds = (options?.empIds ?? [])
+  const focusEmpIds = (options.empIds ?? [])
     .map((n) => Number(n))
     .filter((n) => Number.isFinite(n) && n > 0);
   if (focusEmpIds.length > 0) {
@@ -289,11 +294,13 @@ export async function validateDailyPayrollAttendance(
 
 export async function countEligibleDailyPayrollEmployees(
   pool: { request: () => sql.Request },
+  tenantId: string,
 ): Promise<number> {
-  const result = await pool.request().query(`
+  const result = await pool.request().input('tenantId', sql.UniqueIdentifier, tenantId).query(`
     SELECT COUNT(*) AS cnt
     FROM dbo.TblEmp e
-    WHERE e.isActive = 1
+    WHERE e.TenantId = @tenantId
+      AND e.isActive = 1
       AND e.IsPayrollEnabled = 1
       AND (
         e.PayrollMethod IN (N'hourly', N'daily')
@@ -392,6 +399,7 @@ export async function executeDailyPayrollGenerate(
         ON v.EmpID = p.EmpID AND v.WorkDate = p.WorkDate AND v.BranchID = p.BranchID
       INNER JOIN dbo.TblEmpAttendance a ON a.ID = v.PrimaryAttendanceID
       INNER JOIN dbo.TblEmp e ON e.EmpID = p.EmpID
+        AND e.TenantId IN (SELECT l.TenantId FROM dbo.Location l WHERE l.LegacyBranchId = @BranchID)
       ${SQL_BRANCH_PAYROLL_PLAN_APPLY}
       LEFT JOIN dbo.TblEmpWorkSchedule ws
         ON ws.EmpID = e.EmpID AND ws.DayOfWeek = @dayOfWeek
@@ -429,6 +437,7 @@ export async function executeDailyPayrollGenerate(
       FROM dbo.vw_EmpAttendancePayrollBranchDay v
       INNER JOIN dbo.TblEmpAttendance a ON a.ID = v.PrimaryAttendanceID
       INNER JOIN dbo.TblEmp e ON e.EmpID = v.EmpID
+        AND e.TenantId IN (SELECT l.TenantId FROM dbo.Location l WHERE l.LegacyBranchId = @BranchID)
       ${SQL_BRANCH_PAYROLL_PLAN_APPLY}
       LEFT JOIN dbo.TblEmpWorkSchedule ws
         ON ws.EmpID = e.EmpID AND ws.DayOfWeek = @dayOfWeek

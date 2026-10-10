@@ -67,6 +67,7 @@ export async function GET(req: NextRequest) {
 
     // ── Summary counts (always returned regardless of active tab) ─────────
     const countsReq = db.request();
+    countsReq.input('tenantId', sql.UniqueIdentifier, __auth.tenantId);
     countsReq.input('monthStart',     sql.Date, monthStart);
     countsReq.input('nextMonthStart', sql.Date, nextMonthStart);
     countsReq.input('today',          sql.Date, TodayCairo);
@@ -79,14 +80,14 @@ export async function GET(req: NextRequest) {
         -- New customers this month
         (
           SELECT COUNT(*) FROM dbo.TblClient c2
-          WHERE c2.RegisterDate >= @monthStart
+          WHERE c2.TenantId = @tenantId AND c2.RegisterDate >= @monthStart
             AND c2.RegisterDate <  @nextMonthStart
         ) AS newCustomers,
 
         -- Birthdays this month (non-null BirthDate, matching month)
         (
           SELECT COUNT(*) FROM dbo.TblClient c2
-          WHERE c2.BirthDate IS NOT NULL
+          WHERE c2.TenantId = @tenantId AND c2.BirthDate IS NOT NULL
             AND MONTH(c2.BirthDate) = @curMonth
         ) AS birthdays,
 
@@ -96,7 +97,7 @@ export async function GET(req: NextRequest) {
             SELECT c2.ClientID
             FROM dbo.TblClient c2
             INNER JOIN dbo.TblinvServHead h ON h.ClientID = c2.ClientID
-            WHERE ${VALID_INVOICE}
+            WHERE c2.TenantId = @tenantId AND ${VALID_INVOICE}
             GROUP BY c2.ClientID
             HAVING MAX(h.invDate) < DATEADD(MONTH, -@inactiveMonths, @today)
           ) sub
@@ -114,6 +115,7 @@ export async function GET(req: NextRequest) {
     // ═══════════════════════════════════════════════════════════════════════
     if (tab === 'new') {
       const baseReq = db.request();
+      baseReq.input('tenantId', sql.UniqueIdentifier, __auth.tenantId);
       baseReq.input('monthStart',     sql.Date,    monthStart);
       baseReq.input('nextMonthStart', sql.Date,    nextMonthStart);
       baseReq.input('offset',         sql.Int,     offset);
@@ -150,7 +152,7 @@ export async function GET(req: NextRequest) {
           COUNT(*) OVER () AS TotalCount
         FROM dbo.TblClient c
         LEFT JOIN VisitStats vs ON vs.ClientID = c.ClientID
-        WHERE c.RegisterDate >= @monthStart
+        WHERE c.TenantId = @tenantId AND c.RegisterDate >= @monthStart
           AND c.RegisterDate <  @nextMonthStart
           ${searchCond}
         ORDER BY ${orderBy}
@@ -189,6 +191,7 @@ export async function GET(req: NextRequest) {
     // ═══════════════════════════════════════════════════════════════════════
     if (tab === 'birthdays') {
       const baseReq = db.request();
+      baseReq.input('tenantId', sql.UniqueIdentifier, __auth.tenantId);
       baseReq.input('curMonth',   sql.Int,  selMonth);
       baseReq.input('curYear',    sql.Int,  selYear);
       baseReq.input('today',      sql.Date, TodayCairo);
@@ -227,7 +230,7 @@ export async function GET(req: NextRequest) {
               ELSE DATEFROMPARTS(@curYear, MONTH(c.BirthDate), DAY(c.BirthDate))
             END AS BirthdayThisYear
           FROM dbo.TblClient c
-          WHERE c.BirthDate IS NOT NULL
+          WHERE c.TenantId = @tenantId AND c.BirthDate IS NOT NULL
             AND MONTH(c.BirthDate) = @curMonth
         )
         SELECT
@@ -299,6 +302,7 @@ export async function GET(req: NextRequest) {
       contactStatus === 'pending'   ? `AND fu.ID IS NULL`     : '';
 
     const baseReq = db.request();
+      baseReq.input('tenantId', sql.UniqueIdentifier, __auth.tenantId);
     baseReq.input('today',            sql.Date, TodayCairo);
     baseReq.input('inactiveMonths',   sql.Int,  inactiveMonths);
     baseReq.input('offset',           sql.Int,  offset);
@@ -373,7 +377,7 @@ export async function GET(req: NextRequest) {
              ON fu.ClientID = c.ClientID AND fu.FollowUpMonth = @followUpMonthDt
       LEFT  JOIN dbo.TblEmp  fuEmp ON fuEmp.EmpID  = fu.ComplaintEmpID
       LEFT  JOIN dbo.TblUser fuUsr ON fuUsr.UserID = fu.ContactedByUserID
-      WHERE 1=1 ${searchCond} ${contactStatusCond}
+      WHERE c.TenantId = @tenantId ${searchCond} ${contactStatusCond}
       ORDER BY ${orderBy}
       OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY
     `);
@@ -393,6 +397,7 @@ export async function GET(req: NextRequest) {
       )`;
     }
     const inactiveSummaryReq = db.request();
+    inactiveSummaryReq.input('tenantId', sql.UniqueIdentifier, __auth.tenantId);
     inactiveSummaryReq.input('today2',           sql.Date, TodayCairo);
     inactiveSummaryReq.input('inactiveMonths2',  sql.Int,  inactiveMonths);
     inactiveSummaryReq.input('followUpMonthDt2', sql.Date, followUpMonthDate);
@@ -409,7 +414,7 @@ export async function GET(req: NextRequest) {
           GROUP BY h.ClientID
           HAVING MAX(h.invDate) < DATEADD(MONTH, -@inactiveMonths2, @today2)
         ) vs ON vs.ClientID = c.ClientID
-        WHERE 1=1 ${searchCond2}
+        WHERE c.TenantId = @tenantId ${searchCond2}
       )
       SELECT
         COUNT(*) AS TotalInactive,

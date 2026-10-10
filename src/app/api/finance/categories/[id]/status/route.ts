@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
+import { authenticate, isAuthResult } from '@/lib/api-auth';
 
 // PATCH /api/finance/categories/[id]/status
 // Body: { isActive: boolean }
@@ -8,6 +9,9 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await authenticate();
+  if (!isAuthResult(auth)) return auth;
+
   try {
     const { id: rawId } = await params;
     const id = parseInt(rawId, 10);
@@ -22,6 +26,7 @@ export async function PATCH(
 
     const db = await getPool();
     const result = await db.request()
+      .input('tenantId',  sql.UniqueIdentifier, auth.tenantId)
       .input('ExpINID',   sql.Int, id)
       .input('IsActive',  sql.Bit, body.isActive ? 1 : 0)
       .query(`
@@ -32,7 +37,7 @@ export async function PATCH(
           INSERTED.CatName,
           INSERTED.ExpINType,
           INSERTED.IsActive
-        WHERE ExpINID = @ExpINID;
+        WHERE ExpINID = @ExpINID AND TenantId = @tenantId;
       `);
 
     if (result.recordset.length === 0) {
