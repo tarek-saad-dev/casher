@@ -147,6 +147,28 @@ function demoSalonEmployees(branchCode: string) {
   ];
 }
 
+function defaultClinicServices() {
+  return [
+    {
+      name: 'Consultation',
+      arabicName: 'كشف',
+      categoryName: 'الكشف والمتابعة',
+      price: 0,
+      durationMinutes: 30,
+      active: true,
+    },
+    {
+      name: 'Follow-up',
+      arabicName: 'متابعة',
+      categoryName: 'الكشف والمتابعة',
+      price: 0,
+      durationMinutes: 20,
+      active: true,
+    },
+  ];
+}
+
+
 function appCustomizations(industry: PublicSignupIndustry, needs: PublicSignupNeed[]) {
   const add: string[] = [];
   if (industry === 'salon' && needs.includes('inventory')) {
@@ -197,7 +219,7 @@ function buildOnboardingRequest(input: PublicSignupInput): OnboardingRequest {
         defaultCloseTime: clinic ? '21:00' : '23:00',
       },
     ],
-    services: withDemo ? demoSalonServices() : [],
+    services: clinic ? defaultClinicServices() : withDemo ? demoSalonServices() : [],
     employees: withDemo ? demoSalonEmployees(ids.branchCode) : [],
     owner: {
       displayName: input.contactName,
