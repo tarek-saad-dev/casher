@@ -15,7 +15,7 @@ import type {
   TenantReadinessReport,
 } from '../types';
 import { normalizeTenantCode } from '../validation';
-import { hasBlockingIssues, usesServiceCatalog, validateOnboardingRequest } from './plan';
+import { hasBlockingIssues, validateOnboardingRequest } from './plan';
 import {
   DEFAULT_STAGE_EXECUTORS,
   type OnboardingSetupContext,
