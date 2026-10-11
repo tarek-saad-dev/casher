@@ -6,6 +6,9 @@
 /** Exact path matches (no prefix). */
 export const PUBLIC_EXACT_ROUTES = [
   '/login',
+  // DRVO public marketing + self-service trial signup pages.
+  '/drvo',
+  '/start',
   '/api/auth/login',
   // Session probe / logout — handler returns empty session or clears cookie; must reach node.
   '/api/auth/session',
