@@ -4,7 +4,7 @@ import { getSession } from '@/lib/session';
 import { getUserAccess } from '@/lib/permissions-server';
 import { canPartnerAccessPath } from '@/lib/partnerAccess';
 
-const PARTNER_EXEMPT_PATHS = new Set(['/login', '/403']);
+const PARTNER_EXEMPT_PATHS = new Set(['/login', '/403', '/drvo', '/start']);
 
 /**
  * Server-side guard for partner-only users.
