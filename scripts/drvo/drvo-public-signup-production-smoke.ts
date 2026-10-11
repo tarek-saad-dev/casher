@@ -61,7 +61,29 @@ async function main() {
       return;
     }
 
-    if (mode !== 'verify-cleanup') throw new Error('mode must be before or verify-cleanup');
+    if (mode === 'cleanup') {
+      const row = await pool.request().input('phone', sql.NVarChar(32), normalizedPhone).query(`
+        SELECT r.TenantId,t.Code
+        FROM dbo.PublicSignupRegistration r
+        LEFT JOIN dbo.Tenant t ON t.TenantId=r.TenantId
+        WHERE r.PhoneNormalized=@phone;
+      `);
+      const found = row.recordset[0] as { TenantId: string | null; Code: string | null } | undefined;
+      const code = tenantCodeArg || (found?.Code ? String(found.Code) : '');
+      if (code) {
+        check(/^DRVO_[A-F0-9]{10}$/.test(code), 'cleanup target has synthetic public-signup tenant code');
+        const { purgeSmokeTenant } = await import('./smokeTenantPurge');
+        await purgeSmokeTenant(pool, code).catch(() => false);
+      }
+      await pool.request().input('phone', sql.NVarChar(32), normalizedPhone).query(
+        `DELETE FROM dbo.PublicSignupRegistration WHERE PhoneNormalized=@phone;`
+      );
+      fs.rmSync(snapshotFile, { force: true });
+      console.log('PUBLIC_SIGNUP_PRODUCTION_SMOKE_CLEANUP=DONE');
+      return;
+    }
+
+    if (mode !== 'verify-cleanup') throw new Error('mode must be before, verify-cleanup or cleanup');
     check(/^DRVO_[A-F0-9]{10}$/.test(tenantCodeArg), 'tenant code shape is synthetic public-signup code');
 
     const reg = await pool.request().input('phone', sql.NVarChar(32), normalizedPhone).query(`
