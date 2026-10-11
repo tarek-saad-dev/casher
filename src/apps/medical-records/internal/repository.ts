@@ -341,45 +341,75 @@ export async function openEncounter(input: {
   clientId: number;
   practitionerEmpId: number;
   locationId: string;
+  branchId: number;
+  workDate: string;
   bookingRef?: string | null;
   visitType: ClinicVisitType;
   chiefComplaint?: string | null;
   actorUserId: number;
 }): Promise<string> {
   const pool = await getPool();
-  const result = await pool.request()
-    .input('tenantId', sql.UniqueIdentifier, input.tenantId)
-    .input('clientId', sql.Int, input.clientId)
-    .input('practitionerEmpId', sql.Int, input.practitionerEmpId)
-    .input('locationId', sql.UniqueIdentifier, input.locationId)
-    .input('bookingRef', sql.NVarChar(128), input.bookingRef ?? null)
-    .input('visitType', sql.NVarChar(20), input.visitType)
-    .input('chiefComplaint', sql.NVarChar(1000), input.chiefComplaint ?? null)
-    .input('actorUserId', sql.Int, input.actorUserId)
-    .query(`
-      INSERT INTO dbo.ClinicEncounter (
-        TenantId, ClientID, PractitionerEmpID, LocationId, BookingRef,
-        VisitType, Status, ChiefComplaint, StartedAt, CreatedByUserID
-      )
-      OUTPUT INSERTED.EncounterId
-      VALUES (
-        @tenantId, @clientId, @practitionerEmpId, @locationId, @bookingRef,
-        @visitType, N'in_progress', @chiefComplaint, SYSUTCDATETIME(), @actorUserId
-      );
-    `);
-  const encounterId = String(result.recordset[0].EncounterId);
+  const tx = new sql.Transaction(pool);
+  await tx.begin();
+  try {
+    const result = await new sql.Request(tx)
+      .input('tenantId', sql.UniqueIdentifier, input.tenantId)
+      .input('clientId', sql.Int, input.clientId)
+      .input('practitionerEmpId', sql.Int, input.practitionerEmpId)
+      .input('locationId', sql.UniqueIdentifier, input.locationId)
+      .input('branchId', sql.Int, input.branchId)
+      .input('workDate', sql.Date, input.workDate)
+      .input('bookingRef', sql.NVarChar(128), input.bookingRef ?? null)
+      .input('visitType', sql.NVarChar(20), input.visitType)
+      .input('chiefComplaint', sql.NVarChar(1000), input.chiefComplaint ?? null)
+      .input('actorUserId', sql.Int, input.actorUserId)
+      .query(`
+        INSERT INTO dbo.ClinicEncounter (
+          TenantId, ClientID, PractitionerEmpID, LocationId, BookingRef,
+          VisitType, Status, ChiefComplaint, StartedAt, CreatedByUserID
+        )
+        OUTPUT INSERTED.EncounterId
+        SELECT
+          @tenantId, c.ClientID, p.EmpID, @locationId, @bookingRef,
+          @visitType, N'in_progress', @chiefComplaint, SYSUTCDATETIME(), @actorUserId
+        FROM dbo.TblClient c
+        INNER JOIN dbo.TblEmp p
+          ON p.TenantId=c.TenantId
+          AND p.EmpID=@practitionerEmpId
+          AND ISNULL(p.isActive,1)=1
+          AND p.Job IN (N'طبيب', N'Doctor', N'doctor')
+        INNER JOIN dbo.TblEmpBranchAssignment a
+          ON a.EmpID=p.EmpID
+          AND a.BranchID=@branchId
+          AND a.IsActive=1
+          AND a.CanReceiveBookings=1
+          AND a.EffectiveFrom<=@workDate
+          AND (a.EffectiveTo IS NULL OR a.EffectiveTo>=@workDate)
+        WHERE c.TenantId=@tenantId
+          AND c.ClientID=@clientId;
+      `);
 
-  await pool.request()
-    .input('tenantId', sql.UniqueIdentifier, input.tenantId)
-    .input('entityId', sql.NVarChar(128), encounterId)
-    .input('actorUserId', sql.Int, input.actorUserId)
-    .query(`
-      INSERT INTO dbo.ClinicClinicalAudit
-        (TenantId, EntityType, EntityId, Action, ActorUserID, MetadataJson)
-      VALUES (@tenantId, N'encounter', @entityId, N'opened', @actorUserId, N'{}');
-    `);
+    if (!result.recordset[0]) {
+      throw new Error('Patient or assigned doctor is not valid for this clinic branch.');
+    }
+    const encounterId = String(result.recordset[0].EncounterId);
 
-  return encounterId;
+    await new sql.Request(tx)
+      .input('tenantId', sql.UniqueIdentifier, input.tenantId)
+      .input('entityId', sql.NVarChar(128), encounterId)
+      .input('actorUserId', sql.Int, input.actorUserId)
+      .query(`
+        INSERT INTO dbo.ClinicClinicalAudit
+          (TenantId, EntityType, EntityId, Action, ActorUserID, MetadataJson)
+        VALUES (@tenantId, N'encounter', @entityId, N'opened', @actorUserId, N'{}');
+      `);
+
+    await tx.commit();
+    return encounterId;
+  } catch (err) {
+    await tx.rollback().catch(() => undefined);
+    throw err;
+  }
 }
 
 export async function completeEncounter(input: {
