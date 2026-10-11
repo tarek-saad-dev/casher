@@ -10,6 +10,7 @@ import { ensureEmployeeBranchAssignment } from '@/lib/branch/assignmentIntegrity
 import { invalidatePublicBookingBarbersCache } from '@/lib/booking/publicBookingBarbers';
 import { getCairoBusinessDate } from '@/lib/businessDate';
 import { createTenantEmployee } from '@/lib/hr/tenantEmployeeCreate';
+import { registerClinicPractitioner } from '@/apps/medical-records/internal/repository';
 
 export async function GET() {
   const auth = await requireTenantApp('medical-records');
@@ -22,9 +23,11 @@ export async function GET() {
       .input('branchId', sql.Int, auth.activeBranchId)
       .input('day', sql.Date, getCairoBusinessDate())
       .query(`
-        SELECT DISTINCT e.EmpID, e.EmpName, e.Job
+        SELECT DISTINCT e.EmpID, e.EmpName, e.Job, p.UserID
         FROM dbo.TblEmp e
         INNER JOIN dbo.TblEmpBranchAssignment a ON a.EmpID = e.EmpID
+        LEFT JOIN dbo.ClinicPractitioner p
+          ON p.TenantId=e.TenantId AND p.EmpID=e.EmpID AND p.IsActive=1
         WHERE e.TenantId = @tenantId
           AND ISNULL(e.isActive, 1) = 1
           AND e.Job IN (N'طبيب', N'Doctor', N'doctor')
@@ -49,6 +52,7 @@ export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as Record<string, unknown>;
     const name = String(body.name ?? '').trim().replace(/\s+/g, ' ').slice(0, 200);
+    const linkCurrentUser = body.linkCurrentUser === true;
     if (name.length < 2) {
       return NextResponse.json({ error: 'اسم الطبيب مطلوب' }, { status: 400 });
     }
@@ -93,10 +97,23 @@ export async function POST(req: NextRequest) {
       canReceiveBookings: true,
       isHomeBranch: true,
     });
+    await registerClinicPractitioner({
+      tenantId: auth.tenantId,
+      empId,
+      userId: linkCurrentUser ? auth.userId : null,
+      actorUserId: auth.userId,
+    });
     invalidatePublicBookingBarbersCache();
 
     return NextResponse.json(
-      { EmpID: empId, EmpName: name, Job: 'طبيب', created },
+      {
+        EmpID: empId,
+        EmpName: name,
+        Job: 'طبيب',
+        UserID: linkCurrentUser ? auth.userId : null,
+        created,
+        linkedToCurrentUser: linkCurrentUser,
+      },
       { status: created ? 201 : 200 },
     );
   } catch (err) {
