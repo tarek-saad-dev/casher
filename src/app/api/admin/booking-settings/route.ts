@@ -5,6 +5,7 @@ import {
   requireBranchOperationAccess,
   isActiveBranchContext,
 } from "@/lib/branch/context";
+import { bookingSettingsValidationError } from "@/lib/booking/bookingSettingsValidation";
 
 export const runtime = "nodejs";
 
@@ -211,61 +212,9 @@ export async function PATCH(request: NextRequest) {
     await ensureTableAndColumns(db);
     await ensureBranchSettingsRow(db, branch.branchId);
 
-    // Validation helpers
-    const validModes = ["nearest", "specific"];
-    const validMinNotice = [0, 5, 10, 15, 30, 60];
-    const validSlotInterval = [5, 10, 15, 30];
-
-    // Validate values
-    if (
-      body.minNoticeMinutes !== undefined &&
-      !validMinNotice.includes(body.minNoticeMinutes)
-    ) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error:
-            "قيمة MinNoticeMinutes غير صالحة. القيم المسموحة: 0, 5, 10, 15, 30, 60",
-        },
-        { status: 400 },
-      );
-    }
-
-    if (
-      body.slotIntervalMinutes !== undefined &&
-      !validSlotInterval.includes(body.slotIntervalMinutes)
-    ) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error:
-            "قيمة SlotIntervalMinutes غير صالحة. القيم المسموحة: 5, 10, 15, 30",
-        },
-        { status: 400 },
-      );
-    }
-
-    if (
-      body.maxBookingDaysAhead !== undefined &&
-      (body.maxBookingDaysAhead < 1 || body.maxBookingDaysAhead > 60)
-    ) {
-      return NextResponse.json(
-        { ok: false, error: "قيمة MaxBookingDaysAhead يجب أن تكون بين 1 و 60" },
-        { status: 400 },
-      );
-    }
-
-    if (
-      body.defaultMode !== undefined &&
-      !validModes.includes(body.defaultMode)
-    ) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "قيمة DefaultMode يجب أن تكون nearest أو specific",
-        },
-        { status: 400 },
-      );
+    const validationError = bookingSettingsValidationError(body);
+    if (validationError) {
+      return NextResponse.json({ ok: false, error: validationError }, { status: 400 });
     }
 
     // Build update query dynamically — scoped to the caller's active branch

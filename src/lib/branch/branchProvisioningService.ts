@@ -40,6 +40,8 @@ export type ProvisionBranchInput = {
   /** Optional: grant the provisioning actor operate/report/switch access. */
   grantActorAccess?: boolean;
   template?: ProvisionTemplateCopy;
+  /** Identity of the seeded queue/booking settings row (booking stays off). */
+  queueSettings?: Pick<SeedQueueSettingsInput, 'salonName' | 'timezone' | 'currency'>;
   /** Rejected if present — documented for API validation. */
   branchId?: unknown;
   isActive?: unknown;
@@ -192,6 +194,7 @@ export async function provisionBranch(
     );
 
     const seedOpts: SeedQueueSettingsInput = {
+      ...input.queueSettings,
       bookingEnabled: false,
       ...(input.template?.queueBookingSettings && sourceCode
         ? { copyFromBranchCode: sourceCode, bookingEnabled: false }

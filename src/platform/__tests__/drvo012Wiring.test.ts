@@ -18,6 +18,9 @@ const PLATFORM_ROUTES = [
   'src/app/api/admin/platform/tenants/[tenantId]/apps/uninstall/route.ts',
   'src/app/api/admin/platform/tenants/[tenantId]/apps/apply-pack/route.ts',
   'src/app/api/admin/platform/tenants/[tenantId]/readiness/route.ts',
+  'src/app/api/admin/platform/tenants/onboarding/route.ts',
+  'src/app/api/admin/platform/tenants/onboarding/preflight/route.ts',
+  'src/app/api/admin/platform/tenants/[tenantId]/onboarding-setup/route.ts',
 ];
 
 const TENANT_SERVICES = [

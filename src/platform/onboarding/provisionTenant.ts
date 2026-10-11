@@ -114,6 +114,7 @@ async function createBranchInTransaction(
   input: {
     branchCode: string;
     branchName: string;
+    shortName?: string | null;
     address?: string | null;
     phone?: string | null;
     timeZone: string;
@@ -128,6 +129,7 @@ async function createBranchInTransaction(
   const result = await new sql.Request(tx)
     .input('code', sql.NVarChar(30), input.branchCode)
     .input('name', sql.NVarChar(100), input.branchName)
+    .input('shortName', sql.NVarChar(50), input.shortName?.trim() || null)
     .input('address', sql.NVarChar(250), input.address?.trim() || null)
     .input('phone', sql.NVarChar(30), input.phone?.trim() || null)
     .input('tz', sql.NVarChar(64), input.timeZone)
@@ -147,7 +149,7 @@ async function createBranchInTransaction(
       )
       OUTPUT INSERTED.BranchID, INSERTED.BranchCode
       VALUES (
-        @code, @name, NULL, @address, @phone,
+        @code, @name, @shortName, @address, @phone,
         @tz, CAST(N'04:00:00' AS time(0)),
         CASE WHEN @openT IS NULL THEN NULL ELSE CAST(@openT AS time(0)) END,
         CASE WHEN @closeT IS NULL THEN NULL ELSE CAST(@closeT AS time(0)) END,
@@ -309,10 +311,12 @@ export async function provisionTenant(
     throw new TenantOnboardingError('OWNER_FIELDS_INVALID', 'First branch code and name are required.');
   }
   const brandInput = resolveBrandInput(input, defaultTimezone);
+  const branchTimezone = input.firstBranchTimezone?.trim() || defaultTimezone;
 
   await assertBranchIdentityAvailable({
     branchCode,
     branchName: input.firstBranchName.trim(),
+    shortName: input.firstBranchShortName,
   });
 
   const pool = await getPool();
@@ -365,9 +369,10 @@ export async function provisionTenant(
     const branch = await createBranchInTransaction(tx, {
       branchCode,
       branchName: input.firstBranchName.trim(),
+      shortName: input.firstBranchShortName,
       address: input.branchAddress,
       phone: input.branchPhone,
-      timeZone: defaultTimezone,
+      timeZone: branchTimezone,
       defaultOpenTime: input.branchDefaultOpenTime,
       defaultCloseTime: input.branchDefaultCloseTime,
       createdByUserId: actor.actorUserId,
@@ -378,7 +383,7 @@ export async function provisionTenant(
         tx,
         branch.branchId,
         input.firstBranchName.trim(),
-        defaultTimezone,
+        branchTimezone,
       );
     }
 
@@ -386,7 +391,7 @@ export async function provisionTenant(
       .input('tenantId', sql.UniqueIdentifier, tenantId)
       .input('legacyBranchId', sql.Int, branch.branchId)
       .input('branchCode', sql.NVarChar(64), branch.branchCode)
-      .input('tz', sql.NVarChar(64), defaultTimezone)
+      .input('tz', sql.NVarChar(64), branchTimezone)
       .query(`
         INSERT INTO dbo.Location (TenantId, LegacyBranchId, BranchCode, Timezone, Status)
         OUTPUT INSERTED.LocationId AS locationId
