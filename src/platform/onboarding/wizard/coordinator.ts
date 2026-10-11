@@ -163,7 +163,7 @@ function stageApplies(stage: OnboardingStageKey, ctx: OnboardingSetupContext, re
     case 'branches':
       return req.branches.length > 1;
     case 'services':
-      return usesServiceCatalog(ctx.packCode) && req.services.length > 0;
+      return req.services.length > 0;
     case 'team':
       return req.employees.length > 0;
     case 'users':
