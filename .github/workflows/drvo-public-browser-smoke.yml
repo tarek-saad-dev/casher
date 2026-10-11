@@ -1,0 +1,68 @@
+name: DRVO Public Production Browser Smoke
+
+on:
+  push:
+    branches:
+      - drvo-public-smoke-v1
+    paths:
+      - '.github/workflows/drvo-public-browser-smoke.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  browser-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install app dependencies
+        run: npm ci
+
+      - name: Install Playwright browser
+        run: |
+          npm install --no-save --package-lock=false playwright@1.57.0
+          npx playwright install --with-deps chromium
+
+      - name: Prepare synthetic QA signup
+        shell: bash
+        run: |
+          SUFFIX="$(printf '%08d' $((GITHUB_RUN_ID % 100000000)))"
+          echo "DRVO_SMOKE_PHONE=010$SUFFIX" >> "$GITHUB_ENV"
+          echo "DRVO_SMOKE_PASSWORD=DrvoQA#$SUFFIX"Aa1! >> "$GITHUB_ENV"
+          echo "DRVO_SMOKE_BUSINESS=DRVO Public Smoke $SUFFIX" >> "$GITHUB_ENV"
+
+      - name: Run real production browser signup
+        run: npx tsx scripts/drvo/drvo-public-browser-smoke.ts
+
+      - name: Publish QA account details
+        if: success()
+        shell: bash
+        run: |
+          echo "## DRVO public signup smoke" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Result: PASS" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Login phone: `$DRVO_SMOKE_PHONE`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Password: `$DRVO_SMOKE_PASSWORD`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Business: `$DRVO_SMOKE_BUSINESS`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Landing: https://ops.cutsaloon.com/drvo" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Signup: https://ops.cutsaloon.com/start" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: drvo-public-smoke-screenshots
+          if-no-files-found: ignore
+          path: |
+            /tmp/drvo-landing-desktop.png
+            /tmp/drvo-landing-mobile.png
+            /tmp/drvo-operations-mobile.png
