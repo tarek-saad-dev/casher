@@ -235,8 +235,8 @@ export function SuccessView({
         <a href="/login" target="_blank" rel="noreferrer" className="rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground">
           فتح المنشأة
         </a>
-        <Link href={`/platform/tenants/${core.tenantId}`} className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-muted">
-          تفاصيل المنشأة
+        <Link href={`/platform/tenants/${core.tenantId}#go-live`} className="rounded-lg border border-primary/40 px-4 py-2 text-sm font-medium text-primary hover:bg-primary/5">
+          بدء التشغيل الفعلي
         </Link>
         <button type="button" onClick={onCreateAnother} className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-muted">
           إنشاء منشأة أخرى
