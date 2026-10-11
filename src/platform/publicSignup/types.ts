@@ -16,7 +16,7 @@ export type PublicIndustryOption = {
   code: string;
   titleAr: string;
   descriptionAr: string;
-  iconKey: 'scissors' | 'store' | 'clinic';
+  iconKey: string;
   defaultNeeds: string[];
   supportsDemo: boolean;
   catalogKind: 'services' | 'products';
