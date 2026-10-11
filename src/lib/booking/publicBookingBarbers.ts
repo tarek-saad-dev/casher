@@ -324,7 +324,7 @@ async function loadAssignmentCandidates(day: string, tenantId: string): Promise<
     WHERE e.TenantId = @tenantId
       AND ${tenantLocationBranchSql('b.BranchID')}
       AND ISNULL(e.isActive, 1) = 1
-      AND e.Job IN (N'حلاق', N'مساعد', N'Barber', N'barber')
+      AND e.Job IN (N'حلاق', N'مساعد', N'طبيب', N'Doctor', N'doctor', N'Barber', N'barber')
       AND a.IsActive = 1
       AND a.CanReceiveBookings = 1
       AND a.EffectiveFrom <= @day
