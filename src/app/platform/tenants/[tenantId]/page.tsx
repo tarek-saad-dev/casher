@@ -3,6 +3,7 @@
 import { use, useCallback, useEffect, useState } from 'react';
 import BrandProfileForm from '@/components/tenant/BrandProfileForm';
 import { platformFetch, SUBSCRIPTION_STATUS_LABELS } from '@/components/platform/platformFetch';
+import GoLiveChecklist from '@/components/platform/GoLiveChecklist';
 import type { TenantBrandProfile } from '@/platform/branding/brandProfile';
 import type { TenantAppState, TenantPackState } from '@/platform/apps/tenantApps';
 import { formatEgp, getPlanPricing } from '@/platform/commercial/pricingCatalog';
@@ -231,6 +232,8 @@ export default function TenantDetailPage({ params }: { params: Promise<{ tenantI
           </ul>
         </Card>
       </div>
+
+      {!isBoot && <GoLiveChecklist tenantId={tenantId} />}
 
       <Card title={`التطبيقات — الحزمة ${detail.pack ? `${detail.pack.packCode} v${detail.pack.packVersion}` : '—'}`}>
         <div className="flex flex-wrap gap-2">
