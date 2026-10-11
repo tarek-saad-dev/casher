@@ -10,6 +10,7 @@ import {
   Plus,
   Search,
   Stethoscope,
+  UserPlus,
   UserRound,
 } from 'lucide-react';
 
@@ -21,7 +22,7 @@ type Patient = {
   Address: string | null;
 };
 
-type Employee = {
+type Practitioner = {
   EmpID: number;
   EmpName: string;
   Job?: string | null;
@@ -31,21 +32,32 @@ export default function ClinicWorkspace() {
   const [query, setQuery] = useState('');
   const [patients, setPatients] = useState<Patient[]>([]);
   const [patient, setPatient] = useState<Patient | null>(null);
-  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [practitioners, setPractitioners] = useState<Practitioner[]>([]);
   const [doctorId, setDoctorId] = useState('');
   const [complaint, setComplaint] = useState('');
   const [visitType, setVisitType] = useState<'new' | 'follow_up' | 'procedure'>('new');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+
   const [newPatientOpen, setNewPatientOpen] = useState(false);
   const [newName, setNewName] = useState('');
   const [newMobile, setNewMobile] = useState('');
 
+  const [newDoctorOpen, setNewDoctorOpen] = useState(false);
+  const [newDoctorName, setNewDoctorName] = useState('');
+
+  async function loadPractitioners() {
+    try {
+      const res = await fetch('/api/clinic/practitioners');
+      const rows = res.ok ? ((await res.json()) as Practitioner[]) : [];
+      setPractitioners(Array.isArray(rows) ? rows : []);
+    } catch {
+      setPractitioners([]);
+    }
+  }
+
   useEffect(() => {
-    void fetch('/api/employees')
-      .then((r) => (r.ok ? r.json() : []))
-      .then((rows: Employee[]) => setEmployees(Array.isArray(rows) ? rows : []))
-      .catch(() => setEmployees([]));
+    void loadPractitioners();
   }, []);
 
   useEffect(() => {
@@ -64,8 +76,8 @@ export default function ClinicWorkspace() {
   }, [query]);
 
   const selectedDoctor = useMemo(
-    () => employees.find((x) => String(x.EmpID) === doctorId) ?? null,
-    [doctorId, employees],
+    () => practitioners.find((x) => String(x.EmpID) === doctorId) ?? null,
+    [doctorId, practitioners],
   );
 
   async function createPatient(e: FormEvent) {
@@ -95,6 +107,32 @@ export default function ClinicWorkspace() {
     }
   }
 
+  async function createDoctor(e: FormEvent) {
+    e.preventDefault();
+    const name = newDoctorName.trim();
+    if (!name || busy) return;
+    setBusy(true);
+    setMessage(null);
+    try {
+      const res = await fetch('/api/clinic/practitioners', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      const data = (await res.json()) as Practitioner & { error?: string };
+      if (!res.ok || !data.EmpID) throw new Error(data.error || 'تعذر إضافة الطبيب');
+      await loadPractitioners();
+      setDoctorId(String(data.EmpID));
+      setNewDoctorName('');
+      setNewDoctorOpen(false);
+      setMessage(`تم تجهيز د. ${data.EmpName} للحجز والزيارات في الفرع الحالي.`);
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : 'تعذر إضافة الطبيب');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function startEncounter() {
     if (!patient || !doctorId || busy) return;
     setBusy(true);
@@ -113,7 +151,9 @@ export default function ClinicWorkspace() {
       const data = (await res.json()) as { encounterId?: string; error?: string };
       if (!res.ok || !data.encounterId) throw new Error(data.error || 'تعذر بدء الزيارة');
       setComplaint('');
-      setMessage(`تم فتح الزيارة للطبيب ${selectedDoctor?.EmpName || ''}. رقم الزيارة: ${data.encounterId}`);
+      setMessage(
+        `تم فتح الزيارة للطبيب ${selectedDoctor?.EmpName || ''}. رقم الزيارة: ${data.encounterId}`,
+      );
     } catch (err) {
       setMessage(err instanceof Error ? err.message : 'تعذر بدء الزيارة');
     } finally {
@@ -131,13 +171,21 @@ export default function ClinicWorkspace() {
               DRVO Clinics
             </div>
             <h1 className="mt-1 text-3xl font-black">تشغيل العيادة</h1>
-            <p className="mt-1 text-sm text-slate-500">المريض → الموعد → الزيارة → الروشتة → الحساب → المتابعة</p>
+            <p className="mt-1 text-sm text-slate-500">
+              المريض → الموعد → الزيارة → الروشتة → الحساب → المتابعة
+            </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Link href="/bookings" className="inline-flex items-center gap-2 rounded-xl border bg-white px-4 py-2 text-sm font-bold">
+            <Link
+              href="/bookings"
+              className="inline-flex items-center gap-2 rounded-xl border bg-white px-4 py-2 text-sm font-bold"
+            >
               <CalendarDays className="h-4 w-4" /> المواعيد
             </Link>
-            <Link href="/income/pos" className="inline-flex items-center gap-2 rounded-xl border bg-white px-4 py-2 text-sm font-bold">
+            <Link
+              href="/income/pos"
+              className="inline-flex items-center gap-2 rounded-xl border bg-white px-4 py-2 text-sm font-bold"
+            >
               <CircleDollarSign className="h-4 w-4" /> الحسابات
             </Link>
           </div>
@@ -160,10 +208,29 @@ export default function ClinicWorkspace() {
             </div>
 
             {newPatientOpen && (
-              <form onSubmit={createPatient} className="mt-4 grid gap-2 rounded-2xl border bg-slate-50 p-3 sm:grid-cols-[1fr_1fr_auto]">
-                <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="اسم المريض" className="rounded-xl border bg-white px-3 py-2 text-sm" />
-                <input value={newMobile} onChange={(e) => setNewMobile(e.target.value)} placeholder="رقم الموبايل" className="rounded-xl border bg-white px-3 py-2 text-sm" dir="ltr" />
-                <button disabled={busy || !newName.trim()} className="rounded-xl bg-cyan-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">إضافة</button>
+              <form
+                onSubmit={createPatient}
+                className="mt-4 grid gap-2 rounded-2xl border bg-slate-50 p-3 sm:grid-cols-[1fr_1fr_auto]"
+              >
+                <input
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  placeholder="اسم المريض"
+                  className="rounded-xl border bg-white px-3 py-2 text-sm"
+                />
+                <input
+                  value={newMobile}
+                  onChange={(e) => setNewMobile(e.target.value)}
+                  placeholder="رقم الموبايل"
+                  className="rounded-xl border bg-white px-3 py-2 text-sm"
+                  dir="ltr"
+                />
+                <button
+                  disabled={busy || !newName.trim()}
+                  className="rounded-xl bg-cyan-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
+                >
+                  إضافة
+                </button>
               </form>
             )}
 
@@ -190,7 +257,9 @@ export default function ClinicWorkspace() {
                     }}
                     className="flex w-full items-center gap-3 border-b px-4 py-3 text-right last:border-0 hover:bg-slate-50"
                   >
-                    <span className="grid h-9 w-9 place-items-center rounded-full bg-cyan-50 text-cyan-700"><UserRound className="h-4 w-4" /></span>
+                    <span className="grid h-9 w-9 place-items-center rounded-full bg-cyan-50 text-cyan-700">
+                      <UserRound className="h-4 w-4" />
+                    </span>
                     <span className="flex-1">
                       <span className="block text-sm font-bold">{item.Name}</span>
                       <span className="text-xs text-slate-500">{item.Mobile || 'بدون رقم'}</span>
@@ -204,10 +273,15 @@ export default function ClinicWorkspace() {
             {patient && (
               <div className="mt-4 rounded-2xl border border-cyan-100 bg-cyan-50/60 p-4">
                 <div className="flex items-center gap-3">
-                  <span className="grid h-11 w-11 place-items-center rounded-full bg-white text-cyan-700"><FileHeart className="h-5 w-5" /></span>
+                  <span className="grid h-11 w-11 place-items-center rounded-full bg-white text-cyan-700">
+                    <FileHeart className="h-5 w-5" />
+                  </span>
                   <div>
                     <div className="font-black">{patient.Name}</div>
-                    <div className="text-xs text-slate-500">{patient.Mobile || 'بدون رقم موبايل'}{patient.BirthDate ? ` • ${String(patient.BirthDate).slice(0, 10)}` : ''}</div>
+                    <div className="text-xs text-slate-500">
+                      {patient.Mobile || 'بدون رقم موبايل'}
+                      {patient.BirthDate ? ` • ${String(patient.BirthDate).slice(0, 10)}` : ''}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -215,21 +289,72 @@ export default function ClinicWorkspace() {
           </div>
 
           <div className="rounded-3xl border bg-white p-5 shadow-sm">
-            <h2 className="text-lg font-black">ابدأ زيارة</h2>
-            <p className="text-xs text-slate-500">اختار المريض والطبيب وسجّل سبب الزيارة. البيانات الطبية التفصيلية والروشتة تفضل ضمن الـMedical Records.</p>
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-black">ابدأ زيارة</h2>
+                <p className="text-xs text-slate-500">
+                  اختار المريض والطبيب وسجّل سبب الزيارة.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setNewDoctorOpen((x) => !x)}
+                className="inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-bold"
+              >
+                <UserPlus className="h-4 w-4" /> إضافة طبيب
+              </button>
+            </div>
+
+            {newDoctorOpen && (
+              <form
+                onSubmit={createDoctor}
+                className="mt-4 grid gap-2 rounded-2xl border bg-slate-50 p-3 sm:grid-cols-[1fr_auto]"
+              >
+                <input
+                  value={newDoctorName}
+                  onChange={(e) => setNewDoctorName(e.target.value)}
+                  placeholder="اسم الطبيب"
+                  className="rounded-xl border bg-white px-3 py-2 text-sm"
+                />
+                <button
+                  disabled={busy || !newDoctorName.trim()}
+                  className="rounded-xl bg-slate-950 px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
+                >
+                  إضافة للطبيب
+                </button>
+              </form>
+            )}
+
+            {practitioners.length === 0 && !newDoctorOpen && (
+              <div className="mt-4 rounded-2xl border border-dashed p-4 text-xs leading-6 text-slate-500">
+                مفيش طبيب متسجل في الفرع الحالي لسه. أضف أول طبيب علشان تبدأ الزيارات والحجز.
+              </div>
+            )}
 
             <div className="mt-4 grid gap-3">
               <label className="grid gap-1.5">
                 <span className="text-xs font-bold text-slate-600">الطبيب</span>
-                <select value={doctorId} onChange={(e) => setDoctorId(e.target.value)} className="rounded-xl border bg-white px-3 py-2.5 text-sm">
+                <select
+                  value={doctorId}
+                  onChange={(e) => setDoctorId(e.target.value)}
+                  className="rounded-xl border bg-white px-3 py-2.5 text-sm"
+                >
                   <option value="">اختار الطبيب</option>
-                  {employees.map((emp) => <option key={emp.EmpID} value={emp.EmpID}>{emp.EmpName}{emp.Job ? ` — ${emp.Job}` : ''}</option>)}
+                  {practitioners.map((emp) => (
+                    <option key={emp.EmpID} value={emp.EmpID}>
+                      {emp.EmpName}
+                    </option>
+                  ))}
                 </select>
               </label>
 
               <label className="grid gap-1.5">
                 <span className="text-xs font-bold text-slate-600">نوع الزيارة</span>
-                <select value={visitType} onChange={(e) => setVisitType(e.target.value as typeof visitType)} className="rounded-xl border bg-white px-3 py-2.5 text-sm">
+                <select
+                  value={visitType}
+                  onChange={(e) => setVisitType(e.target.value as typeof visitType)}
+                  className="rounded-xl border bg-white px-3 py-2.5 text-sm"
+                >
                   <option value="new">كشف جديد</option>
                   <option value="follow_up">متابعة</option>
                   <option value="procedure">إجراء</option>
@@ -237,8 +362,16 @@ export default function ClinicWorkspace() {
               </label>
 
               <label className="grid gap-1.5">
-                <span className="text-xs font-bold text-slate-600">سبب الزيارة / الشكوى الرئيسية</span>
-                <textarea value={complaint} onChange={(e) => setComplaint(e.target.value)} rows={4} className="resize-none rounded-xl border bg-white px-3 py-2.5 text-sm" placeholder="مثال: صداع متكرر منذ 3 أيام" />
+                <span className="text-xs font-bold text-slate-600">
+                  سبب الزيارة / الشكوى الرئيسية
+                </span>
+                <textarea
+                  value={complaint}
+                  onChange={(e) => setComplaint(e.target.value)}
+                  rows={4}
+                  className="resize-none rounded-xl border bg-white px-3 py-2.5 text-sm"
+                  placeholder="مثال: صداع متكرر منذ 3 أيام"
+                />
               </label>
 
               <button
@@ -251,12 +384,17 @@ export default function ClinicWorkspace() {
               </button>
             </div>
 
-            {message && <div className="mt-4 rounded-2xl border bg-slate-50 px-4 py-3 text-xs leading-6 text-slate-700">{message}</div>}
+            {message && (
+              <div className="mt-4 rounded-2xl border bg-slate-50 px-4 py-3 text-xs leading-6 text-slate-700">
+                {message}
+              </div>
+            )}
           </div>
         </section>
 
         <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-6 text-amber-900">
-          الـAI Receptionist مسموح له بالحجز والتعديل والتذكير الإداري فقط. إكمال الزيارة، التشخيص وتوقيع الروشتة متروكين للطبيب البشري.
+          الـAI Receptionist مسموح له بالحجز والتعديل والتذكير الإداري فقط. إكمال الزيارة،
+          التشخيص وتوقيع الروشتة متروكين للطبيب البشري.
         </div>
       </div>
     </main>
