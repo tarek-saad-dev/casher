@@ -64,8 +64,8 @@ export function validatePackDefinition(pack: IndustryPackDefinition): PackValida
     if (!pack.publicSignup.titleAr.trim() || !pack.publicSignup.descriptionAr.trim()) {
       failures.push(`pack ${pack.packCode} public signup copy is incomplete`);
     }
-    if (!['scissors', 'store', 'clinic'].includes(pack.publicSignup.iconKey)) {
-      failures.push(`pack ${pack.packCode} public signup iconKey is invalid`);
+    if (!pack.publicSignup.iconKey.trim()) {
+      failures.push(`pack ${pack.packCode} public signup iconKey is blank`);
     }
   }
   if (pack.publicSignup.demoPreset?.employees) {
