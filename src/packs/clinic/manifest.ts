@@ -28,6 +28,7 @@ export const CLINIC_PACK: IndustryPackDefinition = {
   },
   onboarding: {
     catalogKind: 'services',
+    defaultBranchName: 'العيادة الرئيسية',
     jobOptions: [
       'طبيب',
       'طبيب أسنان',
