@@ -1,0 +1,37 @@
+name: DRVO Public Browser Smoke V2
+
+on:
+  push:
+    branches:
+      - drvo-public-smoke-v1
+    paths:
+      - '.github/workflows/drvo-public-browser-smoke-v2.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DRVO_SMOKE_PHONE: '01099110456'
+      DRVO_SMOKE_PASSWORD: 'DrvoQA#99110456Aa1!'
+      DRVO_SMOKE_BUSINESS: 'DRVO Public Smoke 99110456'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install
+      - run: npx playwright install --with-deps chromium
+      - run: npx tsx scripts/drvo/drvo-public-browser-smoke.ts
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: drvo-public-browser-smoke
+          if-no-files-found: ignore
+          path: |
+            /tmp/drvo-landing-desktop.png
+            /tmp/drvo-landing-mobile.png
+            /tmp/drvo-operations-mobile.png
