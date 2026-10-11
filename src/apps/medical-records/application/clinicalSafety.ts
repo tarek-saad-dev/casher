@@ -16,7 +16,8 @@ export class ClinicalSafetyError extends Error {
     public readonly code:
       | 'HUMAN_CLINICIAN_REQUIRED'
       | 'PRESCRIPTION_EMPTY'
-      | 'PRESCRIPTION_NOT_DRAFT',
+      | 'PRESCRIPTION_NOT_DRAFT'
+      | 'DIAGNOSIS_REQUIRED',
     message: string,
   ) {
     super(message);
