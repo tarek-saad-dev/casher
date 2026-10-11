@@ -36,6 +36,7 @@ jobs:
           src/apps/booking/__tests__/schedulingPortWiring.test.ts
           src/apps/queue/__tests__/queuePortFlag.test.ts
           src/apps/queue/__tests__/queuePortWiring.test.ts
+          src/apps/medical-records/__tests__
           src/apps/treasury/__tests__/deployMigration.test.ts
           src/apps/treasury/__tests__/importBoundaries.test.ts
           src/apps/pos/__tests__
