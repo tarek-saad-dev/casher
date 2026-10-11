@@ -73,7 +73,7 @@ export type PublicBarberEligibilityReason =
 
 export function isBarberJob(job: string | null | undefined): boolean {
   const j = String(job ?? '').trim();
-  return j === 'حلاق' || j === 'مساعد' || j.toLowerCase() === 'barber';
+  return j === 'حلاق' || j === 'مساعد' || j === 'طبيب' || j.toLowerCase() === 'barber' || j.toLowerCase() === 'doctor';
 }
 
 export function isEmployeeActive(isActive: boolean | number | null | undefined): boolean {
