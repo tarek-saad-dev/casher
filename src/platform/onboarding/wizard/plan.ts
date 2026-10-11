@@ -43,7 +43,7 @@ const LOGIN_RE = /^[A-Za-z0-9._-]{3,50}$/;
 const MAX_SERVICE_DURATION = 600;
 
 /** Packs whose catalog is quick-set as services (salon-style service businesses). */
-const SERVICE_CATALOG_PACKS = new Set(['salon']);
+const SERVICE_CATALOG_PACKS = new Set(['salon', 'clinic']);
 
 export function usesServiceCatalog(packCode: string | null | undefined): boolean {
   return SERVICE_CATALOG_PACKS.has(String(packCode ?? ''));
@@ -57,7 +57,7 @@ export function conversationPackForIndustry(packCode: string | null | undefined)
 export const JOB_OPTIONS: readonly string[] = Object.values(JobType);
 
 /** Jobs public booking lists as bookable staff (see publicBookingBarbers). */
-const BOOKABLE_JOBS = new Set<string>([JobType.BARBER, JobType.ASSISTANT]);
+const BOOKABLE_JOBS = new Set<string>([JobType.BARBER, JobType.ASSISTANT, JobType.DOCTOR]);
 
 export function defaultAcceptsBookings(job: string): boolean {
   return BOOKABLE_JOBS.has(job);
