@@ -529,6 +529,7 @@ export enum JobType {
   ADMINISTRATIVE = 'اداري',
   MANAGER = 'مدير',
   RECEPTIONIST = 'موظف استقبال',
+  DOCTOR = 'طبيب',
   BEAUTICIAN = 'مجمّل',
   MASSAGE_THERAPIST = 'معالج تدليك',
   NAIL_TECHNICIAN = 'أخصائي أظافر',
