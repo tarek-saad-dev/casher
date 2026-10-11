@@ -84,7 +84,7 @@ export function OnboardingWizard() {
       platformFetch<{ apps: CatalogApp[] }>('/api/admin/platform/apps'),
     ])
       .then(([p, pl, a]) => {
-        const active = pl.plans.filter((x) => x.isActive);
+        const active = pl.plans.filter((x) => x.isActive && x.isPublic);
         setPacks(p.packs);
         setPlans(active);
         setAppNames(new Map(a.apps.map((x) => [x.appCode, x.displayName])));
