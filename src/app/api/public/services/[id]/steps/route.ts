@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getPool } from '@/lib/db';
+import { getPool, sql } from '@/lib/db';
+import { resolvePublicCatalogTenantId } from '@/lib/catalog/publicCatalogTenant';
 import {
-  activeProExists,
   listStepsByProId,
   toPublicExecutionStepWire,
 } from '@/lib/catalog/serviceExecutionSteps';
@@ -52,6 +52,17 @@ export async function GET(_req: NextRequest, { params }: RouteCtx) {
       );
     }
 
+    const tenantId = await resolvePublicCatalogTenantId(
+      _req.nextUrl.searchParams,
+      '/api/public/services/[id]/steps',
+    );
+    if (!tenantId) {
+      return NextResponse.json(
+        { ok: false, error: 'الخدمة غير موجودة' },
+        { status: 404, headers: CORS_HEADERS },
+      );
+    }
+
     const db = await getPool();
     const ready = await ensureProExecutionStepsTable(db);
     if (!ready) {
@@ -61,7 +72,16 @@ export async function GET(_req: NextRequest, { params }: RouteCtx) {
       );
     }
 
-    if (!(await activeProExists(db, proId))) {
+    const owned = await db.request()
+      .input('proId', sql.Int, proId)
+      .input('tenantId', sql.UniqueIdentifier, tenantId)
+      .query(`
+        SELECT TOP 1 ProID FROM dbo.TblPro
+        WHERE ProID = @proId
+          AND TenantId = @tenantId
+          AND ISNULL(isDeleted, 0) = 0
+      `);
+    if (owned.recordset.length === 0) {
       return NextResponse.json(
         { ok: false, error: 'الخدمة غير موجودة' },
         { status: 404, headers: CORS_HEADERS },
