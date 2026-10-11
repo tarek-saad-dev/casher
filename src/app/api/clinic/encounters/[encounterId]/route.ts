@@ -48,6 +48,7 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
           FollowUpAt: null,
         },
         patientProfile: null,
+        history: [],
         prescriptions: [],
         clinicalAccess: {
           linked: actor?.kind === 'human',
