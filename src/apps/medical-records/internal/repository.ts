@@ -3,6 +3,7 @@ import { getPool, sql } from '@/lib/db';
 import {
   assertHumanClinicalActor,
   assertPrescriptionSignable,
+  ClinicalSafetyError,
   type ClinicalActor,
 } from '../application/clinicalSafety';
 import type { ClinicPatientProfile, ClinicPrescriptionItem, ClinicVisitType } from '../public/types';
@@ -296,6 +297,12 @@ export async function saveEncounterDraft(input: {
   followUpAt?: Date | null;
 }): Promise<void> {
   assertHumanClinicalActor(input.actor, 'complete-encounter');
+  if (!String(input.diagnosisSummary ?? '').trim()) {
+    throw new ClinicalSafetyError(
+      'DIAGNOSIS_REQUIRED',
+      'Diagnosis summary is required before completing an encounter.',
+    );
+  }
   const pool = await getPool();
   await pool.request()
     .input('tenantId', sql.UniqueIdentifier, input.tenantId)
