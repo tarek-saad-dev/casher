@@ -179,7 +179,7 @@ function buildOnboardingRequest(input: PublicSignupInput): OnboardingRequest {
     },
     branches: [
       {
-        branchName: pack.packCode === 'clinic' ? 'العيادة الرئيسية' : 'الفرع الرئيسي',
+        branchName: pack.onboarding.defaultBranchName,
         branchCode: ids.branchCode,
         shortName: 'الرئيسي',
         address: null,
