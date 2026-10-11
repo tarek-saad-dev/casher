@@ -85,6 +85,12 @@ async function main() {
     console.log('SIGNUP_API_STATUS=', api.status());
     console.log('SIGNUP_API_BODY=', JSON.stringify(body));
     check(api.status() === 201, 'public signup API returns 201');
+    const fs = await import('node:fs/promises');
+    await fs.writeFile(
+      '/tmp/drvo-public-smoke-result.json',
+      JSON.stringify({ tenantCode: String(body?.tenantCode || ''), tenantId: String(body?.tenantId || ''), phone }),
+      'utf8',
+    );
 
     await page.getByText('جاهز 🎉').waitFor({ state: 'visible', timeout: 30000 });
     check(await page.getByRole('button', { name: /افتح DRVO/ }).isVisible(), 'success state visible');
