@@ -30,6 +30,8 @@ jobs:
           scripts/drvo/__tests__
           src/platform/drvo/__tests__
           src/platform/__tests__/publicSignup.test.ts
+          src/platform/__tests__/onboardingWizard.test.ts
+          src/packs/clinic/__tests__/clinicPack.test.ts
           src/apps/booking/__tests__/bookingPathRegression.test.ts
           src/apps/booking/__tests__/holdKeyPersistence.test.ts
           src/apps/booking/__tests__/publicBootstrapErrorLeak.test.ts
