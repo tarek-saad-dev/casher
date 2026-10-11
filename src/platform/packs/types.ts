@@ -44,7 +44,7 @@ export type IndustryPublicSignupProfile = {
   titleAr: string;
   descriptionAr: string;
   /** UI key — presentation layer maps it to an icon, never business logic. */
-  iconKey: 'scissors' | 'store' | 'clinic';
+  iconKey: string;
   /** Generic need codes from the public signup funnel. */
   defaultNeeds: readonly string[];
   /** Optional light demo; no financial/medical records are fabricated here. */
