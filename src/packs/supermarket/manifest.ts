@@ -15,6 +15,7 @@ export const SUPERMARKET_PACK: IndustryPackDefinition = {
   },
   onboarding: {
     catalogKind: 'products',
+    defaultBranchName: 'الفرع الرئيسي',
     jobOptions: ['كاشير', 'عامل مخزن', 'مشرف', 'مدير', 'اداري', 'موظف استقبال', 'أخرى'],
     bookableJobs: [],
     terminology: {
