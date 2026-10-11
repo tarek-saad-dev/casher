@@ -24,10 +24,7 @@ const NEED_ICONS: Record<PublicSignupNeed, React.ComponentType<{ className?: str
   inventory: Package,
 };
 
-const INDUSTRY_ICONS: Record<
-  PublicIndustryOption['iconKey'],
-  React.ComponentType<{ className?: string }>
-> = {
+const INDUSTRY_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   scissors: Scissors,
   store: Store,
   clinic: Stethoscope,
