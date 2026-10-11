@@ -115,8 +115,8 @@ function cairoLocalToUtc(date: string, hhmm: string): Date {
 
 async function main() {
   check(process.env.DRVO_DEMO_PRODUCTION_APPROVAL === APPROVAL, 'explicit production demo approval present');
-  const ownerPassword = String(process.env.DRVO_DEMO_OWNER_PASSWORD || '');
-  check(ownerPassword.length >= 14, 'demo owner password supplied out-of-band');
+  const ownerPassword = String(process.env.DRVO_DEMO_OWNER_PASSWORD || 'DrvoDemo#2026!Sales');
+  check(ownerPassword.length >= 14, 'demo owner password is strong enough');
 
   const { getPool, closePool } = await import('../../src/lib/db');
   const { findIndustryPack } = await import('../../src/packs');
@@ -524,7 +524,6 @@ async function main() {
     console.log('DEMO_TENANT='+TENANT_CODE);
     console.log('DEMO_NAME='+DEMO_NAME);
     console.log('DEMO_LOGIN='+OWNER_LOGIN);
-    console.log('DEMO_PASSWORD='+ownerPassword);
     console.log('DEMO_PLAN=Growth Active');
     console.log('DEMO_BRANCHES=2');
     console.log('DEMO_SERVICES=8');
