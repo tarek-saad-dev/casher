@@ -16,6 +16,7 @@ vi.mock('@/lib/booking/bookingServiceDuration', () => ({
 }));
 
 import { resolvePublicPackageBooking } from '@/lib/booking/packageBooking';
+import { fitLineDurationsToPackage } from '@/lib/booking/packageLineDurations';
 
 const branchContext = { branchCode: 'GLEEM', branchId: 1 } as never;
 
@@ -67,7 +68,7 @@ describe('resolvePublicPackageBooking', () => {
     expect(resolveSelectedBookingServices).not.toHaveBeenCalled();
   });
 
-  it('regular package: branch catalog durations, PackagePrice on the first line only', async () => {
+  it('regular package: books the package duration, not the services sum', async () => {
     resolveGroomPackageBooking.mockResolvedValue(resolvedPackage('regular'));
     resolveSelectedBookingServices.mockResolvedValue({
       services: [line(9, 200, 30), line(10, 100, 20), line(22, 120, 5), line(29, 300, 35)],
@@ -81,10 +82,20 @@ describe('resolvePublicPackageBooking', () => {
       serviceIds: [9, 10, 22, 29],
     });
     expect(r.services.map((s) => s.price)).toEqual([333, 0, 0, 0]);
-    expect(r.services.map((s) => s.durationMinutes)).toEqual([30, 20, 5, 35]);
+    expect(r.services.reduce((s, l) => s + l.durationMinutes, 0)).toBe(85);
     expect(r.totalPrice).toBe(333);
-    expect(r.totalDurationMinutes).toBe(90);
+    expect(r.totalDurationMinutes).toBe(85);
+    expect(r.packageDurationMinutes).toBe(85);
     expect(r.serviceIds).toEqual([9, 10, 22, 29]);
+  });
+
+  it('fitLineDurationsToPackage keeps catalog proportions and sums exactly', () => {
+    const fitted = fitLineDurationsToPackage([line(1, 0, 30), line(2, 0, 30), line(3, 0, 40)], 60);
+    expect(fitted.map((l) => l.durationMinutes)).toEqual([18, 18, 24]);
+    const odd = fitLineDurationsToPackage([line(1, 0, 10), line(2, 0, 10), line(3, 0, 10)], 50);
+    expect(odd.reduce((s, l) => s + l.durationMinutes, 0)).toBe(50);
+    const zeros = fitLineDurationsToPackage([line(1, 0, 0), line(2, 0, 0)], 45);
+    expect(zeros.map((l) => l.durationMinutes)).toEqual([23, 22]);
   });
 
   it('regular package fails when an included service is not bookable at the branch', async () => {

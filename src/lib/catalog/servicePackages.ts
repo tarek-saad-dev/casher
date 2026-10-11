@@ -202,12 +202,12 @@ export function validatePackageBody(body: unknown): { ok: true; data: PackageWri
     return { ok: false, error: 'السعر الأصلي غير صالح' };
   }
 
-  const DurationMinutes =
-    b.DurationMinutes === null || b.DurationMinutes === undefined || b.DurationMinutes === ''
-      ? null
-      : Number(b.DurationMinutes);
-  if (DurationMinutes != null && (!Number.isFinite(DurationMinutes) || DurationMinutes < 0)) {
-    return { ok: false, error: 'المدة غير صالحة' };
+  const DurationMinutes = Number(b.DurationMinutes);
+  if (
+    b.DurationMinutes === null || b.DurationMinutes === undefined || b.DurationMinutes === '' ||
+    !Number.isInteger(DurationMinutes) || DurationMinutes <= 0
+  ) {
+    return { ok: false, error: 'مدة الحجز (بالدقائق) مطلوبة — دي المدة اللي هتتحجز للباكدج' };
   }
 
   const DepositAmount =

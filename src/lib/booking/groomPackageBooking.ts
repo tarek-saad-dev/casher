@@ -7,6 +7,7 @@
 import 'server-only';
 import { getPool, sql } from '@/lib/db';
 import type { ResolvedBookingServiceLine } from '@/lib/booking/bookingServiceDuration';
+import { fitLineDurationsToPackage } from '@/lib/booking/packageLineDurations';
 import {
   hasConflictingHomeVisitProIds,
   resolveGroomOptionalGroup,
@@ -427,11 +428,14 @@ export async function resolveGroomPackageBooking(args: {
 
   // Build lines:
   // Required: price 0 on all but first gets packagePrice (POS sum = package + addons)
-  // Duration on required lines: store catalog mins for ops, but totalDuration uses package base
-  const requiredLines: ResolvedBookingServiceLine[] = requiredIds.map((id, idx) => {
-    const row = proMap.get(id)!;
-    return toLine(row, idx === 0 ? packagePrice : 0, catalogDuration(row));
-  });
+  // Duration on required lines: package duration split across them (not catalog sum)
+  const requiredLines = fitLineDurationsToPackage(
+    requiredIds.map((id, idx) => {
+      const row = proMap.get(id)!;
+      return toLine(row, idx === 0 ? packagePrice : 0, catalogDuration(row));
+    }),
+    packageDurationMinutes,
+  );
 
   const addonLines: ResolvedBookingServiceLine[] = uniqueAddons.map((id) => {
     const row = proMap.get(id)!;
