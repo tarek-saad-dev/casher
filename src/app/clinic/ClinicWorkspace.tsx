@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import {
   CalendarDays,
@@ -26,9 +27,11 @@ type Practitioner = {
   EmpID: number;
   EmpName: string;
   Job?: string | null;
+  UserID?: number | null;
 };
 
 export default function ClinicWorkspace() {
+  const router = useRouter();
   const [query, setQuery] = useState('');
   const [patients, setPatients] = useState<Patient[]>([]);
   const [patient, setPatient] = useState<Patient | null>(null);
@@ -45,6 +48,7 @@ export default function ClinicWorkspace() {
 
   const [newDoctorOpen, setNewDoctorOpen] = useState(false);
   const [newDoctorName, setNewDoctorName] = useState('');
+  const [linkDoctorToCurrentUser, setLinkDoctorToCurrentUser] = useState(false);
 
   async function loadPractitioners() {
     try {
@@ -117,13 +121,14 @@ export default function ClinicWorkspace() {
       const res = await fetch('/api/clinic/practitioners', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({ name, linkCurrentUser: linkDoctorToCurrentUser }),
       });
       const data = (await res.json()) as Practitioner & { error?: string };
       if (!res.ok || !data.EmpID) throw new Error(data.error || 'تعذر إضافة الطبيب');
       await loadPractitioners();
       setDoctorId(String(data.EmpID));
       setNewDoctorName('');
+      setLinkDoctorToCurrentUser(false);
       setNewDoctorOpen(false);
       setMessage(`تم تجهيز د. ${data.EmpName} للحجز والزيارات في الفرع الحالي.`);
     } catch (err) {
@@ -151,9 +156,7 @@ export default function ClinicWorkspace() {
       const data = (await res.json()) as { encounterId?: string; error?: string };
       if (!res.ok || !data.encounterId) throw new Error(data.error || 'تعذر بدء الزيارة');
       setComplaint('');
-      setMessage(
-        `تم فتح الزيارة للطبيب ${selectedDoctor?.EmpName || ''}. رقم الزيارة: ${data.encounterId}`,
-      );
+      router.push(`/clinic/encounters/${data.encounterId}`);
     } catch (err) {
       setMessage(err instanceof Error ? err.message : 'تعذر بدء الزيارة');
     } finally {
@@ -308,20 +311,30 @@ export default function ClinicWorkspace() {
             {newDoctorOpen && (
               <form
                 onSubmit={createDoctor}
-                className="mt-4 grid gap-2 rounded-2xl border bg-slate-50 p-3 sm:grid-cols-[1fr_auto]"
+                className="mt-4 grid gap-3 rounded-2xl border bg-slate-50 p-3"
               >
-                <input
-                  value={newDoctorName}
-                  onChange={(e) => setNewDoctorName(e.target.value)}
-                  placeholder="اسم الطبيب"
-                  className="rounded-xl border bg-white px-3 py-2 text-sm"
-                />
-                <button
-                  disabled={busy || !newDoctorName.trim()}
-                  className="rounded-xl bg-slate-950 px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
-                >
-                  إضافة للطبيب
-                </button>
+                <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                  <input
+                    value={newDoctorName}
+                    onChange={(e) => setNewDoctorName(e.target.value)}
+                    placeholder="اسم الطبيب"
+                    className="rounded-xl border bg-white px-3 py-2 text-sm"
+                  />
+                  <button
+                    disabled={busy || !newDoctorName.trim()}
+                    className="rounded-xl bg-slate-950 px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
+                  >
+                    إضافة الطبيب
+                  </button>
+                </div>
+                <label className="flex items-center gap-2 text-xs text-slate-600">
+                  <input
+                    type="checkbox"
+                    checked={linkDoctorToCurrentUser}
+                    onChange={(e) => setLinkDoctorToCurrentUser(e.target.checked)}
+                  />
+                  أنا الطبيب ده — اربط حساب دخولي بالطبيب علشان أقدر أسجل التشخيص وأوقّع الروشتة.
+                </label>
               </form>
             )}
 
