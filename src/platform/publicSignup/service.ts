@@ -367,7 +367,7 @@ export async function provisionPublicSignup(
       ownerLoginName: result.core.ownerLoginName,
       branchCode: result.core.branchCode,
       trialEndsAt: result.core.trialEndsAt,
-      nextPath: '/operations',
+      nextPath: input.industry === 'clinic' ? '/clinic' : '/operations',
     };
   } catch (err) {
     const code =
