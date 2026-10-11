@@ -335,7 +335,7 @@ async function main() {
     ];
 
     async function seedSales(branch:{id:number;name:string;code:string},userId:number,employeeNames:string[],count:number){
-      const ctx=await validateSessionBranch(userId,branch.id,branch.code);
+      const ctx=await validateSessionBranch(userId,branch.id,branch.code,new Date(Date.now()+60_000));
       const shift=await openShift(ctx,userId,1);
       const day=await getOpenBusinessDay(branch.id);
       check(day,'open business day exists for '+branch.code);
