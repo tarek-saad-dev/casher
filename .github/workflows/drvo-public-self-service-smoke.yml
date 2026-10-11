@@ -1,4 +1,4 @@
-name: DRVO Public Self-Service Smoke
+name: DRVO Public Self-Service Smoke # final
 
 on:
   push:
@@ -23,6 +23,8 @@ jobs:
             echo "$path => $meta"
             code="$(printf '%s' "$meta" | cut -d' ' -f1)"
             test "$code" = "200"
+            final_url="$(printf '%s' "$meta" | cut -d' ' -f2)"
+            test "$final_url" = "https://ops.cutsaloon.com/$path"
             grep -q 'DRVOERP' "/tmp/$path.html"
           done
           echo "PUBLIC_PAGES=PASS"
