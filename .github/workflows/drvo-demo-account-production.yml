@@ -1,0 +1,84 @@
+name: Seed DRVO Demo Account
+
+on:
+  push:
+    branches:
+      - drvo-demo-account-v1
+    paths:
+      - '.github/workflows/drvo-demo-account-production.yml'
+
+concurrency:
+  group: casher-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  seed-demo:
+    name: Create permanent DRVO demo tenant
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Parse and approval-guard proof
+        shell: bash
+        run: |
+          set +e
+          output="$(DRVO_DEMO_PRODUCTION_APPROVAL=NO npx tsx scripts/drvo/drvo-demo-seed-production.ts 2>&1)"
+          code=$?
+          set -e
+          printf '%s\n' "$output"
+          test "$code" -ne 0
+          printf '%s' "$output" | grep -q "explicit production demo approval present"
+
+      - name: Configure SSH
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Upload guarded seeder
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          scp -i ~/.ssh/id_ed25519 -o BatchMode=yes             scripts/drvo/drvo-demo-seed-production.ts             "$VPS_USER@$VPS_HOST:/home/casher/app/scripts/drvo/drvo-demo-seed-production.ts"
+
+      - name: Seed production demo tenant
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          ssh -i ~/.ssh/id_ed25519 -o BatchMode=yes "$VPS_USER@$VPS_HOST"             "cd /home/casher/app && DRVO_DEMO_PRODUCTION_APPROVAL=CREATE_DRVO_DEMO_V1 npx tsx scripts/drvo/drvo-demo-seed-production.ts"
+
+      - name: Verify application health
+        run: |
+          curl --fail --silent --show-error --location --max-time 30             https://ops.cutsaloon.com/login > /dev/null
+          echo "Production health check: OK"
+
+      - name: Remove temporary seeder
+        if: always()
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          ssh -i ~/.ssh/id_ed25519 -o BatchMode=yes "$VPS_USER@$VPS_HOST"             "rm -f /home/casher/app/scripts/drvo/drvo-demo-seed-production.ts" || true
