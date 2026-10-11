@@ -46,6 +46,7 @@ export default function WhatsAppAttentionProvider({
   const pathname = usePathname();
   const [items, setItems] = useState<AttentionItem[]>([]);
   const [toastVisible, setToastVisible] = useState(false);
+  const [messagingInstalled, setMessagingInstalled] = useState(true);
   const initializedRef = useRef(false);
   const previousCountRef = useRef(0);
   const toastTimerRef = useRef<number | null>(null);
@@ -62,7 +63,17 @@ export default function WhatsAppAttentionProvider({
 
       // Not every authenticated role can access the inbox. Silent fail is
       // intentional: users without access should not see global WhatsApp UI.
-      if (!response.ok) return;
+      if (!response.ok) {
+        if (response.status === 403) {
+          const body = await response.json().catch(() => null);
+          if (body?.code === 'APP_NOT_INSTALLED') {
+            setMessagingInstalled(false);
+            setItems([]);
+            setToastVisible(false);
+          }
+        }
+        return;
+      }
 
       const data = await response.json();
       const nextItems = Array.isArray(data.items)
@@ -93,7 +104,12 @@ export default function WhatsAppAttentionProvider({
     }
   }, [pathname]);
 
+  /** The platform console is not a tenant inbox context, and its wizard footer sits where the launcher floats. */
+  const onPlatformConsole = pathname.startsWith('/platform');
+  const polling = messagingInstalled && !onPlatformConsole;
+
   useEffect(() => {
+    if (!polling) return;
     void refresh();
     const timer = window.setInterval(() => {
       void refresh();
@@ -109,7 +125,7 @@ export default function WhatsAppAttentionProvider({
         window.clearTimeout(toastTimerRef.current);
       }
     };
-  }, [refresh]);
+  }, [refresh, polling]);
 
   const value = useMemo(
     () => ({ count, refresh }),
@@ -117,12 +133,13 @@ export default function WhatsAppAttentionProvider({
   );
 
   const onInboxPage = pathname.startsWith('/admin/whatsapp/inbox');
+  const showLauncher = polling && !onInboxPage;
 
   return (
     <WhatsAppAttentionContext.Provider value={value}>
       {children}
 
-      {!onInboxPage && count > 0 ? (
+      {showLauncher && count > 0 ? (
         <Link
           href="/admin/whatsapp/inbox"
           aria-label={`عندك ${count} محادثات واتساب محتاجة رد`}
@@ -137,7 +154,7 @@ export default function WhatsAppAttentionProvider({
         </Link>
       ) : null}
 
-      {!onInboxPage && toastVisible && count > 0 ? (
+      {showLauncher && toastVisible && count > 0 ? (
         <div
           role="status"
           aria-live="polite"

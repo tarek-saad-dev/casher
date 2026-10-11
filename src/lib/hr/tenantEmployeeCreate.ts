@@ -51,14 +51,18 @@ export async function createTenantEmployee(input: {
       bind(req);
       empId = Number((await req.query(insertSql)).recordset[0].EmpID);
     } else {
+      // TblEmp has an enabled trigger, so SQL Server rejects OUTPUT without INTO here.
       const inserted = await new sql.Request(tx)
         .input('tenantId', sql.UniqueIdentifier, tenantId)
         .input('empName', sql.NVarChar(200), name)
         .input('isActive', sql.Bit, input.isActive ? 1 : 0)
         .query(`
           INSERT INTO dbo.TblEmp (TenantId, EmpName, isActive)
-          OUTPUT INSERTED.EmpID
           VALUES (@tenantId, @empName, @isActive);
+
+          SELECT EmpID
+          FROM dbo.TblEmp
+          WHERE EmpID = SCOPE_IDENTITY() AND TenantId = @tenantId;
         `);
       empId = Number(inserted.recordset[0].EmpID);
     }
