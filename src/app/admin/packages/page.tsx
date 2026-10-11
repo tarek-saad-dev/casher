@@ -206,6 +206,11 @@ export default function PackagesManagementPage() {
       setModalError('السعر غير صالح');
       return;
     }
+    const durationNum = Number(form.DurationMinutes);
+    if (form.DurationMinutes === '' || !Number.isInteger(durationNum) || durationNum <= 0) {
+      setModalError('مدة الحجز (بالدقائق) مطلوبة');
+      return;
+    }
     setSaving(true);
     setModalError('');
     try {
@@ -600,15 +605,18 @@ export default function PackagesManagementPage() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label>المدة (دقيقة)</Label>
+                <Label>مدة الحجز (دقيقة) *</Label>
                 <Input
                   type="number"
-                  min={0}
+                  min={1}
                   value={form.DurationMinutes}
                   onChange={(e) => setForm((p) => ({ ...p, DurationMinutes: e.target.value }))}
                   className="bg-zinc-950 border-zinc-700"
-                  placeholder="اختياري"
+                  placeholder="مثلاً 60"
                 />
+                <p className="text-[11px] text-zinc-500">
+                  الوقت اللي بيتحجز للباكدج — مش مجموع مدد الخدمات
+                </p>
               </div>
               <div className="space-y-1.5">
                 <Label>بونص الصنايعي</Label>
