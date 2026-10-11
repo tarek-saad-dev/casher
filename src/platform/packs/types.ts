@@ -9,6 +9,8 @@ export type IndustryCatalogKind = 'services' | 'products';
 export type IndustryOnboardingProfile = {
   /** How the shared catalog should be presented during onboarding. */
   catalogKind: IndustryCatalogKind;
+  /** Name used for the first location created by self-service signup. */
+  defaultBranchName: string;
   /** Jobs offered when creating staff for this industry. Stored as ordinary TblEmp.Job strings. */
   jobOptions: readonly string[];
   /** Jobs that default to "can receive bookings". */
