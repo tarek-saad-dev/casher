@@ -2,14 +2,14 @@ import 'server-only';
 import crypto from 'node:crypto';
 import { getPool, sql } from '@/lib/db';
 import { findIndustryPack } from '@/packs';
+import { resolveTenantComposition } from '@/platform/apps/compositionResolver';
+import type { IndustryPackDefinition } from '@/platform/packs/types';
 import { onboardBusiness, defaultOnboardingDeps } from '@/platform/onboarding/wizard/coordinator';
 import type { OnboardingRequest } from '@/platform/onboarding/wizard/types';
 import { TenantOnboardingError } from '@/platform/onboarding/errors';
 import {
-  PUBLIC_SIGNUP_INDUSTRIES,
   PUBLIC_SIGNUP_NEEDS,
   type PublicSignupInput,
-  type PublicSignupIndustry,
   type PublicSignupNeed,
   type PublicSignupResult,
   type PublicSignupStartMode,
@@ -17,6 +17,16 @@ import {
 
 const MAX_SIGNUPS_PER_IP_24H = 5;
 const MIN_PASSWORD_LENGTH = 10;
+
+const NEED_APP_MAP: Record<PublicSignupNeed, readonly string[]> = {
+  booking: ['booking'],
+  pos: ['pos'],
+  workforce: ['attendance'],
+  payroll: ['payroll'],
+  treasury: ['treasury'],
+  reports: ['reports'],
+  inventory: ['inventory', 'purchasing'],
+};
 
 export class PublicSignupError extends Error {
   constructor(
@@ -49,12 +59,13 @@ function normalizeEmail(value: unknown): string | null {
   return email;
 }
 
-function normalizeIndustry(value: unknown): PublicSignupIndustry {
-  const industry = cleanText(value, 64).toLowerCase() as PublicSignupIndustry;
-  if (!PUBLIC_SIGNUP_INDUSTRIES.includes(industry)) {
+function publicPackOrThrow(value: unknown): IndustryPackDefinition {
+  const code = cleanText(value, 64).toLowerCase();
+  const pack = findIndustryPack(code);
+  if (!pack?.publicSignup.enabled) {
     throw new PublicSignupError('INDUSTRY_INVALID', 'اختر نوع نشاط متاح.', 400);
   }
-  return industry;
+  return pack;
 }
 
 function normalizeNeeds(value: unknown): PublicSignupNeed[] {
@@ -66,15 +77,15 @@ function normalizeNeeds(value: unknown): PublicSignupNeed[] {
   )];
 }
 
-function normalizeStartMode(value: unknown, industry: PublicSignupIndustry): PublicSignupStartMode {
+function normalizeStartMode(
+  value: unknown,
+  pack: IndustryPackDefinition,
+): PublicSignupStartMode {
   const mode = cleanText(value, 20) as PublicSignupStartMode;
   if (mode !== 'real' && mode !== 'demo') {
     throw new PublicSignupError('START_MODE_INVALID', 'اختر طريقة البداية.', 400);
   }
-  if (industry !== 'salon' && mode === 'demo') {
-    return 'real';
-  }
-  return mode;
+  return mode === 'demo' && !pack.publicSignup.demoPreset ? 'real' : mode;
 }
 
 export function parsePublicSignupInput(body: unknown): PublicSignupInput {
@@ -82,7 +93,7 @@ export function parsePublicSignupInput(body: unknown): PublicSignupInput {
     throw new PublicSignupError('BODY_INVALID', 'بيانات التسجيل غير صحيحة.', 400);
   }
   const x = body as Record<string, unknown>;
-  const industry = normalizeIndustry(x.industry);
+  const pack = publicPackOrThrow(x.industry);
   const contactName = cleanText(x.contactName, 100);
   const businessName = cleanText(x.businessName, 200);
   const password = String(x.password ?? '');
@@ -100,14 +111,14 @@ export function parsePublicSignupInput(body: unknown): PublicSignupInput {
     );
   }
   return {
-    industry,
+    industry: pack.packCode,
     needs: normalizeNeeds(x.needs),
     contactName,
     businessName,
     phone: normalizeEgyptPhone(x.phone),
     email: normalizeEmail(x.email),
     password,
-    startMode: normalizeStartMode(x.startMode, industry),
+    startMode: normalizeStartMode(x.startMode, pack),
   };
 }
 
@@ -131,45 +142,33 @@ function identityFrom(input: PublicSignupInput) {
   };
 }
 
-function demoSalonServices() {
-  return [
-    { name: 'Hair Cut', arabicName: 'قص شعر', categoryName: 'خدمات', price: 200, durationMinutes: 30, active: true },
-    { name: 'Beard Styling', arabicName: 'تهذيب دقن', categoryName: 'خدمات', price: 100, durationMinutes: 20, active: true },
-    { name: 'Hair & Beard', arabicName: 'شعر ودقن', categoryName: 'خدمات', price: 280, durationMinutes: 45, active: true },
-    { name: 'Classic Skin Care', arabicName: 'تنظيف بشرة كلاسيك', categoryName: 'خدمات', price: 300, durationMinutes: 45, active: true },
-  ];
-}
-
-function demoSalonEmployees(branchCode: string) {
-  return [
-    { name: 'أحمد Demo', job: 'حلاق', primaryBranchCode: branchCode, active: true, acceptsBookings: true },
-    { name: 'كريم Demo', job: 'حلاق', primaryBranchCode: branchCode, active: true, acceptsBookings: true },
-  ];
-}
-
-function appCustomizations(industry: PublicSignupIndustry, needs: PublicSignupNeed[]) {
-  const add: string[] = [];
-  if (industry === 'salon' && needs.includes('inventory')) {
-    add.push('inventory', 'purchasing');
+/**
+ * Needs never redefine the pack. They can only opt into apps the pack already
+ * exposes as optional; required/recommended defaults remain the source of truth.
+ */
+function appCustomizations(pack: IndustryPackDefinition, needs: PublicSignupNeed[]) {
+  const optional = new Set(pack.optional);
+  const add = new Set<string>();
+  for (const need of needs) {
+    for (const app of NEED_APP_MAP[need]) {
+      if (optional.has(app)) add.add(app);
+    }
   }
-  if (industry === 'supermarket') {
-    if (needs.includes('workforce')) add.push('attendance');
-    if (needs.includes('payroll')) add.push('payroll');
-  }
-  return { add: [...new Set(add)], remove: [] as string[] };
+  return { add: [...add], remove: [] as string[] };
 }
 
 function buildOnboardingRequest(input: PublicSignupInput): OnboardingRequest {
+  const pack = publicPackOrThrow(input.industry);
   const ids = identityFrom(input);
-  const custom = appCustomizations(input.industry, input.needs);
-  const salon = input.industry === 'salon';
-  const withDemo = salon && input.startMode === 'demo';
+  const custom = appCustomizations(pack, input.needs);
+  const installed = new Set(resolveTenantComposition(pack, custom).apps);
+  const demo = input.startMode === 'demo' ? pack.publicSignup.demoPreset : undefined;
 
   return {
     business: {
       businessName: input.businessName,
       tenantCode: ids.tenantCode,
-      industryPackCode: input.industry,
+      industryPackCode: pack.packCode,
       timezone: 'Africa/Cairo',
       currency: 'EGP',
       businessPhone: `+${input.phone}`,
@@ -180,7 +179,7 @@ function buildOnboardingRequest(input: PublicSignupInput): OnboardingRequest {
     },
     branches: [
       {
-        branchName: 'الفرع الرئيسي',
+        branchName: pack.packCode === 'clinic' ? 'العيادة الرئيسية' : 'الفرع الرئيسي',
         branchCode: ids.branchCode,
         shortName: 'الرئيسي',
         address: null,
@@ -190,8 +189,23 @@ function buildOnboardingRequest(input: PublicSignupInput): OnboardingRequest {
         defaultCloseTime: '23:00',
       },
     ],
-    services: withDemo ? demoSalonServices() : [],
-    employees: withDemo ? demoSalonEmployees(ids.branchCode) : [],
+    services: (demo?.services ?? []).map((s) => ({
+      name: s.name,
+      arabicName: s.arabicName ?? null,
+      categoryName: s.categoryName ?? 'خدمات',
+      price: s.price,
+      durationMinutes: s.durationMinutes,
+      active: true,
+    })),
+    employees: (demo?.employees ?? []).map((e) => ({
+      name: e.name,
+      job: e.job,
+      primaryBranchCode: ids.branchCode,
+      active: true,
+      ...(installed.has('booking')
+        ? { acceptsBookings: e.acceptsBookings ?? pack.onboarding.bookableJobs.includes(e.job) }
+        : {}),
+    })),
     owner: {
       displayName: input.contactName,
       loginName: ids.ownerLoginName,
@@ -200,7 +214,7 @@ function buildOnboardingRequest(input: PublicSignupInput): OnboardingRequest {
     users: [],
     apps: custom,
     subscription: { planCode: 'starter', status: 'trial' },
-    booking: salon
+    booking: installed.has('booking')
       ? [
           {
             branchCode: ids.branchCode,
@@ -237,7 +251,6 @@ export async function provisionPublicSignup(
 ): Promise<PublicSignupResult> {
   const input = parsePublicSignupInput(raw);
   const ipHash = signupIpHash(opts.ip);
-  const ids = identityFrom(input);
   const pool = await getPool();
 
   if (ipHash) {
