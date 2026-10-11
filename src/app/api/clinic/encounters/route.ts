@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isAuthResult, requireTenantApp } from '@/lib/api-auth';
 import { openEncounter } from '@/apps/medical-records/internal/repository';
+import { getCairoBusinessDate } from '@/lib/businessDate';
 import type { ClinicVisitType } from '@/apps/medical-records/public';
 
 const VISIT_TYPES = new Set<ClinicVisitType>(['new', 'follow_up', 'procedure']);
@@ -31,6 +32,8 @@ export async function POST(req: NextRequest) {
       clientId,
       practitionerEmpId,
       locationId: auth.tenant.activeLocation.locationId,
+      branchId: auth.activeBranchId,
+      workDate: getCairoBusinessDate(),
       visitType,
       chiefComplaint,
       actorUserId: auth.userId,
