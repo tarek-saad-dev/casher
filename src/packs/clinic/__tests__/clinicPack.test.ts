@@ -1,4 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
+vi.mock('server-only', () => ({}));
 import { CLINIC_PACK } from '@/packs/clinic/public';
 import { INDUSTRY_PACKS, listPublicIndustryPacks } from '@/packs';
 import { validatePackDefinition } from '@/platform/apps/compositionResolver';
