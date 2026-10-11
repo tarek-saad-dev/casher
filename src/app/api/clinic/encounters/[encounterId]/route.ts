@@ -34,14 +34,35 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
     }
     const actor = await resolveClinicalActorForUser(auth.tenantId, auth.userId);
     const encounter = workspace.encounter as Record<string, unknown>;
+    const assigned =
+      actor?.kind === 'human' &&
+      Number(encounter.PractitionerEmpID) === Number(actor.empId);
+
+    if (!assigned) {
+      return NextResponse.json({
+        encounter: {
+          ...encounter,
+          ClinicalNotes: null,
+          DiagnosisSummary: null,
+          VitalsJson: null,
+          FollowUpAt: null,
+        },
+        patientProfile: null,
+        prescriptions: [],
+        clinicalAccess: {
+          linked: actor?.kind === 'human',
+          practitionerEmpId: actor?.kind === 'human' ? actor.empId : null,
+          assigned: false,
+        },
+      });
+    }
+
     return NextResponse.json({
       ...workspace,
       clinicalAccess: {
-        linked: actor?.kind === 'human',
-        practitionerEmpId: actor?.kind === 'human' ? actor.empId : null,
-        assigned:
-          actor?.kind === 'human' &&
-          Number(encounter.PractitionerEmpID) === Number(actor.empId),
+        linked: true,
+        practitionerEmpId: actor.empId,
+        assigned: true,
       },
     });
   } catch (err) {
@@ -74,6 +95,13 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
       return NextResponse.json(
         { error: 'الطبيب المربوط بهذا الحساب ليس الطبيب المسؤول عن الزيارة.' },
         { status: 403 },
+      );
+    }
+
+    if (String(encounter.Status) !== 'in_progress') {
+      return NextResponse.json(
+        { error: 'الزيارة ليست في حالة جارية ولا يمكن تعديلها.' },
+        { status: 409 },
       );
     }
 
