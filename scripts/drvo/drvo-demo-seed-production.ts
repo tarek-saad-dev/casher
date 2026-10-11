@@ -115,7 +115,7 @@ function cairoLocalToUtc(date: string, hhmm: string): Date {
 
 async function main() {
   check(process.env.DRVO_DEMO_PRODUCTION_APPROVAL === APPROVAL, 'explicit production demo approval present');
-  const ownerPassword = String(process.env.DRVO_DEMO_OWNER_PASSWORD || 'DrvoDemo#2026!Sales');
+  const ownerPassword = String(process.env.DRVO_DEMO_OWNER_PASSWORD || '');
   check(ownerPassword.length >= 14, 'demo owner password is strong enough');
 
   const { getPool, closePool } = await import('../../src/lib/db');
