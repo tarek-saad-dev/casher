@@ -152,6 +152,11 @@ function appCustomizations(industry: PublicSignupIndustry, needs: PublicSignupNe
   if (industry === 'salon' && needs.includes('inventory')) {
     add.push('inventory', 'purchasing');
   }
+  if (industry === 'clinic') {
+    if (needs.includes('workforce')) add.push('attendance');
+    if (needs.includes('payroll')) add.push('payroll');
+    if (needs.includes('inventory')) add.push('inventory', 'purchasing');
+  }
   if (industry === 'supermarket') {
     if (needs.includes('workforce')) add.push('attendance');
     if (needs.includes('payroll')) add.push('payroll');
@@ -163,6 +168,8 @@ function buildOnboardingRequest(input: PublicSignupInput): OnboardingRequest {
   const ids = identityFrom(input);
   const custom = appCustomizations(input.industry, input.needs);
   const salon = input.industry === 'salon';
+  const clinic = input.industry === 'clinic';
+  const appointmentBusiness = salon || clinic;
   const withDemo = salon && input.startMode === 'demo';
 
   return {
@@ -186,8 +193,8 @@ function buildOnboardingRequest(input: PublicSignupInput): OnboardingRequest {
         address: null,
         phone: `+${input.phone}`,
         timezone: 'Africa/Cairo',
-        defaultOpenTime: '11:00',
-        defaultCloseTime: '23:00',
+        defaultOpenTime: clinic ? '09:00' : '11:00',
+        defaultCloseTime: clinic ? '21:00' : '23:00',
       },
     ],
     services: withDemo ? demoSalonServices() : [],
@@ -200,17 +207,17 @@ function buildOnboardingRequest(input: PublicSignupInput): OnboardingRequest {
     users: [],
     apps: custom,
     subscription: { planCode: 'starter', status: 'trial' },
-    booking: salon
+    booking: appointmentBusiness
       ? [
           {
             branchCode: ids.branchCode,
-            defaultMode: 'nearest',
+            defaultMode: clinic ? 'specific' : 'nearest',
             slotIntervalMinutes: 15,
             minNoticeMinutes: 30,
             maxBookingDaysAhead: 14,
             defaultServiceDurationMinutes: 30,
             allowSpecificBarber: true,
-            allowNearestBarber: true,
+            allowNearestBarber: !clinic,
           },
         ]
       : [],
