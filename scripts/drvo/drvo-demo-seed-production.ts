@@ -79,7 +79,7 @@ const USERS = [
 ] as const;
 
 const CUSTOMERS = [
-  ['أحمد خالد', '01000000001'],
+  ['عميل Demo Walk-in', null],
   ['محمد ياسر', '01000000002'],
   ['علي محمود', '01000000003'],
   ['عمر أشرف', '01000000004'],
@@ -352,7 +352,7 @@ async function main() {
         })),{discountPercent:0,discountValue:0});
         await createSale({
           items,
-          clientId:null,
+          clientId:customerIds[0]!,
           notes:`${MARKER} / ${branch.code} / sale ${i+1}`,
           payCash:computed.grandTotal,
           payVisa:0,
