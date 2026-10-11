@@ -67,6 +67,74 @@ jobs:
             fi
           done
 
+      - name: Discover existing staging infrastructure
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${VPS_HOST:-}" || -z "${VPS_USER:-}" || -z "${VPS_SSH_KEY:-}" ]]; then
+            echo "Production deploy SSH secrets are unavailable; skipping read-only staging discovery."
+            exit 0
+          fi
+
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/vps_discovery
+          chmod 600 ~/.ssh/vps_discovery
+          ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+          ssh -i ~/.ssh/vps_discovery -o BatchMode=yes "$VPS_USER@$VPS_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          echo "DISCOVERY_ONLY=1"
+          echo "REMOTE_USER=$(id -un)"
+          echo "REMOTE_UID=$(id -u)"
+
+          if getent passwd drvo-tunnel >/dev/null 2>&1; then
+            echo "DRVO_TUNNEL_USER=present"
+          else
+            echo "DRVO_TUNNEL_USER=missing"
+          fi
+
+          if [[ -d /home/drvo-tunnel/.ssh ]]; then
+            echo "DRVO_TUNNEL_SSH_DIR=present"
+          else
+            echo "DRVO_TUNNEL_SSH_DIR=missing_or_unreadable"
+          fi
+
+          if [[ -f /home/drvo-tunnel/.ssh/authorized_keys ]]; then
+            echo "DRVO_TUNNEL_AUTHORIZED_KEYS=present"
+          else
+            echo "DRVO_TUNNEL_AUTHORIZED_KEYS=missing_or_unreadable"
+          fi
+
+          if command -v sqlcmd >/dev/null 2>&1 || [[ -x /opt/mssql-tools18/bin/sqlcmd ]] || [[ -x /opt/mssql-tools/bin/sqlcmd ]]; then
+            echo "SQLCMD=present"
+          else
+            echo "SQLCMD=missing"
+          fi
+
+          if ss -ltn 2>/dev/null | grep -Eq "[:.]1433[[:space:]]"; then
+            echo "SQL_1433_LISTENER=present"
+          else
+            echo "SQL_1433_LISTENER=not_detected"
+          fi
+
+          echo "STAGING_MARKER_FILES_BEGIN"
+          find /home /etc -maxdepth 4 -type f \
+            \( -iname "*drvo*staging*" -o -iname ".env.staging" -o -iname "staging.env" \) \
+            -print 2>/dev/null | sed -n "1,40p" || true
+          echo "STAGING_MARKER_FILES_END"
+
+          if sudo -n -u drvo-tunnel true >/dev/null 2>&1; then
+            echo "DEPLOY_USER_CAN_SWITCH_TO_DRVO_TUNNEL=yes"
+          else
+            echo "DEPLOY_USER_CAN_SWITCH_TO_DRVO_TUNNEL=no"
+          fi
+          REMOTE
+
       - name: Check staging secrets are configured
         run: |
           set -euo pipefail
