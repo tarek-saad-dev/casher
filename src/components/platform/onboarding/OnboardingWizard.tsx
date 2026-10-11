@@ -102,7 +102,7 @@ export function OnboardingWizard() {
   const { request, apps } = useMemo(() => buildOnboardingRequest(draft, pack), [draft, pack]);
   const localIssues = useMemo(() => validateOnboardingRequest(request, { pack, plan }), [request, pack, plan]);
   const allIssues = useMemo(() => [...localIssues, ...serverIssues], [localIssues, serverIssues]);
-  const steps = visibleWizardSteps(pack?.packCode ?? null, apps);
+  const steps = visibleWizardSteps(pack, apps);
   if (!steps.includes(step)) setStep('business');
   const stepIndex = Math.max(0, steps.indexOf(step));
   const summary = summarizeOnboarding(request, apps);
@@ -236,7 +236,7 @@ export function OnboardingWizard() {
                   } disabled:opacity-50`}
                 >
                   <span className="font-mono">{i + 1}</span>
-                  <span>{s === 'services' && pack && !usesServiceCatalog(pack.packCode) ? 'الكتالوج' : STEP_LABELS[s]}</span>
+                  <span>{s === 'services' && pack && !usesServiceCatalog(pack) ? 'الكتالوج' : STEP_LABELS[s]}</span>
                 </button>
               </li>
             );
@@ -279,7 +279,7 @@ export function OnboardingWizard() {
           {pack && <p className="text-xs text-muted-foreground">{pack.displayName}</p>}
           <ul className="space-y-0.5 text-xs text-muted-foreground">
             <li>{summary.branches} فرع</li>
-            {usesServiceCatalog(pack?.packCode) && <li>{summary.services} خدمة</li>}
+            {usesServiceCatalog(pack) && <li>{summary.services} خدمة</li>}
             <li>{summary.employees} موظف</li>
             <li>{summary.users} مستخدم</li>
             <li>{summary.apps} تطبيق</li>
