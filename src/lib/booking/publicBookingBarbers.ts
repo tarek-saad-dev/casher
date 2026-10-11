@@ -20,7 +20,6 @@ import {
   eachDateInclusive,
   evaluateEmployeePublicBookingEligibility,
   inclusiveDaySpan,
-  isBarberJob,
   isEmployeeActive,
   isOutsideBookingHorizon,
   resolveBarberPublicImageUrl,
