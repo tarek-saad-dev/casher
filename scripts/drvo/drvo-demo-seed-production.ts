@@ -549,4 +549,7 @@ async function main() {
   }
 }
 
-main().catch(() => process.exit(1));
+main().catch((err) => {
+  console.error('DRVO demo seed fatal:', err instanceof Error ? err.message : String(err));
+  process.exit(1);
+});
