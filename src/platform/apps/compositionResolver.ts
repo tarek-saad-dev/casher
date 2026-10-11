@@ -40,6 +40,44 @@ export function validatePackDefinition(pack: IndustryPackDefinition): PackValida
     }
   }
 
+  if (!['services', 'products'].includes(pack.onboarding.catalogKind)) {
+    failures.push(`pack ${pack.packCode} has invalid catalogKind "${pack.onboarding.catalogKind}"`);
+  }
+  if (!pack.onboarding.defaultBranchName.trim()) {
+    failures.push(`pack ${pack.packCode} must define defaultBranchName`);
+  }
+  if (!pack.onboarding.jobOptions.length) {
+    failures.push(`pack ${pack.packCode} must define at least one job option`);
+  }
+  const jobs = new Set(pack.onboarding.jobOptions.map((x) => String(x).trim().toLowerCase()));
+  for (const job of pack.onboarding.bookableJobs) {
+    const normalized = String(job).trim().toLowerCase();
+    // Legacy aliases are allowed when the canonical job is represented by the pack.
+    if (!jobs.has(normalized) && !['barber'].includes(normalized)) {
+      failures.push(`pack ${pack.packCode} bookable job "${job}" is not in jobOptions`);
+    }
+  }
+  for (const [key, value] of Object.entries(pack.onboarding.terminology)) {
+    if (!String(value).trim()) failures.push(`pack ${pack.packCode} terminology.${key} is blank`);
+  }
+  if (pack.publicSignup.enabled) {
+    if (!pack.publicSignup.titleAr.trim() || !pack.publicSignup.descriptionAr.trim()) {
+      failures.push(`pack ${pack.packCode} public signup copy is incomplete`);
+    }
+    if (!['scissors', 'store', 'clinic'].includes(pack.publicSignup.iconKey)) {
+      failures.push(`pack ${pack.packCode} public signup iconKey is invalid`);
+    }
+  }
+  if (pack.publicSignup.demoPreset?.employees) {
+    for (const employee of pack.publicSignup.demoPreset.employees) {
+      if (!jobs.has(String(employee.job).trim().toLowerCase())) {
+        failures.push(
+          `pack ${pack.packCode} demo employee job "${employee.job}" is not in jobOptions`,
+        );
+      }
+    }
+  }
+
   const defaults = [...pack.required, ...pack.recommended];
   for (const gap of findMissingDependencies(defaults)) {
     failures.push(
