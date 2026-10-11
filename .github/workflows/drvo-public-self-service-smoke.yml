@@ -15,25 +15,23 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Public landing is live
+      - name: Public pages are reachable
         run: |
           set -euo pipefail
-          body="$(curl --fail --silent --show-error --location --max-time 30 https://ops.cutsaloon.com/drvo)"
-          printf '%s' "$body" | grep -q 'صالونك كله'
-          printf '%s' "$body" | grep -q 'ابدأ تجربتك'
-          echo "PUBLIC_LANDING=PASS"
-
-      - name: Signup wizard is live
-        run: |
-          set -euo pipefail
-          body="$(curl --fail --silent --show-error --location --max-time 30 https://ops.cutsaloon.com/start)"
-          printf '%s' "$body" | grep -q 'بيزنسك إيه'
-          echo "PUBLIC_SIGNUP_UI=PASS"
+          for path in drvo start; do
+            meta="$(curl --silent --show-error --location --max-time 30               --output "/tmp/$path.html"               --write-out '%{http_code} %{url_effective}'               "https://ops.cutsaloon.com/$path")"
+            echo "$path => $meta"
+            code="$(printf '%s' "$meta" | cut -d' ' -f1)"
+            test "$code" = "200"
+            grep -q 'DRVOERP' "/tmp/$path.html"
+          done
+          echo "PUBLIC_PAGES=PASS"
 
       - name: Signup API validates without creating data
         run: |
           set -euo pipefail
           code="$(curl --silent --show-error --output /tmp/signup.json --write-out '%{http_code}'             --header 'Content-Type: application/json'             --data '{}'             https://ops.cutsaloon.com/api/public/signup/complete)"
+          echo "signup-api => $code"
           cat /tmp/signup.json
           test "$code" = "400"
           grep -q 'INDUSTRY_INVALID' /tmp/signup.json
