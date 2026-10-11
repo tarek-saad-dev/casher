@@ -51,6 +51,32 @@ BEGIN TRY
     );
   END;
 
+  IF OBJECT_ID(N'dbo.ClinicPractitioner', N'U') IS NULL
+  BEGIN
+    CREATE TABLE dbo.ClinicPractitioner (
+      TenantId UNIQUEIDENTIFIER NOT NULL,
+      EmpID INT NOT NULL,
+      UserID INT NULL,
+      Specialty NVARCHAR(120) NULL,
+      LicenseNumber NVARCHAR(120) NULL,
+      IsActive BIT NOT NULL CONSTRAINT DF_ClinicPractitioner_IsActive DEFAULT 1,
+      CreatedByUserID INT NULL,
+      CreatedAt DATETIME2 NOT NULL CONSTRAINT DF_ClinicPractitioner_CreatedAt DEFAULT SYSUTCDATETIME(),
+      UpdatedAt DATETIME2 NOT NULL CONSTRAINT DF_ClinicPractitioner_UpdatedAt DEFAULT SYSUTCDATETIME(),
+      CONSTRAINT PK_ClinicPractitioner PRIMARY KEY (TenantId, EmpID),
+      CONSTRAINT FK_ClinicPractitioner_Tenant
+        FOREIGN KEY (TenantId) REFERENCES dbo.Tenant (TenantId),
+      CONSTRAINT FK_ClinicPractitioner_Emp
+        FOREIGN KEY (TenantId, EmpID) REFERENCES dbo.TblEmp (TenantId, EmpID),
+      CONSTRAINT FK_ClinicPractitioner_User
+        FOREIGN KEY (UserID) REFERENCES dbo.TblUser (UserID)
+    );
+
+    CREATE UNIQUE INDEX UX_ClinicPractitioner_Tenant_User
+      ON dbo.ClinicPractitioner (TenantId, UserID)
+      WHERE UserID IS NOT NULL;
+  END;
+
   IF OBJECT_ID(N'dbo.ClinicEncounter', N'U') IS NULL
   BEGIN
     CREATE TABLE dbo.ClinicEncounter (
