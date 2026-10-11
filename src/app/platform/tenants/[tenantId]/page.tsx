@@ -5,6 +5,7 @@ import BrandProfileForm from '@/components/tenant/BrandProfileForm';
 import { platformFetch, SUBSCRIPTION_STATUS_LABELS } from '@/components/platform/platformFetch';
 import type { TenantBrandProfile } from '@/platform/branding/brandProfile';
 import type { TenantAppState, TenantPackState } from '@/platform/apps/tenantApps';
+import { formatEgp, getPlanPricing } from '@/platform/commercial/pricingCatalog';
 import type {
   CommercialAccessReport,
   SaaSPlanRecord,
@@ -204,7 +205,9 @@ export default function TenantDetailPage({ params }: { params: Promise<{ tenantI
             >
               {plans.map((p) => (
                 <option key={p.planCode} value={p.planCode}>
-                  {p.displayName} ({p.maxBranches ?? '∞'} فروع / {p.maxUsers ?? '∞'} مستخدمين)
+                  {p.displayName}
+                  {getPlanPricing(p.planCode) ? ` — ${formatEgp(getPlanPricing(p.planCode)!.monthlyPrice)}/شهر` : ''}
+                  {' '}({p.maxBranches ?? '∞'} فروع / {p.maxUsers ?? '∞'} مستخدمين)
                 </option>
               ))}
             </select>
