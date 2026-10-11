@@ -193,10 +193,10 @@ export default function EncounterWorkspace({ encounterId }: { encounterId: strin
     void reload();
   }, [reload]);
 
-  const canEdit =
+  const canClinicalAct =
     data?.clinicalAccess.linked === true &&
-    data?.clinicalAccess.assigned === true &&
-    data?.encounter.Status === 'in_progress';
+    data?.clinicalAccess.assigned === true;
+  const canEdit = canClinicalAct && data?.encounter.Status === 'in_progress';
 
   const vitals = useMemo(
     () => ({
@@ -289,7 +289,7 @@ export default function EncounterWorkspace({ encounterId }: { encounterId: strin
   }
 
   async function signPrescription(prescriptionId: string) {
-    if (!canEdit || busy) return;
+    if (!canClinicalAct || busy) return;
     setBusy(true);
     setNotice(null);
     try {
@@ -535,7 +535,7 @@ export default function EncounterWorkspace({ encounterId }: { encounterId: strin
                           {rx.Status === 'signed' ? 'موقعة' : rx.Status === 'void' ? 'ملغاة' : 'مسودة'} • {String(rx.CreatedAt).slice(0, 16).replace('T', ' ')}
                         </div>
                       </div>
-                      {rx.Status === 'draft' && canEdit && (
+                      {rx.Status === 'draft' && canClinicalAct && (
                         <button disabled={busy} type="button" onClick={() => void signPrescription(rx.PrescriptionId)} className="rounded-xl bg-slate-950 px-3 py-2 text-xs font-bold text-white disabled:opacity-40">
                           توقيع الروشتة
                         </button>
