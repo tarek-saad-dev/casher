@@ -11,6 +11,7 @@ import { commercialSubscriptionTenantAppsMigration } from './009-commercial-subs
 import { masterDataTenancyMigration } from './010-master-data-tenancy';
 import { tenantBrandProfileMigration } from './011-tenant-brand-profile';
 import { messagingTenancyMigration } from './012-messaging-tenancy';
+import { publicSelfServiceSignupMigration } from './013-public-self-service-signup';
 import { drvoModuleRequiredMigrationsFromManifest } from '../../../src/platform/drvo/moduleManifest';
 
 /** Ordered DRVO migration manifest — single source of truth for migration order. */
@@ -27,6 +28,7 @@ export const DRVO_MIGRATIONS: DrvoMigrationDefinition[] = [
   masterDataTenancyMigration,
   tenantBrandProfileMigration,
   messagingTenancyMigration,
+  publicSelfServiceSignupMigration,
 ];
 
 export function assertDrvoMigrationManifestValid(): void {
