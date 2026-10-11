@@ -1,15 +1,10 @@
 {
-  "action": "APPLY",
+  "action": "PLAN",
   "requested_by": "tarek-saad-dev",
-  "pr_number": 82,
-  "target_sha": "133addc6e1183bc7e3e6aa17bcdad92d4e7488a7",
-  "manifest_digest": "07fd0cc34b857b1262ad5c19eab12ce24dac77445ab8096b27974debb6658bf4",
-  "migrations": [
-    "commercial-subscription-tenant-apps",
-    "master-data-tenancy",
-    "tenant-brand-profile",
-    "messaging-tenancy"
-  ],
-  "backup_reference": "/var/opt/mssql/backup/last132_20261010T193053Z.bak",
-  "approval": "TAREK_APPROVED_PRODUCTION_MIGRATION"
+  "pr_number": 87,
+  "target_sha": "d13ba90d87591d7eb57ad50f26b82892ef7d19dc",
+  "manifest_digest": "",
+  "migrations": [],
+  "backup_reference": "",
+  "approval": ""
 }
