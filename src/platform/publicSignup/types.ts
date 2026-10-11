@@ -1,6 +1,3 @@
-export const PUBLIC_SIGNUP_INDUSTRIES = ['salon', 'supermarket'] as const;
-export type PublicSignupIndustry = (typeof PUBLIC_SIGNUP_INDUSTRIES)[number];
-
 export const PUBLIC_SIGNUP_NEEDS = [
   'booking',
   'pos',
@@ -12,7 +9,25 @@ export const PUBLIC_SIGNUP_NEEDS = [
 ] as const;
 export type PublicSignupNeed = (typeof PUBLIC_SIGNUP_NEEDS)[number];
 
+export type PublicSignupIndustry = string;
 export type PublicSignupStartMode = 'real' | 'demo';
+
+export type PublicIndustryOption = {
+  code: string;
+  titleAr: string;
+  descriptionAr: string;
+  iconKey: 'scissors' | 'store' | 'clinic';
+  defaultNeeds: string[];
+  supportsDemo: boolean;
+  catalogKind: 'services' | 'products';
+  terminology: {
+    branch: string;
+    customer: string;
+    catalogItem: string;
+    teamMember: string;
+    provider: string;
+  };
+};
 
 export type PublicSignupInput = {
   industry: PublicSignupIndustry;
