@@ -33,6 +33,7 @@ export async function verifyClinicCoreSchema(
 
   for (const table of [
     'ClinicPatientProfile',
+    'ClinicPractitioner',
     'ClinicEncounter',
     'ClinicPrescription',
     'ClinicPrescriptionItem',
@@ -50,6 +51,7 @@ export async function verifyClinicCoreSchema(
 
   for (const index of [
     ['Location', 'UX_Location_Tenant_LocationId'],
+    ['ClinicPractitioner', 'UX_ClinicPractitioner_Tenant_User'],
     ['ClinicEncounter', 'UX_ClinicEncounter_Tenant_Id'],
     ['ClinicPrescription', 'UX_ClinicPrescription_Tenant_Id'],
   ] as const) {
