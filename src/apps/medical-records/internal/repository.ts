@@ -224,6 +224,7 @@ export async function signPrescription(input: {
   prescriptionId: string;
   actor: ClinicalActor;
 }): Promise<void> {
+  assertHumanClinicalActor(input.actor, 'sign-prescription');
   const pool = await getPool();
   const current = await pool.request()
     .input('tenantId', sql.UniqueIdentifier, input.tenantId)
