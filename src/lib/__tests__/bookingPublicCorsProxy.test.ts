@@ -3,8 +3,10 @@ import { describe, expect, it } from 'vitest';
 import { classifyProxyAuth, isAdminApiPath } from '@/lib/proxyPublicRoutes';
 
 describe('bookingPublicCorsProxy', () => {
-  it('keeps /api/public booking anonymous and admin session-required', () => {
+  it('keeps public booking and DRVO signup anonymous while admin stays session-required', () => {
     expect(classifyProxyAuth('/api/public/booking/cancel').kind).toBe('anonymous_public');
+    expect(classifyProxyAuth('/drvo').kind).toBe('anonymous_public');
+    expect(classifyProxyAuth('/start').kind).toBe('anonymous_public');
     expect(classifyProxyAuth('/api/admin/bookings').kind).toBe('session_required');
     expect(isAdminApiPath('/api/admin/x')).toBe(true);
   });
