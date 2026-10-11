@@ -231,6 +231,30 @@ export async function getEncounterWorkspace(
       WHERE TenantId=@tenantId AND ClientID=@clientId;
     `);
 
+  const history = await pool.request()
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
+    .input('clientId', sql.Int, Number(row.ClientID))
+    .input('encounterId', sql.UniqueIdentifier, encounterId)
+    .query(`
+      SELECT TOP 20
+        e.EncounterId,
+        e.VisitType,
+        e.Status,
+        e.ChiefComplaint,
+        e.DiagnosisSummary,
+        e.StartedAt,
+        e.CompletedAt,
+        e.CreatedAt,
+        p.EmpName AS PractitionerName
+      FROM dbo.ClinicEncounter e
+      INNER JOIN dbo.TblEmp p
+        ON p.TenantId=e.TenantId AND p.EmpID=e.PractitionerEmpID
+      WHERE e.TenantId=@tenantId
+        AND e.ClientID=@clientId
+        AND e.EncounterId<>@encounterId
+      ORDER BY e.CreatedAt DESC;
+    `);
+
   const prescriptions = await pool.request()
     .input('tenantId', sql.UniqueIdentifier, tenantId)
     .input('encounterId', sql.UniqueIdentifier, encounterId)
@@ -280,6 +304,7 @@ export async function getEncounterWorkspace(
   return {
     encounter: row,
     patientProfile: (profile.recordset[0] as Record<string, unknown> | undefined) ?? null,
+    history: history.recordset as Array<Record<string, unknown>>,
     prescriptions: (prescriptions.recordset as Array<Record<string, unknown>>).map((prescription) => ({
       ...prescription,
       items: itemsByPrescription.get(String(prescription.PrescriptionId)) ?? [],
