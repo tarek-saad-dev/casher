@@ -67,9 +67,22 @@ type PrescriptionRow = {
   items: PrescriptionItemRow[];
 };
 
+type HistoryRow = {
+  EncounterId: string;
+  VisitType: string;
+  Status: string;
+  ChiefComplaint: string | null;
+  DiagnosisSummary: string | null;
+  StartedAt: string | null;
+  CompletedAt: string | null;
+  CreatedAt: string;
+  PractitionerName: string;
+};
+
 type WorkspacePayload = {
   encounter: EncounterRow;
   patientProfile: PatientProfile | null;
+  history: HistoryRow[];
   prescriptions: PrescriptionRow[];
   clinicalAccess: {
     linked: boolean;
@@ -389,6 +402,37 @@ export default function EncounterWorkspace({ encounterId }: { encounterId: strin
                 <div><span className="text-slate-500">الموبايل:</span> {encounter.PatientMobile || '—'}</div>
                 <div><span className="text-slate-500">تاريخ الميلاد:</span> {encounter.BirthDate ? String(encounter.BirthDate).slice(0, 10) : '—'}</div>
                 <div><span className="text-slate-500">سبب الزيارة:</span> {encounter.ChiefComplaint || '—'}</div>
+              </div>
+            </div>
+
+            <div className="rounded-3xl border bg-white p-5 shadow-sm">
+              <div className="flex items-center gap-2">
+                <FileText className="h-5 w-5 text-slate-700" />
+                <h2 className="font-black">الزيارات السابقة</h2>
+              </div>
+              <div className="mt-4 space-y-2">
+                {data.history.length === 0 && (
+                  <div className="rounded-xl border border-dashed p-3 text-xs text-slate-500">
+                    دي أول زيارة مسجلة للمريض على DRVO Clinics.
+                  </div>
+                )}
+                {data.history.map((item) => (
+                  <Link
+                    key={item.EncounterId}
+                    href={`/clinic/encounters/${item.EncounterId}`}
+                    className="block rounded-xl border p-3 transition hover:bg-slate-50"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <strong className="text-sm">{item.PractitionerName}</strong>
+                      <span className="text-[11px] text-slate-400">
+                        {String(item.CreatedAt).slice(0, 10)}
+                      </span>
+                    </div>
+                    <div className="mt-1 text-xs text-slate-500">
+                      {item.DiagnosisSummary || item.ChiefComplaint || 'بدون ملخص'}
+                    </div>
+                  </Link>
+                ))}
               </div>
             </div>
 
