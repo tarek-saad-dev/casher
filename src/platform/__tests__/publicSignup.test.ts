@@ -52,6 +52,24 @@ describe('public signup input', () => {
     });
   });
 
+  it('accepts clinic signup and forces demo mode back to real data', () => {
+    expect(
+      parsePublicSignupInput({
+        industry: 'clinic',
+        needs: ['booking', 'workforce', 'reports'],
+        contactName: 'Clinic Owner',
+        businessName: 'Nova Clinic',
+        phone: '01212345678',
+        password: 'StrongPass1',
+        startMode: 'demo',
+      }),
+    ).toMatchObject({
+      industry: 'clinic',
+      needs: ['booking', 'workforce', 'reports'],
+      startMode: 'real',
+    });
+  });
+
   it('forces supermarket demo signup back to a clean real-data start', () => {
     expect(
       parsePublicSignupInput({
