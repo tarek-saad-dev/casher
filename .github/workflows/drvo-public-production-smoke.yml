@@ -1,0 +1,180 @@
+name: DRVO Public Signup Production Smoke
+
+on:
+  push:
+    branches:
+      - drvo-public-production-smoke
+    paths:
+      - '.github/workflows/drvo-public-production-smoke.yml'
+
+concurrency:
+  group: casher-production-smoke
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout smoke branch
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Upload smoke verifier
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          scp -i ~/.ssh/id_ed25519 -o BatchMode=yes \
+            scripts/drvo/drvo-public-signup-production-smoke.ts \
+            "$VPS_USER@$VPS_HOST:/home/casher/app/scripts/drvo/drvo-public-signup-production-smoke.ts"
+
+      - name: Prepare unique synthetic identity and CUT baseline
+        id: vars
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          suffix="$(printf '%07d' "$((GITHUB_RUN_ID % 10000000))")"
+          phone="0109${suffix}"
+          business="DRVO Production Smoke ${GITHUB_RUN_ID}"
+          echo "phone=$phone" >> "$GITHUB_OUTPUT"
+          echo "business=$business" >> "$GITHUB_OUTPUT"
+          ssh -i ~/.ssh/id_ed25519 -o BatchMode=yes "$VPS_USER@$VPS_HOST" \
+            "cd /home/casher/app && npx tsx scripts/drvo/drvo-public-signup-production-smoke.ts before '$phone'"
+
+      - name: Public landing is reachable
+        run: |
+          set -euo pipefail
+          code="$(curl -sS -o /tmp/drvo.html -w '%{http_code}' https://ops.cutsaloon.com/drvo)"
+          test "$code" = "200"
+          grep -q "DRVO" /tmp/drvo.html
+          grep -q "ابدأ" /tmp/drvo.html
+          echo "PUBLIC_LANDING=PASS"
+
+      - name: Public signup page is reachable
+        run: |
+          set -euo pipefail
+          code="$(curl -sS -o /tmp/start.html -w '%{http_code}' https://ops.cutsaloon.com/start)"
+          test "$code" = "200"
+          grep -q "بيزنسك" /tmp/start.html
+          grep -q "14" /tmp/start.html
+          echo "PUBLIC_START_PAGE=PASS"
+
+      - name: Complete real public signup and capture session
+        id: signup
+        shell: bash
+        run: |
+          set -euo pipefail
+          phone="${{ steps.vars.outputs.phone }}"
+          business="${{ steps.vars.outputs.business }}"
+
+          http="$(curl -sS \
+            -o /tmp/signup.json \
+            -D /tmp/signup.headers \
+            -c /tmp/drvo.cookies \
+            -w '%{http_code}' \
+            -H 'Content-Type: application/json' \
+            --data-binary @- \
+            https://ops.cutsaloon.com/api/public/signup/complete <<JSON
+          {
+            "industry":"salon",
+            "needs":["booking","pos","workforce","payroll","treasury","reports"],
+            "contactName":"Production Smoke Owner",
+            "businessName":"$business",
+            "phone":"$phone",
+            "email":"smoke+${GITHUB_RUN_ID}@example.com",
+            "password":"SmokePass#2026!",
+            "startMode":"demo"
+          }
+          JSON
+          )"
+
+          cat /tmp/signup.json
+          test "$http" = "201"
+          jq -e '.ok == true' /tmp/signup.json >/dev/null
+          tenant_code="$(jq -r '.tenantCode' /tmp/signup.json)"
+          branch_code="$(jq -r '.tenantCode + "_MAIN"' /tmp/signup.json)"
+          login_name="$(jq -r '.ownerLoginName' /tmp/signup.json)"
+          trial_end="$(jq -r '.trialEndsAt' /tmp/signup.json)"
+          test -n "$tenant_code"
+          test -n "$login_name"
+          test "$trial_end" != "null"
+          grep -q "pos_session" /tmp/drvo.cookies
+
+          echo "tenant_code=$tenant_code" >> "$GITHUB_OUTPUT"
+          echo "branch_code=$branch_code" >> "$GITHUB_OUTPUT"
+          echo "login_name=$login_name" >> "$GITHUB_OUTPUT"
+          echo "PUBLIC_SIGNUP_API=PASS"
+
+      - name: Auto-login session is usable
+        run: |
+          set -euo pipefail
+          http="$(curl -sS -b /tmp/drvo.cookies -o /tmp/session.json -w '%{http_code}' https://ops.cutsaloon.com/api/auth/session)"
+          cat /tmp/session.json
+          test "$http" = "200"
+          jq -e '.user != null' /tmp/session.json >/dev/null
+          jq -e '.roles | index("admin") != null' /tmp/session.json >/dev/null
+          test "$(jq -r '.activeBranch.BranchCode' /tmp/session.json)" = "${{ steps.signup.outputs.branch_code }}"
+          echo "AUTO_LOGIN_SESSION=PASS"
+
+      - name: Authenticated operations route opens
+        run: |
+          set -euo pipefail
+          http="$(curl -sS -b /tmp/drvo.cookies -o /tmp/operations.html -D /tmp/operations.headers -w '%{http_code}' https://ops.cutsaloon.com/operations)"
+          test "$http" = "200"
+          ! grep -qi '^location: .*/login' /tmp/operations.headers
+          echo "OPERATIONS_ENTRY=PASS"
+
+      - name: Verify tenant isolation and cleanup synthetic signup
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/id_ed25519 -o BatchMode=yes "$VPS_USER@$VPS_HOST" \
+            "cd /home/casher/app && npx tsx scripts/drvo/drvo-public-signup-production-smoke.ts verify-cleanup '${{ steps.vars.outputs.phone }}' '${{ steps.signup.outputs.tenant_code }}'"
+
+      - name: Final DRVO production verify
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/id_ed25519 -o BatchMode=yes "$VPS_USER@$VPS_HOST" \
+            "cd /home/casher/app && npm run drvo:verify"
+
+      - name: Final application health
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --max-time 30 https://ops.cutsaloon.com/api/health/ready > /tmp/health.json
+          cat /tmp/health.json
+          echo "PRODUCTION_HEALTH=PASS"
+
+      - name: Failure-safe cleanup
+        if: always()
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          ssh -i ~/.ssh/id_ed25519 -o BatchMode=yes "$VPS_USER@$VPS_HOST" \
+            "cd /home/casher/app && npx tsx scripts/drvo/drvo-public-signup-production-smoke.ts cleanup '${{ steps.vars.outputs.phone }}' '${{ steps.signup.outputs.tenant_code }}'" || true
+          ssh -i ~/.ssh/id_ed25519 -o BatchMode=yes "$VPS_USER@$VPS_HOST" \
+            "rm -f /home/casher/app/scripts/drvo/drvo-public-signup-production-smoke.ts" || true
