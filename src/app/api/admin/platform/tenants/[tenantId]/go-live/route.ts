@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { isAuthResult, requirePlatformOperator } from '@/lib/api-auth';
 import { evaluateTenantGoLive } from '@/platform/onboarding/goLiveReadiness';
-import { invalidTenantIdResponse } from '../../../../_shared/platformErrors';
+import { invalidTenantIdResponse } from '../../../_shared/platformErrors';
 
 export const runtime = 'nodejs';
 
