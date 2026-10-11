@@ -8,6 +8,7 @@ import {
   BOOKING_SLOT_INTERVAL_OPTIONS,
 } from '@/lib/booking/bookingSettingsValidation';
 import { EMPLOYMENT_TYPES, PAYROLL_METHODS } from '@/lib/hr/employee-hr-model';
+import { formatEgp, getPlanPricing } from '@/platform/commercial/pricingCatalog';
 import type { SaaSPlanRecord } from '@/platform/commercial/types';
 import {
   addBranch,
@@ -409,10 +410,27 @@ export function PlanStep({ draft, update, issues, plans }: StepProps & { plans: 
                 p.planCode === draft.subscription.planCode ? 'border-primary bg-primary/10' : 'border-border hover:bg-muted'
               }`}
             >
-              <div className="font-semibold">{p.displayName}</div>
+              <div className="flex items-center justify-between gap-2">
+                <div className="font-semibold">{p.displayName}</div>
+                {getPlanPricing(p.planCode)?.recommended && (
+                  <span className="rounded-full bg-primary px-2 py-0.5 text-[10px] text-primary-foreground">
+                    موصى بها
+                  </span>
+                )}
+              </div>
+              {getPlanPricing(p.planCode) && (
+                <div className="mt-1 font-semibold text-primary">
+                  {formatEgp(getPlanPricing(p.planCode)!.monthlyPrice)} / شهر
+                </div>
+              )}
               <div className="text-xs text-muted-foreground">
                 فروع: {p.maxBranches ?? 'بلا حد'} · مستخدمون: {p.maxUsers ?? 'بلا حد'} · تجربة {p.trialDays} يوم
               </div>
+              {getPlanPricing(p.planCode) && (
+                <div className="mt-1 text-[11px] text-muted-foreground">
+                  سنوي: {formatEgp(getPlanPricing(p.planCode)!.annualPrice)} (شهران مجاناً)
+                </div>
+              )}
             </button>
           ))}
         </div>
