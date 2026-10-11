@@ -24,6 +24,7 @@ export const SALON_PACK: IndustryPackDefinition = {
   },
   onboarding: {
     catalogKind: 'services',
+    defaultBranchName: 'الفرع الرئيسي',
     jobOptions: [
       'حلاق',
       'تنظيف بشرة',
