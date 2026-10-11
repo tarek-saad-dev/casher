@@ -142,12 +142,16 @@ export function setTenantCode(d: OnboardingDraft, code: string): OnboardingDraft
 }
 
 /** Changing the industry resets everything that depends on it. */
-export function setIndustryPack(d: OnboardingDraft, packCode: string): OnboardingDraft {
+export function setIndustryPack(
+  d: OnboardingDraft,
+  pack: IndustryPackDefinition,
+): OnboardingDraft {
   return {
     ...d,
-    business: { ...d.business, industryPackCode: packCode },
+    business: { ...d.business, industryPackCode: pack.packCode },
     apps: { add: [], remove: [] },
-    services: usesServiceCatalog(packCode) ? d.services : [],
+    services: usesServiceCatalog(pack) ? d.services : [],
+    employees: [],
     ai: { ...d.ai, useSalonConciergePack: false },
   };
 }
@@ -206,7 +210,7 @@ export function buildOnboardingRequest(
   const request: OnboardingRequest = {
     business: d.business,
     branches: d.branches,
-    services: usesServiceCatalog(packCode) ? d.services : [],
+    services: usesServiceCatalog(pack) ? d.services : [],
     employees: d.employees.map(({ branchIndex, ...e }) => ({
       name: e.name,
       job: e.job,
