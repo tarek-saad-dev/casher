@@ -8,6 +8,7 @@
  */
 import Module from 'module';
 import sql from 'mssql';
+import { existsSync } from 'node:fs';
 
 const moduleWithLoad = Module as unknown as {
   _load: (request: string, parent: unknown, isMain: boolean) => unknown;
@@ -72,13 +73,14 @@ function check(condition: unknown, message: string): asserts condition {
 
 async function assertStaging(pool: sql.ConnectionPool) {
   const result = await pool.request().query(
-    'SELECT DB_NAME() AS db, SUSER_SNAME() AS login;',
+    "SELECT DB_NAME() AS db, SUSER_SNAME() AS login, HAS_DBACCESS(N'last132') AS productionAccess;",
   );
   const db = String(result.recordset[0].db);
   const login = String(result.recordset[0].login);
   if (db === PRODUCTION_DB) throw new Error(`Refusing production database ${PRODUCTION_DB}`);
   check(db === STAGING_DB, `database is ${STAGING_DB}`);
   check(login.toLowerCase() === STAGING_LOGIN, `login is ${STAGING_LOGIN}`);
+  check(Number(result.recordset[0].productionAccess) === 0, 'staging login cannot access production database');
 }
 
 async function cleanup(pool: sql.ConnectionPool) {
@@ -110,8 +112,21 @@ async function insertPatient(
 }
 
 async function main() {
+  for (const file of ['.env', '.env.local', '.env.production', '.env.production.local']) {
+    if (existsSync(file)) throw new Error(`Refusing clinic smoke from checkout containing ${file}`);
+  }
+  const host = process.env.DRVO_STAGING_DB_SERVER || '127.0.0.1';
+  const port = Number(process.env.DRVO_STAGING_DB_PORT || '14330');
+  if (host !== '127.0.0.1' || ![1433, 14330].includes(port)) {
+    throw new Error('Clinic smoke only supports VPS loopback SQL or the staging-only SSH tunnel');
+  }
+  if (process.env.HAWAI_DB_CLASS || process.env.BOOKING_V2_FORCE_LOCAL_DB === 'true') {
+    throw new Error('Refusing clinic smoke with an overridden DB target');
+  }
   const password = process.env.DRVO_STAGING_DB_PASSWORD || '';
   if (!password) throw new Error('Missing DRVO_STAGING_DB_PASSWORD');
+  process.env.STAGING_SAFETY_ENFORCE = '1';
+  process.env.STAGING_SAFETY_DB_NAME = STAGING_DB;
   forceStagingEnv(password);
 
   const cfg = config();
