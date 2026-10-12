@@ -120,8 +120,10 @@ async function main() {
   if (host !== '127.0.0.1' || ![1433, 14330].includes(port)) {
     throw new Error('Clinic smoke only supports VPS loopback SQL or the staging-only SSH tunnel');
   }
-  if (process.env.HAWAI_DB_CLASS || process.env.BOOKING_V2_FORCE_LOCAL_DB === 'true') {
-    throw new Error('Refusing clinic smoke with an overridden DB target');
+  const localClass = String(process.env.HAWAI_DB_CLASS || process.env.BOOKING_V2_DB_CLASS || '').trim().toLowerCase();
+  const forceLocal = String(process.env.BOOKING_V2_FORCE_LOCAL_DB || '').trim().toLowerCase();
+  if (['local', 'isolated', 'test', 'dev'].includes(localClass) || ['1', 'true', 'yes', 'on'].includes(forceLocal)) {
+    throw new Error('Refusing clinic smoke with a local DB target override');
   }
   const password = process.env.DRVO_STAGING_DB_PASSWORD || '';
   if (!password) throw new Error('Missing DRVO_STAGING_DB_PASSWORD');
