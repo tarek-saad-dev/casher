@@ -6,13 +6,14 @@
  * NEVER loads .env / .env.local, mutates SQL, or connects to production.
  */
 import sql from 'mssql';
+import { existsSync } from 'node:fs';
 
 const expectedDatabase = 'last132_agent';
 const expectedLogin = 'drvo_agent';
 
 async function main() {
   for (const name of ['.env', '.env.local', '.env.production', '.env.production.local']) {
-    if (require('node:fs').existsSync(name)) {
+    if (existsSync(name)) {
       throw new Error(`Refusing to run from a checkout containing ${name}. Use an isolated staging checkout.`);
     }
   }
