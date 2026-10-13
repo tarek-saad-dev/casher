@@ -4,7 +4,6 @@ on:
   pull_request:
     branches: [main]
     types: [opened, synchronize, reopened, ready_for_review]
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -16,13 +15,8 @@ concurrency:
 jobs:
   staging-gate:
     if: >
-      (github.event_name == 'workflow_dispatch') ||
-      (
-        github.event.pull_request.head.repo.full_name == github.repository &&
-        (
-          github.event.pull_request.head.ref == 'drvo-012-commercial-plans-tenant-apps'
-        )
-      )
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'drvo-012-commercial-plans-tenant-apps'
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
@@ -146,6 +140,9 @@ jobs:
               await p.close();
             }
           "
+
+      - name: Review staging migration inventory (read only)
+        run: npm run drvo-014:staging-plan
 
       - name: Apply DRVO migrations to staging only
         run: npm run drvo:migrate -- --expected-database=last132_agent
