@@ -1,0 +1,33 @@
+name: DRVO Staging Predeploy Check
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: drvo-staging-predeploy
+  cancel-in-progress: false
+
+jobs:
+  predeploy:
+    if: github.ref == 'refs/heads/feature/drvo-clinics-mvp'
+    runs-on: ubuntu-latest
+    environment: drvo-staging
+    timeout-minutes: 12
+    steps:
+      - name: Checkout staging branch
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Inspect external side-effect entrypoints
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '=== OUTBOUND PATHS (inspection only) ==='
+          rg -l -i 'sendMail|sendMessage|sendWhatsApp|axios\.post|fetch\(|cron\.schedule|setInterval\(' src/app/api src/lib 2>/dev/null | head -100 || true
+          echo '=== SAFETY GUARD REFERENCES ==='
+          rg -n 'STAGING_SAFETY_ENFORCE|STAGING_SAFETY_DB_NAME' src/lib/db.ts
+          echo '=== DEPLOY SAFETY ==='
+          echo 'No SSH commands, no database mutations, no runtime restarts.'
