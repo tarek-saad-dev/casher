@@ -1,0 +1,41 @@
+name: DRVO Staging SSH Connectivity
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ssh-check:
+    if: github.ref == 'refs/heads/feature/drvo-clinics-mvp'
+    runs-on: ubuntu-latest
+    environment: drvo-staging
+    timeout-minutes: 5
+    steps:
+      - name: Configure pinned SSH identity
+        env:
+          SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.STAGING_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          test -n "$SSH_KEY"
+          test -n "$KNOWN_HOSTS"
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - name: Test staging SSH connection (read-only)
+        env:
+          HOST: ${{ secrets.STAGING_HOST }}
+          USER: ${{ secrets.STAGING_USER }}
+          PORT: ${{ secrets.STAGING_SSH_PORT }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/id_ed25519 \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            -o ConnectTimeout=12 \
+            -p "$PORT" "$USER@$HOST" \
+            'printf "STAGING_SSH_OK user="; whoami; printf "host="; hostname; test -d /home/casher/drvo-clinics-work && echo "checkout=present"'
