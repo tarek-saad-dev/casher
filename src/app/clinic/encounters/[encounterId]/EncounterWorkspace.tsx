@@ -186,7 +186,7 @@ export default function EncounterWorkspace({ encounterId }: { encounterId: strin
     setOxygenSaturation(vitals.oxygenSaturation ?? '');
   }, []);
 
-  const reload = useCallback(async () => {
+  const reload = useCallback(async (preserveDraft = false) => {
     setLoading(true);
     try {
       const res = await fetch(`/api/clinic/encounters/${encodeURIComponent(encounterId)}`, {
@@ -194,7 +194,8 @@ export default function EncounterWorkspace({ encounterId }: { encounterId: strin
       });
       const payload = (await res.json()) as WorkspacePayload & { error?: string };
       if (!res.ok) throw new Error(payload.error || 'تعذر تحميل الزيارة');
-      hydrate(payload);
+      if (preserveDraft) setData(payload);
+      else hydrate(payload);
     } catch (err) {
       setNotice(err instanceof Error ? err.message : 'تعذر تحميل الزيارة');
     } finally {
@@ -238,7 +239,7 @@ export default function EncounterWorkspace({ encounterId }: { encounterId: strin
           action,
           clinicalNotes,
           diagnosisSummary,
-          followUpAt: followUpAt || null,
+          followUpAt: followUpAt ? new Date(followUpAt).toISOString() : null,
           vitals,
           patientProfile: {
             bloodType: bloodType || null,
@@ -293,7 +294,7 @@ export default function EncounterWorkspace({ encounterId }: { encounterId: strin
       setRxItems([{ ...EMPTY_RX }]);
       setRxNotes('');
       setNotice('تم إنشاء مسودة الروشتة. راجعها ثم وقّعها.');
-      await reload();
+      await reload(true);
     } catch (err) {
       setNotice(err instanceof Error ? err.message : 'تعذر إنشاء الروشتة');
     } finally {
@@ -313,7 +314,7 @@ export default function EncounterWorkspace({ encounterId }: { encounterId: strin
       const result = (await res.json()) as { error?: string };
       if (!res.ok) throw new Error(result.error || 'تعذر توقيع الروشتة');
       setNotice('تم توقيع الروشتة.');
-      await reload();
+      await reload(true);
     } catch (err) {
       setNotice(err instanceof Error ? err.message : 'تعذر توقيع الروشتة');
     } finally {

@@ -11,6 +11,7 @@ import {
   HeartHandshake, Layers, Beaker, Settings2, Sun, Building2, Package,
   MessageCircle,
   Inbox,
+  Stethoscope,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -43,7 +44,7 @@ export const NAV_CATEGORIES: NavCategory[] = [
   {
     title: 'العمليات اليومية',
     description: 'البيع، المصروفات، الطابور والحجوزات',
-    sectionTitles: ['المدخلات', 'المصروفات', 'الطابور', 'الحجوزات'],
+    sectionTitles: ['المدخلات', 'المصروفات', 'الطابور', 'الحجوزات', 'العيادة'],
   },
   {
     title: 'المراجعة',
@@ -91,6 +92,7 @@ export const NAV_THEMES: Record<string, NavTheme> = {
   'لوحة التشغيل':      { rgb: '20,184,166',  emoji: '🖥️' },
   'الطابور':           { rgb: '245,158,11',  emoji: '🎫' },
   'الحجوزات':          { rgb: '99,102,241',  emoji: '📅' },
+  'العيادة':           { rgb: '6,182,212',   emoji: '🩺' },
   'CUT CLUB':          { rgb: '234,179,8',   emoji: '👑' },
   'التدقيق':           { rgb: '239,68,68',   emoji: '🔍' },
   'الكاشير':           { rgb: '16,185,129',  emoji: '💵' },
@@ -104,6 +106,11 @@ export function getTheme(title: string): NavTheme {
 // ── Sections ──────────────────────────────────────────────────────────────────
 
 export const NAV_SECTIONS: NavSection[] = [
+  {
+    title: 'العيادة',
+    icon: Stethoscope,
+    items: [{ href: '/clinic', label: 'تشغيل العيادة', icon: Stethoscope }],
+  },
   {
     title: 'المدخلات',
     icon: LayoutGrid,

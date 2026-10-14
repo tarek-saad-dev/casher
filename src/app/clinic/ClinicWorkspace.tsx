@@ -30,11 +30,23 @@ type Practitioner = {
   UserID?: number | null;
 };
 
+type PatientEncounter = {
+  EncounterId: string;
+  PractitionerName: string;
+  Status: string;
+  CreatedAt: string;
+};
+
+type StaffLogin = { UserID: number; UserName: string; loginName: string };
+
 export default function ClinicWorkspace() {
   const router = useRouter();
   const [query, setQuery] = useState('');
   const [patients, setPatients] = useState<Patient[]>([]);
   const [patient, setPatient] = useState<Patient | null>(null);
+  const [encounters, setEncounters] = useState<PatientEncounter[]>([]);
+  const [encountersLoading, setEncountersLoading] = useState(false);
+  const [encountersError, setEncountersError] = useState<string | null>(null);
   const [practitioners, setPractitioners] = useState<Practitioner[]>([]);
   const [doctorId, setDoctorId] = useState('');
   const [complaint, setComplaint] = useState('');
@@ -49,6 +61,18 @@ export default function ClinicWorkspace() {
   const [newDoctorOpen, setNewDoctorOpen] = useState(false);
   const [newDoctorName, setNewDoctorName] = useState('');
   const [linkDoctorToCurrentUser, setLinkDoctorToCurrentUser] = useState(false);
+  const [staffLogins, setStaffLogins] = useState<StaffLogin[]>([]);
+  const [doctorUserId, setDoctorUserId] = useState('');
+
+  useEffect(() => {
+    if (!newDoctorOpen) return;
+    let active = true;
+    void fetch('/api/users')
+      .then(res => res.ok ? res.json() : [])
+      .then((rows: StaffLogin[]) => { if (active) setStaffLogins(Array.isArray(rows) ? rows : []); })
+      .catch(() => { if (active) setStaffLogins([]); });
+    return () => { active = false; };
+  }, [newDoctorOpen]);
 
   async function loadPractitioners() {
     try {
@@ -65,19 +89,40 @@ export default function ClinicWorkspace() {
   }, []);
 
   useEffect(() => {
+    const controller = new AbortController();
+    setEncounters([]);
+    setEncountersError(null);
+    if (!patient) {
+      setEncountersLoading(false);
+      return;
+    }
+    setEncountersLoading(true);
+    void fetch(`/api/clinic/encounters?clientId=${patient.ClientID}`, { signal: controller.signal })
+      .then(async res => {
+        if (!res.ok) throw new Error('تعذر تحميل الزيارات');
+        return res.json() as Promise<PatientEncounter[]>;
+      })
+      .then(rows => { if (!controller.signal.aborted) setEncounters(Array.isArray(rows) ? rows : []); })
+      .catch(() => { if (!controller.signal.aborted) setEncountersError('تعذر تحميل الزيارات'); })
+      .finally(() => { if (!controller.signal.aborted) setEncountersLoading(false); });
+    return () => controller.abort();
+  }, [patient]);
+
+  useEffect(() => {
     const q = query.trim();
-    if (q.length < 1) {
+    if (q.length < 1 || patient) {
       setPatients([]);
       return;
     }
+    const controller = new AbortController();
     const timer = window.setTimeout(() => {
-      void fetch(`/api/customers?q=${encodeURIComponent(q)}`)
+      void fetch(`/api/customers?q=${encodeURIComponent(q)}`, { signal: controller.signal })
         .then((r) => (r.ok ? r.json() : []))
-        .then((rows: Patient[]) => setPatients(Array.isArray(rows) ? rows : []))
-        .catch(() => setPatients([]));
+        .then((rows: Patient[]) => { if (!controller.signal.aborted) setPatients(Array.isArray(rows) ? rows : []); })
+        .catch(() => { if (!controller.signal.aborted) setPatients([]); });
     }, 250);
-    return () => window.clearTimeout(timer);
-  }, [query]);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [query, patient]);
 
   const selectedDoctor = useMemo(
     () => practitioners.find((x) => String(x.EmpID) === doctorId) ?? null,
@@ -121,7 +166,7 @@ export default function ClinicWorkspace() {
       const res = await fetch('/api/clinic/practitioners', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, linkCurrentUser: linkDoctorToCurrentUser }),
+        body: JSON.stringify({ name, linkCurrentUser: linkDoctorToCurrentUser, userId: doctorUserId ? Number(doctorUserId) : null }),
       });
       const data = (await res.json()) as Practitioner & { error?: string };
       if (!res.ok || !data.EmpID) throw new Error(data.error || 'تعذر إضافة الطبيب');
@@ -129,6 +174,7 @@ export default function ClinicWorkspace() {
       setDoctorId(String(data.EmpID));
       setNewDoctorName('');
       setLinkDoctorToCurrentUser(false);
+      setDoctorUserId('');
       setNewDoctorOpen(false);
       setMessage(`تم تجهيز د. ${data.EmpName} للحجز والزيارات في الفرع الحالي.`);
     } catch (err) {
@@ -241,7 +287,7 @@ export default function ClinicWorkspace() {
               <Search className="absolute right-3 top-3 h-4 w-4 text-slate-400" />
               <input
                 value={query}
-                onChange={(e) => setQuery(e.target.value)}
+                onChange={(e) => { setQuery(e.target.value); setPatient(null); setPatients([]); }}
                 placeholder="اكتب اسم المريض أو رقم الموبايل"
                 className="w-full rounded-2xl border bg-white py-2.5 pl-3 pr-10 text-sm outline-none focus:border-cyan-500"
               />
@@ -287,6 +333,18 @@ export default function ClinicWorkspace() {
                     </div>
                   </div>
                 </div>
+                <div className="mt-4 space-y-2">
+                  <h3 className="text-sm font-bold">زيارات المريض</h3>
+                  {encountersLoading && <p className="text-xs text-slate-500">جاري تحميل الزيارات…</p>}
+                  {encountersError && <p role="alert" className="text-xs text-rose-700">{encountersError}</p>}
+                  {!encountersLoading && !encountersError && encounters.length === 0 && <p className="text-xs text-slate-500">لا توجد زيارات مسجلة.</p>}
+                  {encounters.map(visit => (
+                    <Link key={visit.EncounterId} href={`/clinic/encounters/${visit.EncounterId}`} className="block rounded-xl border bg-white p-3 text-sm">
+                      <strong>{visit.PractitionerName}</strong> • {String(visit.CreatedAt).slice(0, 10)}
+                      <span className="mr-2 text-xs text-slate-500">{visit.Status === 'completed' ? 'مكتملة' : visit.Status === 'cancelled' ? 'ملغية' : visit.Status === 'scheduled' ? 'مجدولة' : 'جارية'}</span>
+                    </Link>
+                  ))}
+                </div>
               </div>
             )}
           </div>
@@ -301,10 +359,10 @@ export default function ClinicWorkspace() {
               </div>
               <button
                 type="button"
-                onClick={() => setNewDoctorOpen((x) => !x)}
+                onClick={() => { setNewDoctorName(selectedDoctor?.EmpName ?? ''); setNewDoctorOpen((x) => !x); }}
                 className="inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-bold"
               >
-                <UserPlus className="h-4 w-4" /> إضافة طبيب
+                <UserPlus className="h-4 w-4" /> {selectedDoctor ? 'إعداد حساب الطبيب' : 'إضافة طبيب'}
               </button>
             </div>
 
@@ -331,9 +389,17 @@ export default function ClinicWorkspace() {
                   <input
                     type="checkbox"
                     checked={linkDoctorToCurrentUser}
-                    onChange={(e) => setLinkDoctorToCurrentUser(e.target.checked)}
+                    onChange={(e) => { setLinkDoctorToCurrentUser(e.target.checked); setDoctorUserId(''); }}
                   />
                   أنا الطبيب ده — اربط حساب دخولي بالطبيب علشان أقدر أسجل التشخيص وأوقّع الروشتة.
+                </label>
+                <label className="grid gap-1 text-xs text-slate-600">
+                  <span>أو اربط الطبيب بحساب موظف موجود</span>
+                  <select aria-label="أو اربط الطبيب بحساب موظف موجود" value={doctorUserId} onChange={e => { setDoctorUserId(e.target.value); setLinkDoctorToCurrentUser(false); }} className="rounded-xl border bg-white px-3 py-2 text-sm">
+                    <option value="">بدون ربط حساب آخر</option>
+                    {staffLogins.map(user => <option key={user.UserID} value={user.UserID}>{user.UserName} ({user.loginName})</option>)}
+                  </select>
+                  <span>مسؤول المنشأة يربط حساب الطبيب؛ البيانات الطبية متاحة لطبيب الزيارة فقط.</span>
                 </label>
               </form>
             )}

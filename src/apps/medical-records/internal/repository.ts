@@ -1,4 +1,5 @@
 import 'server-only';
+import type { Transaction } from 'mssql';
 import { getPool, sql } from '@/lib/db';
 import {
   assertHumanClinicalActor,
@@ -13,14 +14,33 @@ type UpsertPatientProfileInput = Omit<
   'tenantId' | 'clientId' | 'updatedAt'
 >;
 
+/** Administrative visit metadata only; clinical details stay behind assigned-clinician access. */
+export async function listPatientEncounters(tenantId: string, clientId: number) {
+  const pool = await getPool();
+  const result = await pool.request()
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
+    .input('clientId', sql.Int, clientId)
+    .query(`
+      SELECT TOP 20 e.EncounterId, e.VisitType, e.Status, e.CreatedAt,
+        p.EmpName AS PractitionerName
+      FROM dbo.ClinicEncounter e
+      INNER JOIN dbo.TblEmp p
+        ON p.TenantId=e.TenantId AND p.EmpID=e.PractitionerEmpID
+      WHERE e.TenantId=@tenantId AND e.ClientID=@clientId
+      ORDER BY e.CreatedAt DESC, e.EncounterId DESC;
+    `);
+  return result.recordset;
+}
+
 export async function upsertPatientProfile(
   tenantId: string,
   clientId: number,
   input: UpsertPatientProfileInput,
   actorUserId: number,
+  transaction?: Transaction,
 ): Promise<void> {
-  const pool = await getPool();
-  await pool.request()
+  const request = transaction ? new sql.Request(transaction) : (await getPool()).request();
+  await request
     .input('tenantId', sql.UniqueIdentifier, tenantId)
     .input('clientId', sql.Int, clientId)
     .input('bloodType', sql.NVarChar(8), input.bloodType)
@@ -320,16 +340,10 @@ export async function saveEncounterDraft(input: {
   diagnosisSummary?: string | null;
   vitals?: Record<string, unknown> | null;
   followUpAt?: Date | null;
-}): Promise<void> {
+}, transaction?: Transaction): Promise<void> {
   assertHumanClinicalActor(input.actor, 'complete-encounter');
-  if (!String(input.diagnosisSummary ?? '').trim()) {
-    throw new ClinicalSafetyError(
-      'DIAGNOSIS_REQUIRED',
-      'Diagnosis summary is required before completing an encounter.',
-    );
-  }
-  const pool = await getPool();
-  await pool.request()
+  const request = transaction ? new sql.Request(transaction) : (await getPool()).request();
+  await request
     .input('tenantId', sql.UniqueIdentifier, input.tenantId)
     .input('encounterId', sql.UniqueIdentifier, input.encounterId)
     .input('empId', sql.Int, input.actor.empId)
@@ -445,10 +459,16 @@ export async function completeEncounter(input: {
   diagnosisSummary?: string | null;
   vitals?: Record<string, unknown> | null;
   followUpAt?: Date | null;
-}): Promise<void> {
+}, transaction?: Transaction): Promise<void> {
   assertHumanClinicalActor(input.actor, 'complete-encounter');
-  const pool = await getPool();
-  await pool.request()
+  if (!String(input.diagnosisSummary ?? '').trim()) {
+    throw new ClinicalSafetyError(
+      'DIAGNOSIS_REQUIRED',
+      'Diagnosis summary is required before completing an encounter.',
+    );
+  }
+  const request = transaction ? new sql.Request(transaction) : (await getPool()).request();
+  await request
     .input('tenantId', sql.UniqueIdentifier, input.tenantId)
     .input('encounterId', sql.UniqueIdentifier, input.encounterId)
     .input('empId', sql.Int, input.actor.empId)
@@ -480,6 +500,39 @@ export async function completeEncounter(input: {
         (@tenantId, N'encounter', CONVERT(NVARCHAR(128), @encounterId),
          N'completed', @userId, N'{}');
     `);
+}
+
+/** Save medical profile and encounter together, locking assignment/state before either write. */
+export async function saveEncounterWithProfile(input: Parameters<typeof saveEncounterDraft>[0] & {
+  action: 'save' | 'complete';
+  patientProfile: UpsertPatientProfileInput | null;
+}): Promise<void> {
+  assertHumanClinicalActor(input.actor, 'complete-encounter');
+  const pool = await getPool();
+  const tx = new sql.Transaction(pool);
+  await tx.begin();
+  try {
+    const result = await new sql.Request(tx)
+      .input('tenantId', sql.UniqueIdentifier, input.tenantId)
+      .input('encounterId', sql.UniqueIdentifier, input.encounterId)
+      .input('empId', sql.Int, input.actor.empId)
+      .query(`
+        SELECT ClientID FROM dbo.ClinicEncounter WITH (UPDLOCK, HOLDLOCK)
+        WHERE TenantId=@tenantId AND EncounterId=@encounterId
+          AND PractitionerEmpID=@empId AND Status=N'in_progress';
+      `);
+    const encounter = result.recordset[0] as { ClientID: number } | undefined;
+    if (!encounter) throw new Error('Only the assigned practitioner can edit an in-progress encounter.');
+    if (input.action === 'complete') await completeEncounter(input, tx);
+    else await saveEncounterDraft(input, tx);
+    if (input.patientProfile) {
+      await upsertPatientProfile(input.tenantId, encounter.ClientID, input.patientProfile, input.actor.userId, tx);
+    }
+    await tx.commit();
+  } catch (err) {
+    await tx.rollback().catch(() => undefined);
+    throw err;
+  }
 }
 
 export async function createPrescriptionDraft(input: {

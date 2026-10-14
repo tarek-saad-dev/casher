@@ -53,6 +53,14 @@ export async function POST(req: NextRequest) {
     const body = (await req.json()) as Record<string, unknown>;
     const name = String(body.name ?? '').trim().replace(/\s+/g, ' ').slice(0, 200);
     const linkCurrentUser = body.linkCurrentUser === true;
+    const targetUserId = body.userId == null || body.userId === '' ? null : Number(body.userId);
+    if (targetUserId !== null && (!Number.isSafeInteger(targetUserId) || targetUserId <= 0 || targetUserId > 2147483647)) {
+      return NextResponse.json({ error: 'اختار حساب دخول صحيح للطبيب' }, { status: 400 });
+    }
+    if (linkCurrentUser && targetUserId !== null) {
+      return NextResponse.json({ error: 'اختار حساب دخول واحد للطبيب' }, { status: 400 });
+    }
+    const clinicalUserId = linkCurrentUser ? auth.userId : targetUserId;
     if (name.length < 2) {
       return NextResponse.json({ error: 'اسم الطبيب مطلوب' }, { status: 400 });
     }
@@ -100,7 +108,7 @@ export async function POST(req: NextRequest) {
     await registerClinicPractitioner({
       tenantId: auth.tenantId,
       empId,
-      userId: linkCurrentUser ? auth.userId : null,
+      userId: clinicalUserId,
       actorUserId: auth.userId,
     });
     invalidatePublicBookingBarbersCache();
@@ -110,9 +118,9 @@ export async function POST(req: NextRequest) {
         EmpID: empId,
         EmpName: name,
         Job: 'طبيب',
-        UserID: linkCurrentUser ? auth.userId : null,
+        UserID: clinicalUserId,
         created,
-        linkedToCurrentUser: linkCurrentUser,
+        linkedToCurrentUser: clinicalUserId === auth.userId,
       },
       { status: created ? 201 : 200 },
     );

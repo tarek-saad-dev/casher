@@ -9,6 +9,7 @@ import type { AppRegistryCode } from '@/platform/registry/constants';
  * deliberately ungated per DRVO-012) and need only the subscription gate.
  */
 export const ROUTE_APP_FAMILIES: ReadonlyArray<{ prefix: string; app: AppRegistryCode }> = [
+  { prefix: '/api/clinic', app: 'medical-records' },
   { prefix: '/api/bookings', app: 'booking' },
   { prefix: '/api/barbers/available', app: 'booking' },
   { prefix: '/api/operations/bookings', app: 'booking' },

@@ -38,7 +38,7 @@ async function main() {
     )).recordset[0];
     if (identity.db !== 'last132_agent' ||
         String(identity.login).toLowerCase() !== 'drvo_agent' ||
-        Number(identity.productionAccess) !== 0) {
+        identity.productionAccess !== 0) {
       throw new Error('REFUSED: staging DB/login/production-access isolation check failed');
     }
 

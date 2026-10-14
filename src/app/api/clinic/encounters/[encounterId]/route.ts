@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
-  completeEncounter,
   getEncounterWorkspace,
   resolveClinicalActorForUser,
-  saveEncounterDraft,
-  upsertPatientProfile,
+  saveEncounterWithProfile,
 } from '@/apps/medical-records/internal/repository';
 import { isAuthResult, requireTenantApp } from '@/lib/api-auth';
 
@@ -108,6 +106,13 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
 
     const body = (await req.json()) as Record<string, unknown>;
     const action = body.action === 'complete' ? 'complete' : 'save';
+    const diagnosisSummary = cleanNullable(body.diagnosisSummary);
+    if (action === 'complete' && !diagnosisSummary) {
+      return NextResponse.json(
+        { error: 'اكتب ملخص التشخيص قبل إكمال الزيارة.' },
+        { status: 400 },
+      );
+    }
     const vitals =
       body.vitals && typeof body.vitals === 'object' && !Array.isArray(body.vitals)
         ? (body.vitals as Record<string, unknown>)
@@ -118,11 +123,8 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
       body.patientProfile && typeof body.patientProfile === 'object'
         ? (body.patientProfile as Record<string, unknown>)
         : null;
-    if (profile) {
-      await upsertPatientProfile(
-        auth.tenantId,
-        Number(encounter.ClientID),
-        {
+    const patientProfile = profile
+      ? {
           bloodType: cleanNullable(profile.bloodType, 8),
           allergies: cleanNullable(profile.allergies),
           chronicConditions: cleanNullable(profile.chronicConditions),
@@ -130,26 +132,21 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
           emergencyContactName: cleanNullable(profile.emergencyContactName, 100),
           emergencyContactPhone: cleanNullable(profile.emergencyContactPhone, 32),
           notes: cleanNullable(profile.notes),
-        },
-        auth.userId,
-      );
-    }
+        }
+      : null;
 
     const mutation = {
       tenantId: auth.tenantId,
       encounterId,
       actor,
       clinicalNotes: cleanNullable(body.clinicalNotes),
-      diagnosisSummary: cleanNullable(body.diagnosisSummary),
+      diagnosisSummary,
       vitals,
       followUpAt,
+      patientProfile,
     };
 
-    if (action === 'complete') {
-      await completeEncounter(mutation);
-    } else {
-      await saveEncounterDraft(mutation);
-    }
+    await saveEncounterWithProfile({ ...mutation, action });
 
     const updated = await getEncounterWorkspace(auth.tenantId, encounterId);
     return NextResponse.json({ ok: true, ...updated });

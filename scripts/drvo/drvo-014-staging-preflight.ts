@@ -45,7 +45,7 @@ async function main() {
     if (row.db !== expectedDatabase || String(row.login).toLowerCase() !== expectedLogin) {
       throw new Error('REFUSED: staging database/login identity mismatch.');
     }
-    if (Number(row.productionAccess) !== 0) {
+    if (row.productionAccess !== 0) {
       throw new Error('REFUSED: staging login may have production database access (or access cannot be proven absent).');
     }
     console.log('STAGING_PREFLIGHT_PASS');

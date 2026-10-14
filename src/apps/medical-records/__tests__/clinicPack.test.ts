@@ -7,8 +7,25 @@ import {
   usesServiceCatalog,
 } from '@/platform/onboarding/wizard/plan';
 import { CLINIC_PACK } from '@/packs/clinic/public';
+import { getActiveNavItem, NAV_SECTIONS } from '@/components/layout/nav-config';
+import { isRouteAvailable, requiredAppsForRoute } from '@/platform/tenant/navAppGating';
+import { resolveRouteAppCode } from '@/platform/commercial/routeAppFamilies';
+import { SYSTEM_PAGES } from '@/lib/pages-registry';
 
 describe('DRVO Clinics pack', () => {
+  it('exposes the clinical workspace in shared navigation and page permissions', () => {
+    expect(NAV_SECTIONS.flatMap(section => section.items).some(item => item.href === '/clinic')).toBe(true);
+    expect(getActiveNavItem('/clinic/encounters/visit-a')?.href).toBe('/clinic');
+    expect(SYSTEM_PAGES.find(page => page.path === '/clinic')?.accessMode).toBe('all');
+  });
+
+  it('gates clinic pages and APIs on the installed medical-records app', () => {
+    expect(requiredAppsForRoute('/clinic/encounters/visit-a')).toEqual(['medical-records']);
+    expect(isRouteAvailable('/clinic', ['booking', 'pos'])).toBe(false);
+    expect(isRouteAvailable('/clinic', ['medical-records'])).toBe(true);
+    expect(resolveRouteAppCode('/api/clinic/practitioners')).toBe('medical-records');
+    expect(requiredAppsForRoute('/clinics')).toBeNull();
+  });
   it('installs booking and medical records as required apps', () => {
     const composition = resolveTenantComposition(CLINIC_PACK);
     expect(composition.apps).toContain('booking');

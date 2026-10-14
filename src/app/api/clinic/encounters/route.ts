@@ -1,10 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isAuthResult, requireTenantApp } from '@/lib/api-auth';
-import { openEncounter } from '@/apps/medical-records/internal/repository';
+import { listPatientEncounters, openEncounter } from '@/apps/medical-records/internal/repository';
 import { getCairoBusinessDate } from '@/lib/businessDate';
 import type { ClinicVisitType } from '@/apps/medical-records/public';
 
 const VISIT_TYPES = new Set<ClinicVisitType>(['new', 'follow_up', 'procedure']);
+
+export async function GET(req: NextRequest) {
+  const auth = await requireTenantApp('medical-records');
+  if (!isAuthResult(auth)) return auth;
+  const clientId = Number(req.nextUrl.searchParams.get('clientId'));
+  if (!Number.isSafeInteger(clientId) || clientId <= 0 || clientId > 2147483647) {
+    return NextResponse.json({ error: 'اختار مريض صحيح' }, { status: 400 });
+  }
+  try {
+    return NextResponse.json(await listPatientEncounters(auth.tenantId, clientId));
+  } catch {
+    return NextResponse.json({ error: 'تعذر تحميل الزيارات' }, { status: 500 });
+  }
+}
 
 export async function POST(req: NextRequest) {
   const auth = await requireTenantApp('medical-records');

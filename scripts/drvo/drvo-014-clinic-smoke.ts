@@ -80,7 +80,7 @@ async function assertStaging(pool: sql.ConnectionPool) {
   if (db === PRODUCTION_DB) throw new Error(`Refusing production database ${PRODUCTION_DB}`);
   check(db === STAGING_DB, `database is ${STAGING_DB}`);
   check(login.toLowerCase() === STAGING_LOGIN, `login is ${STAGING_LOGIN}`);
-  check(Number(result.recordset[0].productionAccess) === 0, 'staging login cannot access production database');
+  check(result.recordset[0].productionAccess === 0, 'staging login cannot access production database');
 }
 
 async function cleanup(pool: sql.ConnectionPool) {

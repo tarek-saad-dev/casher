@@ -14,6 +14,9 @@ export interface PageDefinition {
 }
 
 export const SYSTEM_PAGES: PageDefinition[] = [
+  // Administrative workspace is available to staff; app entitlement and assigned
+  // human practitioner identity protect clinical data and mutations in the API.
+  { key: 'clinic.workspace', name: 'تشغيل العيادة', path: '/clinic', section: 'العيادة', accessMode: 'all', sort: 79 },
   // ── POS / Income ────────────────────────────────────────────────────────────
   { key: 'income.pos',              name: 'نقطة البيع',              path: '/income/pos',                      section: 'المدخلات',         accessMode: 'roles', sort: 10,  defaultRoles: ['super_admin','admin','manager','cashier'] },
   { key: 'income.new',              name: 'إيراد جديد',              path: '/income/new',                      section: 'المدخلات',         accessMode: 'roles', sort: 11,  defaultRoles: ['super_admin','admin','cashier'] },
