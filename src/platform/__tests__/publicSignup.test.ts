@@ -12,7 +12,6 @@ vi.mock('@/lib/db', () => ({
     MAX: -1,
   },
 }));
-vi.mock('@/packs', () => ({ findIndustryPack: vi.fn() }));
 vi.mock('@/platform/onboarding/wizard/coordinator', () => ({
   onboardBusiness: vi.fn(),
   defaultOnboardingDeps: vi.fn(),
@@ -48,6 +47,24 @@ describe('public signup input', () => {
       needs: ['booking', 'pos'],
       phone: '201012345678',
       email: 'owner@example.com',
+      startMode: 'demo',
+    });
+  });
+
+  it('accepts clinic from the source-controlled pack registry', () => {
+    expect(
+      parsePublicSignupInput({
+        industry: 'clinic',
+        needs: ['booking', 'pos'],
+        contactName: 'Doctor Owner',
+        businessName: 'Care Clinic',
+        phone: '01212345678',
+        password: 'StrongPass1',
+        startMode: 'demo',
+      }),
+    ).toMatchObject({
+      industry: 'clinic',
+      phone: '201212345678',
       startMode: 'demo',
     });
   });

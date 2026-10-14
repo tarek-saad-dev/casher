@@ -67,13 +67,13 @@ export default function DrvoLandingPage() {
               نظام تشغيل للبيزنس — مش مجرد كاشير
             </div>
             <h1 className="mt-6 max-w-4xl text-5xl font-black leading-[1.05] sm:text-6xl lg:text-7xl">
-              صالونك كله.
+              بيزنسك كله.
               <br />
               <span className="text-cyan-300">تحت سيطرتك.</span>
             </h1>
             <p className="mt-6 max-w-2xl text-base leading-8 text-slate-300 sm:text-lg">
-              من أول حجز العميل، لحد آخر جنيه في يومك.
-              DRVO بيجمع التشغيل، الفريق، المبيعات والتقارير في مكان واحد.
+              من أول عميل أو مريض أو فاتورة، لحد آخر جنيه في يومك.
+              DRVO بيجمع التشغيل، الفريق، المبيعات والمواعيد والتقارير في مكان واحد.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <Link
@@ -228,7 +228,7 @@ export default function DrvoLandingPage() {
           </div>
           <h2 className="mt-5 text-4xl font-black">جاهز تشوف بيزنسك أوضح؟</h2>
           <p className="mx-auto mt-3 max-w-xl text-sm leading-7 text-slate-400">
-            أقل من 5 دقايق وتكون داخل DRVO بحساب مستقل وتجربة شغالة.
+            صالون، عيادة أو متجر — أقل من 5 دقايق وتكون داخل DRVO بحساب مستقل وتجربة شغالة.
           </p>
           <Link
             href="/start"

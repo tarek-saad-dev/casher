@@ -20,7 +20,6 @@ import {
   eachDateInclusive,
   evaluateEmployeePublicBookingEligibility,
   inclusiveDaySpan,
-  isBarberJob,
   isEmployeeActive,
   isOutsideBookingHorizon,
   resolveBarberPublicImageUrl,
@@ -53,6 +52,7 @@ import {
   tblEmpDisplaySortOrderSelect,
 } from '@/lib/migrations/ensureEmployeeDisplaySortOrder';
 import { getBarberNameEnByArabicName } from '@/lib/barberImages';
+import { getTenantIndustryPackDefinition, isBookableJobForPack } from '@/platform/packs/runtimePolicy';
 
 export {
   isEmployeeEligibleForPublicBooking,
@@ -324,7 +324,6 @@ async function loadAssignmentCandidates(day: string, tenantId: string): Promise<
     WHERE e.TenantId = @tenantId
       AND ${tenantLocationBranchSql('b.BranchID')}
       AND ISNULL(e.isActive, 1) = 1
-      AND e.Job IN (N'حلاق', N'مساعد', N'Barber', N'barber')
       AND a.IsActive = 1
       AND a.CanReceiveBookings = 1
       AND a.EffectiveFrom <= @day
@@ -332,7 +331,10 @@ async function loadAssignmentCandidates(day: string, tenantId: string): Promise<
       ${excludeTestSmokeSqlPredicate()}
     ORDER BY ${orderBySort} e.EmpName, e.EmpID, b.BranchCode
   `);
-  return res.recordset as CandidateRow[];
+  const pack = await getTenantIndustryPackDefinition(tenantId, db);
+  return (res.recordset as CandidateRow[]).filter((row) =>
+    isBookableJobForPack(pack, row.Job),
+  );
 }
 
 async function loadPublicEmployeeOrThrow(empId: number, tenantId: string): Promise<{
@@ -366,7 +368,8 @@ async function loadPublicEmployeeOrThrow(empId: number, tenantId: string): Promi
   if (!isEmployeeActive(row.isActive) || isEmployeeHiddenFromPublicBooking(row.EmpName)) {
     throw new PublicBookingBarberError('BARBER_NOT_FOUND');
   }
-  if (!isBarberJob(row.Job)) {
+  const pack = await getTenantIndustryPackDefinition(tenantId, db);
+  if (!isBookableJobForPack(pack, row.Job)) {
     throw new PublicBookingBarberError('BARBER_NOT_FOUND');
   }
   // Must have at least one public-bookable assignment historically/currently
