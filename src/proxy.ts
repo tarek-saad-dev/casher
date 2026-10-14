@@ -26,6 +26,24 @@ function nextWithPathname(req: NextRequest, pathname: string): NextResponse {
  */
 export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
+
+  // Staging preview is read-only until all outbound integration and background
+  // worker paths are audited. This blocks public webhooks, cron invocations,
+  // and API mutations even if a route is normally anonymous.
+  // This is NOT a substitute for network-level outbound isolation.
+  if (process.env.DRVO_STAGING_MODE === 'true') {
+    if (
+      process.env.DRVO_STAGING_OUTBOUND_DISABLED !== 'true' ||
+      process.env.DRVO_STAGING_WORKERS_DISABLED !== 'true' ||
+      process.env.DRVO_STAGING_CRON_DISABLED !== 'true' ||
+      process.env.STAGING_SAFETY_ENFORCE !== 'true'
+    ) {
+      return NextResponse.json({ error: 'Staging safety configuration incomplete' }, { status: 503 });
+    }
+    if (pathname.startsWith('/api/') || !['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
+      return NextResponse.json({ error: 'Staging preview API disabled until isolation is verified' }, { status: 503 });
+    }
+  }
   const classification = classifyProxyAuth(pathname);
 
   if (classification.kind === 'static') {
