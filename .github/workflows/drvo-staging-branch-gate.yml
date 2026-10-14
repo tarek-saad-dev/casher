@@ -1,0 +1,38 @@
+name: DRVO Staging Branch Gate
+on:
+  push:
+    branches:
+      - feature/drvo-clinics-mvp
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: drvo-staging-branch-gate
+  cancel-in-progress: true
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts
+      - name: Verify staging safety configuration script syntax
+        run: bash -n scripts/drvo/staging-config-preflight.sh
+      - name: Build without production secrets
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
+          DRVO_STAGING_MODE: 'true'
+          DRVO_STAGING_OUTBOUND_DISABLED: 'true'
+          DRVO_STAGING_WORKERS_DISABLED: 'true'
+          DRVO_STAGING_CRON_DISABLED: 'true'
+          STAGING_SAFETY_ENFORCE: 'true'
+          STAGING_SAFETY_DB_NAME: last132_agent
+        run: npm run build
+  # Deliberately no deployment: outbound side-effect isolation, preview
+  # authentication, and staging process management must be proven first.
+  # Never invoke drvo:migrate here; pending migrations require backup and approval.
