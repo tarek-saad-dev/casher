@@ -1,0 +1,47 @@
+name: DRVO Staging Deploy (Manual, Safety Gated)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: drvo-staging-deploy
+  cancel-in-progress: false
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/feature/drvo-clinics-mvp'
+    runs-on: ubuntu-latest
+    environment: drvo-staging
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure pinned SSH
+        env:
+          SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.STAGING_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          test -n "$SSH_KEY" && test -n "$KNOWN_HOSTS"
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - name: Remote preflight only (deploy blocked until isolation is proven)
+        env:
+          HOST: ${{ secrets.STAGING_HOST }}
+          USER: ${{ secrets.STAGING_USER }}
+          PORT: ${{ secrets.STAGING_SSH_PORT }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=yes -p "$PORT" "$USER@$HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          cd /home/casher/drvo-clinics-work
+          test "$(git branch --show-current)" = "feature/drvo-clinics-mvp"
+          test -z "$(git status --porcelain)"
+          bash scripts/drvo/staging-config-preflight.sh
+          echo "STAGING_DEPLOY_BLOCKED: outbound isolation and protected preview have not passed verification"
+          REMOTE
+      - name: Deployment remains explicitly blocked
+        run: |
+          echo "No pull, migration, service restart, or production change performed."
+          exit 1
