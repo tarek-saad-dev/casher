@@ -1,6 +1,7 @@
 /** Initial app registry codes (DRVO-002 §8). */
 export const APP_REGISTRY_CODES = [
   'booking',
+  'medical-records',
   'queue',
   'pos',
   'inventory',

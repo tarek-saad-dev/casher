@@ -103,7 +103,10 @@
     "messaging:seed-booking-group": "tsx scripts/seed-whatsapp-booking-group.ts",
     "messaging:verify-groups": "tsx scripts/verify-whatsapp-groups.ts",
     "messaging:seed-templates-phase7": "tsx scripts/run-whatsapp-campaign-migration.ts",
-    "drvo:migration-control": "tsx scripts/drvo/production-migration-control.ts"
+    "drvo:migration-control": "tsx scripts/drvo/production-migration-control.ts",
+    "drvo-014:preflight": "tsx scripts/drvo/drvo-014-staging-preflight.ts",
+    "drvo-014:staging-plan": "tsx scripts/drvo/drvo-014-staging-plan.ts",
+    "drvo-014:smoke": "tsx scripts/drvo/drvo-014-clinic-smoke.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.3.0",

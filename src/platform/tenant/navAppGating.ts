@@ -13,6 +13,7 @@ export interface RouteAppRule {
 }
 
 export const ROUTE_APP_RULES: readonly RouteAppRule[] = [
+  { prefix: '/clinic', anyOf: ['medical-records'] },
   { prefix: '/income/pos', anyOf: ['pos'] },
   { prefix: '/income/new', anyOf: ['pos'] },
   { prefix: '/sales', anyOf: ['pos'] },

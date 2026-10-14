@@ -147,10 +147,37 @@ function demoSalonEmployees(branchCode: string) {
   ];
 }
 
+function defaultClinicServices() {
+  return [
+    {
+      name: 'Consultation',
+      arabicName: 'كشف',
+      categoryName: 'الكشف والمتابعة',
+      price: 0,
+      durationMinutes: 30,
+      active: true,
+    },
+    {
+      name: 'Follow-up',
+      arabicName: 'متابعة',
+      categoryName: 'الكشف والمتابعة',
+      price: 0,
+      durationMinutes: 20,
+      active: true,
+    },
+  ];
+}
+
+
 function appCustomizations(industry: PublicSignupIndustry, needs: PublicSignupNeed[]) {
   const add: string[] = [];
   if (industry === 'salon' && needs.includes('inventory')) {
     add.push('inventory', 'purchasing');
+  }
+  if (industry === 'clinic') {
+    if (needs.includes('workforce')) add.push('attendance');
+    if (needs.includes('payroll')) add.push('payroll');
+    if (needs.includes('inventory')) add.push('inventory', 'purchasing');
   }
   if (industry === 'supermarket') {
     if (needs.includes('workforce')) add.push('attendance');
@@ -163,6 +190,8 @@ function buildOnboardingRequest(input: PublicSignupInput): OnboardingRequest {
   const ids = identityFrom(input);
   const custom = appCustomizations(input.industry, input.needs);
   const salon = input.industry === 'salon';
+  const clinic = input.industry === 'clinic';
+  const appointmentBusiness = salon || clinic;
   const withDemo = salon && input.startMode === 'demo';
 
   return {
@@ -186,11 +215,11 @@ function buildOnboardingRequest(input: PublicSignupInput): OnboardingRequest {
         address: null,
         phone: `+${input.phone}`,
         timezone: 'Africa/Cairo',
-        defaultOpenTime: '11:00',
-        defaultCloseTime: '23:00',
+        defaultOpenTime: clinic ? '09:00' : '11:00',
+        defaultCloseTime: clinic ? '21:00' : '23:00',
       },
     ],
-    services: withDemo ? demoSalonServices() : [],
+    services: clinic ? defaultClinicServices() : withDemo ? demoSalonServices() : [],
     employees: withDemo ? demoSalonEmployees(ids.branchCode) : [],
     owner: {
       displayName: input.contactName,
@@ -200,17 +229,17 @@ function buildOnboardingRequest(input: PublicSignupInput): OnboardingRequest {
     users: [],
     apps: custom,
     subscription: { planCode: 'starter', status: 'trial' },
-    booking: salon
+    booking: appointmentBusiness
       ? [
           {
             branchCode: ids.branchCode,
-            defaultMode: 'nearest',
+            defaultMode: clinic ? 'specific' : 'nearest',
             slotIntervalMinutes: 15,
             minNoticeMinutes: 30,
             maxBookingDaysAhead: 14,
             defaultServiceDurationMinutes: 30,
             allowSpecificBarber: true,
-            allowNearestBarber: true,
+            allowNearestBarber: !clinic,
           },
         ]
       : [],
@@ -360,7 +389,7 @@ export async function provisionPublicSignup(
       ownerLoginName: result.core.ownerLoginName,
       branchCode: result.core.branchCode,
       trialEndsAt: result.core.trialEndsAt,
-      nextPath: '/operations',
+      nextPath: input.industry === 'clinic' ? '/clinic' : '/operations',
     };
   } catch (err) {
     const code =

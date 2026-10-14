@@ -13,6 +13,7 @@ import {
   Scissors,
   ShieldCheck,
   Sparkles,
+  Stethoscope,
   Store,
   Users,
 } from 'lucide-react';
@@ -89,7 +90,9 @@ export default function PublicSignupFlow() {
       needs:
         industry === 'salon'
           ? ['booking', 'pos', 'workforce', 'reports']
-          : ['pos', 'inventory', 'reports'],
+          : industry === 'clinic'
+            ? ['booking', 'pos', 'workforce', 'reports']
+            : ['pos', 'inventory', 'reports'],
     }));
   };
 
@@ -177,9 +180,10 @@ export default function PublicSignupFlow() {
             <p className="text-xs font-bold tracking-[0.2em] text-cyan-300">01 — النشاط</p>
             <h1 className="mt-2 text-3xl font-black sm:text-4xl">بيزنسك إيه؟</h1>
             <p className="mt-2 text-sm text-slate-400">هنجهز DRVO على طبيعة شغلك من أول دقيقة.</p>
-            <div className="mt-6 grid gap-3 sm:grid-cols-2">
+            <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {[
                 { code: 'salon' as const, title: 'صالون / Barbershop', desc: 'حجوزات + كاشير + فريق + رواتب', icon: Scissors },
+                { code: 'clinic' as const, title: 'عيادة / Clinic', desc: 'مرضى + مواعيد + زيارات + روشتات + حسابات', icon: Stethoscope },
                 { code: 'supermarket' as const, title: 'متجر / Supermarket', desc: 'مبيعات + مخزون + مشتريات + تقارير', icon: Store },
               ].map((item) => {
                 const Icon = item.icon;
@@ -201,7 +205,7 @@ export default function PublicSignupFlow() {
                   </button>
                 );
               })}
-              <div className="rounded-3xl border border-dashed border-white/10 p-5 opacity-50">
+              <div className="rounded-3xl border border-dashed border-white/10 p-5 opacity-50 sm:col-span-2 lg:col-span-3">
                 <Sparkles className="h-8 w-8 text-slate-500" />
                 <div className="mt-5 text-lg font-bold">نشاط تاني</div>
                 <div className="mt-1 text-xs text-slate-500">قريبًا — نفس DRVO، Pack مختلف.</div>
@@ -268,7 +272,7 @@ export default function PublicSignupFlow() {
                   value={form.businessName}
                   onChange={(e) => setForm((f) => ({ ...f, businessName: e.target.value }))}
                   className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 outline-none transition focus:border-cyan-300/60"
-                  placeholder="مثال: Nova Men Salon"
+                  placeholder={form.industry === 'clinic' ? 'مثال: Nova Clinic' : 'مثال: Nova Men Salon'}
                 />
               </label>
               <div className="grid gap-3 sm:grid-cols-2">

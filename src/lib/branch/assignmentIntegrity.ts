@@ -102,7 +102,7 @@ export async function auditEmployeeAssignmentIntegrity(
     SELECT e.EmpID, e.EmpName
     FROM dbo.TblEmp e
     WHERE ISNULL(e.isActive, 1) = 1
-      AND e.Job IN (N'حلاق', N'مساعد', N'Barber', N'barber')
+      AND e.Job IN (N'حلاق', N'مساعد', N'طبيب', N'Doctor', N'doctor', N'Barber', N'barber')
       AND NOT EXISTS (
         SELECT 1
         FROM dbo.TblEmpBranchAssignment ea
@@ -118,7 +118,7 @@ export async function auditEmployeeAssignmentIntegrity(
     issues.push({
       code: 'EMP_ASSIGNED_NOWHERE',
       severity: 'warning',
-      message: `Active barber EmpID ${row.EmpID} has no effective branch assignment on ${day}`,
+      message: `Active bookable staff EmpID ${row.EmpID} has no effective branch assignment on ${day}`,
       empId: Number(row.EmpID),
     });
   }

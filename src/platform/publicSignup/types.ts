@@ -1,4 +1,4 @@
-export const PUBLIC_SIGNUP_INDUSTRIES = ['salon', 'supermarket'] as const;
+export const PUBLIC_SIGNUP_INDUSTRIES = ['salon', 'clinic', 'supermarket'] as const;
 export type PublicSignupIndustry = (typeof PUBLIC_SIGNUP_INDUSTRIES)[number];
 
 export const PUBLIC_SIGNUP_NEEDS = [

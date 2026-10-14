@@ -4,7 +4,6 @@ on:
   pull_request:
     branches: [main]
     types: [opened, synchronize, reopened, ready_for_review]
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -16,11 +15,8 @@ concurrency:
 jobs:
   staging-gate:
     if: >
-      (github.event_name == 'workflow_dispatch') ||
-      (
-        github.event.pull_request.head.repo.full_name == github.repository &&
-        github.event.pull_request.head.ref == 'drvo-012-commercial-plans-tenant-apps'
-      )
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'drvo-012-commercial-plans-tenant-apps'
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
@@ -28,6 +24,8 @@ jobs:
       DRVO_STAGING_SSH_HOST: ${{ secrets.DRVO_STAGING_SSH_HOST || secrets.VPS_HOST }}
       DRVO_STAGING_SSH_KEY: ${{ secrets.DRVO_STAGING_SSH_KEY }}
       DRVO_STAGING_DB_PASSWORD: ${{ secrets.DRVO_STAGING_DB_PASSWORD }}
+      STAGING_SAFETY_ENFORCE: '1'
+      STAGING_SAFETY_DB_NAME: last132_agent
       DRVO_STAGING_DB_SERVER: 127.0.0.1
       DRVO_STAGING_DB_PORT: '14330'
       DB_SERVER: 127.0.0.1
@@ -143,6 +141,9 @@ jobs:
             }
           "
 
+      - name: Review staging migration inventory (read only)
+        run: npm run drvo-014:staging-plan
+
       - name: Apply DRVO migrations to staging only
         run: npm run drvo:migrate -- --expected-database=last132_agent
 
@@ -188,6 +189,9 @@ jobs:
           npm run drvo-012:reconcile-subscriptions -- --expected-database=last132_agent
           npm run drvo:verify
 
+      - name: DRVO-014 Clinics staging smoke
+        run: npm run drvo-014:smoke
+
       - name: DRVO-012 staging smoke
         run: npm run drvo-012:smoke
 
@@ -211,11 +215,13 @@ jobs:
               const tenant = await p.request().query(`
                 SELECT COUNT(*) AS cnt
                 FROM dbo.Tenant
-                WHERE Code LIKE N'DRVO011[_]%' OR Code LIKE N'DRVO012[_]%';
+                WHERE Code LIKE N'DRVO011[_]%'
+                   OR Code LIKE N'DRVO012[_]%'
+                   OR Code LIKE N'DRVO014[_]CLINIC[_]%';
               `);
               const cnt = Number(tenant.recordset[0].cnt);
               console.log('Synthetic tenant residue:', cnt);
-              if (cnt !== 0) throw new Error('Synthetic DRVO011/DRVO012 tenant residue remains');
+              if (cnt !== 0) throw new Error('Synthetic DRVO011/DRVO012/DRVO014 tenant residue remains');
 
               const orphanChecks = [
                 ['TenantSubscription', 'TenantId'],
@@ -246,13 +252,13 @@ jobs:
       - name: Report PASS
         run: |
           {
-            echo "## DRVO-012 staging gate PASS"
+            echo "## DRVO Clinics staging gate PASS"
             echo
             echo "- DB: last132_agent"
             echo "- Login: drvo_agent"
-            echo "- Migration: 9 / commercial-subscription-tenant-apps"
-            echo "- Checksum: a711f08b6e4ff2954611145120ed6d26634e55d0c67a9ecbc35bc3b792f96427"
-            echo "- DRVO-012 smoke: PASS"
+            echo "- Migration 14 / clinic-core: applied + verified"
+            echo "- DRVO-014 Clinics smoke: PASS"
+            echo "- DRVO-012 regression smoke: PASS"
             echo "- DRVO-011 smoke: PASS"
             echo "- Cleanup: PASS"
             echo "- Final verify: PASS"

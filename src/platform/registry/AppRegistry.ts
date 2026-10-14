@@ -7,6 +7,7 @@ import type { AppRegistryEntry } from './types';
 
 const DISPLAY_NAMES: Record<(typeof APP_REGISTRY_CODES)[number], string> = {
   booking: 'Booking',
+  'medical-records': 'Medical Records',
   queue: 'Queue',
   pos: 'POS',
   inventory: 'Inventory',

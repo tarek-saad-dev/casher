@@ -1,9 +1,10 @@
 import type { IndustryPackDefinition } from '@/platform/packs/types';
+import { CLINIC_PACK } from './clinic/public';
 import { SALON_PACK } from './salon/public';
 import { SUPERMARKET_PACK } from './supermarket/public';
 
 /** Source-controlled Industry Pack registry (V1). Injected into platform services by routes. */
-export const INDUSTRY_PACKS: readonly IndustryPackDefinition[] = [SALON_PACK, SUPERMARKET_PACK];
+export const INDUSTRY_PACKS: readonly IndustryPackDefinition[] = [SALON_PACK, CLINIC_PACK, SUPERMARKET_PACK];
 
 export const DEFAULT_INDUSTRY_PACK_CODE = SALON_PACK.packCode;
 
