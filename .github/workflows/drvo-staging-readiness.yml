@@ -1,0 +1,57 @@
+name: DRVO Staging Readiness
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: drvo-staging-readiness
+  cancel-in-progress: false
+
+jobs:
+  readiness:
+    if: github.ref == 'refs/heads/feature/drvo-clinics-mvp'
+    runs-on: ubuntu-latest
+    environment: drvo-staging
+    timeout-minutes: 8
+    steps:
+      - name: Configure SSH with pinned host identity
+        env:
+          SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.STAGING_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          test -n "$SSH_KEY" && test -n "$KNOWN_HOSTS"
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Read-only staging inventory
+        env:
+          HOST: ${{ secrets.STAGING_HOST }}
+          USER: ${{ secrets.STAGING_USER }}
+          PORT: ${{ secrets.STAGING_SSH_PORT }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=12 -p "$PORT" "$USER@$HOST" 'bash -s' <<'REMOTE'
+          set -u
+          cd /home/casher/drvo-clinics-work || exit 3
+          echo "=== SOURCE ==="
+          git branch --show-current
+          git rev-parse --short HEAD
+          if test -z "$(git status --porcelain)"; then echo "worktree=CLEAN"; else echo "worktree=DIRTY"; fi
+          echo "=== RUNTIME ==="
+          if curl -fsS --max-time 6 -o /dev/null http://127.0.0.1:5501/login; then echo "local_http=PASS"; else echo "local_http=FAIL"; fi
+          if command -v pm2 >/dev/null 2>&1; then pm2 list --no-color 2>&1 | head -30; else echo "pm2=NOT_INSTALLED"; fi
+          echo "=== SAFETY ==="
+          if test -e .env.production || test -e .env.local; then echo "checkout_env=PRESENT"; else echo "checkout_env=ABSENT"; fi
+          if test -e /home/casher/.config/drvo-staging.env; then echo "external_env=PRESENT"; else echo "external_env=ABSENT"; fi
+          echo "=== MIGRATION SCRIPTS ==="
+          node -e "const s=require('./package.json').scripts; for (const k of ['drvo-014:preflight','drvo-014:staging-plan','drvo:verify','drvo-014:smoke']) console.log(k+'='+(s[k]?'PRESENT':'MISSING'))"
+          echo "=== NGINX LOCAL HTTPS ==="
+          curl -sS -o /dev/null -w 'https_status=%{http_code}\n' --max-time 8 --resolve staging-erp.drvotech.com:443:127.0.0.1 https://staging-erp.drvotech.com/login || true
+          REMOTE
