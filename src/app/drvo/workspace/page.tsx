@@ -1,8 +1,8 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import {
-  Activity, ArrowUpLeft, Bell, Blocks, BookOpenText, Building2,
-  CalendarDays, ChartNoAxesCombined, ChevronLeft, CircleHelp,
+  Activity, ArrowUpLeft, Bell, Blocks, Building2,
+  CalendarDays, ChartNoAxesCombined, ChevronLeft,
   CreditCard, GitBranch, LayoutDashboard, LockKeyhole, Menu,
   Settings2, ShieldCheck, Users, Wallet,
 } from 'lucide-react';
