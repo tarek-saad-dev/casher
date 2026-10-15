@@ -23,6 +23,8 @@ jobs:
         run: npm ci --ignore-scripts
       - name: Verify staging safety configuration script syntax
         run: bash -n scripts/drvo/staging-config-preflight.sh
+      - name: Verify fail-closed staging guard
+        run: bash scripts/drvo/staging-safety-static-gate.sh
       - name: Build without production secrets
         env:
           NEXT_TELEMETRY_DISABLED: '1'
