@@ -12,7 +12,7 @@ export const dynamic = 'force-dynamic';
 
 const navigation = [
   { label: 'نظرة عامة', icon: LayoutDashboard, active: true },
-  { label: 'الشركات والفروع', icon: Building2 },
+  { label: 'الشركات والفروع', icon: Building2, href: '/drvo/workspace/companies' },
   { label: 'المستخدمون والصلاحيات', icon: Users },
   { label: 'الوحدات والتطبيقات', icon: Blocks },
   { label: 'الاشتراكات', icon: CreditCard },
@@ -45,13 +45,13 @@ export default async function DrvoWorkspace() {
           <div className="px-4 pt-7">
             <p className="px-3 pb-3 text-[11px] font-semibold text-slate-500">مساحة العمل</p>
             <nav aria-label="القائمة الرئيسية" className="space-y-1">
-              {navigation.map(({ label, icon: Icon, active }) => (
-                <div key={label} aria-current={active ? 'page' : undefined}
-                  className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm ${active ? 'bg-cyan-300/10 font-bold text-cyan-200 ring-1 ring-cyan-300/15' : 'text-slate-400'}`}>
+              {navigation.map(({ label, icon: Icon, active, href }) => (
+                <Link key={label} href={href ?? '#'} aria-disabled={!href && !active} aria-current={active ? 'page' : undefined}
+                  className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm ${active ? 'bg-cyan-300/10 font-bold text-cyan-200 ring-1 ring-cyan-300/15' : href ? 'text-slate-200 hover:bg-white/5' : 'pointer-events-none text-slate-500'}`}>
                   <Icon className="size-[18px]" aria-hidden="true" />
                   <span>{label}</span>
-                  {!active && <span className="mr-auto text-[10px] text-slate-600">قريبًا</span>}
-                </div>
+                  {!active && !href && <span className="mr-auto text-[10px] text-slate-600">قريبًا</span>}
+                </Link>
               ))}
             </nav>
           </div>
