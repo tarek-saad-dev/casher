@@ -151,6 +151,19 @@ jobs:
           # Restart requires a tightly scoped service permission; never use unrestricted sudo.
           sudo -n /bin/systemctl restart drvo-erp-staging.service
           test "$(systemctl is-active drvo-erp-staging.service)" = active
-          curl --fail --silent --show-error --max-time 10 -o /dev/null http://127.0.0.1:5501/
+          # systemd active can precede the Next.js TCP listener. Wait for HTTP readiness.
+          ready=0
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent --max-time 3 -o /dev/null http://127.0.0.1:5501/; then
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+          if [ "$ready" -ne 1 ]; then
+            echo "STAGING_DEPLOY_BLOCKED: STAGING_HTTP_NOT_READY"
+            systemctl status drvo-erp-staging.service --no-pager -l || true
+            exit 1
+          fi
           echo "STAGING_DEPLOY_PASS"
           REMOTE
