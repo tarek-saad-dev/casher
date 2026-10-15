@@ -130,7 +130,10 @@ jobs:
           service_state="$(systemctl is-active drvo-erp-staging.service 2>/dev/null || true)"
           test "$service_state" = active || fail "STAGING_SERVICE_NOT_ACTIVE"
           deny="$(systemctl show -P IPAddressDeny drvo-erp-staging.service 2>/dev/null || true)"
-          test "$deny" = any || fail "STAGING_IP_DENY_NOT_ENFORCED"
+          case "$deny" in
+            "any"|"0.0.0.0/0 ::/0"|"::/0 0.0.0.0/0") ;;
+            *) fail "STAGING_IP_DENY_NOT_ENFORCED" ;;
+          esac
           allow="$(systemctl show -P IPAddressAllow drvo-erp-staging.service 2>/dev/null || true)"
           printf '%s\n' "$allow" | grep -Eq '127[.]0[.]0[.]1|localhost' || fail "STAGING_LOOPBACK_NOT_ALLOWED"
           prestart="$(systemctl show -P ExecStartPre drvo-erp-staging.service 2>/dev/null || true)"
