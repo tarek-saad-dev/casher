@@ -49,7 +49,13 @@ export default function LoginPage() {
     ActiveBranchID?: number;
     ActiveBranchCode?: string;
     BranchSessionVersion?: 1;
+    stagingWorkspace?: boolean;
   }) {
+    if (loginUser.stagingWorkspace) {
+      await navigateAfterLogin('/drvo/workspace');
+      return;
+    }
+
     if (loginUser.ActiveBranchID == null || !loginUser.ActiveBranchCode) {
       throw new Error('Login response missing active branch metadata');
     }
