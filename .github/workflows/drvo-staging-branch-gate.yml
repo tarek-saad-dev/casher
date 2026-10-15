@@ -8,7 +8,7 @@ permissions:
   contents: read
 concurrency:
   group: drvo-staging-branch-gate
-  cancel-in-progress: true
+  cancel-in-progress: false
 jobs:
   check:
     runs-on: ubuntu-latest
