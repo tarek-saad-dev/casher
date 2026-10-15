@@ -121,19 +121,23 @@ jobs:
           cd /home/casher/drvo-clinics-work
           test "$(git branch --show-current)" = "feature/drvo-clinics-mvp"
           test -z "$(git status --porcelain)"
-          # Bootstrap check uses only commands already available on the VPS.
-          # The preflight script may not exist until the isolated checkout is updated.
-          test -f /home/casher/.config/drvo-staging.env
-          test "$(stat -c %a /home/casher/.config/drvo-staging.env)" = 600
-          test "$(stat -c %U /home/casher/.config/drvo-staging.env)" = casher
-          # Require a separately installed, running, network-isolated service.
-          test "$(systemctl is-active drvo-erp-staging.service)" = active
-          test "$(systemctl show -P IPAddressDeny drvo-erp-staging.service)" = any
-          systemctl show -P IPAddressAllow drvo-erp-staging.service | grep -Eq '127[.]0[.]0[.]1|localhost'
-          systemctl show -P ExecStartPre drvo-erp-staging.service | grep -Fq 'staging-egress-probe.mjs'
-          # Fail closed until preview authentication is explicitly attested by operator.
-          test -f /home/casher/.config/drvo-staging-preview-auth-verified
-          test "$(stat -c %U /home/casher/.config/drvo-staging-preview-auth-verified)" = casher
+          # Explicit, non-secret failure labels for safe runtime diagnosis.
+          fail() { echo "STAGING_DEPLOY_BLOCKED: $1"; exit 1; }
+          envfile=/home/casher/.config/drvo-staging.env
+          test -f "$envfile" || fail "STAGING_ENV_MISSING"
+          test "$(stat -c %a "$envfile")" = 600 || fail "STAGING_ENV_PERMISSIONS"
+          test "$(stat -c %U "$envfile")" = casher || fail "STAGING_ENV_OWNER"
+          service_state="$(systemctl is-active drvo-erp-staging.service 2>/dev/null || true)"
+          test "$service_state" = active || fail "STAGING_SERVICE_NOT_ACTIVE"
+          deny="$(systemctl show -P IPAddressDeny drvo-erp-staging.service 2>/dev/null || true)"
+          test "$deny" = any || fail "STAGING_IP_DENY_NOT_ENFORCED"
+          allow="$(systemctl show -P IPAddressAllow drvo-erp-staging.service 2>/dev/null || true)"
+          printf '%s\n' "$allow" | grep -Eq '127[.]0[.]0[.]1|localhost' || fail "STAGING_LOOPBACK_NOT_ALLOWED"
+          prestart="$(systemctl show -P ExecStartPre drvo-erp-staging.service 2>/dev/null || true)"
+          printf '%s\n' "$prestart" | grep -Fq 'staging-egress-probe.mjs' || fail "STAGING_EGRESS_PROBE_NOT_INSTALLED"
+          marker=/home/casher/.config/drvo-staging-preview-auth-verified
+          test -f "$marker" || fail "STAGING_PREVIEW_AUTH_NOT_VERIFIED"
+          test "$(stat -c %U "$marker")" = casher || fail "STAGING_PREVIEW_AUTH_MARKER_OWNER"
           # Update only the isolated checkout; never touch production checkout.
           git fetch --no-tags origin feature/drvo-clinics-mvp
           test "$(git rev-parse origin/feature/drvo-clinics-mvp)" = "$EXPECTED_SHA"
