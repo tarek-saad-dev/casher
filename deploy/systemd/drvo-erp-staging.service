@@ -1,0 +1,31 @@
+# DRVO ERP staging — hardened service candidate.
+# Not installed automatically. Verify IPAddressDeny enforcement on the VPS first.
+# Staging may only contact loopback services (SQL at 127.0.0.1:1433).
+# Review local services reachable over loopback before exposing the preview.
+[Unit]
+Description=DRVO ERP Staging (isolated)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=casher
+Group=casher
+WorkingDirectory=/home/casher/drvo-clinics-work
+EnvironmentFile=/home/casher/.config/drvo-staging.env
+ExecStart=/usr/bin/npm run start -- --hostname 127.0.0.1 --port 5501
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/casher/drvo-clinics-work/.next
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+IPAddressDeny=any
+IPAddressAllow=127.0.0.1/32
+IPAddressAllow=::1/128
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
