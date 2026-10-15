@@ -35,9 +35,8 @@ jobs:
           STAGING_SAFETY_ENFORCE: 'true'
           STAGING_SAFETY_DB_NAME: last132_agent
         run: npm run build
-  # Deliberately no deployment: outbound side-effect isolation, preview
-  # authentication, and staging process management must be proven first.
-  # Never invoke drvo:migrate here; pending migrations require backup and approval.
+  # Deployment is fail-closed until the staging service and preview access are hardened.
+  # Never invoke drvo:migrate here; migrations require separate approval and backup.
   # Read-only VPS audit; runs only after the staging build passes.
   # No checkout, pull, service restart, or migrations on the VPS.
   audit:
@@ -89,3 +88,57 @@ jobs:
           echo 'AUDIT_ONLY_NO_DEPLOY_NO_MIGRATION'
           REMOTE
 
+  deploy:
+    needs: [check, audit]
+    if: github.ref == 'refs/heads/feature/drvo-clinics-mvp'
+    runs-on: ubuntu-latest
+    environment: drvo-staging
+    timeout-minutes: 15
+    steps:
+      - name: Configure pinned SSH
+        env:
+          SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.STAGING_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          test -n "$SSH_KEY" && test -n "$KNOWN_HOSTS"
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - name: Fail-closed staging deploy (no database migrations)
+        env:
+          HOST: ${{ secrets.STAGING_HOST }}
+          USER: ${{ secrets.STAGING_USER }}
+          PORT: ${{ secrets.STAGING_SSH_PORT }}
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          test -n "$HOST" && test -n "$USER" && test -n "$PORT"
+          ssh -i ~/.ssh/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 -p "$PORT" "$USER@$HOST" "EXPECTED_SHA=$EXPECTED_SHA bash -s" <<'REMOTE'
+          set -euo pipefail
+          cd /home/casher/drvo-clinics-work
+          test "$(git branch --show-current)" = "feature/drvo-clinics-mvp"
+          test -z "$(git status --porcelain)"
+          bash scripts/drvo/staging-config-preflight.sh
+          # Require a separately installed, running, network-isolated service.
+          test "$(systemctl is-active drvo-erp-staging.service)" = active
+          test "$(systemctl show -P IPAddressDeny drvo-erp-staging.service)" = any
+          systemctl show -P IPAddressAllow drvo-erp-staging.service | grep -Eq '127[.]0[.]0[.]1|localhost'
+          systemctl show -P ExecStartPre drvo-erp-staging.service | grep -Fq 'staging-egress-probe.mjs'
+          # Fail closed until preview authentication is explicitly attested by operator.
+          test -f /home/casher/.config/drvo-staging-preview-auth-verified
+          test "$(stat -c %U /home/casher/.config/drvo-staging-preview-auth-verified)" = casher
+          # Update only the isolated checkout; never touch production checkout.
+          git fetch --no-tags origin feature/drvo-clinics-mvp
+          test "$(git rev-parse origin/feature/drvo-clinics-mvp)" = "$EXPECTED_SHA"
+          git merge --ff-only "$EXPECTED_SHA"
+          npm ci --ignore-scripts
+          npm run build
+          # Restart requires a tightly scoped service permission; never use unrestricted sudo.
+          sudo -n /bin/systemctl restart drvo-erp-staging.service
+          test "$(systemctl is-active drvo-erp-staging.service)" = active
+          curl --fail --silent --show-error --max-time 10 -o /dev/null http://127.0.0.1:5501/
+          echo "STAGING_DEPLOY_PASS"
+          REMOTE
