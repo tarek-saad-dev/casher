@@ -13,6 +13,7 @@ User=casher
 Group=casher
 WorkingDirectory=/home/casher/drvo-clinics-work
 EnvironmentFile=/home/casher/.config/drvo-staging.env
+ExecStartPre=/usr/bin/node /home/casher/drvo-clinics-work/scripts/drvo/staging-egress-probe.mjs
 ExecStart=/usr/bin/npm run start -- --hostname 127.0.0.1 --port 5501
 Restart=on-failure
 RestartSec=5
