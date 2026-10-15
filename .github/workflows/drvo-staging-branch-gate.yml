@@ -38,3 +38,54 @@ jobs:
   # Deliberately no deployment: outbound side-effect isolation, preview
   # authentication, and staging process management must be proven first.
   # Never invoke drvo:migrate here; pending migrations require backup and approval.
+  # Read-only VPS audit; runs only after the staging build passes.
+  # No checkout, pull, service restart, or migrations on the VPS.
+  audit:
+    needs: check
+    if: github.ref == 'refs/heads/feature/drvo-clinics-mvp'
+    runs-on: ubuntu-latest
+    environment: drvo-staging
+    timeout-minutes: 10
+    steps:
+      - name: Configure pinned SSH
+        env:
+          SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.STAGING_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          test -n "$SSH_KEY" && test -n "$KNOWN_HOSTS"
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - name: Read-only runtime audit (no deploy or migration)
+        env:
+          HOST: ${{ secrets.STAGING_HOST }}
+          USER: ${{ secrets.STAGING_USER }}
+          PORT: ${{ secrets.STAGING_SSH_PORT }}
+        run: |
+          set -euo pipefail
+          test -n "$HOST" && test -n "$USER" && test -n "$PORT"
+          ssh -i ~/.ssh/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 -p "$PORT" "$USER@$HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          echo '=== Staging runtime audit ==='
+          cd /home/casher/drvo-clinics-work
+          echo "branch=$(git branch --show-current)"
+          echo "commit=$(git rev-parse --short HEAD)"
+          echo "dirty_files=$(git status --porcelain | wc -l)"
+          echo '=== systemd service status ==='
+          systemctl is-enabled drvo-erp-staging.service || true
+          systemctl is-active drvo-erp-staging.service || true
+          systemctl show drvo-erp-staging.service -p User -p ExecStart -p ExecStartPre -p IPAddressDeny -p IPAddressAllow -p NoNewPrivileges -p ProtectSystem -p ProtectHome --no-pager
+          echo '=== localhost listener ==='
+          ss -ltn '( sport = :5501 )' || true
+          echo '=== Nginx config validity (nonprivileged only) ==='
+          if command -v nginx >/dev/null 2>&1; then
+            nginx -t 2>&1 | tail -n 5 || true
+          fi
+          echo '=== staging HTTP response (no response body) ==='
+          curl -sS -o /dev/null -w 'local_http_status=%{http_code}\n' --connect-timeout 3 --max-time 5 http://127.0.0.1:5501/ || true
+          echo 'AUDIT_ONLY_NO_DEPLOY_NO_MIGRATION'
+          REMOTE
+
