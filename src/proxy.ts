@@ -40,7 +40,15 @@ export function proxy(req: NextRequest) {
     ) {
       return NextResponse.json({ error: 'Staging safety configuration incomplete' }, { status: 503 });
     }
-    if (pathname.startsWith('/api/') || !['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
+    // Staging permits only authentication and operational bootstrap against its
+    // isolated database. All other APIs (including webhooks, cron and mutations)
+    // remain fail-closed. Do not broaden this list without a route audit.
+    const stagingApiAllowed =
+      (pathname === '/api/auth/login' && ['GET', 'POST'].includes(req.method)) ||
+      (pathname === '/api/auth/session' && ['GET', 'DELETE'].includes(req.method)) ||
+      (pathname === '/api/operations/bootstrap' && req.method === 'GET');
+    if ((pathname.startsWith('/api/') && !stagingApiAllowed) ||
+        (!pathname.startsWith('/api/') && !['GET', 'HEAD', 'OPTIONS'].includes(req.method))) {
       return NextResponse.json({ error: 'Staging preview API disabled until isolation is verified' }, { status: 503 });
     }
   }
