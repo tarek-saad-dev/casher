@@ -274,6 +274,7 @@ export async function POST(req: NextRequest) {
       UserID: user.UserID,
       UserName: user.UserName,
       UserLevel: user.UserLevel,
+      stagingWorkspace: process.env.DRVO_STAGING_MODE === 'true',
       ShiftID: user.ShiftID,
       redirectTo,
       skipShiftPrompt,
