@@ -46,10 +46,14 @@ export async function applyCommercialEntitlementCommand(
   input: CommercialEntitlementCommand,
 ): Promise<CommercialEntitlementResult> {
   const command = validateCommercialEntitlementCommand(input);
-  if (process.env.DRVO_STAGING_MODE === 'true' &&
-      (process.env.STAGING_SAFETY_ENFORCE !== 'true' ||
-       process.env.STAGING_SAFETY_DB_NAME !== 'last132_agent')) {
-    throw new Error('STAGING_SAFETY_CONFIGURATION_REQUIRED');
+  // Explicit staging-only allowlist. Missing flags MUST NOT enable mutations.
+  if (process.env.DRVO_STAGING_MODE !== 'true' ||
+      process.env.STAGING_SAFETY_ENFORCE !== 'true' ||
+      process.env.STAGING_SAFETY_DB_NAME !== 'last132_agent' ||
+      process.env.DB_NAME !== 'last132_agent' ||
+      process.env.DB_DATABASE !== 'last132_agent' ||
+      process.env.DB_USER !== 'drvo_agent') {
+    throw new Error('COMMERCIAL_MUTATIONS_STAGING_ONLY');
   }
   const pool = await getPool();
   const tx = new Transaction(pool);
@@ -58,8 +62,7 @@ export async function applyCommercialEntitlementCommand(
     const dbName = await tx.request().query<{ DatabaseName: string }>(
       'SELECT DB_NAME() AS DatabaseName',
     );
-    if (process.env.DRVO_STAGING_MODE === 'true' &&
-        dbName.recordset[0]?.DatabaseName !== 'last132_agent') {
+    if (dbName.recordset[0]?.DatabaseName !== 'last132_agent') {
       throw new Error('STAGING_DATABASE_MISMATCH');
     }
 
