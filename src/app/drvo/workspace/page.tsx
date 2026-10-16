@@ -12,6 +12,7 @@ export const dynamic = 'force-dynamic';
 
 const navigation = [
   { label: 'نظرة عامة', icon: LayoutDashboard, active: true },
+  { label: 'شركتي', icon: Building2, href: '/drvo/workspace/my-company' },
   { label: 'الشركات والفروع', icon: Building2, href: '/drvo/workspace/companies' },
   { label: 'المستخدمون والصلاحيات', icon: Users, href: '/drvo/workspace/users' },
   { label: 'الوحدات والتطبيقات', icon: Blocks, href: '/drvo/workspace/modules' },
@@ -88,7 +89,7 @@ export default async function DrvoWorkspace() {
                 <h1 className="text-2xl font-black leading-relaxed sm:text-4xl">أهلًا، {user.UserName} 👋</h1>
                 <p className="mt-3 max-w-xl text-sm leading-7 text-slate-300 sm:text-base">مساحة العمل جاهزة. بنجهز إدارة الشركات والفروع والصلاحيات والوحدات على أساس مستقل عن نظام الورديات القديم.</p>
                 <div className="mt-6 flex flex-wrap gap-3">
-                  <span className="rounded-xl bg-cyan-300 px-4 py-2.5 text-xs font-bold text-slate-950">المرحلة الأولى: ERP Foundation</span>
+                  <Link href="/drvo/workspace/my-company" className="rounded-xl bg-cyan-300 px-4 py-2.5 text-xs font-bold text-slate-950">افتح مساحة شركتي</Link>
                   <span className="rounded-xl border border-white/15 px-4 py-2.5 text-xs text-slate-200">لا توجد عمليات POS مفعّلة</span>
                 </div>
               </div>
