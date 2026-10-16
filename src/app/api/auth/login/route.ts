@@ -261,6 +261,12 @@ export async function POST(req: NextRequest) {
       logStep(requestId, 'permissions:fallback', { message });
     }
 
+    // SaaS staging must not land on legacy POS, which may trigger business-day side effects.
+    if (process.env.DRVO_STAGING_MODE === 'true') {
+      redirectTo = '/drvo/workspace';
+      skipShiftPrompt = true;
+    }
+
     logStep(requestId, 'success', {
       tenantId: tenant.tenantId,
       userId: user.UserID,
