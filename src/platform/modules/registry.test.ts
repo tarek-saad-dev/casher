@@ -11,6 +11,9 @@ describe('DRVO module registry and feature gate', () => {
     expect(isDrvoModuleKey('toString')).toBe(false);
     expect(isDrvoModuleKey('unknown')).toBe(false);
     expect(DRVO_MODULES.pos.key).toBe('pos');
+    expect(isDrvoModuleKey('online_booking')).toBe(true);
+    expect(isDrvoModuleKey('onlineBooking')).toBe(false);
+    expect(DRVO_MODULES.online_booking.key).toBe('online_booking');
   });
   it('allows an explicitly enabled entitlement for the same tenant', () => {
     expect(canUseDrvoModule(TENANT_A, 'pos', entitlement)).toBe(true);
