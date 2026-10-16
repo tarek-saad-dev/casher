@@ -5,6 +5,9 @@ import { getSession } from '@/lib/session';
 import { getPool, sql } from '@/lib/db';
 import { requireTenantPermission, DrvoAccessDeniedError } from '@/platform/access/tenantGrants';
 import { DRVO_PERMISSIONS } from '@/platform/access/permissions';
+import { loadTenantPermissionActor } from '@/platform/access/tenantGrants';
+import { canDrvo } from '@/platform/access/permissions';
+import RoleAssignmentControl from './RoleAssignmentControl';
 import { resolveStaffTenantContextForRequest } from '@/platform/tenant/tenantContext';
 
 export const dynamic = 'force-dynamic';
@@ -17,7 +20,8 @@ type MemberRow = {
   UserLevel: string | null;
   IsDeleted: number | boolean | null;
 };
-type RoleRow = { UserID: number; RoleKey: string };
+type RoleRow = { MembershipId: string; RoleId: string; RoleKey: string; DisplayName: string };
+type AssignableRole = { RoleId: string; RoleKey: string; DisplayName: string };
 
 async function loadMembers(user: {
   UserID: number; UserName: string; UserLevel: string;
@@ -52,33 +56,38 @@ async function loadMembers(user: {
       ORDER BY u.UserName, m.MembershipId
     `);
 
-  // Roles are joined through the tenant's own memberships, not a global
-  // unrestricted user list. Never return credentials or password hashes.
-  const roles = await db.request()
-    .input('tenantId', sql.UniqueIdentifier, context.tenantId)
+  const actor = await loadTenantPermissionActor(context, { executor: db });
+  const canManage = canDrvo(actor, context.tenantId, DRVO_PERMISSIONS.rolesManage) &&
+    canDrvo(actor, context.tenantId, DRVO_PERMISSIONS.membersManage);
+  const roles = await db.request().input('tenantId', sql.UniqueIdentifier, context.tenantId)
     .query<RoleRow>(`
-      SELECT DISTINCT m.LegacyUserId AS UserID, r.RoleKey
-      FROM dbo.TenantMembership m
-      INNER JOIN dbo.TblUserRoles ur ON ur.UserID = m.LegacyUserId
-      INNER JOIN dbo.TblRoles r ON r.RoleID = ur.RoleID AND r.IsActive = 1
-      WHERE m.TenantId = @tenantId
-    `);
-  const roleMap = new Map<number, string[]>();
+      SELECT a.MembershipId, r.RoleId, r.RoleKey, r.DisplayName
+      FROM dbo.DrvoTenantRoleAssignment a
+      INNER JOIN dbo.DrvoTenantRole r ON r.TenantId = a.TenantId AND r.RoleId = a.RoleId AND r.IsActive = 1
+      INNER JOIN dbo.TenantMembership m ON m.TenantId = a.TenantId AND m.MembershipId = a.MembershipId
+      WHERE a.TenantId = @tenantId`);
+  const roleMap = new Map<string, RoleRow[]>();
   for (const role of roles.recordset) {
-    const existing = roleMap.get(role.UserID) ?? [];
-    existing.push(role.RoleKey);
-    roleMap.set(role.UserID, existing);
+    const key = role.MembershipId.toLowerCase();
+    roleMap.set(key, [...(roleMap.get(key) ?? []), role]);
   }
+  const available = canManage ? await db.request().input('tenantId', sql.UniqueIdentifier, context.tenantId)
+    .query<AssignableRole>(`SELECT RoleId, RoleKey, DisplayName FROM dbo.DrvoTenantRole
+      WHERE TenantId = @tenantId AND IsActive = 1 AND RoleKey <> N'owner'
+      ORDER BY RoleKey`) : null;
+
   return {
     forbidden: false as const,
     tenantCode: context.tenantCode,
+    canManage,
+    assignableRoles: (available?.recordset ?? []).map(role => ({ id: role.RoleId, key: role.RoleKey, name: role.DisplayName })),
     members: members.recordset.map(member => ({
       id: member.MembershipId,
       name: member.UserName?.trim() || 'عضوية بدون مستخدم مرتبط',
       login: member.loginName?.trim() || null,
       level: member.UserLevel,
       active: member.LegacyUserId != null && !Boolean(member.IsDeleted),
-      roles: member.LegacyUserId != null ? (roleMap.get(member.LegacyUserId) ?? []) : [],
+      roles: roleMap.get(member.MembershipId.toLowerCase()) ?? [],
       self: member.LegacyUserId === user.UserID,
     })),
   };
@@ -106,9 +115,9 @@ export default async function DrvoUsersPage() {
           <div>
             <p className="text-xs font-semibold tracking-widest text-cyan-400">DRVO ERP / ACCESS</p>
             <h1 className="mt-3 text-3xl font-black">المستخدمون والصلاحيات</h1>
-            <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-400">عرض عضويات الشركة والأدوار المسجلة حاليًا. الإضافة والتعديل وتغيير الصلاحيات غير متاحة في المعاينة.</p>
+            <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-400">عرض عضويات الشركة وأدوار DRVO الفعلية. يمكن للمصرّح لهم تغيير دور مستخدم موجود، دون تغيير صلاحيات المالك.</p>
           </div>
-          <span className="rounded-full border border-amber-300/20 bg-amber-300/10 px-4 py-2 text-xs font-bold text-amber-300">STAGING · قراءة فقط</span>
+          <span className="rounded-full border border-amber-300/20 bg-amber-300/10 px-4 py-2 text-xs font-bold text-amber-300">STAGING · أدوار DRVO</span>
         </div>
         <div className="mt-6"><Link href="/drvo/workspace/roles" className="inline-flex items-center gap-2 rounded-xl border border-cyan-300/20 bg-cyan-300/10 px-4 py-2.5 text-sm font-semibold text-cyan-200 hover:bg-cyan-300/15"><LockKeyhole className="size-4" /> استعراض قوالب صلاحيات DRVO</Link></div>
         {unavailable || !data ? (
@@ -143,14 +152,15 @@ export default async function DrvoUsersPage() {
                     <div className="mt-5 border-t border-white/10 pt-4">
                       <p className="mb-2 text-xs text-slate-500">الأدوار الحالية</p>
                       <div className="flex flex-wrap gap-2">
-                        {member.roles.length ? member.roles.map(role => <span key={role} className="rounded-lg border border-cyan-300/15 bg-cyan-300/5 px-2.5 py-1.5 text-xs text-cyan-200">{role}</span>) : <span className="text-xs text-slate-500">لا توجد أدوار مسجلة</span>}
+                        {member.roles.length ? member.roles.map(role => <span key={role.RoleId} className="rounded-lg border border-cyan-300/15 bg-cyan-300/5 px-2.5 py-1.5 text-xs text-cyan-200">{role.DisplayName}</span>) : <span className="text-xs text-slate-500">لا توجد أدوار مسجلة</span>}
                       </div>
                     </div>
+                    {data.canManage && !member.self && member.active && !member.roles.some(role => role.RoleKey === 'owner') && data.assignableRoles.length > 0 && <RoleAssignmentControl membershipId={member.id} roleId={member.roles.length === 1 ? member.roles[0].RoleId : null} roles={data.assignableRoles} />}
                   </article>
                 ))}
               </section>
             )}
-            <p className="mt-7 inline-flex items-center gap-2 text-xs text-slate-500"><ShieldCheck className="size-4 text-emerald-300" /> البيانات محددة بعضويات الشركة الحالية. الأدوار المعروضة هي أدوار النظام القديم وليست صلاحيات SaaS جديدة.</p>
+            <p className="mt-7 inline-flex items-center gap-2 text-xs text-slate-500"><ShieldCheck className="size-4 text-emerald-300" /> البيانات محددة بعضويات الشركة الحالية. الأدوار المعروضة من DRVO فقط؛ أدوار Casher القديمة لا تمنح صلاحيات.</p>
           </>
         )}
       </div>
