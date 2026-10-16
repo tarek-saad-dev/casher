@@ -26,7 +26,7 @@ jobs:
       - name: Verify fail-closed staging guard
         run: bash scripts/drvo/staging-safety-static-gate.sh
       - name: Run isolated DRVO access and module tests
-        run: npm test -- src/platform/access/permissions.test.ts src/platform/access/tenantGrants.test.ts src/platform/modules/registry.test.ts src/platform/modules/tenantEntitlements.test.ts
+        run: npm test -- src/platform/access/permissions.test.ts src/platform/access/tenantGrants.test.ts src/platform/access/requireModuleAccess.test.ts src/platform/modules/registry.test.ts src/platform/modules/tenantEntitlements.test.ts
       - name: Build without production secrets
         env:
           NEXT_TELEMETRY_DISABLED: '1'
