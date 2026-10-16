@@ -38,7 +38,7 @@ export default async function DrvoPlatformSubscriptionsPage() {
     (!row.validUntilUtc || Date.parse(row.validUntilUtc) > Date.now())).length;
 
   return (
-    <main dir="rtl" className="min-h-screen bg-[#080e1a] px-5 py-8 text-slate-100 sm:px-8">
+    <main dir="rtl" className="h-full min-h-0 w-full overflow-y-auto overscroll-contain bg-[#080e1a] px-5 py-8 pb-16 text-slate-100 sm:px-8">
       <div className="mx-auto max-w-6xl">
         <Link href="/drvo/workspace" className="inline-flex items-center gap-2 text-sm text-cyan-300 hover:text-cyan-200">
           <ArrowRight className="size-4" /> العودة للوحة التحكم
