@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 type Action = 'provision' | 'suspend' | 'renew' | 'cancel';
@@ -13,6 +13,7 @@ export default function CommercialSubscriptionActions({ tenantId, tenantName, mo
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [confirmation, setConfirmation] = useState(false);
+  const pendingRequest = useRef<{ fingerprint: string; requestId: string } | null>(null);
 
   async function submit() {
     if (busy || !confirmation) return;
@@ -23,8 +24,12 @@ export default function CommercialSubscriptionActions({ tenantId, tenantName, mo
     setBusy(true);
     setMessage('');
     try {
+      const fingerprint = JSON.stringify({ tenantId, moduleKey, action, expiry: action === 'provision' || action === 'renew' ? expiry : null });
+      if (pendingRequest.current?.fingerprint !== fingerprint) {
+        pendingRequest.current = { fingerprint, requestId: crypto.randomUUID() };
+      }
       const body: Record<string, string> = {
-        tenantId, moduleKey, action, requestId: crypto.randomUUID(),
+        tenantId, moduleKey, action, requestId: pendingRequest.current.requestId,
       };
       if (action === 'provision' || action === 'renew') {
         body.validUntilUtc = new Date(expiry + 'T23:59:59.000Z').toISOString();
@@ -40,6 +45,7 @@ export default function CommercialSubscriptionActions({ tenantId, tenantName, mo
         return;
       }
       setMessage(result.replayed ? 'الطلب تم تنفيذه مسبقًا.' : 'تم تسجيل العملية بنجاح.');
+      pendingRequest.current = null;
       setConfirmation(false);
       router.refresh();
     } catch {
