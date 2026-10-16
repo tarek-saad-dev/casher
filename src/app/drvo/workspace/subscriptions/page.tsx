@@ -4,6 +4,9 @@ import { ArrowRight, CreditCard, ShieldAlert, ShieldCheck } from 'lucide-react';
 import { getSession } from '@/lib/session';
 import { DRVO_MODULES } from '@/platform/modules/registry';
 import { listPlatformSubscriptions } from '@/platform/modules/platformSubscriptions';
+import { loadPlatformPrincipal } from '@/platform/modules/platformAuthorityRepository';
+import { canManageCommercialEntitlements } from '@/platform/modules/platformAuthority';
+import CommercialSubscriptionActions from './CommercialSubscriptionActions';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,8 +17,11 @@ export default async function DrvoPlatformSubscriptionsPage() {
 
   let rows: Awaited<ReturnType<typeof listPlatformSubscriptions>> = [];
   let error: 'denied' | 'unavailable' | null = null;
+  let canManage = false;
   try {
     rows = await listPlatformSubscriptions(user.UserID);
+    const principal = await loadPlatformPrincipal(user.UserID);
+    canManage = canManageCommercialEntitlements(principal, user.UserID);
   } catch (cause) {
     error = cause instanceof Error && cause.message === 'PLATFORM_ENTITLEMENT_READ_DENIED'
       ? 'denied' : 'unavailable';
@@ -46,7 +52,7 @@ export default async function DrvoPlatformSubscriptionsPage() {
               platform.entitlements.read المستقلة عن صلاحيات الشركات.
             </p>
           </div>
-          <span className="rounded-full border border-amber-300/20 bg-amber-300/10 px-4 py-2 text-xs font-bold text-amber-300">STAGING · قراءة فقط</span>
+          <span className="rounded-full border border-amber-300/20 bg-amber-300/10 px-4 py-2 text-xs font-bold text-amber-300">STAGING · {canManage ? 'إدارة الاشتراكات' : 'قراءة فقط'}</span>
         </header>
 
         {error ? (
@@ -94,6 +100,7 @@ export default async function DrvoPlatformSubscriptionsPage() {
                           </div>
                           <p className="mt-2 text-xs text-slate-500" dir="ltr">{module.key}</p>
                           <p className="mt-2 text-xs text-slate-400">{entry?.validUntilUtc ? 'ينتهي: ' + new Intl.DateTimeFormat('ar-EG', { dateStyle: 'medium', timeZone: 'UTC' }).format(new Date(entry.validUntilUtc)) : 'لا يوجد تاريخ انتهاء'}</p>
+                          {canManage && group.status === 'active' && <CommercialSubscriptionActions tenantId={group.id} tenantName={group.name} moduleKey={module.key} status={entry?.status ?? null} />}
                         </div>
                       );
                     })}
