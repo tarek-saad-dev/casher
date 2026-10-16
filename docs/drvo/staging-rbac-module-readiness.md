@@ -2,6 +2,16 @@
 
 **State:** review only. No migrations applied by this document. Target is the isolated staging SQL Server database `last132_agent` only. Production `last132` is excluded.
 
+## Run the staging-only schema check
+
+On the isolated VPS staging checkout (not production), with a staging-only credential already present in the environment, run:
+
+```bash
+DRVO_STAGING_DB_PASSWORD="$DRVO_STAGING_DB_PASSWORD" npx tsx scripts/drvo/drvo-rbac-staging-readiness.ts
+```
+
+The CLI refuses non-loopback SQL, production-accessible login, and a checkout containing local dotenv files. It reports only table/column presence, never credentials. Exit code 2 means required schema is missing; exit code 1 means identity/isolation or execution failed. Even a successful result does **not** authorize migrations or prove backup restorability. The CLI has not yet been run against the VPS by this change.
+
 ## Read-only evidence to collect
 
 1. Confirm the SQL connection reports `DB_NAME() = last132_agent` and the staging application remains isolated from production.
