@@ -5,6 +5,7 @@ import { getSession } from '@/lib/session';
 import { getPool } from '@/lib/db';
 import { resolveStaffTenantContextForRequest } from '@/platform/tenant/tenantContext';
 import { DRVO_PERMISSIONS, DRVO_ROLE_TEMPLATES } from '@/platform/access/permissions';
+import { requireTenantPermission } from '@/platform/access/tenantGrants';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,7 +40,10 @@ export default async function DrvoRolesPage() {
         activeBranchId: user.ActiveBranchID,
         preferredTenantId: user.TenantId,
       }, { executor: db });
-      verified = context.membershipId.toLowerCase() === user.MembershipId.toLowerCase();
+      if (context.membershipId.toLowerCase() === user.MembershipId.toLowerCase()) {
+        await requireTenantPermission(context, DRVO_PERMISSIONS.rolesRead, { executor: db });
+        verified = true;
+      }
     }
   } catch {
     verified = false;
