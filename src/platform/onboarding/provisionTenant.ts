@@ -17,6 +17,7 @@ import { tenantLockResource } from '@/platform/tenant/tenantLockResource';
 import { TenantOnboardingError } from './errors';
 import { ensureLegacyIdMapInTransaction } from './legacyIdMap';
 import { evaluateTenantReadiness } from './tenantReadiness';
+import { seedTenantOwnerRoleInTransaction } from './seedTenantOwnerRole';
 import type {
   ProvisionTenantActor,
   ProvisionTenantInput,
@@ -437,6 +438,9 @@ export async function provisionTenant(
       legacyKey: String(ownerUserId),
       authoritativeDrvoId: membershipId,
     });
+
+    // SaaS permissions are independent of the legacy admin role.
+    await seedTenantOwnerRoleInTransaction(tx, tenantId, membershipId);
 
     await applyCompositionInTransaction(tx, {
       tenantId,
