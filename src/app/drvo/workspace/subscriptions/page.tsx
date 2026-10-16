@@ -6,7 +6,7 @@ import { DRVO_MODULES } from '@/platform/modules/registry';
 import { listPlatformSubscriptions } from '@/platform/modules/platformSubscriptions';
 import { loadPlatformPrincipal } from '@/platform/modules/platformAuthorityRepository';
 import { canManageCommercialEntitlements } from '@/platform/modules/platformAuthority';
-import CommercialSubscriptionActions from './CommercialSubscriptionActions';
+import SubscriptionTenantTable from './SubscriptionTenantTable';
 
 export const dynamic = 'force-dynamic';
 
@@ -86,25 +86,16 @@ export default async function DrvoPlatformSubscriptionsPage() {
                     </div>
                     <span className={group.status === 'active' ? 'text-xs text-emerald-300' : 'text-xs text-amber-300'}>{group.status === 'active' ? 'شركة نشطة' : 'شركة غير نشطة'}</span>
                   </div>
-                  <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                    {Object.values(DRVO_MODULES).map(module => {
+                  <SubscriptionTenantTable
+                    tenantId={group.id}
+                    tenantName={group.name}
+                    tenantCode={group.code}
+                    canManage={canManage && group.status === 'active'}
+                    modules={Object.values(DRVO_MODULES).map(module => {
                       const entry = group.modules.find(item => item.moduleKey === module.key);
-                      const expired = !!entry?.validUntilUtc && Date.parse(entry.validUntilUtc) <= Date.now();
-                      const label = !entry ? 'غير مشترك' : entry.status === 'enabled' && expired ? 'منتهي' :
-                        entry.status === 'enabled' ? 'مفعّل' : entry.status === 'suspended' ? 'موقوف' : 'ملغي';
-                      return (
-                        <div key={module.key} className="rounded-xl border border-white/10 bg-white/[0.025] p-4">
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-sm font-semibold">{module.title}</span>
-                            <span className={entry?.status === 'enabled' && !expired ? 'text-xs text-emerald-300' : 'text-xs text-slate-400'}>{label}</span>
-                          </div>
-                          <p className="mt-2 text-xs text-slate-500" dir="ltr">{module.key}</p>
-                          <p className="mt-2 text-xs text-slate-400">{entry?.validUntilUtc ? 'ينتهي: ' + new Intl.DateTimeFormat('ar-EG', { dateStyle: 'medium', timeZone: 'UTC' }).format(new Date(entry.validUntilUtc)) : 'لا يوجد تاريخ انتهاء'}</p>
-                          {canManage && group.status === 'active' && <CommercialSubscriptionActions tenantId={group.id} tenantName={group.name} moduleKey={module.key} status={entry?.status ?? null} />}
-                        </div>
-                      );
+                      return { key: module.key, title: module.title, status: entry?.status ?? null, validUntilUtc: entry?.validUntilUtc ?? null };
                     })}
-                  </div>
+                  />
                 </article>
               ))}
             </section>
