@@ -6,7 +6,7 @@ import { DRVO_MODULES } from '@/platform/modules/registry';
 import { listPlatformSubscriptions } from '@/platform/modules/platformSubscriptions';
 import { loadPlatformPrincipal } from '@/platform/modules/platformAuthorityRepository';
 import { canManageCommercialEntitlements } from '@/platform/modules/platformAuthority';
-import SubscriptionTenantTable from './SubscriptionTenantTable';
+import PlatformSubscriptionSearch from './PlatformSubscriptionSearch';
 
 export const dynamic = 'force-dynamic';
 
@@ -75,30 +75,16 @@ export default async function DrvoPlatformSubscriptionsPage() {
                 </div>
               ))}
             </section>
-            <section className="mt-7 space-y-5" aria-label="استحقاقات الشركات">
-              {groups.length === 0 && <p className="rounded-2xl border border-white/10 bg-[#101a2c] p-7 text-sm text-slate-400">لا توجد شركات مسجلة.</p>}
-              {groups.map(group => (
-                <article key={group.id} className="rounded-2xl border border-white/10 bg-[#101a2c] p-5 sm:p-7">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <h2 className="text-lg font-bold">{group.name} <span className="text-sm font-normal text-slate-400">({group.code})</span></h2>
-                      <p dir="ltr" className="mt-1 text-left text-xs text-slate-500">{group.id}</p>
-                    </div>
-                    <span className={group.status === 'active' ? 'text-xs text-emerald-300' : 'text-xs text-amber-300'}>{group.status === 'active' ? 'شركة نشطة' : 'شركة غير نشطة'}</span>
-                  </div>
-                  <SubscriptionTenantTable
-                    tenantId={group.id}
-                    tenantName={group.name}
-                    tenantCode={group.code}
-                    canManage={canManage && group.status === 'active'}
-                    modules={Object.values(DRVO_MODULES).map(module => {
-                      const entry = group.modules.find(item => item.moduleKey === module.key);
-                      return { key: module.key, title: module.title, status: entry?.status ?? null, validUntilUtc: entry?.validUntilUtc ?? null };
-                    })}
-                  />
-                </article>
-              ))}
-            </section>
+            <PlatformSubscriptionSearch
+              canManage={canManage}
+              companies={groups.map(group => ({
+                id: group.id, code: group.code, name: group.name, status: group.status,
+                modules: Object.values(DRVO_MODULES).map(module => {
+                  const entry = group.modules.find(item => item.moduleKey === module.key);
+                  return { key: module.key, title: module.title, status: entry?.status ?? null, validUntilUtc: entry?.validUntilUtc ?? null };
+                }),
+              }))}
+            />
             <footer className="mt-8 flex items-center gap-2 border-t border-white/10 pt-5 text-xs text-slate-400">
               <ShieldCheck className="size-4 text-emerald-300" /> قراءة مباشرة من قاعدة Staging مع صلاحية Platform Admin مستقلة.
             </footer>
