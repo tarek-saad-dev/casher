@@ -56,10 +56,17 @@ describe('DRVO tenant module entitlements', () => {
     await expect(requireTenantModule(context, 'pos', { executor: db })).resolves.toBeUndefined();
   });
 
-  it('denies expired and suspended activations', async () => {
+  it('denies suspended activations', async () => {
     const { db } = fakeDb([
       { TenantId: context.tenantId, ModuleKey: 'pos', Status: 'suspended', ValidUntilUtc: null },
     ]);
     await expect(requireTenantModule(context, 'pos', { executor: db })).rejects.toMatchObject({ status: 403 });
+  });
+
+  it('denies expired activations', async () => {
+    const { db } = fakeDb([
+      { TenantId: context.tenantId, ModuleKey: 'pos', Status: 'enabled', ValidUntilUtc: new Date('2026-10-15T12:00:00Z') },
+    ]);
+    await expect(requireTenantModule(context, 'pos', { executor: db, now: new Date('2026-10-16T12:00:00Z') })).rejects.toMatchObject({ status: 403 });
   });
 });
