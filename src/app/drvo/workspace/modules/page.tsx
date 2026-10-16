@@ -6,6 +6,8 @@ import { getPool } from '@/lib/db';
 import { resolveStaffTenantContextForRequest } from '@/platform/tenant/tenantContext';
 import { DRVO_MODULES, canUseDrvoModule } from '@/platform/modules/registry';
 import { listTenantModuleEntitlements } from '@/platform/modules/tenantEntitlements';
+import { requireTenantPermission } from '@/platform/access/tenantGrants';
+import { DRVO_PERMISSIONS } from '@/platform/access/permissions';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,6 +27,7 @@ export default async function DrvoModulesPage() {
         preferredTenantId: user.TenantId,
       }, { executor: db });
       if (context.membershipId.toLowerCase() === user.MembershipId.toLowerCase()) {
+        await requireTenantPermission(context, DRVO_PERMISSIONS.modulesRead, { executor: db });
         tenantCode = context.tenantCode;
         try {
           entitlements = await listTenantModuleEntitlements(context, { executor: db });
@@ -75,7 +78,7 @@ export default async function DrvoModulesPage() {
                 </article>
               ))}
             </section>
-            <p className="mt-7 text-xs leading-6 text-slate-500">لا توجد أزرار تفعيل في هذه المرحلة. لا يتم قراءة أو تغيير اشتراكات الشركات من هذه الصفحة.</p>
+            <p className="mt-7 text-xs leading-6 text-slate-500">لا توجد أزرار تفعيل في هذه المرحلة. يتم عرض حالة تفعيل الوحدات للقراءة فقط؛ لا يتم تغيير الاشتراكات أو المدفوعات من هذه الصفحة.</p>
           </>
         )}
       </div>
