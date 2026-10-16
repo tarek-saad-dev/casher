@@ -7,6 +7,7 @@ import { ensureLegacyIdMapInTransaction } from '@/platform/onboarding/legacyIdMa
 import { resolveStaffTenantContextForRequest } from '@/platform/tenant/tenantContext';
 import { loadTenantPermissionActor } from '@/platform/access/tenantGrants';
 import { canDrvo, DRVO_PERMISSIONS } from '@/platform/access/permissions';
+import { CommercialError } from '@/platform/commercial/errors';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -74,6 +75,12 @@ export async function POST(req: NextRequest) {
     await tx.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
     begun = true;
     const tenantId = context.tenantId;
+    // Revalidate actor grants under the write transaction to close the revoke-then-create race.
+    const freshActor = await loadTenantPermissionActor(context, { executor: tx });
+    if (!canDrvo(freshActor, tenantId, DRVO_PERMISSIONS.membersInvite) ||
+        !canDrvo(freshActor, tenantId, DRVO_PERMISSIONS.membersManage)) {
+      await tx.rollback(); begun = false; return fail('FORBIDDEN', 403);
+    }
     await assertCanAddUser(tx, tenantId);
     const branch = await new sql.Request(tx)
       .input('tenantId', sql.UniqueIdentifier, tenantId)
@@ -96,7 +103,7 @@ export async function POST(req: NextRequest) {
       .input('roleId', sql.UniqueIdentifier, roleId)
       .query<{ PermissionKey: string }>(`SELECT PermissionKey FROM dbo.DrvoTenantRolePermission
         WHERE TenantId = @tenantId AND RoleId = @roleId`);
-    if (grants.recordset.some(p => !actor.grants.includes(p.PermissionKey))) {
+    if (grants.recordset.some(p => !freshActor.grants.includes(p.PermissionKey))) {
       await tx.rollback(); begun = false; return fail('ROLE_EXCEEDS_ACTOR_GRANTS', 403);
     }
     const existing = await new sql.Request(tx).input('login', sql.NVarChar(50), login)
@@ -144,6 +151,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, membershipId }, { status: 201, headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
     if (begun) { try { await tx.rollback(); } catch { /* best effort */ } }
+    if (error instanceof CommercialError) return fail(error.code, error.status);
     console.error('[drvo/tenant/members] create failed', error instanceof Error ? error.name : 'unknown');
     return fail('MEMBER_CREATE_FAILED', 503);
   }
