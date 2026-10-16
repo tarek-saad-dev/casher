@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { ArrowRight, LockKeyhole, ShieldCheck } from 'lucide-react';
+import { ArrowRight, Check, LockKeyhole, ShieldCheck, X } from 'lucide-react';
 import { getSession } from '@/lib/session';
 import { getPool } from '@/lib/db';
 import { resolveStaffTenantContextForRequest } from '@/platform/tenant/tenantContext';
@@ -70,7 +70,49 @@ export default async function DrvoRolesPage() {
               <ShieldCheck className="mt-0.5 size-5 shrink-0 text-cyan-300" />
               <p className="leading-7">قوالب تعريفية فقط — نظام التفويض الجديد يبدأ بالرفض الافتراضي، ويتطلب عضوية نشطة ومنح صلاحيات فعلية مرتبطة بنفس الشركة.</p>
             </div>
-            <section aria-label="قوالب الأدوار" className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <section aria-labelledby="permission-matrix-title" className="mt-8 overflow-hidden rounded-2xl border border-white/10 bg-[#101a2c]">
+              <div className="border-b border-white/10 p-5 sm:p-6">
+                <h2 id="permission-matrix-title" className="text-xl font-bold">مقارنة الصلاحيات بين الأدوار</h2>
+                <p className="mt-2 text-sm leading-6 text-slate-400">دي مقارنة للقوالب المقترحة فقط، مش الصلاحيات الفعلية لأي مستخدم. اسحب الجدول أفقيًا على الموبايل.</p>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[780px] border-collapse text-right text-sm">
+                  <thead className="bg-white/[0.04]">
+                    <tr>
+                      <th scope="col" className="sticky right-0 z-10 min-w-44 border-b border-l border-white/10 bg-[#172235] px-4 py-4 font-semibold">الصلاحية</th>
+                      {Object.entries(DRVO_ROLE_TEMPLATES).map(([key, role]) => (
+                        <th key={key} scope="col" className="min-w-28 border-b border-white/10 px-3 py-4 text-center font-semibold">
+                          <span className="block">{role.label}</span>
+                          <span className="mt-1 block text-[11px] font-normal text-slate-500" dir="ltr">{key}</span>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Object.values(DRVO_PERMISSIONS).map((permission, index) => (
+                      <tr key={permission} className={index % 2 === 0 ? 'bg-white/[0.015]' : ''}>
+                        <th scope="row" className="sticky right-0 z-10 border-b border-l border-white/5 bg-[#101a2c] px-4 py-3 font-medium text-slate-200">
+                          <span className="block">{permissionLabels[permission]}</span>
+                          <span className="mt-0.5 block text-[11px] text-slate-500" dir="ltr">{permission}</span>
+                        </th>
+                        {Object.entries(DRVO_ROLE_TEMPLATES).map(([key, role]) => {
+                          const allowed = (role.permissions as readonly string[]).includes(permission);
+                          return (
+                            <td key={key} className="border-b border-white/5 px-3 py-3 text-center">
+                              <span className="inline-flex items-center justify-center" aria-label={allowed ? 'مسموح في القالب' : 'غير مسموح في القالب'} title={allowed ? 'مسموح في القالب' : 'غير مسموح في القالب'}>
+                                {allowed ? <Check aria-hidden="true" className="mx-auto size-5 text-emerald-300" /> : <X aria-hidden="true" className="mx-auto size-4 text-slate-600" />}
+                              </span>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+            <h2 className="mt-10 text-lg font-bold">تفاصيل القوالب</h2>
+            <section aria-label="قوالب الأدوار" className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {Object.entries(DRVO_ROLE_TEMPLATES).map(([key, role]) => (
                 <article key={key} className="rounded-2xl border border-white/10 bg-[#101a2c] p-6">
                   <p className="text-xs uppercase tracking-widest text-cyan-400">{key}</p>
