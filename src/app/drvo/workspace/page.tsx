@@ -13,7 +13,7 @@ export const dynamic = 'force-dynamic';
 const navigation = [
   { label: 'نظرة عامة', icon: LayoutDashboard, active: true },
   { label: 'الشركات والفروع', icon: Building2, href: '/drvo/workspace/companies' },
-  { label: 'المستخدمون والصلاحيات', icon: Users },
+  { label: 'المستخدمون والصلاحيات', icon: Users, href: '/drvo/workspace/users' },
   { label: 'الوحدات والتطبيقات', icon: Blocks },
   { label: 'الاشتراكات', icon: CreditCard },
   { label: 'التقارير', icon: ChartNoAxesCombined },
