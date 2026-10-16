@@ -60,14 +60,14 @@ export default async function DrvoModulesPage() {
             <div className="mt-8 flex flex-wrap items-center gap-3 rounded-2xl border border-white/10 bg-[#101a2c] p-5 text-sm text-slate-300">
               <ShieldCheck className="size-5 text-emerald-300" />
               <span>الشركة الحالية: <strong className="text-white">{tenantCode}</strong></span>
-              <span className="mr-auto text-xs text-amber-300">لا توجد تفعيلات مؤكدة في هذه المعاينة</span>
+              <span className="mr-auto text-xs text-amber-300">{entitlements === null ? 'بيانات التفعيل غير متاحة' : 'تم تحميل بيانات التفعيل'}</span>
             </div>
             <section aria-label="كتالوج الوحدات" className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {Object.values(DRVO_MODULES).map(module => (
                 <article key={module.key} className="rounded-2xl border border-white/10 bg-[#101a2c] p-6">
                   <div className="flex items-center justify-between gap-3">
                     <div className="grid size-12 place-items-center rounded-xl bg-cyan-300/10 text-cyan-300"><Blocks className="size-6" /></div>
-                    <span className="rounded-full border border-amber-300/15 bg-amber-300/10 px-3 py-1 text-[11px] text-amber-300">غير متاح للتشغيل</span>
+                    <span className="rounded-full border border-amber-300/15 bg-amber-300/10 px-3 py-1 text-[11px] text-amber-300">{entitlements === null ? 'الحالة غير معروفة' : canUseDrvoModule(user.TenantId ?? '', module.key, entitlements.find(item => item.moduleKey === module.key)) ? 'مفعّل للشركة' : 'غير مفعّل'}</span>
                   </div>
                   <p className="mt-5 text-xs uppercase tracking-widest text-slate-500">{module.key}</p>
                   <h2 className="mt-2 text-lg font-bold">{module.title}</h2>
