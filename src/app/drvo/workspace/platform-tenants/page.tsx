@@ -26,7 +26,7 @@ export default async function PlatformTenantsPage() {
               <thead className="bg-white/5 text-slate-400"><tr><th className="p-4">الشركة</th><th className="p-4">الكود</th><th className="p-4">الحالة</th><th className="p-4">الاشتراكات</th></tr></thead>
               <tbody className="divide-y divide-white/10">{companies.map(company => (
                 <tr key={company.tenantId}>
-                  <td className="p-4 font-semibold">{company.tenantName}</td>
+                  <td className="p-4 font-semibold"><Link href={`/drvo/workspace/platform-tenants/${company.tenantId}`} className="text-cyan-200 hover:underline">{company.tenantName}</Link></td>
                   <td className="p-4 text-slate-400" dir="ltr">{company.tenantCode}</td>
                   <td className="p-4">{company.tenantStatus === 'active' ? 'نشطة' : 'غير نشطة'}</td>
                   <td className="p-4"><Link className="text-cyan-300 hover:underline" href="/drvo/workspace/subscriptions">إدارة الموديولات</Link></td>
