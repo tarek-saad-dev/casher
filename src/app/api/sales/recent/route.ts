@@ -54,12 +54,17 @@ export async function GET() {
     
     for (const sale of sales) {
       const servicesResult = await db.request()
-        .input('invID', sale.InvID)
+        .input('invID', sql.Int, sale.InvID)
+        .input('branchId', sql.Int, branch.branchId)
         .query(`
-          SELECT 
+          SELECT
             p.ProName,
+            e.EmpID,
             e.EmpName
           FROM [dbo].[TblinvServDetail] d
+          INNER JOIN [dbo].[TblinvServHead] h
+            ON h.invID = d.invID AND h.invType = d.invType
+            AND h.BranchID = @branchId
           LEFT JOIN [dbo].[TblPro] p ON d.ProID = p.ProID
           LEFT JOIN [dbo].[TblEmp] e ON d.EmpID = e.EmpID
           WHERE d.invID = @invID AND d.invType = N'مبيعات'
