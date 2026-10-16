@@ -2,7 +2,9 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
 import { getPool, sql } from '@/lib/db';
-import { resolveUserTenantMembership } from '@/platform/tenant/tenantContext';
+import { resolveStaffTenantContextForRequest } from '@/platform/tenant/tenantContext';
+import { listTenantModuleEntitlements } from '@/platform/modules/tenantEntitlements';
+import { DRVO_MODULES, canUseDrvoModule, type DrvoModuleEntitlement } from '@/platform/modules/registry';
 import { loadTenantPermissionActor } from '@/platform/access/tenantGrants';
 import { canDrvo, DRVO_PERMISSIONS } from '@/platform/access/permissions';
 
@@ -10,7 +12,7 @@ export const dynamic = 'force-dynamic';
 
 type Branch = { LocationId: string; BranchCode: string; BranchName: string | null; Status: string; Timezone: string };
 type Member = { MembershipId: string; UserName: string | null; LoginName: string | null; Roles: string | null };
-type Module = { ModuleKey: string; Status: string; ValidUntilUtc: Date | null };
+type Module = DrvoModuleEntitlement;
 type Tenant = { TenantId: string; Code: string; Name: string; Status: string };
 
 export default async function MyCompanyPage() {
@@ -31,12 +33,13 @@ export default async function MyCompanyPage() {
 
     // The tenant comes exclusively from the authenticated user's authoritative membership.
     // No tenant ID, query parameter, cookie or platform-admin override is accepted.
-    const membership = await resolveUserTenantMembership({ userId: session.UserID }, { executor: db });
-    const context = {
-      kind: 'staff' as const, tenantId: membership.tenantId, tenantCode: membership.tenantCode,
-      membershipId: membership.membershipId, userId: session.UserID,
-      activeLocation: { locationId: '', legacyBranchId: 0, branchCode: '', timezone: '' },
-    };
+    if (!session.TenantId || !session.MembershipId || !session.ActiveBranchID) throw new Error('SESSION_TENANT_CONTEXT_REQUIRED');
+    const context = await resolveStaffTenantContextForRequest({
+      userId: session.UserID, activeBranchId: session.ActiveBranchID,
+      preferredTenantId: session.TenantId,
+    }, { executor: db });
+    if (context.membershipId.toLowerCase() !== session.MembershipId.toLowerCase()) throw new Error('SESSION_MEMBERSHIP_MISMATCH');
+    const membership = { tenantId: context.tenantId };
     const actor = await loadTenantPermissionActor(context, { executor: db });
     if (!canDrvo(actor, membership.tenantId, DRVO_PERMISSIONS.organizationRead)) {
       reason = 'الحساب ليس لديه صلاحية عرض بيانات الشركة.';
@@ -59,8 +62,7 @@ export default async function MyCompanyPage() {
             LEFT JOIN dbo.TblUser u ON u.UserID = m.LegacyUserId
             WHERE m.TenantId = @tenantId ORDER BY u.UserName`)).recordset : [];
       const modules = canDrvo(actor, membership.tenantId, DRVO_PERMISSIONS.modulesRead)
-        ? (await db.request().input('tenantId', sql.UniqueIdentifier, membership.tenantId)
-          .query<Module>('SELECT ModuleKey, Status, ValidUntilUtc FROM dbo.DrvoTenantModuleEntitlement WHERE TenantId = @tenantId ORDER BY ModuleKey')).recordset : [];
+        ? await listTenantModuleEntitlements(context, { executor: db }) : [];
       model = { tenant, branches, members, modules, grants: [...actor.grants] };
     }
   } catch (error) {
@@ -83,17 +85,27 @@ export default async function MyCompanyPage() {
           {[
             ['الفروع', model.grants.includes(DRVO_PERMISSIONS.locationsRead) ? String(model.branches.length) : 'غير مصرح'],
             ['أعضاء الفريق', model.grants.includes(DRVO_PERMISSIONS.membersRead) ? String(model.members.length) : 'غير مصرح'],
-            ['استحقاقات الموديولات', model.grants.includes(DRVO_PERMISSIONS.modulesRead) ? String(model.modules.length) : 'غير مصرح'],
+            ['الموديولات الفعّالة', model.grants.includes(DRVO_PERMISSIONS.modulesRead) ? String(model.modules.filter(m => canUseDrvoModule(model.tenant.TenantId, m.moduleKey, m)).length) + ' / ' + Object.keys(DRVO_MODULES).length : 'غير مصرح'],
           ].map(([label, value]) => <div key={label} className="rounded-2xl border border-white/10 bg-[#101a2c] p-5"><p className="text-sm text-slate-400">{label}</p><p className="mt-3 text-2xl font-bold">{value}</p></div>)}
         </div>
         {model.grants.includes(DRVO_PERMISSIONS.locationsRead) && <section className="mt-6 rounded-2xl border border-white/10 bg-[#101a2c] p-6">
-          <h2 className="text-xl font-bold">الفروع</h2><div className="mt-4 space-y-3">{model.branches.map(b => <div key={b.LocationId} className="flex flex-wrap justify-between gap-3 rounded-xl border border-white/10 p-4"><div><p className="font-semibold">{b.BranchName || b.BranchCode}</p><p className="mt-1 text-xs text-slate-400">{b.BranchCode} · {b.Timezone}</p></div><span className="text-sm text-slate-300">{b.Status}</span></div>)}</div>
+          <div className="flex items-center justify-between gap-3"><h2 className="text-xl font-bold">الفروع</h2><Link href="/drvo/workspace/companies" className="text-sm text-cyan-300">تفاصيل الفروع ←</Link></div><div className="mt-4 space-y-3">{model.branches.map(b => <div key={b.LocationId} className="flex flex-wrap justify-between gap-3 rounded-xl border border-white/10 p-4"><div><p className="font-semibold">{b.BranchName || b.BranchCode}</p><p className="mt-1 text-xs text-slate-400">{b.BranchCode} · {b.Timezone}</p></div><span className="text-sm text-slate-300">{b.Status}</span></div>)}</div>
         </section>}
         {model.grants.includes(DRVO_PERMISSIONS.membersRead) && <section className="mt-6 rounded-2xl border border-white/10 bg-[#101a2c] p-6">
-          <h2 className="text-xl font-bold">الفريق والأدوار</h2><div className="mt-4 space-y-3">{model.members.map(m => <div key={m.MembershipId} className="flex flex-wrap justify-between gap-3 rounded-xl border border-white/10 p-4"><div><p className="font-semibold">{m.UserName || 'مستخدم'}</p><p className="mt-1 text-xs text-slate-400">{m.LoginName || '—'}</p></div><span className="text-sm text-cyan-200">{m.Roles || 'بدون دور DRVO'}</span></div>)}</div>
+          <div className="flex items-center justify-between gap-3"><h2 className="text-xl font-bold">الفريق والأدوار</h2><Link href="/drvo/workspace/users" className="text-sm text-cyan-300">تفاصيل المستخدمين ←</Link></div><div className="mt-4 space-y-3">{model.members.map(m => <div key={m.MembershipId} className="flex flex-wrap justify-between gap-3 rounded-xl border border-white/10 p-4"><div><p className="font-semibold">{m.UserName || 'مستخدم'}</p><p className="mt-1 text-xs text-slate-400">{m.LoginName || '—'}</p></div><span className="text-sm text-cyan-200">{m.Roles || 'بدون دور DRVO'}</span></div>)}</div>
         </section>}
         {model.grants.includes(DRVO_PERMISSIONS.modulesRead) && <section className="mt-6 rounded-2xl border border-white/10 bg-[#101a2c] p-6">
-          <h2 className="text-xl font-bold">الموديولات</h2><div className="mt-4 space-y-3">{model.modules.length ? model.modules.map(m => <div key={m.ModuleKey} className="flex justify-between gap-3 rounded-xl border border-white/10 p-4"><span>{m.ModuleKey}</span><span className="text-sm text-slate-400">{m.Status}</span></div>) : <p className="text-sm text-slate-400">لا توجد موديولات مفعّلة أو مسجلة لهذه الشركة.</p>}</div>
+          <div className="flex items-center justify-between gap-3"><h2 className="text-xl font-bold">الموديولات</h2><Link href="/drvo/workspace/modules" className="text-sm text-cyan-300">تفاصيل الاشتراكات ←</Link></div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">{Object.values(DRVO_MODULES).map(module => {
+            const entitlement = model.modules.find(m => m.moduleKey === module.key);
+            const active = canUseDrvoModule(model.tenant.TenantId, module.key, entitlement);
+            const label = active ? 'مفعّل' : entitlement?.status === 'suspended' ? 'موقوف' :
+              entitlement?.status === 'disabled' ? 'ملغي' : entitlement?.status === 'enabled' ? 'منتهي الصلاحية' : 'غير مشترك';
+            return <div key={module.key} className="flex items-center justify-between gap-3 rounded-xl border border-white/10 p-4">
+              <div><p className="font-semibold">{module.title}</p><p dir="ltr" className="mt-1 text-right text-xs text-slate-500">{module.key}</p></div>
+              <span className={active ? 'text-sm text-emerald-300' : 'text-sm text-slate-400'}>{label}</span>
+            </div>;
+          })}</div>
         </section>}
         <p className="mt-6 text-xs text-slate-500">عرض فقط. إدارة الاشتراكات التجارية تتم من حساب مسؤول المنصة، ولا يمنح دور owner صلاحية Platform Admin.</p>
       </>}
