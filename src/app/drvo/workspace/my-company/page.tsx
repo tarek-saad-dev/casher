@@ -60,7 +60,7 @@ export default async function MyCompanyPage() {
             WHERE m.TenantId = @tenantId ORDER BY u.UserName`)).recordset : [];
       const modules = canDrvo(actor, membership.tenantId, DRVO_PERMISSIONS.modulesRead)
         ? (await db.request().input('tenantId', sql.UniqueIdentifier, membership.tenantId)
-          .query<Module>('SELECT ModuleKey, Status, ValidUntilUtc FROM dbo.DrvoModuleEntitlement WHERE TenantId = @tenantId ORDER BY ModuleKey')).recordset : [];
+          .query<Module>('SELECT ModuleKey, Status, ValidUntilUtc FROM dbo.DrvoTenantModuleEntitlement WHERE TenantId = @tenantId ORDER BY ModuleKey')).recordset : [];
       model = { tenant, branches, members, modules, grants: [...actor.grants] };
     }
   } catch (error) {
