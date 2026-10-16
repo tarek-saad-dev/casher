@@ -119,7 +119,7 @@ export async function POST(req: NextRequest) {
       .input('hash', sql.NVarChar(50), passwordHash)
       .query<{ UserID: number }>(`INSERT dbo.TblUser
         (UserName, loginName, Password, UserLevel, ShiftID, CardNO, isDeleted)
-        OUTPUT INSERTED.UserID VALUES (@name, @login, @hash, N'employee', 1, N'', 0)`);
+        OUTPUT INSERTED.UserID VALUES (@name, @login, @hash, N'user', 1, N'', 0)`);
     const userId = inserted.recordset[0]?.UserID;
     if (!userId) throw Error('USER_INSERT_FAILED');
     await new sql.Request(tx)
