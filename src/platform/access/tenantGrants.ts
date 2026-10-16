@@ -37,8 +37,9 @@ export async function loadTenantPermissionActor(
   if (!result.recordset.length) {
     return { tenantId: context.tenantId, membershipId: context.membershipId, membershipActive: false, grants: [] };
   }
-  const grants = [...new Set(result.recordset
-    .map(row => row.PermissionKey)
+  const rows = result.recordset as Array<{ MembershipId: string; PermissionKey: string | null }>;
+  const grants: DrvoPermission[] = [...new Set(rows
+    .map((row) => row.PermissionKey)
     .filter((key): key is DrvoPermission => typeof key === 'string' && isDrvoPermission(key)))];
   return { tenantId: context.tenantId, membershipId: context.membershipId, membershipActive: true, grants };
 }
