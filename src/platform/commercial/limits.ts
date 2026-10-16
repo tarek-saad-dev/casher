@@ -25,7 +25,9 @@ export function evaluateLimit(limit: number | null, usage: number, adding = 1): 
 
 export type TenantUsage = { branches: number; users: number };
 
-/** Usage = active Locations; memberships whose legacy user is not deleted. */
+/** Usage = all provisioned Locations, including SETUP; memberships whose legacy user is not deleted.
+ * SETUP branches consume subscription capacity so a tenant cannot bypass limits by creating
+ * unlimited inactive branches before activation. Decommissioning must be explicit and audited. */
 export async function loadTenantUsage(
   ex: SqlExecutor,
   tenantId: string,
@@ -38,7 +40,7 @@ export async function loadTenantUsage(
     .query(`
       SELECT
         (SELECT COUNT(*) FROM dbo.Location ${hint}
-          WHERE TenantId = @tenantId AND Status = N'active') AS branches,
+          WHERE TenantId = @tenantId) AS branches,
         (SELECT COUNT(*) FROM dbo.TenantMembership m ${hint}
           JOIN dbo.TblUser u ON u.UserID = m.LegacyUserId
           WHERE m.TenantId = @tenantId AND ISNULL(u.isDeleted, 0) = 0) AS users;
