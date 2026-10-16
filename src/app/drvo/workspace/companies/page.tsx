@@ -4,8 +4,9 @@ import { ArrowRight, Building2, MapPin, ShieldCheck } from 'lucide-react';
 import { getSession } from '@/lib/session';
 import { getPool, sql } from '@/lib/db';
 import { resolveStaffTenantContextForRequest } from '@/platform/tenant/tenantContext';
-import { requireTenantPermission } from '@/platform/access/tenantGrants';
-import { DRVO_PERMISSIONS } from '@/platform/access/permissions';
+import { requireTenantPermission, loadTenantPermissionActor } from '@/platform/access/tenantGrants';
+import { DRVO_PERMISSIONS, canDrvo } from '@/platform/access/permissions';
+import CreateBranchForm from './CreateBranchForm';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,7 +33,9 @@ async function loadCompany(user: { UserID: number; ActiveBranchID: number; Tenan
   const locations = await db.request()
     .input('tenantId', sql.UniqueIdentifier, context.tenantId)
     .query<Location>(`SELECT LocationId, BranchCode, Timezone, Status, LegacyBranchId FROM dbo.Location WHERE TenantId = @tenantId ORDER BY BranchCode`);
-  return { company: tenant.recordset[0], locations: locations.recordset, activeLocationId: context.activeLocation.locationId };
+  const actor = await loadTenantPermissionActor(context, { executor: db });
+  return { company: tenant.recordset[0], locations: locations.recordset, activeLocationId: context.activeLocation.locationId,
+    canManage: canDrvo(actor, context.tenantId, DRVO_PERMISSIONS.locationsManage) };
 }
 
 export default async function CompaniesPage() {
@@ -57,9 +60,9 @@ export default async function CompaniesPage() {
           <div>
             <p className="text-xs font-semibold tracking-widest text-cyan-400">DRVO ERP / ORGANIZATION</p>
             <h1 className="mt-3 text-3xl font-black">الشركات والفروع</h1>
-            <p className="mt-3 text-sm leading-7 text-slate-400">عرض بيانات شركتك وفروعها من قاعدة البيانات المعزولة. التعديل والإضافة هيتفعّلوا بعد اعتماد الصلاحيات.</p>
+            <p className="mt-3 text-sm leading-7 text-slate-400">عرض فروع شركتك وإضافة فروع جديدة في وضع الإعداد، وفق حدود الاشتراك وصلاحياتك.</p>
           </div>
-          <span className="rounded-full border border-amber-300/20 bg-amber-300/10 px-4 py-2 text-xs font-bold text-amber-300">STAGING · قراءة فقط</span>
+          <span className="rounded-full border border-amber-300/20 bg-amber-300/10 px-4 py-2 text-xs font-bold text-amber-300">STAGING · إعداد الفروع</span>
         </div>
         {unavailable || !data ? (
           <section role="status" className="mt-8 rounded-2xl border border-amber-300/20 bg-[#101a2c] p-8">
@@ -78,6 +81,7 @@ export default async function CompaniesPage() {
                 </div>
               </div>
             </section>
+            {data.canManage && <CreateBranchForm />}
             <section className="mt-8">
               <div className="mb-5 flex items-center justify-between gap-4">
                 <h2 className="text-xl font-bold">الفروع <span className="mr-2 text-sm font-normal text-slate-500">({data.locations.length})</span></h2>
@@ -103,7 +107,7 @@ export default async function CompaniesPage() {
             </section>
           </>
         )}
-        <p className="mt-10 border-t border-white/10 pt-5 text-xs text-slate-500">لا يتم إنشاء أو تعديل بيانات الشركات والفروع من هذه الصفحة.</p>
+        <p className="mt-10 border-t border-white/10 pt-5 text-xs text-slate-500">إنشاء الفرع لا يعني تفعيله؛ التشغيل والحجوزات العامة والإشعارات تتطلب إجراءات تفعيل منفصلة.</p>
       </div>
     </main>
   );
