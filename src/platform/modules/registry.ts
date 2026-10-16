@@ -10,7 +10,7 @@ export const DRVO_MODULES = {
   inventory: { key: 'inventory', title: 'المخزون', description: 'المنتجات وحركات المخزون', category: 'operations' },
   treasury: { key: 'treasury', title: 'الخزينة', description: 'حركة النقدية والمصروفات', category: 'finance' },
   reports: { key: 'reports', title: 'التقارير والتحليلات', description: 'تقارير الأداء والتشغيل', category: 'insights' },
-  onlineBooking: { key: 'online_booking', title: 'الحجز الإلكتروني', description: 'واجهة حجز للعملاء', category: 'channels' },
+  online_booking: { key: 'online_booking', title: 'الحجز الإلكتروني', description: 'واجهة حجز للعملاء', category: 'channels' },
 } as const;
 
 export type DrvoModuleKey = keyof typeof DRVO_MODULES;
