@@ -78,6 +78,12 @@ export async function POST(req: NextRequest) {
     await tx.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
     begun = true;
     const tenant = context.tenantId;
+    const freshActor = await loadTenantPermissionActor(context, { executor: tx });
+    if (!canDrvo(freshActor, tenant, DRVO_PERMISSIONS.rolesManage) ||
+        !canDrvo(freshActor, tenant, DRVO_PERMISSIONS.membersManage)) {
+      await tx.rollback(); begun = false;
+      return NextResponse.json({ error: 'FORBIDDEN' }, { status: 403 });
+    }
     const target = await new sql.Request(tx)
       .input('tenantId', sql.UniqueIdentifier, tenant)
       .input('membershipId', sql.UniqueIdentifier, membershipId)
@@ -119,7 +125,7 @@ export async function POST(req: NextRequest) {
       .query<{ PermissionKey: string }>(`
         SELECT PermissionKey FROM dbo.DrvoTenantRolePermission
         WHERE TenantId = @tenantId AND RoleId = @roleId`);
-    if (permissions.recordset.some(p => !actor.grants.includes(p.PermissionKey))) {
+    if (permissions.recordset.some(p => !freshActor.grants.includes(p.PermissionKey))) {
       await tx.rollback(); begun = false;
       return NextResponse.json({ error: 'ROLE_EXCEEDS_ACTOR_GRANTS' }, { status: 403 });
     }
