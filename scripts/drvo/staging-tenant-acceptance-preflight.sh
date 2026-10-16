@@ -21,9 +21,9 @@ echo "PASS: staging environment safety"
 systemctl is-active --quiet drvo-erp-staging.service || { echo "FAIL: staging service inactive"; exit 4; }
 echo "PASS: staging service active"
 cd "$WORKDIR"
-echo "HEAD: $(git rev-parse --short HEAD)"
-echo "BRANCH: $(git branch --show-current)"
-[[ "$(git branch --show-current)" == feature/drvo-clinics-mvp ]] || exit 5
+echo "HEAD: $(sudo -u casher -H git -C "$WORKDIR" rev-parse --short HEAD)"
+echo "BRANCH: $(sudo -u casher -H git -C "$WORKDIR" branch --show-current)"
+[[ "$(sudo -u casher -H git -C "$WORKDIR" branch --show-current)" == feature/drvo-clinics-mvp ]] || exit 5
 export SQLCMDPASSWORD="${DB_PASSWORD:?DB_PASSWORD missing}"
 "$SQLCMD" -S "tcp:${DB_SERVER},${DB_PORT}" -U "$DB_USER" -d last132_agent -C -b \
   -i "$WORKDIR/docs/drvo/staging-tenant-operations-preflight.sql"
