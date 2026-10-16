@@ -10,6 +10,31 @@ IF DB_NAME() <> N'last132_agent'
 
 SELECT DB_NAME() AS DatabaseName, SYSUTCDATETIME() AS CheckedAtUtc;
 
+
+-- Required core tables and proposed RBAC/entitlement tables: presence is
+-- reported explicitly, including missing tables (which column listings omit).
+SELECT v.TableName,
+       CASE WHEN OBJECT_ID(N'dbo.' + v.TableName, N'U') IS NULL
+            THEN N'MISSING' ELSE N'PRESENT' END AS TableState
+FROM (VALUES
+  (N'Tenant'), (N'TenantMembership'), (N'Location'),
+  (N'DrvoTenantRole'), (N'DrvoTenantRolePermission'),
+  (N'DrvoTenantRoleAssignment'), (N'DrvoTenantModuleEntitlement')
+) AS v(TableName)
+ORDER BY v.TableName;
+
+-- Validate the columns assumed by the role-assignment composite FK.
+-- Dynamic execution is intentionally avoided: this query is safe even if
+-- TenantMembership or its columns are absent.
+SELECT v.ColumnName,
+       CASE WHEN COL_LENGTH(N'dbo.TenantMembership', v.ColumnName) IS NULL
+            THEN N'MISSING' ELSE N'PRESENT' END AS ColumnState
+FROM (VALUES (N'TenantId'), (N'MembershipId'), (N'LegacyUserId')) AS v(ColumnName);
+
+-- A separate follow-up query for duplicate (TenantId, MembershipId) pairs
+-- is required ONLY after confirming both columns exist. This avoids making
+-- this preflight fail when the schema is not ready.
+
 -- Inspect actual objects before applying any schema proposal.
 SELECT s.name AS SchemaName, t.name AS TableName,
        c.column_id AS ColumnOrdinal, c.name AS ColumnName,
