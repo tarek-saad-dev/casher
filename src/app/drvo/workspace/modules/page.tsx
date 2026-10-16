@@ -4,7 +4,8 @@ import { ArrowRight, Blocks, LockKeyhole, ShieldCheck } from 'lucide-react';
 import { getSession } from '@/lib/session';
 import { getPool } from '@/lib/db';
 import { resolveStaffTenantContextForRequest } from '@/platform/tenant/tenantContext';
-import { DRVO_MODULES } from '@/platform/modules/registry';
+import { DRVO_MODULES, canUseDrvoModule } from '@/platform/modules/registry';
+import { listTenantModuleEntitlements } from '@/platform/modules/tenantEntitlements';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,6 +15,7 @@ export default async function DrvoModulesPage() {
   if (!user) redirect('/login');
 
   let tenantCode: string | null = null;
+  let entitlements: Awaited<ReturnType<typeof listTenantModuleEntitlements>> | null = null;
   try {
     if (user.TenantId && user.MembershipId) {
       const db = await getPool();
@@ -24,6 +26,11 @@ export default async function DrvoModulesPage() {
       }, { executor: db });
       if (context.membershipId.toLowerCase() === user.MembershipId.toLowerCase()) {
         tenantCode = context.tenantCode;
+        try {
+          entitlements = await listTenantModuleEntitlements(context, { executor: db });
+        } catch {
+          entitlements = null;
+        }
       }
     }
   } catch {
