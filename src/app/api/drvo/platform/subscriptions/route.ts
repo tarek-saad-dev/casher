@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
         (record.validUntilUtc != null && typeof record.validUntilUtc !== 'string')) {
       throw new Error('INVALID_JSON_BODY');
     }
-    input = validateCommercialEntitlementCommand(record as CommercialEntitlementCommand);
+    // Validate the wire payload, but pass the original shape to the service.\n    // The validator normalizes non-expiring actions to validUntilUtc:null;\n    // re-validating that normalized value would reject suspend/cancel.\n    validateCommercialEntitlementCommand(record as CommercialEntitlementCommand);\n    input = record as CommercialEntitlementCommand;
   } catch {
     return NextResponse.json({ error: 'INVALID_COMMERCIAL_COMMAND' }, { status: 400 });
   }
