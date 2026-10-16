@@ -3,7 +3,8 @@ import { redirect } from 'next/navigation';
 import { ArrowRight, LockKeyhole, ShieldCheck, UserRound, Users } from 'lucide-react';
 import { getSession } from '@/lib/session';
 import { getPool, sql } from '@/lib/db';
-import { getUserAccess } from '@/lib/permissions-server';
+import { requireTenantPermission, DrvoAccessDeniedError } from '@/platform/access/tenantGrants';
+import { DRVO_PERMISSIONS } from '@/platform/access/permissions';
 import { resolveStaffTenantContextForRequest } from '@/platform/tenant/tenantContext';
 
 export const dynamic = 'force-dynamic';
@@ -31,11 +32,13 @@ async function loadMembers(user: {
   }, { executor: db });
   if (context.membershipId.toLowerCase() !== user.MembershipId.toLowerCase()) return null;
 
-  // Membership is not itself a permission to list other users.
-  // Legacy administrators / super admins are the only readers until
-  // tenant-scoped administrative roles are introduced.
-  const access = await getUserAccess(user.UserID, user.UserName, user.UserLevel);
-  if (user.UserLevel !== 'admin' && !access.isSuperAdmin) return { forbidden: true as const };
+  // Legacy admin/super-admin never authorizes SaaS membership reads.
+  try {
+    await requireTenantPermission(context, DRVO_PERMISSIONS.membersRead, { executor: db });
+  } catch (error) {
+    if (error instanceof DrvoAccessDeniedError) return { forbidden: true as const };
+    throw error;
+  }
 
   const members = await db.request()
     .input('tenantId', sql.UniqueIdentifier, context.tenantId)
@@ -117,7 +120,7 @@ export default async function DrvoUsersPage() {
           <section role="status" className="mt-8 rounded-2xl border border-white/10 bg-[#101a2c] p-8">
             <LockKeyhole className="size-7 text-amber-300" />
             <h2 className="mt-4 text-lg font-bold">ليس لديك صلاحية عرض المستخدمين</h2>
-            <p className="mt-2 text-sm text-slate-400">الصفحة متاحة للمسؤولين فقط خلال المرحلة الحالية.</p>
+            <p className="mt-2 text-sm text-slate-400">تحتاج صلاحية members.read داخل الشركة الحالية.</p>
           </section>
         ) : (
           <>
