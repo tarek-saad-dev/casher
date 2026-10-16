@@ -36,6 +36,28 @@ export async function seedTenantOwnerRoleInTransaction(
         VALUES (@tenantId, @roleId, @permission)
       `);
   }
+  // Create the remaining tenant-local role catalog during onboarding.
+  // No memberships are automatically granted these roles.
+  for (const key of ['admin', 'manager', 'staff', 'viewer'] as const) {
+    const template = DRVO_ROLE_TEMPLATES[key];
+    const result = await new sql.Request(tx)
+      .input('tenantId', sql.UniqueIdentifier, tenantId)
+      .input('roleKey', sql.NVarChar(64), key)
+      .input('displayName', sql.NVarChar(120), template.label)
+      .query<{ RoleId: string }>(`INSERT INTO dbo.DrvoTenantRole (TenantId, RoleKey, DisplayName, IsActive)
+        OUTPUT INSERTED.RoleId VALUES (@tenantId, @roleKey, @displayName, 1)`);
+    const seededRoleId = result.recordset[0]?.RoleId;
+    if (!seededRoleId) throw Error('DRVO_ROLE_CATALOG_INCOMPLETE');
+    for (const permission of template.permissions) {
+      await new sql.Request(tx)
+        .input('tenantId', sql.UniqueIdentifier, tenantId)
+        .input('roleId', sql.UniqueIdentifier, seededRoleId)
+        .input('permission', sql.NVarChar(100), permission)
+        .query(`INSERT INTO dbo.DrvoTenantRolePermission (TenantId, RoleId, PermissionKey)
+          VALUES (@tenantId, @roleId, @permission)`);
+    }
+  }
+
   await new sql.Request(tx)
     .input('tenantId', sql.UniqueIdentifier, tenantId)
     .input('roleId', sql.UniqueIdentifier, roleId)
