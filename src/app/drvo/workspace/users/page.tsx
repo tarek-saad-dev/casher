@@ -8,6 +8,7 @@ import { DRVO_PERMISSIONS } from '@/platform/access/permissions';
 import { loadTenantPermissionActor } from '@/platform/access/tenantGrants';
 import { canDrvo } from '@/platform/access/permissions';
 import RoleAssignmentControl from './RoleAssignmentControl';
+import CreateMemberForm from './CreateMemberForm';
 import { resolveStaffTenantContextForRequest } from '@/platform/tenant/tenantContext';
 
 export const dynamic = 'force-dynamic';
@@ -71,6 +72,13 @@ async function loadMembers(user: {
     const key = role.MembershipId.toLowerCase();
     roleMap.set(key, [...(roleMap.get(key) ?? []), role]);
   }
+  const canInvite = canDrvo(actor, context.tenantId, DRVO_PERMISSIONS.membersInvite) && canManage;
+  const branches = canInvite ? await db.request()
+    .input('tenantId', sql.UniqueIdentifier, context.tenantId)
+    .query<{ LegacyBranchId: number; BranchCode: string; BranchName: string }>(`SELECT l.LegacyBranchId, l.BranchCode, b.BranchName
+      FROM dbo.Location l JOIN dbo.TblBranch b ON b.BranchID = l.LegacyBranchId
+      WHERE l.TenantId = @tenantId AND l.Status = N'active' AND b.IsActive = 1
+      ORDER BY b.BranchName`) : null;
   const available = canManage ? await db.request().input('tenantId', sql.UniqueIdentifier, context.tenantId)
     .query<AssignableRole>(`SELECT RoleId, RoleKey, DisplayName FROM dbo.DrvoTenantRole
       WHERE TenantId = @tenantId AND IsActive = 1 AND RoleKey <> N'owner'
@@ -80,6 +88,8 @@ async function loadMembers(user: {
     forbidden: false as const,
     tenantCode: context.tenantCode,
     canManage,
+    canInvite,
+    branches: (branches?.recordset ?? []).map(b => ({ id: b.LegacyBranchId, name: b.BranchName || b.BranchCode })),
     assignableRoles: (available?.recordset ?? []).map(role => ({ id: role.RoleId, key: role.RoleKey, name: role.DisplayName })),
     members: members.recordset.map(member => ({
       id: member.MembershipId,
@@ -137,6 +147,8 @@ export default async function DrvoUsersPage() {
               <div className="flex items-center gap-3"><Users className="size-6 text-cyan-300" /><div><p className="text-xs text-slate-400">الشركة</p><p className="mt-1 font-bold">{data.tenantCode}</p></div></div>
               <div className="text-sm text-slate-300">{data.members.length} عضوية</div>
             </section>
+            {data.canInvite && data.assignableRoles.length > 0 && data.branches.length > 0 && <CreateMemberForm branches={data.branches} roles={data.assignableRoles} />}
+            {data.canInvite && data.assignableRoles.length === 0 && <p className="mt-5 text-sm text-amber-300">يلزم تجهيز أدوار DRVO للشركة قبل إضافة موظفين.</p>}
             {data.members.length === 0 ? (
               <div className="mt-6 rounded-2xl border border-white/10 bg-[#101a2c] p-8 text-sm text-slate-400">لا توجد عضويات مسجلة للشركة.</div>
             ) : (
