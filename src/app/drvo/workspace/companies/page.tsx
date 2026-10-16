@@ -91,7 +91,7 @@ export default async function CompaniesPage() {
                 <div className="rounded-2xl border border-white/10 bg-[#101a2c] p-7 text-sm text-slate-400">لا توجد فروع مسجلة للشركة.</div>
               ) : (
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  {data.locations.map((location) => (
+                  {data.locations.map((location: Location) => (
                     <article key={location.LocationId} className="rounded-2xl border border-white/10 bg-[#101a2c] p-6">
                       <div className="flex items-center justify-between gap-3">
                         <div className="grid size-11 place-items-center rounded-xl bg-cyan-300/10 text-cyan-300"><MapPin className="size-5" /></div>
