@@ -47,7 +47,8 @@ export function proxy(req: NextRequest) {
       (pathname === '/api/auth/login' && ['GET', 'POST'].includes(req.method)) ||
       (pathname === '/api/auth/session' && ['GET', 'DELETE'].includes(req.method)) ||
       (pathname === '/api/operations/bootstrap' && req.method === 'GET') ||
-      (pathname === '/api/drvo/platform/subscriptions' && req.method === 'POST');
+      (pathname === '/api/drvo/platform/subscriptions' && req.method === 'POST') ||
+      (pathname === '/api/drvo/platform/tenants' && req.method === 'POST');
     if ((pathname.startsWith('/api/') && !stagingApiAllowed) ||
         (!pathname.startsWith('/api/') && !['GET', 'HEAD', 'OPTIONS'].includes(req.method))) {
       return NextResponse.json({ error: 'Staging preview API disabled until isolation is verified' }, { status: 503 });
