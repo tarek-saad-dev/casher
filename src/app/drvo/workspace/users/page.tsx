@@ -72,17 +72,32 @@ async function loadMembers(user: {
     const key = role.MembershipId.toLowerCase();
     roleMap.set(key, [...(roleMap.get(key) ?? []), role]);
   }
-  const canInvite = canDrvo(actor, context.tenantId, DRVO_PERMISSIONS.membersInvite) && canManage;
+  const canInvite = canDrvo(actor, context.tenantId, DRVO_PERMISSIONS.membersInvite) &&
+    canDrvo(actor, context.tenantId, DRVO_PERMISSIONS.membersManage);
   const branches = canInvite ? await db.request()
     .input('tenantId', sql.UniqueIdentifier, context.tenantId)
     .query<{ LegacyBranchId: number; BranchCode: string; BranchName: string }>(`SELECT l.LegacyBranchId, l.BranchCode, b.BranchName
       FROM dbo.Location l JOIN dbo.TblBranch b ON b.BranchID = l.LegacyBranchId
       WHERE l.TenantId = @tenantId AND l.Status = N'active' AND b.IsActive = 1
       ORDER BY b.BranchName`) : null;
-  const available = canManage ? await db.request().input('tenantId', sql.UniqueIdentifier, context.tenantId)
+  const available = (canManage || canInvite) ? await db.request().input('tenantId', sql.UniqueIdentifier, context.tenantId)
     .query<AssignableRole>(`SELECT RoleId, RoleKey, DisplayName FROM dbo.DrvoTenantRole
       WHERE TenantId = @tenantId AND IsActive = 1 AND RoleKey <> N'owner'
       ORDER BY RoleKey`) : null;
+
+  const rolePermissions = new Map<string, string[]>();
+  if (available?.recordset.length) {
+    const permissions = await db.request()
+      .input('tenantId', sql.UniqueIdentifier, context.tenantId)
+      .query<{ RoleId: string; PermissionKey: string }>(`SELECT p.RoleId, p.PermissionKey
+        FROM dbo.DrvoTenantRolePermission p
+        JOIN dbo.DrvoTenantRole r ON r.TenantId = p.TenantId AND r.RoleId = p.RoleId
+        WHERE p.TenantId = @tenantId AND r.IsActive = 1 AND r.RoleKey <> N'owner'`);
+    for (const permission of permissions.recordset) {
+      const key = permission.RoleId.toLowerCase();
+      rolePermissions.set(key, [...(rolePermissions.get(key) ?? []), permission.PermissionKey]);
+    }
+  }
 
   return {
     forbidden: false as const,
@@ -90,7 +105,10 @@ async function loadMembers(user: {
     canManage,
     canInvite,
     branches: (branches?.recordset ?? []).map(b => ({ id: b.LegacyBranchId, name: b.BranchName || b.BranchCode })),
-    assignableRoles: (available?.recordset ?? []).map(role => ({ id: role.RoleId, key: role.RoleKey, name: role.DisplayName })),
+    assignableRoles: (available?.recordset ?? []).filter(role => {
+      const templatePermissions = rolePermissions.get(role.RoleId.toLowerCase()) ?? [];
+      return templatePermissions.every(permission => actor.grants.includes(permission));
+    }).map(role => ({ id: role.RoleId, key: role.RoleKey, name: role.DisplayName })),
     members: members.recordset.map(member => ({
       id: member.MembershipId,
       name: member.UserName?.trim() || 'عضوية بدون مستخدم مرتبط',
