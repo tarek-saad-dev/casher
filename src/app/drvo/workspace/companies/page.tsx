@@ -4,6 +4,8 @@ import { ArrowRight, Building2, MapPin, ShieldCheck } from 'lucide-react';
 import { getSession } from '@/lib/session';
 import { getPool, sql } from '@/lib/db';
 import { resolveStaffTenantContextForRequest } from '@/platform/tenant/tenantContext';
+import { requireTenantPermission } from '@/platform/access/tenantGrants';
+import { DRVO_PERMISSIONS } from '@/platform/access/permissions';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,6 +23,8 @@ async function loadCompany(user: { UserID: number; ActiveBranchID: number; Tenan
     preferredTenantId: user.TenantId,
   }, { executor: db });
   if (context.membershipId.toLowerCase() !== user.MembershipId.toLowerCase()) return null;
+  await requireTenantPermission(context, DRVO_PERMISSIONS.organizationRead, { executor: db });
+  await requireTenantPermission(context, DRVO_PERMISSIONS.locationsRead, { executor: db });
   const tenant = await db.request()
     .input('tenantId', sql.UniqueIdentifier, context.tenantId)
     .query<Company>(`SELECT TenantId, Code, Status FROM dbo.Tenant WHERE TenantId = @tenantId AND Status = N'active'`);
@@ -70,7 +74,7 @@ export default async function CompaniesPage() {
                 <div className="min-w-0">
                   <p className="text-xs text-slate-400">الشركة الحالية</p>
                   <h2 className="mt-2 break-words text-2xl font-bold">{data.company.Code}</h2>
-                  <p className="mt-2 inline-flex items-center gap-2 text-xs text-emerald-300"><ShieldCheck className="size-4" /> عضوية نشطة ومتحقق منها</p>
+                  <p className="mt-2 inline-flex items-center gap-2 text-xs text-emerald-300"><ShieldCheck className="size-4" /> عضوية وصلاحيات عرض متحقق منها</p>
                 </div>
               </div>
             </section>
