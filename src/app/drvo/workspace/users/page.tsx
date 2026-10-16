@@ -104,12 +104,12 @@ async function loadMembers(user: {
     tenantCode: context.tenantCode,
     canManage,
     canInvite,
-    branches: (branches?.recordset ?? []).map(b => ({ id: b.LegacyBranchId, name: b.BranchName || b.BranchCode })),
-    assignableRoles: (available?.recordset ?? []).filter(role => {
+    branches: (branches?.recordset ?? []).map((b: { LegacyBranchId: number; BranchCode: string; BranchName: string }) => ({ id: b.LegacyBranchId, name: b.BranchName || b.BranchCode })),
+    assignableRoles: (available?.recordset ?? []).filter((role: AssignableRole) => {
       const templatePermissions = rolePermissions.get(role.RoleId.toLowerCase()) ?? [];
       return templatePermissions.every(permission => actor.grants.includes(permission));
-    }).map(role => ({ id: role.RoleId, key: role.RoleKey, name: role.DisplayName })),
-    members: members.recordset.map(member => ({
+    }).map((role: AssignableRole) => ({ id: role.RoleId, key: role.RoleKey, name: role.DisplayName })),
+    members: members.recordset.map((member: MemberRow) => ({
       id: member.MembershipId,
       name: member.UserName?.trim() || 'عضوية بدون مستخدم مرتبط',
       login: member.loginName?.trim() || null,
@@ -171,7 +171,7 @@ export default async function DrvoUsersPage() {
               <div className="mt-6 rounded-2xl border border-white/10 bg-[#101a2c] p-8 text-sm text-slate-400">لا توجد عضويات مسجلة للشركة.</div>
             ) : (
               <section aria-label="أعضاء الشركة" className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                {data.members.map(member => (
+                {data.members.map((member: { id: string; name: string; login: string | null; level: string | null; active: boolean; roles: RoleRow[]; self: boolean }) => (
                   <article key={member.id} className="rounded-2xl border border-white/10 bg-[#101a2c] p-6">
                     <div className="flex items-center justify-between gap-3">
                       <div className="grid size-11 place-items-center rounded-xl bg-cyan-300/10 text-cyan-300"><UserRound className="size-5" /></div>
@@ -182,10 +182,10 @@ export default async function DrvoUsersPage() {
                     <div className="mt-5 border-t border-white/10 pt-4">
                       <p className="mb-2 text-xs text-slate-500">الأدوار الحالية</p>
                       <div className="flex flex-wrap gap-2">
-                        {member.roles.length ? member.roles.map(role => <span key={role.RoleId} className="rounded-lg border border-cyan-300/15 bg-cyan-300/5 px-2.5 py-1.5 text-xs text-cyan-200">{role.DisplayName}</span>) : <span className="text-xs text-slate-500">لا توجد أدوار مسجلة</span>}
+                        {member.roles.length ? member.roles.map((role: RoleRow) => <span key={role.RoleId} className="rounded-lg border border-cyan-300/15 bg-cyan-300/5 px-2.5 py-1.5 text-xs text-cyan-200">{role.DisplayName}</span>) : <span className="text-xs text-slate-500">لا توجد أدوار مسجلة</span>}
                       </div>
                     </div>
-                    {data.canManage && !member.self && member.active && !member.roles.some(role => role.RoleKey === 'owner') && data.assignableRoles.length > 0 && <RoleAssignmentControl membershipId={member.id} roleId={member.roles.length === 1 ? member.roles[0].RoleId : null} roles={data.assignableRoles} />}
+                    {data.canManage && !member.self && member.active && !member.roles.some((role: RoleRow) => role.RoleKey === 'owner') && data.assignableRoles.length > 0 && <RoleAssignmentControl membershipId={member.id} roleId={member.roles.length === 1 ? member.roles[0].RoleId : null} roles={data.assignableRoles} />}
                   </article>
                 ))}
               </section>
