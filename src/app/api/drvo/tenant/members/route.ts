@@ -152,7 +152,15 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     if (begun) { try { await tx.rollback(); } catch { /* best effort */ } }
     if (error instanceof CommercialError) return fail(error.code, error.status);
-    console.error('[drvo/tenant/members] create failed', error instanceof Error ? error.name : 'unknown');
+    // Log SQL diagnostics without SQL text, parameters, user data, or credentials.
+    const dbError = error as { name?: string; code?: string; number?: number; state?: number; class?: number; originalError?: { number?: number; state?: number; class?: number } };
+    console.error('[drvo/tenant/members] create failed', {
+      name: dbError?.name ?? 'unknown',
+      code: typeof dbError?.code === 'string' ? dbError.code : undefined,
+      sqlNumber: dbError?.number ?? dbError?.originalError?.number,
+      sqlState: dbError?.state ?? dbError?.originalError?.state,
+      sqlClass: dbError?.class ?? dbError?.originalError?.class,
+    });
     return fail('MEMBER_CREATE_FAILED', 503);
   }
 }
