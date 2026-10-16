@@ -18,7 +18,7 @@ export default async function PlatformTenantsPage() {
     <main dir="rtl" className="h-full min-h-0 overflow-y-auto bg-[#080e1a] px-5 py-8 text-slate-100 sm:px-8">
       <div className="mx-auto max-w-5xl">
         <Link href="/drvo/workspace" className="text-sm text-cyan-300">العودة للوحة التحكم</Link>
-        <h1 className="mt-8 text-3xl font-black">دليل شركات المنصة</h1>
+        <div className="mt-8 flex flex-wrap items-center justify-between gap-4"><h1 className="text-3xl font-black">دليل شركات المنصة</h1><Link href="/drvo/workspace/platform-tenants/new" className="rounded-xl bg-cyan-300 px-5 py-3 text-sm font-bold text-slate-950">+ إنشاء شركة</Link></div>
         <p className="mt-3 text-sm text-slate-400">Staging — عرض الشركات بصلاحية Platform Admin المستقلة</p>
         {failed ? <p role="alert" className="mt-8 rounded-xl border border-rose-400/30 p-5 text-rose-300">غير مصرح أو تعذر التحقق من بيانات الشركات.</p> : (
           <div className="mt-8 overflow-x-auto rounded-2xl border border-white/10 bg-[#101a2c]">
