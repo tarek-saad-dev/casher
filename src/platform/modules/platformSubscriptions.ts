@@ -33,7 +33,7 @@ export async function listPlatformSubscriptions(authenticatedUserId: number): Pr
     LEFT JOIN dbo.DrvoTenantModuleEntitlement AS e ON e.TenantId = t.TenantId
     ORDER BY t.Code, e.ModuleKey
   `);
-  return result.recordset.map(row => ({
+  return result.recordset.map((row: { TenantId: string; Code: string; Name: string; TenantStatus: string; ModuleKey: string | null; EntitlementStatus: string | null; ValidUntilUtc: Date | null }) => ({
     tenantId: String(row.TenantId), tenantCode: row.Code, tenantName: row.Name,
     tenantStatus: row.TenantStatus, moduleKey: row.ModuleKey,
     status: row.EntitlementStatus,
