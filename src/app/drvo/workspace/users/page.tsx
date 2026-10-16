@@ -107,6 +107,7 @@ export default async function DrvoUsersPage() {
           </div>
           <span className="rounded-full border border-amber-300/20 bg-amber-300/10 px-4 py-2 text-xs font-bold text-amber-300">STAGING · قراءة فقط</span>
         </div>
+        <div className="mt-6"><Link href="/drvo/workspace/roles" className="inline-flex items-center gap-2 rounded-xl border border-cyan-300/20 bg-cyan-300/10 px-4 py-2.5 text-sm font-semibold text-cyan-200 hover:bg-cyan-300/15"><LockKeyhole className="size-4" /> استعراض قوالب صلاحيات DRVO</Link></div>
         {unavailable || !data ? (
           <section role="status" className="mt-8 rounded-2xl border border-amber-300/20 bg-[#101a2c] p-8">
             <h2 className="text-lg font-bold">بيانات المستخدمين غير متاحة</h2>
