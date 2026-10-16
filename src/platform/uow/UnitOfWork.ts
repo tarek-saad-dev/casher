@@ -1,5 +1,6 @@
 import 'server-only';
 import { getPool, sql } from '@/lib/db';
+import type { Transaction } from 'mssql';
 import type { UnitOfWorkContext, UnitOfWorkFn } from './types';
 
 /**
@@ -29,7 +30,7 @@ export async function withUnitOfWork<T>(fn: UnitOfWorkFn<T>): Promise<T> {
 }
 
 export async function withExistingTransaction<T>(
-  transaction: sql.Transaction,
+  transaction: Transaction,
   fn: UnitOfWorkFn<T>,
 ): Promise<T> {
   const ctx: UnitOfWorkContext = {
