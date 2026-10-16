@@ -38,7 +38,13 @@ export async function listTenantModuleEntitlements(
       WHERE e.TenantId = @tenantId
     `);
 
-  return result.recordset
+  const rows = result.recordset as Array<{
+    TenantId: string;
+    ModuleKey: string;
+    Status: string;
+    ValidUntilUtc: Date | string | null;
+  }>;
+  return rows
     .filter(row =>
       String(row.TenantId).toLowerCase() === context.tenantId.toLowerCase() &&
       isDrvoModuleKey(row.ModuleKey) &&
