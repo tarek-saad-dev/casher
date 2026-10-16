@@ -15,7 +15,7 @@ const navigation = [
   { label: 'الشركات والفروع', icon: Building2, href: '/drvo/workspace/companies' },
   { label: 'المستخدمون والصلاحيات', icon: Users, href: '/drvo/workspace/users' },
   { label: 'الوحدات والتطبيقات', icon: Blocks, href: '/drvo/workspace/modules' },
-  { label: 'الاشتراكات', icon: CreditCard },
+  { label: 'الاشتراكات', icon: CreditCard, href: '/drvo/workspace/subscriptions' },
   { label: 'التقارير', icon: ChartNoAxesCombined },
 ];
 
