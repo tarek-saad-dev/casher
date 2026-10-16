@@ -8,8 +8,8 @@ import { DRVO_MODULES } from '@/platform/modules/registry';
 
 export const dynamic = 'force-dynamic';
 
-type LocationRow = { LocationId: string; BranchCode: string; Timezone: string; Status: string; LegacyBranchId: number | null };
-type MemberRow = { MembershipId: string; LegacyUserId: number; UserName: string | null; LoginName: string | null };
+type LocationRow = { LocationId: string; BranchCode: string; BranchName: string | null; Timezone: string; Status: string; LegacyBranchId: number | null };
+type MemberRow = { MembershipId: string; LegacyUserId: number; UserName: string | null; LoginName: string | null; LegacyRoles: string | null; DrvoRoleCount: number; DrvoPermissionCount: number };
 type TenantRow = { TenantId: string; Code: string; Name: string; Status: string; DefaultTimezone: string };
 
 export default async function PlatformTenantDetail({ params }: { params: Promise<{ tenantId: string }> }) {
@@ -39,9 +39,20 @@ export default async function PlatformTenantDetail({ params }: { params: Promise
       const tenant = tenantResult.recordset[0];
       if (!tenant) notFound();
       const locations = await pool.request().input('tenantId', sql.UniqueIdentifier, tenantId)
-        .query<LocationRow>('SELECT LocationId, BranchCode, Timezone, Status, LegacyBranchId FROM dbo.Location WHERE TenantId = @tenantId ORDER BY BranchCode');
+        .query<LocationRow>('SELECT l.LocationId, l.BranchCode, b.BranchName, l.Timezone, l.Status, l.LegacyBranchId FROM dbo.Location AS l LEFT JOIN dbo.TblBranch AS b ON b.BranchID = l.LegacyBranchId WHERE l.TenantId = @tenantId ORDER BY l.BranchCode');
       const members = await pool.request().input('tenantId', sql.UniqueIdentifier, tenantId)
-        .query<MemberRow>(`SELECT m.MembershipId, m.LegacyUserId, u.UserName, u.loginName AS LoginName
+        .query<MemberRow>(`SELECT m.MembershipId, m.LegacyUserId, u.UserName, u.loginName AS LoginName,
+            (SELECT STRING_AGG(CONVERT(nvarchar(max), r.RoleKey), N', ')
+             FROM dbo.TblUserRoles AS ur INNER JOIN dbo.TblRoles AS r ON r.RoleID = ur.RoleID
+             WHERE ur.UserID = m.LegacyUserId) AS LegacyRoles,
+            (SELECT COUNT(DISTINCT a.RoleId) FROM dbo.DrvoTenantRoleAssignment AS a
+             INNER JOIN dbo.DrvoTenantRole AS role ON role.TenantId = a.TenantId AND role.RoleId = a.RoleId AND role.IsActive = 1
+             WHERE a.TenantId = m.TenantId AND a.MembershipId = m.MembershipId) AS DrvoRoleCount,
+            (SELECT COUNT(DISTINCT rp.PermissionKey)
+             FROM dbo.DrvoTenantRoleAssignment AS a
+             INNER JOIN dbo.DrvoTenantRole AS role ON role.TenantId = a.TenantId AND role.RoleId = a.RoleId AND role.IsActive = 1
+             INNER JOIN dbo.DrvoTenantRolePermission AS rp ON rp.TenantId = role.TenantId AND rp.RoleId = role.RoleId
+             WHERE a.TenantId = m.TenantId AND a.MembershipId = m.MembershipId) AS DrvoPermissionCount
           FROM dbo.TenantMembership AS m
           LEFT JOIN dbo.TblUser AS u ON u.UserID = m.LegacyUserId
           WHERE m.TenantId = @tenantId ORDER BY m.LegacyUserId`);
@@ -71,15 +82,19 @@ export default async function PlatformTenantDetail({ params }: { params: Promise
         <section className="mt-7 rounded-2xl border border-white/10 bg-[#101a2c] p-6">
           <h2 className="text-xl font-bold">الفروع</h2>
           <div className="mt-4 space-y-3">{data.locations.map(branch => <div key={branch.LocationId} className="flex flex-wrap justify-between gap-2 rounded-xl border border-white/10 p-4">
-            <div><p className="font-semibold">{branch.BranchCode}</p><p className="mt-1 text-xs text-slate-400">{branch.Timezone} · Branch ID: {branch.LegacyBranchId ?? '—'}</p></div><span className="text-sm text-slate-300">{branch.Status}</span>
+            <div><p className="font-semibold">{branch.BranchName || branch.BranchCode}</p><p className="mt-1 text-xs text-slate-400">{branch.BranchCode}</p><p className="mt-1 text-xs text-slate-400">{branch.Timezone} · Branch ID: {branch.LegacyBranchId ?? '—'}</p></div><span className="text-sm text-slate-300">{branch.Status}</span>
           </div>)}{!data.locations.length && <p className="text-sm text-slate-400">لا توجد فروع.</p>}</div>
         </section>
         <section className="mt-7 rounded-2xl border border-white/10 bg-[#101a2c] p-6">
           <h2 className="text-xl font-bold">المستخدمون والمالك</h2>
           <div className="mt-4 space-y-3">{data.members.map(member => <div key={member.MembershipId} className="flex flex-wrap justify-between gap-2 rounded-xl border border-white/10 p-4">
-            <div><p className="font-semibold">{member.UserName || 'مستخدم'}</p><p dir="ltr" className="mt-1 text-left text-xs text-slate-400">{member.LoginName || '—'}</p></div><span className="text-xs text-slate-500">User ID: {member.LegacyUserId}</span>
+            <div><p className="font-semibold">{member.UserName || 'مستخدم'}</p><p dir="ltr" className="mt-1 text-left text-xs text-slate-400">{member.LoginName || '—'}</p></div><div className="text-xs text-slate-400">
+              <p>Legacy role: {member.LegacyRoles || '—'}</p>
+              <p className={member.DrvoPermissionCount > 0 ? 'mt-1 text-emerald-300' : 'mt-1 text-amber-300'}>DRVO roles: {member.DrvoRoleCount} · permissions: {member.DrvoPermissionCount}</p>
+              <p className="mt-1 text-slate-500">User ID: {member.LegacyUserId}</p>
+            </div>
           </div>)}{!data.members.length && <p className="text-sm text-slate-400">لا توجد عضويات.</p>}</div>
-          <p className="mt-4 text-xs text-slate-500">القائمة تعرض العضويات، ولا تفترض أن أول مستخدم هو المالك دون سجل دور صريح.</p>
+          <p className="mt-4 text-xs text-slate-500">صلاحيات Legacy لا تمنح تلقائيًا صلاحيات DRVO. أي عضوية بدون DRVO grants لن تتمكن من تشغيل الموديولات المحمية، حتى لو كان دورها القديم admin.</p>
         </section>
         <section className="mt-7 rounded-2xl border border-white/10 bg-[#101a2c] p-6">
           <h2 className="text-xl font-bold">حالة الموديولات</h2>
