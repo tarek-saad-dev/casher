@@ -6,6 +6,7 @@ import { ensureLegacyIdMapInTransaction } from '@/platform/onboarding/legacyIdMa
 import { resolveStaffTenantContextForRequest } from '@/platform/tenant/tenantContext';
 import { requireTenantPermission } from '@/platform/access/tenantGrants';
 import { DRVO_PERMISSIONS } from '@/platform/access/permissions';
+import { CommercialError } from '@/platform/commercial/errors';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -65,6 +66,8 @@ export async function POST(req: NextRequest) {
     await requireTenantPermission(context, DRVO_PERMISSIONS.locationsManage, { executor: db });
     await tx.begin(sql.ISOLATION_LEVEL.SERIALIZABLE); begun = true;
     const tenantId = context.tenantId;
+    // Recheck permission inside the transaction to avoid using stale pre-transaction grants.
+    await requireTenantPermission(context, DRVO_PERMISSIONS.locationsManage, { executor: tx });
     await assertCanAddBranch(tx, tenantId);
     const duplicate = await new sql.Request(tx)
       .input('code', sql.NVarChar(30), code)
@@ -113,6 +116,7 @@ export async function POST(req: NextRequest) {
       { status: 201, headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
     if (begun) { try { await tx.rollback(); } catch { /* best effort */ } }
+    if (error instanceof CommercialError) return errorResponse(error.code, error.status);
     console.error('[drvo/tenant/branches] create failed', error instanceof Error ? error.name : 'unknown');
     return errorResponse('BRANCH_CREATE_FAILED', 503);
   }
