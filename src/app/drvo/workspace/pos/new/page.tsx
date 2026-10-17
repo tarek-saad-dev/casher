@@ -38,7 +38,7 @@ export default async function NewPosInvoicePage() {
   }
 
   return (
-    <main dir="rtl" className="min-h-screen bg-[#080e1a] px-5 py-8 text-slate-100 sm:px-9">
+    <main dir="rtl" className="fixed inset-0 z-40 h-[100dvh] w-full overflow-x-hidden overflow-y-auto overscroll-y-contain bg-[#080e1a] px-5 py-8 pb-20 text-slate-100 [scrollbar-gutter:stable] sm:px-9">
       <div className="mx-auto max-w-5xl space-y-7">
         <Link href="/drvo/workspace/pos" className="inline-flex items-center gap-2 text-sm text-cyan-300">
           <ArrowRight className="size-4" /> الرجوع للمبيعات
