@@ -51,6 +51,7 @@ export function proxy(req: NextRequest) {
       (pathname === '/api/drvo/pos/sales/recent' && req.method === 'GET') ||
       (pathname === '/api/drvo/pos/catalog' && req.method === 'GET') ||
       (pathname === '/api/drvo/pos/employees' && req.method === 'GET') ||
+      (pathname === '/api/drvo/pos/quote' && req.method === 'POST') ||
       (pathname === '/api/drvo/platform/subscriptions' && req.method === 'POST') ||
       (pathname === '/api/drvo/platform/tenants' && req.method === 'POST') ||
       (pathname === '/api/drvo/tenant/roles' && req.method === 'POST') ||
