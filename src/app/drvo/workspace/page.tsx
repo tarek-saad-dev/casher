@@ -16,12 +16,13 @@ const navigation = [
   { label: 'الشركات والفروع', icon: Building2, href: '/drvo/workspace/companies' },
   { label: 'المستخدمون والصلاحيات', icon: Users, href: '/drvo/workspace/users' },
   { label: 'الوحدات والتطبيقات', icon: Blocks, href: '/drvo/workspace/modules' },
+  { label: 'نقاط البيع', icon: Wallet, href: '/drvo/workspace/pos' },
   { label: 'الاشتراكات', icon: CreditCard, href: '/drvo/workspace/subscriptions' },
   { label: 'التقارير', icon: ChartNoAxesCombined },
 ];
 
 const modules = [
-  { title: 'المبيعات ونقاط البيع', subtitle: 'الفواتير والمدفوعات', icon: Wallet },
+  { title: 'المبيعات ونقاط البيع', subtitle: 'عرض آخر الفواتير بأمان', icon: Wallet, href: '/drvo/workspace/pos' },
   { title: 'الحجوزات والمواعيد', subtitle: 'التقويم وإدارة الحجوزات', icon: CalendarDays },
   { title: 'الفريق والموارد البشرية', subtitle: 'الحضور والرواتب', icon: Users },
   { title: 'التقارير والتحليلات', subtitle: 'متابعة الأداء', icon: ChartNoAxesCombined },
@@ -90,7 +91,7 @@ export default async function DrvoWorkspace() {
                 <p className="mt-3 max-w-xl text-sm leading-7 text-slate-300 sm:text-base">مساحة العمل جاهزة. بنجهز إدارة الشركات والفروع والصلاحيات والوحدات على أساس مستقل عن نظام الورديات القديم.</p>
                 <div className="mt-6 flex flex-wrap gap-3">
                   <Link href="/drvo/workspace/my-company" className="rounded-xl bg-cyan-300 px-4 py-2.5 text-xs font-bold text-slate-950">افتح مساحة شركتي</Link>
-                  <span className="rounded-xl border border-white/15 px-4 py-2.5 text-xs text-slate-200">لا توجد عمليات POS مفعّلة</span>
+                  <span className="rounded-xl border border-white/15 px-4 py-2.5 text-xs text-slate-200">عرض POS للقراءة فقط</span>
                 </div>
               </div>
             </section>
@@ -116,10 +117,10 @@ export default async function DrvoWorkspace() {
                   <span className="rounded-lg border border-white/10 px-2.5 py-1.5 text-[11px] text-slate-400">معاينة</span>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  {modules.map(({ title, subtitle, icon: Icon }) => (
+                  {modules.map(({ title, subtitle, icon: Icon, href }) => (
                     <div key={title} className="flex items-start gap-3 rounded-2xl border border-white/10 bg-white/[0.025] p-4">
                       <div className="grid size-11 shrink-0 place-items-center rounded-xl bg-cyan-300/10 text-cyan-300"><Icon className="size-5" /></div>
-                      <div><p className="text-sm font-bold">{title}</p><p className="mt-1 text-xs text-slate-500">{subtitle}</p><p className="mt-3 text-[11px] text-amber-300">غير مفعّل بعد</p></div>
+                      <div><p className="text-sm font-bold">{title}</p><p className="mt-1 text-xs text-slate-500">{subtitle}</p>{href ? <Link href={href} className="mt-3 inline-block text-xs font-bold text-cyan-300 hover:text-cyan-200">افتح عرض المبيعات ←</Link> : <p className="mt-3 text-[11px] text-amber-300">غير مفعّل بعد</p>}</div>
                     </div>
                   ))}
                 </div>
@@ -145,7 +146,7 @@ export default async function DrvoWorkspace() {
             </div>
 
             <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-5 text-xs text-slate-500">
-              <span>DRVO ERP · بيئة Staging معزولة · البيانات التشغيلية غير متاحة في هذه المرحلة</span>
+              <span>DRVO ERP · بيئة Staging معزولة · عمليات البيع والكتابة ما زالت معطّلة</span>
               <span className="flex items-center gap-2"><ShieldCheck className="size-4 text-emerald-400" /> الوصول محمي بالجلسة</span>
             </footer>
           </div>
