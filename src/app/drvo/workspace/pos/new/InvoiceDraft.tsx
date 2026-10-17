@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 type Service = { ProID: number; ProName: string | null; ProNameAr: string | null; SPrice1: number | null };
 type Employee = { empId: number; name: string };
@@ -18,6 +18,7 @@ export default function InvoiceDraft({ services }: { services: Service[] }) {
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card'>('cash');
   const [quote, setQuote] = useState<Quote | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
+  const revisionRef = useRef(0);
 
   useEffect(() => {
     let alive = true;
@@ -41,12 +42,13 @@ export default function InvoiceDraft({ services }: { services: Service[] }) {
   const estimatedTotal = chosen.reduce((sum, item) => sum + Number(item.SPrice1 || 0), 0);
   const money = (value: number) => new Intl.NumberFormat('ar-EG').format(value) + ' ج.م';
 
-  useEffect(() => { setQuote(null); }, [selected, employeeId]);
+  useEffect(() => { setQuote(null); revisionRef.current += 1; }, [selected, employeeId]);
 
   async function calculateQuote() {
     if (!employeeId || selected.length === 0) return;
     setQuoteLoading(true);
     setQuote(null);
+    const revision = revisionRef.current;
     try {
       const response = await fetch('/api/drvo/pos/quote', {
         method: 'POST', credentials: 'same-origin', cache: 'no-store',
@@ -54,8 +56,8 @@ export default function InvoiceDraft({ services }: { services: Service[] }) {
         body: JSON.stringify({ employeeId: Number(employeeId), serviceIds: selected }),
       });
       const result = await response.json() as Quote;
-      setQuote(response.ok ? result : { ok: false, code: result.code || 'QUOTE_FAILED' });
-    } catch { setQuote({ ok: false, code: 'NETWORK_ERROR' }); }
+      if (revision === revisionRef.current) setQuote(response.ok ? result : { ok: false, code: result.code || 'QUOTE_FAILED' });
+    } catch { if (revision === revisionRef.current) setQuote({ ok: false, code: 'NETWORK_ERROR' }); }
     finally { setQuoteLoading(false); }
   }
 
@@ -113,8 +115,8 @@ export default function InvoiceDraft({ services }: { services: Service[] }) {
             <p className="mt-1 text-2xl font-black text-cyan-200" dir="ltr">{money(estimatedTotal)}</p>
             {chosen.some(item => item.SPrice1 == null) && <p className="mt-2 text-xs text-amber-300">بعض الخدمات بدون سعر، والإجمالي غير مكتمل.</p>}
           </div>
-          <button type="button" onClick={calculateQuote} disabled={quoteLoading || !employeeId || chosen.length === 0} className="w-full rounded-xl bg-cyan-300 px-4 py-3 text-sm font-bold text-slate-950 disabled:cursor-not-allowed disabled:opacity-40">{quoteLoading ? 'جاري التسعير...' : 'احسب السعر من السيرفر'}</button>
-          {quote && <div role="status" className="rounded-xl border border-white/15 bg-[#080e1a] p-4 text-sm">{quote.ok ? <><p className="font-bold text-emerald-300">تم التحقق من الخدمات والموظف وتسعير المسودة من السيرفر</p><p className="mt-3 text-xl font-black text-cyan-200" dir="ltr">{money(Number(quote.indicativeTotal || 0))}</p><p className="mt-2 text-xs text-amber-300">سعر استرشادي فقط؛ إتاحة الخدمة للفرع والضرائب لم تُعتمد بعد.</p></> : <p className="text-rose-300">تعذر حساب المسودة: {quote.code}</p>}</div>}
+          <button type="button" onClick={calculateQuote} disabled={quoteLoading || !employeeId || chosen.length === 0 || chosen.some(item => item.SPrice1 == null)} className="w-full rounded-xl bg-cyan-300 px-4 py-3 text-sm font-bold text-slate-950 disabled:cursor-not-allowed disabled:opacity-40">{quoteLoading ? 'جاري التسعير...' : 'احسب السعر من السيرفر'}</button>
+          {quote && <div role="status" className="rounded-xl border border-white/15 bg-[#080e1a] p-4 text-sm">{quote.ok ? <><p className="font-bold text-emerald-300">تم التحقق من الخدمات والموظف وتسعير المسودة من السيرفر</p><div className="mt-3 space-y-2">{quote.lines?.map(line => <div key={line.proId} className="flex items-center justify-between gap-3 border-b border-white/10 pb-2 text-xs"><span>{line.name}</span><span dir="ltr" className="text-cyan-200">{money(line.unitPrice)}</span></div>)}</div><p className="mt-3 text-xl font-black text-cyan-200" dir="ltr">{money(Number(quote.indicativeTotal || 0))}</p><p className="mt-2 text-xs text-amber-300">سعر استرشادي فقط؛ إتاحة الخدمة للفرع والضرائب لم تُعتمد بعد.</p></> : <p className="text-rose-300">تعذر حساب المسودة: {quote.code}</p>}</div>}
           <button type="button" disabled className="w-full cursor-not-allowed rounded-xl bg-slate-700 px-4 py-3 text-sm font-bold text-slate-300">
             حفظ الفاتورة — غير متاح بعد
           </button>
