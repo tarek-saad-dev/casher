@@ -5,7 +5,7 @@ import { ArrowRight, CheckCircle2, ClipboardList, LockKeyhole, ShieldCheck } fro
 import { getSession } from '@/lib/session';
 import { getPool, sql } from '@/lib/db';
 import { authorizeDrvoPosOperationalRead } from '@/platform/pos/authorizePosRead';
-import { getPool, sql } from '@/lib/db';
+
 
 export const dynamic = 'force-dynamic';
 
