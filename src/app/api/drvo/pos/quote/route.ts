@@ -90,6 +90,36 @@ export async function POST(req: NextRequest) {
             AND l.LegacyBranchId = @branchId AND l.Status = N'active'
         )
     `);
+    // An employee assigned to the branch may not perform every service.
+    // Require an active per-service assignment for ALL quoted items.
+    const eligibilityRequest = db.request()
+      .input('tenantId', sql.UniqueIdentifier, context.tenantId)
+      .input('locationId', sql.UniqueIdentifier, context.activeLocation.locationId)
+      .input('branchId', sql.Int, branch)
+      .input('employeeId', sql.Int, employeeId);
+    serviceIds.forEach((id, index) => eligibilityRequest.input('service' + index, sql.Int, id));
+    const eligible = await eligibilityRequest.query<{ ProID: number }>(`
+      SELECT DISTINCT es.ProID
+      FROM dbo.TblEmpServiceSettings es
+      JOIN dbo.TblEmp e ON e.EmpID = es.EmpID
+        AND e.TenantId = @tenantId AND ISNULL(e.isActive, 0) = 1
+        AND e.IsArchived = 0
+      JOIN dbo.TblEmpBranchAssignment a ON a.EmpID = e.EmpID
+        AND a.BranchID = @branchId AND a.IsActive = 1
+        AND a.EffectiveFrom <= CONVERT(date, SYSDATETIME())
+        AND (a.EffectiveTo IS NULL OR a.EffectiveTo >= CONVERT(date, SYSDATETIME()))
+      JOIN dbo.Location l ON l.TenantId = e.TenantId
+        AND l.LocationId = @locationId
+        AND l.LegacyBranchId = a.BranchID AND l.Status = N'active'
+      JOIN dbo.Tenant t ON t.TenantId = l.TenantId AND t.Status = N'active'
+      JOIN dbo.TblPro p ON p.ProID = es.ProID
+        AND p.TenantId = e.TenantId AND ISNULL(p.isDeleted, 0) = 0
+      WHERE es.EmpID = @employeeId AND es.IsActive = 1
+        AND es.ProID IN (${serviceIds.map((_, index) => '@service' + index).join(', ')})
+    `);
+    if (eligible.recordset.length !== serviceIds.length)
+      return json({ ok: false, code: 'EMPLOYEE_SERVICE_NOT_AVAILABLE' }, 422);
+
     if (result.recordset.length !== serviceIds.length ||
         result.recordset.some(row => row.SPrice1 == null || !Number.isFinite(Number(row.SPrice1)) || Number(row.SPrice1) < 0))
       return json({ ok: false, code: 'SERVICE_OR_PRICE_NOT_AVAILABLE' }, 422);
@@ -104,8 +134,8 @@ export async function POST(req: NextRequest) {
       ok: true, tenantId: context.tenantId, locationId: context.activeLocation.locationId,
       employee: { id: employeeId, name: employee.recordset[0].EmpName },
       lines, subtotal, indicativeTotal: subtotal, currency: 'EGP',
-      quoteOnly: true, branchAvailabilityVerified: false,
-      employeeServiceEligibilityVerified: false,
+      quoteOnly: true, branchAvailabilityVerified: true,
+      employeeServiceEligibilityVerified: true,
       discountsAndTaxApplied: false, writesEnabled: false,
     });
   } catch (error) {
