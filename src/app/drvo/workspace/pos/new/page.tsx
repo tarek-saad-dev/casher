@@ -2,14 +2,39 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { ArrowRight, CheckCircle2, ClipboardList, LockKeyhole, ShieldCheck } from 'lucide-react';
 import { getSession } from '@/lib/session';
-import { authorizeDrvoPosRead } from '@/platform/pos/authorizePosRead';
+import { authorizeDrvoPosOperationalRead } from '@/platform/pos/authorizePosRead';
+import { getPool, sql } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
 export default async function NewPosInvoicePage() {
   if (process.env.DRVO_STAGING_MODE !== 'true') redirect('/');
   if (!await getSession()) redirect('/login');
-  const access = await authorizeDrvoPosRead();
+  const access = await authorizeDrvoPosOperationalRead();
+  let catalog: Array<{ ProID: number; ProName: string | null; ProNameAr: string | null; SPrice1: number | null }> = [];
+  let catalogError = false;
+  if (access.ok) {
+    try {
+      const db = await getPool();
+      const result = await db.request()
+        .input('tenantId', sql.UniqueIdentifier, access.context.tenantId)
+        .input('locationId', sql.UniqueIdentifier, access.context.activeLocation.locationId)
+        .input('branchId', sql.Int, access.context.activeLocation.legacyBranchId)
+        .query<{ ProID: number; ProName: string | null; ProNameAr: string | null; SPrice1: number | null }>(`
+          SELECT TOP (100) p.ProID, p.ProName, p.ProNameAr, p.SPrice1
+          FROM dbo.TblPro AS p
+          WHERE p.TenantId = @tenantId AND ISNULL(p.isDeleted, 0) = 0
+            AND EXISTS (
+              SELECT 1 FROM dbo.Location AS l
+              JOIN dbo.Tenant AS t ON t.TenantId = l.TenantId AND t.Status = N'active'
+              WHERE l.LocationId = @locationId AND l.TenantId = @tenantId
+                AND l.LegacyBranchId = @branchId AND l.Status = N'active'
+            )
+          ORDER BY p.ProName, p.ProID
+        `);
+      catalog = result.recordset;
+    } catch { catalogError = true; }
+  }
 
   return (
     <main dir="rtl" className="min-h-screen bg-[#080e1a] px-5 py-8 text-slate-100 sm:px-9">
@@ -50,6 +75,24 @@ export default async function NewPosInvoicePage() {
             </section>
           ))}
         </div>
+        {access.ok ? (
+          <section className="rounded-3xl border border-white/10 bg-[#101a2c] p-6 sm:p-8">
+            <h2 className="text-xl font-bold">كتالوج خدمات شركتك</h2>
+            <p className="mt-2 text-sm leading-7 text-slate-400">الأسعار استرشادية من بيانات الشركة. إتاحة الخدمات للفرع والحساب النهائي لم يتم اعتمادهم للبيع بعد.</p>
+            {catalogError ? <p className="mt-5 text-sm text-rose-300">تعذر تحميل الكتالوج.</p> : catalog.length === 0 ? <p className="mt-5 rounded-xl border border-white/10 p-5 text-sm text-slate-400">لا توجد خدمات مسجلة للشركة حاليًا. يلزم إضافة خدمات قبل بدء البيع.</p> : (
+              <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {catalog.map(item => (
+                  <div key={item.ProID} className="rounded-2xl border border-white/10 bg-white/[0.025] p-4">
+                    <p className="text-sm font-bold">{item.ProNameAr || item.ProName || `خدمة #${item.ProID}`}</p>
+                    {item.ProNameAr && item.ProName ? <p className="mt-1 text-xs text-slate-400">{item.ProName}</p> : null}
+                    <p className="mt-3 text-sm text-cyan-200">{item.SPrice1 == null ? 'السعر غير محدد' : `${Number(item.SPrice1).toLocaleString('ar-EG')} ج.م`}</p>
+                    <p className="mt-2 text-[11px] text-amber-300">غير متاحة للإضافة للفاتورة بعد</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        ) : null}
         <div className="rounded-2xl border border-amber-400/20 p-5 text-sm text-amber-200">
           لا توجد فاتورة محفوظة. لن نستخدم بيانات أو أسعارًا افتراضية لتجربة البيع.
         </div>
