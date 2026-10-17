@@ -18,6 +18,7 @@ export default function InvoiceDraft({ services }: { services: Service[] }) {
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card'>('cash');
   const [quote, setQuote] = useState<Quote | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
+  const [step, setStep] = useState<1 | 2 | 3>(1);
   const revisionRef = useRef(0);
 
   useEffect(() => {
@@ -48,6 +49,7 @@ export default function InvoiceDraft({ services }: { services: Service[] }) {
     if (!employeeId || selected.length === 0) return;
     setQuoteLoading(true);
     setQuote(null);
+    setStep(3);
     const revision = revisionRef.current;
     try {
       const response = await fetch('/api/drvo/pos/quote', {
@@ -58,7 +60,7 @@ export default function InvoiceDraft({ services }: { services: Service[] }) {
       const result = await response.json() as Quote;
       if (revision === revisionRef.current) setQuote(response.ok ? result : { ok: false, code: result.code || 'QUOTE_FAILED' });
     } catch { if (revision === revisionRef.current) setQuote({ ok: false, code: 'NETWORK_ERROR' }); }
-    finally { setQuoteLoading(false); }
+    finally { if (revision === revisionRef.current) setQuoteLoading(false); }
   }
 
   return (
@@ -68,8 +70,9 @@ export default function InvoiceDraft({ services }: { services: Service[] }) {
           <p className="mt-2 text-sm leading-6 text-slate-400">اختار خدمات وموظف من بيانات شركتك. الحساب استرشادي فقط، ولا يتم حفظ أي بيانات.</p></div>
         <span className="rounded-full border border-amber-400/25 px-3 py-2 text-xs text-amber-300">معاينة بدون حفظ</span>
       </div>
+      <nav aria-label="مراحل المسودة" className="mt-6 flex flex-wrap gap-2">{([1, 2, 3] as const).map((number) => <button type="button" key={number} onClick={() => setStep(number)} className={`rounded-xl border px-4 py-2 text-xs font-semibold ${step === number ? 'border-cyan-300 bg-cyan-300/10 text-cyan-200' : 'border-white/10 text-slate-400'}`}>{number === 1 ? '١ · الخدمات' : number === 2 ? '٢ · الموظف والعميل' : '٣ · التسعير والمراجعة'}</button>)}</nav>
       <div className="mt-6 grid gap-6 lg:grid-cols-[1.3fr_1fr]">
-        <div>
+        <div className={step === 1 ? '' : 'hidden lg:block'}>
           <label htmlFor="pos-service-search" className="mb-2 block text-sm font-semibold">البحث عن خدمة</label>
           <input id="pos-service-search" value={search} onChange={e => setSearch(e.target.value)}
             placeholder="اكتب اسم الخدمة" className="w-full rounded-xl border border-white/15 bg-[#080e1a] p-3 text-sm text-white outline-none focus:border-cyan-300" />
@@ -77,7 +80,7 @@ export default function InvoiceDraft({ services }: { services: Service[] }) {
             {available.length === 0 && <p className="p-4 text-sm text-slate-400">لا توجد خدمات مطابقة.</p>}
             {available.map(item => (
               <label key={item.ProID} className="flex cursor-pointer items-center gap-3 rounded-xl border border-white/10 p-3 hover:border-cyan-300/40">
-                <input type="checkbox" checked={selected.includes(item.ProID)}
+                <input type="checkbox" disabled={item.SPrice1 == null || selected.length >= 20 && !selected.includes(item.ProID)} checked={selected.includes(item.ProID)}
                   onChange={e => setSelected(current => e.target.checked ? [...current, item.ProID] : current.filter(id => id !== item.ProID))}
                   className="size-4 accent-cyan-300" />
                 <span className="min-w-0 flex-1 text-sm">{item.ProNameAr || item.ProName || 'خدمة'}</span>
@@ -85,6 +88,7 @@ export default function InvoiceDraft({ services }: { services: Service[] }) {
               </label>
             ))}
           </div>
+          <button type="button" onClick={() => setStep(2)} disabled={selected.length === 0} className="mt-4 rounded-xl bg-cyan-300 px-5 py-3 text-sm font-bold text-slate-950 disabled:opacity-40">التالي: الموظف والعميل</button>
         </div>
         <div className="space-y-5">
           <div>
@@ -115,6 +119,7 @@ export default function InvoiceDraft({ services }: { services: Service[] }) {
             <p className="mt-1 text-2xl font-black text-cyan-200" dir="ltr">{money(estimatedTotal)}</p>
             {chosen.some(item => item.SPrice1 == null) && <p className="mt-2 text-xs text-amber-300">بعض الخدمات بدون سعر، والإجمالي غير مكتمل.</p>}
           </div>
+          <button type="button" onClick={() => setStep(3)} disabled={!employeeId || selected.length === 0} className="w-full rounded-xl border border-cyan-300/30 px-4 py-3 text-sm font-semibold text-cyan-200 disabled:opacity-40">التالي: مراجعة السعر</button>
           <button type="button" onClick={calculateQuote} disabled={quoteLoading || !employeeId || chosen.length === 0 || chosen.some(item => item.SPrice1 == null)} className="w-full rounded-xl bg-cyan-300 px-4 py-3 text-sm font-bold text-slate-950 disabled:cursor-not-allowed disabled:opacity-40">{quoteLoading ? 'جاري التسعير...' : 'احسب السعر من السيرفر'}</button>
           {quote && <div role="status" className="rounded-xl border border-white/15 bg-[#080e1a] p-4 text-sm">{quote.ok ? <><p className="font-bold text-emerald-300">تم التحقق من الخدمات والموظف وتسعير المسودة من السيرفر</p><div className="mt-3 space-y-2">{quote.lines?.map(line => <div key={line.proId} className="flex items-center justify-between gap-3 border-b border-white/10 pb-2 text-xs"><span>{line.name}</span><span dir="ltr" className="text-cyan-200">{money(line.unitPrice)}</span></div>)}</div><p className="mt-3 text-xl font-black text-cyan-200" dir="ltr">{money(Number(quote.indicativeTotal || 0))}</p><p className="mt-2 text-xs text-amber-300">سعر استرشادي فقط؛ إتاحة الخدمة للفرع والضرائب لم تُعتمد بعد.</p></> : <p className="text-rose-300">تعذر حساب المسودة: {quote.code}</p>}</div>}
           <button type="button" disabled className="w-full cursor-not-allowed rounded-xl bg-slate-700 px-4 py-3 text-sm font-bold text-slate-300">
