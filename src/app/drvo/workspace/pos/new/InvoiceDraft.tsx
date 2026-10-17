@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 type Service = { ProID: number; ProName: string | null; ProNameAr: string | null; SPrice1: number | null };
 type Employee = { empId: number; name: string };
 type EmployeesResponse = { ok: boolean; employees?: Employee[]; code?: string };
+type Quote = { ok: boolean; code?: string; lines?: Array<{ proId: number; name: string; unitPrice: number }>; indicativeTotal?: number; employee?: { id: number; name: string }; quoteOnly?: boolean };
 
 export default function InvoiceDraft({ services }: { services: Service[] }) {
   const [search, setSearch] = useState('');
@@ -12,6 +13,11 @@ export default function InvoiceDraft({ services }: { services: Service[] }) {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [employeeId, setEmployeeId] = useState('');
   const [employeesError, setEmployeesError] = useState(false);
+  const [customerName, setCustomerName] = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card'>('cash');
+  const [quote, setQuote] = useState<Quote | null>(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -34,6 +40,24 @@ export default function InvoiceDraft({ services }: { services: Service[] }) {
   const chosen = useMemo(() => services.filter(item => selected.includes(item.ProID)), [services, selected]);
   const estimatedTotal = chosen.reduce((sum, item) => sum + Number(item.SPrice1 || 0), 0);
   const money = (value: number) => new Intl.NumberFormat('ar-EG').format(value) + ' ج.م';
+
+  useEffect(() => { setQuote(null); }, [selected, employeeId]);
+
+  async function calculateQuote() {
+    if (!employeeId || selected.length === 0) return;
+    setQuoteLoading(true);
+    setQuote(null);
+    try {
+      const response = await fetch('/api/drvo/pos/quote', {
+        method: 'POST', credentials: 'same-origin', cache: 'no-store',
+        headers: { 'Content-Type': 'application/json', 'x-drvo-pos-quote-intent': '1' },
+        body: JSON.stringify({ employeeId: Number(employeeId), serviceIds: selected }),
+      });
+      const result = await response.json() as Quote;
+      setQuote(response.ok ? result : { ok: false, code: result.code || 'QUOTE_FAILED' });
+    } catch { setQuote({ ok: false, code: 'NETWORK_ERROR' }); }
+    finally { setQuoteLoading(false); }
+  }
 
   return (
     <section className="rounded-3xl border border-white/10 bg-[#101a2c] p-6 sm:p-8">
@@ -71,6 +95,16 @@ export default function InvoiceDraft({ services }: { services: Service[] }) {
             {employeesError && <p role="alert" className="mt-2 text-xs text-rose-300">تعذر تحميل موظفي الفرع.</p>}
             {!employeesError && employees.length === 0 && <p className="mt-2 text-xs text-amber-300">لا توجد تعيينات موظفين نشطة للفرع حاليًا.</p>}
           </div>
+          <div className="space-y-3 rounded-2xl border border-white/10 bg-[#080e1a] p-5">
+            <p className="text-sm font-bold">بيانات العميل والدفع (مسودة محلية)</p>
+            <label className="block text-xs text-slate-400" htmlFor="pos-customer-name">اسم العميل</label>
+            <input id="pos-customer-name" value={customerName} onChange={e => setCustomerName(e.target.value.slice(0, 100))} placeholder="اسم العميل (اختياري)" className="w-full rounded-xl border border-white/15 bg-[#101a2c] p-3 text-sm text-white" />
+            <label className="block text-xs text-slate-400" htmlFor="pos-customer-phone">رقم العميل</label>
+            <input id="pos-customer-phone" type="tel" value={customerPhone} onChange={e => setCustomerPhone(e.target.value.slice(0, 20))} placeholder="رقم الموبايل (اختياري)" className="w-full rounded-xl border border-white/15 bg-[#101a2c] p-3 text-sm text-white" />
+            <label className="block text-xs text-slate-400" htmlFor="pos-payment">طريقة الدفع المبدئية</label>
+            <select id="pos-payment" value={paymentMethod} onChange={e => setPaymentMethod(e.target.value as 'cash' | 'card')} className="w-full rounded-xl border border-white/15 bg-[#101a2c] p-3 text-sm text-white"><option value="cash">نقدي</option><option value="card">بطاقة</option></select>
+            <p className="text-xs text-amber-300">البيانات دي مش بتتبعت مع طلب التسعير ومش بتتحفظ.</p>
+          </div>
           <div className="rounded-2xl border border-white/10 bg-[#080e1a] p-5">
             <p className="text-sm font-bold">ملخص المسودة</p>
             <p className="mt-3 text-xs text-slate-400">الخدمات المختارة: {chosen.length}</p>
@@ -79,6 +113,8 @@ export default function InvoiceDraft({ services }: { services: Service[] }) {
             <p className="mt-1 text-2xl font-black text-cyan-200" dir="ltr">{money(estimatedTotal)}</p>
             {chosen.some(item => item.SPrice1 == null) && <p className="mt-2 text-xs text-amber-300">بعض الخدمات بدون سعر، والإجمالي غير مكتمل.</p>}
           </div>
+          <button type="button" onClick={calculateQuote} disabled={quoteLoading || !employeeId || chosen.length === 0} className="w-full rounded-xl bg-cyan-300 px-4 py-3 text-sm font-bold text-slate-950 disabled:cursor-not-allowed disabled:opacity-40">{quoteLoading ? 'جاري التسعير...' : 'احسب السعر من السيرفر'}</button>
+          {quote && <div role="status" className="rounded-xl border border-white/15 bg-[#080e1a] p-4 text-sm">{quote.ok ? <><p className="font-bold text-emerald-300">تم التحقق من الخدمات والموظف وتسعير المسودة من السيرفر</p><p className="mt-3 text-xl font-black text-cyan-200" dir="ltr">{money(Number(quote.indicativeTotal || 0))}</p><p className="mt-2 text-xs text-amber-300">سعر استرشادي فقط؛ إتاحة الخدمة للفرع والضرائب لم تُعتمد بعد.</p></> : <p className="text-rose-300">تعذر حساب المسودة: {quote.code}</p>}</div>}
           <button type="button" disabled className="w-full cursor-not-allowed rounded-xl bg-slate-700 px-4 py-3 text-sm font-bold text-slate-300">
             حفظ الفاتورة — غير متاح بعد
           </button>
