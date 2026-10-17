@@ -21,6 +21,8 @@ export const DRVO_PERMISSIONS = {
   billingRead: 'billing.read',
   billingManage: 'billing.manage',
   auditRead: 'audit.read',
+  posRead: 'pos.read',
+  posSell: 'pos.sell',
 } as const;
 
 export type DrvoPermission = typeof DRVO_PERMISSIONS[keyof typeof DRVO_PERMISSIONS];
@@ -42,6 +44,8 @@ export const DRVO_ROLE_TEMPLATES = {
       DRVO_PERMISSIONS.rolesRead,
       DRVO_PERMISSIONS.modulesRead,
       DRVO_PERMISSIONS.auditRead,
+      DRVO_PERMISSIONS.posRead,
+      DRVO_PERMISSIONS.posSell,
     ],
   },
   manager: {
@@ -51,6 +55,8 @@ export const DRVO_ROLE_TEMPLATES = {
       DRVO_PERMISSIONS.locationsRead,
       DRVO_PERMISSIONS.membersRead,
       DRVO_PERMISSIONS.modulesRead,
+      DRVO_PERMISSIONS.posRead,
+      DRVO_PERMISSIONS.posSell,
     ],
   },
   staff: {
