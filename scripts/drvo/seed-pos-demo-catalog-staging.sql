@@ -1,5 +1,13 @@
 -- Explicit, idempotent demo-only POS catalog seed.
 -- Never run against production. No invoices, no grants, no operational shifts.
+-- Required for filtered indexes / indexed computed columns during INSERT.
+SET ANSI_NULLS ON;
+SET ANSI_PADDING ON;
+SET ANSI_WARNINGS ON;
+SET ARITHABORT ON;
+SET CONCAT_NULL_YIELDS_NULL ON;
+SET QUOTED_IDENTIFIER ON;
+SET NUMERIC_ROUNDABORT OFF;
 SET NOCOUNT ON;
 SET XACT_ABORT ON;
 IF DB_NAME() <> N'last132_agent' THROW 51000, 'STAGING_DATABASE_ONLY', 1;
