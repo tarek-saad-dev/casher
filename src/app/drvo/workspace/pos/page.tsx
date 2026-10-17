@@ -64,9 +64,9 @@ export default async function DrvoPosPage() {
             <h1 className="mt-4 text-3xl font-black">المبيعات ونقاط البيع</h1>
             <p className="mt-2 text-sm text-slate-400">مبيعات الفرع الحالي فقط — بيئة تجريبية</p>
           </div>
-          <span className="rounded-full border border-amber-400/25 bg-amber-400/10 px-4 py-2 text-xs text-amber-200">
-            إنشاء الفواتير غير مفعّل
-          </span>
+          <Link href="/drvo/workspace/pos/new" className="rounded-full border border-amber-400/25 bg-amber-400/10 px-4 py-2 text-xs font-semibold text-amber-200 hover:bg-amber-400/15">
+            تجهيز فاتورة جديدة — الحفظ مقفول
+          </Link>
         </header>
 
         {!access.ok ? (
