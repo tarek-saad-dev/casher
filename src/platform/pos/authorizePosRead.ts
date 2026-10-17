@@ -78,3 +78,22 @@ export async function authorizeDrvoPosRead(): Promise<PosReadGateResult> {
     return { ok: false, status: 503, code: 'POS_GATE_UNAVAILABLE' };
   }
 }
+
+/**
+ * Operational POS reads require an explicit tenant-scoped pos.read grant.
+ * Subscription/catalog visibility alone never exposes invoice data.
+ */
+export async function authorizeDrvoPosOperationalRead(): Promise<PosReadGateResult> {
+  const preflight = await authorizeDrvoPosRead();
+  if (!preflight.ok) return preflight;
+  try {
+    const db = await getPool();
+    const actor = await loadTenantPermissionActor(preflight.context, { executor: db });
+    if (!canDrvo(actor, preflight.context.tenantId, DRVO_PERMISSIONS.posRead)) {
+      return { ok: false, status: 403, code: 'POS_READ_FORBIDDEN' };
+    }
+    return preflight;
+  } catch {
+    return { ok: false, status: 503, code: 'POS_READ_GATE_UNAVAILABLE' };
+  }
+}
