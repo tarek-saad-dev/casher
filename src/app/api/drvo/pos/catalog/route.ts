@@ -32,13 +32,26 @@ export async function GET() {
         nameAr: string | null;
         price: number | null;
         durationMinutes: number | null;
+        assignedEmployees: number;
       }>(`
         SELECT TOP (100)
           p.ProID AS proId,
           p.ProName AS name,
           p.ProNameAr AS nameAr,
           p.SPrice1 AS price,
-          p.DurationMinutes AS durationMinutes
+          p.DurationMinutes AS durationMinutes,
+          (
+            SELECT COUNT(DISTINCT e.EmpID)
+            FROM dbo.TblEmp AS e
+            JOIN dbo.TblEmpBranchAssignment AS a ON a.EmpID = e.EmpID
+            JOIN dbo.TblEmpServiceSettings AS es ON es.EmpID = e.EmpID
+              AND es.ProID = p.ProID AND es.IsActive = 1
+            WHERE e.TenantId = @tenantId AND ISNULL(e.isActive, 0) = 1
+              AND e.IsArchived = 0 AND a.BranchID = @branchId
+              AND a.IsActive = 1
+              AND a.EffectiveFrom <= CONVERT(date, SYSDATETIME())
+              AND (a.EffectiveTo IS NULL OR a.EffectiveTo >= CONVERT(date, SYSDATETIME()))
+          ) AS assignedEmployees
         FROM dbo.TblPro AS p
         WHERE p.TenantId = @tenantId
           AND ISNULL(p.isDeleted, 0) = 0
@@ -63,10 +76,12 @@ export async function GET() {
         nameAr: row.nameAr,
         indicativePrice: row.price,
         durationMinutes: row.durationMinutes,
+        assignedEmployees: row.assignedEmployees,
+        branchAvailable: row.assignedEmployees > 0,
         sellable: false,
       })),
       catalogReady: true,
-      branchAvailabilityVerified: false,
+      branchAvailabilityVerified: true,
       pricingVerifiedForSale: false,
       writesEnabled: false,
     }, { headers: { 'Cache-Control': 'no-store' } });
