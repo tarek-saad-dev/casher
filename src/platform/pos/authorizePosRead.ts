@@ -97,3 +97,23 @@ export async function authorizeDrvoPosOperationalRead(): Promise<PosReadGateResu
     return { ok: false, status: 503, code: 'POS_READ_GATE_UNAVAILABLE' };
   }
 }
+
+/**
+ * Sell preflight is deliberately separate from read access.
+ * Passing this gate NEVER authorizes a legacy invoice write: the new
+ * transactional invoice service must recheck grants and ownership.
+ */
+export async function authorizeDrvoPosSellPreflight(): Promise<PosReadGateResult> {
+  const preflight = await authorizeDrvoPosRead();
+  if (!preflight.ok) return preflight;
+  try {
+    const db = await getPool();
+    const actor = await loadTenantPermissionActor(preflight.context, { executor: db });
+    if (!canDrvo(actor, preflight.context.tenantId, DRVO_PERMISSIONS.posSell)) {
+      return { ok: false, status: 403, code: 'POS_SELL_FORBIDDEN' };
+    }
+    return preflight;
+  } catch {
+    return { ok: false, status: 503, code: 'POS_SELL_GATE_UNAVAILABLE' };
+  }
+}
