@@ -63,23 +63,6 @@ export default async function NewPosInvoicePage() {
             </p>
           )}
         </div>
-        {access.ok ? (
-          <section className="rounded-3xl border border-white/10 bg-[#101a2c] p-6">
-            <h2 className="text-xl font-bold">خدمات الفرع</h2>
-            <p className="mt-2 text-sm text-slate-400">الأسعار للعرض فقط — الحفظ غير مفعّل.</p>
-            {catalogError ? <p className="mt-4 text-sm text-rose-300">تعذر تحميل الخدمات</p> : null}
-            <div className="mt-5 grid gap-3 sm:grid-cols-2">
-              {services.map(service => (
-                <div key={service.ProID} className="rounded-xl border border-white/10 bg-white/5 p-4">
-                  <p className="font-semibold">{service.ProNameAr || service.ProName}</p>
-                  <p className="mt-2 text-xs text-slate-400">خدمة #{service.ProID}</p>
-                  <p className="mt-3 text-lg font-bold" dir="ltr">{Number(service.SPrice1 ?? 0).toLocaleString('en-EG')} EGP</p>
-                </div>
-              ))}
-            </div>
-            {!catalogError && services.length === 0 ? <p className="mt-4 text-sm text-amber-200">لا توجد خدمات مرتبطة بموظف نشط في هذا الفرع.</p> : null}
-          </section>
-        ) : null}
         <div className="grid gap-4 md:grid-cols-3">
           {[
             { title: 'اختيار الخدمات', detail: 'الخدمات والأسعار من كتالوج الفرع المعتمد', icon: ClipboardList },
