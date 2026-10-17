@@ -1,3 +1,4 @@
+import InvoiceDraft from './InvoiceDraft';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { ArrowRight, CheckCircle2, ClipboardList, LockKeyhole, ShieldCheck } from 'lucide-react';
@@ -75,6 +76,7 @@ export default async function NewPosInvoicePage() {
             </section>
           ))}
         </div>
+        {access.ok && !catalogError ? <InvoiceDraft services={catalog} /> : null}
         {access.ok ? (
           <section className="rounded-3xl border border-white/10 bg-[#101a2c] p-6 sm:p-8">
             <h2 className="text-xl font-bold">كتالوج خدمات شركتك</h2>
