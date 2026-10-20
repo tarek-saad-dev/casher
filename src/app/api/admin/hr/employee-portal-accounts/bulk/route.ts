@@ -9,8 +9,8 @@ export async function POST(request:NextRequest) {
   if(!isAuthResult(auth))return auth;
   if(auth.userLevel!=='admin' && !auth.isSuperAdmin) return NextResponse.json({error:'ADMIN_REQUIRED'},{status:403});
   const body=await request.json().catch(()=>null) as {temporaryPassword?:unknown}|null;
-  if(typeof body?.temporaryPassword!=='string' || body.temporaryPassword.length<12 || body.temporaryPassword.length>128)
-    return NextResponse.json({error:'PASSWORD_TOO_SHORT'},{status:400});
+  if(typeof body?.temporaryPassword!=='string' || body.temporaryPassword.length===0 || body.temporaryPassword.length>128)
+    return NextResponse.json({error:'INVALID_PASSWORD'},{status:400});
   const pool=await getPool();
   const hash=await hashPassword(body.temporaryPassword);
   const employees=await pool.request().input('tenantId',auth.tenantId).query(`
