@@ -30,6 +30,7 @@ export default function AuthLayout({ children }: AuthLayoutProps) {
   const { access, loading: permLoading } = usePermissions();
 
   const isLoginPage = pathname === '/login';
+  const isEmployeePortal = pathname === '/employee-portal' || pathname.startsWith('/employee-portal/');
   const isPosPage = pathname === '/income/pos';
   const isOperationsPage = pathname === '/operations' || pathname.startsWith('/operations/');
   const isWhatsAppInboxPage =
@@ -52,7 +53,7 @@ export default function AuthLayout({ children }: AuthLayoutProps) {
   const isPublicBookingPage = pathname.startsWith('/book/');
   const isPublicDrvoPage = pathname === '/drvo' || pathname.startsWith('/drvo/') || pathname === '/start' || pathname.startsWith('/start/');
 
-  if (isLoginPage || isPublicBookingPage || isPublicDrvoPage) {
+  if (isLoginPage || isEmployeePortal || isPublicBookingPage || isPublicDrvoPage) {
     return (
       <div className="flex-1 flex flex-col min-h-0">
         {children}
