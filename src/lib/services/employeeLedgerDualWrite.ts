@@ -344,40 +344,46 @@ export async function maybeSyncAdvanceLedgerForExpenseCashMove(
   }
 }
 
+/** A disciplinary deduction is not a cash advance. Preserve the paired treasury cash moves,
+ * but create a deduction debit in the employee ledger, linked to the source cash move.
+ */
 export async function syncAdvanceLedgerForDeductionCashMove(
   pool: { request: () => sql.Request },
   transaction: sql.Transaction,
-  params: {
-    empId: number;
-    cashMoveId: number;
-    entryDate: string;
-    amount: number;
-    createdByUserId?: number | null;
-  },
+  params: { empId: number; cashMoveId: number; entryDate: string; amount: number; createdByUserId?: number | null; notes?: string },
 ): Promise<{ ledgerDualWrite: boolean; outcome?: AdvanceLedgerUpsertOutcome }> {
-  if (!isEmployeeLedgerDualWriteEnabled()) {
-    return { ledgerDualWrite: false };
+  if (!isEmployeeLedgerDualWriteEnabled()) return { ledgerDualWrite: false };
+  if (!params.empId || params.empId <= 0 || !Number.isFinite(params.amount) || params.amount <= 0) {
+    throw new EmployeeLedgerDualWriteError('بيانات خصم الموظف غير صالحة');
   }
-
-  if (!params.empId || params.empId <= 0) {
-    throw new EmployeeLedgerDualWriteError('تعذر ربط السلفة بموظف لتسجيل دفتر الموظف');
-  }
-
   try {
-    const outcome = await upsertAdvanceLedgerEntry(pool, params, transaction);
-    return { ledgerDualWrite: true, outcome };
+    const month = payrollMonthFromWorkDate(params.entryDate);
+    const result = await new sql.Request(transaction)
+      .input('EmpID', sql.Int, params.empId)
+      .input('CashMoveID', sql.Int, params.cashMoveId)
+      .input('EntryDate', sql.Date, params.entryDate)
+      .input('Amount', sql.Decimal(12,2), params.amount)
+      .input('Month', sql.NVarChar(7), month)
+      .input('Notes', sql.NVarChar(500), (params.notes || 'خصم إداري من مستحقات الموظف').slice(0,500))
+      .input('CreatedBy', sql.Int, params.createdByUserId ?? null)
+      .query(`
+        INSERT INTO dbo.TblEmpLedgerEntry
+          (BranchID, EmpID, EntryDate, EntryDirection, EntryReason, Amount,
+           PayrollMonth, RefType, RefID, CashMoveID, Notes, IsVoided, CreatedByUserID, CreatedAt)
+        SELECT cm.BranchID, @EmpID, @EntryDate, N'debit', N'deduction', @Amount,
+               @Month, N'TblCashMove', @CashMoveID, @CashMoveID, @Notes, 0, @CreatedBy, SYSDATETIME()
+        FROM dbo.TblCashMove cm
+        WHERE cm.ID=@CashMoveID
+          AND NOT EXISTS (
+            SELECT 1 FROM dbo.TblEmpLedgerEntry l WITH (UPDLOCK,HOLDLOCK)
+            WHERE l.RefType=N'TblCashMove' AND l.RefID=@CashMoveID AND l.IsVoided=0
+          )
+      `);
+    if(result.rowsAffected[0] !== 1) throw new Error('خصم مسجل بالفعل أو حركة الخزنة غير موجودة');
+    return { ledgerDualWrite: true, outcome: 'inserted' };
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    if (isMissingLedgerTableError(message)) {
-      throw new EmployeeLedgerDualWriteError(
-        'جدول دفتر الموظفين غير موجود — شغّل db/migrations/create-tbl-emp-ledger-entry.sql ثم أعد المحاولة',
-      );
-    }
-    if (err instanceof EmployeeLedgerDualWriteError) {
-      throw err;
-    }
     throw new EmployeeLedgerDualWriteError(
-      `فشل تسجيل السلفة في دفتر الموظف: ${message}`,
+      `فشل تسجيل الخصم منفصلاً عن السلفة: ${err instanceof Error ? err.message : String(err)}`
     );
   }
 }
