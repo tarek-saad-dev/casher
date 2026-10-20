@@ -8,7 +8,6 @@ import {
   formatLedgerEntryDate,
   syncAdvanceLedgerForDeductionCashMove,
 } from '@/lib/services/employeeLedgerDualWrite';
-import { scheduleEmployeeAdvanceWhatsApp } from '@/lib/services/employeeAdvanceWhatsAppNotify';
 import { getCairoInvTimeDotStr } from '@/lib/businessDate';
 import { branchErrorResponse } from '@/lib/branch/operationalGates';
 import { ensureTenantFinanceCategory } from '@/platform/masterData/financeCategories';
@@ -252,6 +251,7 @@ export async function POST(req: NextRequest) {
         entryDate: formatLedgerEntryDate(invDate),
         amount,
         createdByUserId: userID,
+        notes: notesText,
       });
 
       // Allocate income invID safely (no TABLOCKX)
@@ -288,15 +288,6 @@ export async function POST(req: NextRequest) {
       await transaction.commit();
       console.log(`[deductions]   ✅ COMMITTED — deductionInvID=${deductionInvID}, incomeInvID=${incomeInvID}`);
       console.log(`[deductions] ──── SAVE DEDUCTION COMPLETE ────`);
-
-      scheduleEmployeeAdvanceWhatsApp({
-        empId: employee.EmpID,
-        employeeName: employee.EmpName,
-        invID: deductionInvID,
-        amount,
-        paymentMethodId: body.paymentMethodId,
-        notes: notesText,
-      });
 
       return NextResponse.json({
         deductionInvID,
