@@ -1,8 +1,8 @@
 import 'server-only';
-import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import { cookies } from 'next/headers';
 import { getPool } from '@/lib/db';
-import { verifyPassword } from '@/lib/auth/passwordHash';
+import { verifyPassword, hashPassword } from '@/lib/auth/passwordHash';
 
 const COOKIE = 'cut_employee_portal';
 const TTL_SECONDS = 8 * 60 * 60;
@@ -55,17 +55,39 @@ export async function loginEmployee(loginName: string, password: string): Promis
   });
   return true;
 }
-export async function getEmployeePortalIdentity(): Promise<Claims | null> {
+export async function getEmployeePortalIdentity(): Promise<(Claims & { mustChangePassword: boolean }) | null> {
   const claims = parse((await cookies()).get(COOKIE)?.value);
   if (!claims) return null;
   const pool = await getPool();
   const result = await pool.request()
     .input('accountId', claims.accountId).input('empId', claims.empId).input('tenantId', claims.tenantId)
-    .query(`SELECT a.ID FROM dbo.TblEmployeePortalAccount a
+    .query(`SELECT a.ID, a.MustChangePassword FROM dbo.TblEmployeePortalAccount a
       INNER JOIN dbo.TblEmp e ON e.EmpID=a.EmpID
       WHERE a.ID=@accountId AND a.EmpID=@empId AND a.TenantId=@tenantId
         AND e.TenantId=@tenantId AND a.IsEnabled=1 AND e.isActive=1`);
-  return result.recordset.length ? claims : null;
+  return result.recordset.length ? { ...claims, mustChangePassword: Boolean(result.recordset[0].MustChangePassword) } : null;
+}
+export async function changeEmployeePassword(currentPassword: string, nextPassword: string): Promise<boolean> {
+  const identity = await getEmployeePortalIdentity();
+  if (!identity || nextPassword.length < 12 || nextPassword.length > 128 || currentPassword === nextPassword) return false;
+  const db = await getPool();
+  const record = await db.request().input('accountId', identity.accountId)
+    .input('empId', identity.empId).input('tenantId', identity.tenantId)
+    .query(`SELECT PasswordHash FROM dbo.TblEmployeePortalAccount
+      WHERE ID=@accountId AND EmpID=@empId AND TenantId=@tenantId AND IsEnabled=1`);
+  const currentHash = record.recordset[0]?.PasswordHash as string | undefined;
+  if (!(await verifyPassword(currentPassword, currentHash)).ok || !currentHash) return false;
+  const hashed = await hashPassword(nextPassword);
+  const changed = await db.request().input('accountId', identity.accountId)
+    .input('empId', identity.empId).input('tenantId', identity.tenantId)
+    .input('oldHash', currentHash).input('newHash', hashed)
+    .query(`UPDATE dbo.TblEmployeePortalAccount
+      SET PasswordHash=@newHash, MustChangePassword=0, UpdatedAt=SYSUTCDATETIME()
+      WHERE ID=@accountId AND EmpID=@empId AND TenantId=@tenantId
+        AND PasswordHash=@oldHash AND IsEnabled=1`);
+  if (changed.rowsAffected[0] !== 1) return false;
+  await logoutEmployee();
+  return true;
 }
 export async function logoutEmployee(): Promise<void> {
   (await cookies()).delete(COOKIE);
