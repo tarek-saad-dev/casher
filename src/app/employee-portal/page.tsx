@@ -13,6 +13,7 @@ export default async function EmployeePortalPage({
 }: { searchParams: Promise<{ month?: string }> }) {
   const identity = await getEmployeePortalIdentity();
   if (!identity) return <EmployeePortalLogin />;
+  if (identity.mustChangePassword) redirect('/employee-portal/change-password');
 
   const requested = (await searchParams).month;
   const current = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Cairo', year: 'numeric', month: '2-digit' }).format(new Date()).slice(0, 7);
