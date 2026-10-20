@@ -40,7 +40,7 @@ export async function loginEmployee(loginName: string, password: string): Promis
     SELECT a.ID, a.EmpID, a.TenantId, a.PasswordHash
     FROM dbo.TblEmployeePortalAccount a
     INNER JOIN dbo.TblEmp e ON e.EmpID = a.EmpID
-    WHERE a.LoginName = @login AND a.IsEnabled = 1 AND e.isActive = 1
+    WHERE a.LoginName = @login AND a.IsEnabled = 1 AND e.isActive = 1 AND e.TenantId = a.TenantId
   `);
   const record = result.recordset[0] as { ID: number; EmpID: number; TenantId: string; PasswordHash: string } | undefined;
   // Verify even for a nonexistent login to minimize user enumeration timing.
@@ -64,7 +64,7 @@ export async function getEmployeePortalIdentity(): Promise<Claims | null> {
     .query(`SELECT a.ID FROM dbo.TblEmployeePortalAccount a
       INNER JOIN dbo.TblEmp e ON e.EmpID=a.EmpID
       WHERE a.ID=@accountId AND a.EmpID=@empId AND a.TenantId=@tenantId
-        AND a.IsEnabled=1 AND e.isActive=1`);
+        AND e.TenantId=@tenantId AND a.IsEnabled=1 AND e.isActive=1`);
   return result.recordset.length ? claims : null;
 }
 export async function logoutEmployee(): Promise<void> {
