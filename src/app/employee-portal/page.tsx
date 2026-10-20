@@ -4,6 +4,7 @@ import { getEmployeePortalIdentity } from '@/lib/employee-portal/auth';
 import { getEmployeeLedgerEntries } from '@/lib/services/employeeLedgerService';
 import { EMP_LEDGER_REASON_LABELS } from '@/lib/types/employee-ledger';
 import EmployeePortalLogin from './portal-login';
+import EmployeeDailyChart from './EmployeeDailyChart';
 
 export const dynamic = 'force-dynamic';
 const money = (value: number) => new Intl.NumberFormat('ar-EG', { maximumFractionDigits: 2 }).format(value) + ' ج.م';
@@ -63,6 +64,7 @@ export default async function EmployeePortalPage({
             </div>
           ))}
         </section>
+        <EmployeeDailyChart entries={ledger.entries} month={month} />
         <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
           <h2 className="text-lg font-bold mb-1">تفاصيل الحركات</h2>
           <p className="text-sm text-zinc-400 mb-5">البيانات المعتمدة في دفتر الموظفين، شاملة حركات جميع الفروع التابعة لنفس المنشأة</p>
