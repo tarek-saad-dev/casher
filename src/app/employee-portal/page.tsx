@@ -24,7 +24,7 @@ export default async function EmployeePortalPage({
     WHERE EmpID = @empId AND TenantId = @tenantId AND isActive = 1
   `);
   const profile = employee.recordset[0] as { EmpName: string; Job: string | null } | undefined;
-  if (!profile) redirect('/employee-portal/logout');
+  if (!profile) redirect('/employee-portal');
   const ledger = await getEmployeeLedgerEntries({ tenantId: identity.tenantId, empId: identity.empId, month });
   const sum = (reasons: string[], direction: string) => ledger.entries
     .filter(e => reasons.includes(e.entryReason) && e.entryDirection === direction)
@@ -42,7 +42,7 @@ export default async function EmployeePortalPage({
             <h1 className="text-2xl md:text-3xl font-bold mt-2">أهلاً، {profile.EmpName}</h1>
             <p className="text-zinc-400 mt-1">{profile.Job || 'موظف'} · تفاصيل مستحقاتك الشخصية</p>
           </div>
-          <form action="/employee-portal/logout" method="post"><button className="rounded-xl border border-zinc-700 px-4 py-2 text-sm">تسجيل خروج</button></form>
+          <div className="flex gap-2"><a href="/employee-portal/change-password" className="rounded-xl border border-zinc-700 px-4 py-2 text-sm">تغيير كلمة المرور</a><form action="/employee-portal/logout" method="post"><button className="rounded-xl border border-zinc-700 px-4 py-2 text-sm">تسجيل خروج</button></form></div>
         </header>
         <form className="flex items-center gap-3" action="/employee-portal">
           <label htmlFor="month" className="text-sm text-zinc-300">الشهر</label>
