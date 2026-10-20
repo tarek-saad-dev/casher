@@ -17,7 +17,8 @@ export default async function EmployeePortalPage({
   if (identity.mustChangePassword) redirect('/employee-portal/change-password');
 
   const requested = (await searchParams).month;
-  const current = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Cairo', year: 'numeric', month: '2-digit' }).format(new Date()).slice(0, 7);
+  const cairoMonthParts = new Intl.DateTimeFormat('en-US', { timeZone: 'Africa/Cairo', year: 'numeric', month: '2-digit' }).formatToParts(new Date());
+  const current = `${cairoMonthParts.find(p => p.type === 'year')?.value}-${cairoMonthParts.find(p => p.type === 'month')?.value}`;
   const month = requested && /^20\d\d-(0[1-9]|1[0-2])$/.test(requested) ? requested : current;
   const db = await getPool();
   const employee = await db.request().input('empId', identity.empId).input('tenantId', identity.tenantId).query(`
