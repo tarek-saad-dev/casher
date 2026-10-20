@@ -37,16 +37,28 @@ function parse(token?: string): Claims | null {
 export async function loginEmployee(loginName: string, password: string): Promise<boolean> {
   const pool = await getPool();
   const result = await pool.request().input('login', loginName).query(`
-    SELECT a.ID, a.EmpID, a.TenantId, a.PasswordHash
+    SELECT a.ID, a.EmpID, a.TenantId, a.PasswordHash, a.LockedUntil
     FROM dbo.TblEmployeePortalAccount a
     INNER JOIN dbo.TblEmp e ON e.EmpID = a.EmpID
     WHERE a.LoginName = @login AND a.IsEnabled = 1 AND e.isActive = 1 AND e.TenantId = a.TenantId
   `);
-  const record = result.recordset[0] as { ID: number; EmpID: number; TenantId: string; PasswordHash: string } | undefined;
+  const record = result.recordset[0] as { ID: number; EmpID: number; TenantId: string; PasswordHash: string; LockedUntil: Date | null } | undefined;
   // Verify even for a nonexistent login to minimize user enumeration timing.
   const fakeHash = 's1$AAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
   const verified = await verifyPassword(password, record?.PasswordHash ?? fakeHash);
-  if (!record || !verified.ok || verified.needsUpgrade) return false;
+  if (!record || (record.LockedUntil && new Date(record.LockedUntil).getTime() > Date.now())) return false;
+  if (!verified.ok || verified.needsUpgrade) {
+    await pool.request().input('accountId', record.ID).query(`
+      UPDATE dbo.TblEmployeePortalAccount
+      SET FailedAttempts = CASE WHEN LockedUntil < SYSUTCDATETIME() THEN 1 ELSE FailedAttempts + 1 END,
+          LockedUntil = CASE WHEN FailedAttempts >= 4 THEN DATEADD(MINUTE, 15, SYSUTCDATETIME()) ELSE LockedUntil END
+      WHERE ID=@accountId
+    `);
+    return false;
+  }
+  await pool.request().input('accountId', record.ID).query(`
+    UPDATE dbo.TblEmployeePortalAccount SET FailedAttempts=0,LockedUntil=NULL WHERE ID=@accountId
+  `);
   const claims: Claims = { empId: record.EmpID, accountId: record.ID, tenantId: record.TenantId, expires: Math.floor(Date.now() / 1000) + TTL_SECONDS };
   const data = Buffer.from(JSON.stringify(claims)).toString('base64url');
   (await cookies()).set(COOKIE, data + '.' + signature(data), {
