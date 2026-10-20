@@ -49,6 +49,7 @@ const DailyPayrollPanel      = dynamic(() => import('@/components/hr/DailyPayrol
 const EmployeeMonthlyReportPanel = dynamic(() => import('@/components/hr/EmployeeMonthlyReportPanel'),               { ssr: false, loading: () => <TabLoader /> });
 const EmployeeMonthlySheetPanel = dynamic(() => import('@/components/hr/EmployeeMonthlySheetPanel'),                 { ssr: false, loading: () => <TabLoader /> });
 const EmployeeAdvancesSection = dynamic(() => import('@/components/reports/expenses/EmployeeAdvancesSection'),       { ssr: false, loading: () => <TabLoader /> });
+const EmployeePortalAccountsPanel = dynamic(() => import('@/components/hr/EmployeePortalAccountsPanel'), { ssr: false, loading: () => <TabLoader /> });
 const EmployeeLedgerPanel     = dynamic(() => import('@/components/hr/EmployeeLedgerPanel'),                        { ssr: false, loading: () => <TabLoader /> });
 const EmployeeLedgerReconciliationPanel = dynamic(
   () => import('@/components/hr/EmployeeLedgerReconciliationPanel'),
@@ -109,6 +110,7 @@ function formatTargetBadge(emp: Employee): { label: string; tone: 'muted' | 'war
 
 const MAIN_TABS = [
   { id: 'employees',        label: 'الموظفون',          icon: UsersRound },
+  { id: 'employee-portal', label: 'حسابات الموظفين', icon: Users },
   { id: 'attendance',      label: 'متابعة الحضور',     icon: CalendarCheck },
   { id: 'daily-payroll',   label: 'يوميات الموظفين',   icon: Banknote },
   { id: 'payroll-gap-review', label: 'مراجعة اليوميات', icon: ClipboardList },
@@ -197,6 +199,7 @@ export default function HRPage() {
 
       {/* ── Tab Panels ── */}
       {mainTab === 'employees'        && <EmployeesPanel />}
+      {mainTab === 'employee-portal' && <EmployeePortalAccountsPanel />}
       {mainTab === 'attendance'         && <AttendancePanel />}
       {mainTab === 'daily-payroll'    && <DailyPayrollPanel />}
       {mainTab === 'payroll-gap-review' && <PayrollGapReviewPanel />}
