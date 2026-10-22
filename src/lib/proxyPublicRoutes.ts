@@ -6,6 +6,8 @@
 /** Exact path matches (no prefix). */
 export const PUBLIC_EXACT_ROUTES = [
   '/login',
+  // Employee portal has its own signed employee cookie and per-route authentication.
+  '/employee-portal',
   // DRVO public marketing + self-service trial signup pages.
   '/drvo',
   '/start',
@@ -30,6 +32,8 @@ export const PUBLIC_EXACT_ROUTES = [
  * Public booking lives under `/api/public/`.
  */
 export const PUBLIC_PREFIX_ROUTES = [
+  '/employee-portal/',
+  '/api/employee-portal/',
   '/api/public/',
   // DRVOWA machine-to-machine connector. The route handler enforces its own
   // per-integration Bearer token, so it must be allowed through the edge proxy
