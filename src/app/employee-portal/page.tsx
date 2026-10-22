@@ -5,18 +5,21 @@ import { getEmployeeLedgerEntries } from '@/lib/services/employeeLedgerService';
 import { EMP_LEDGER_REASON_LABELS } from '@/lib/types/employee-ledger';
 import EmployeePortalLogin from './portal-login';
 import EmployeeDailyChart from './EmployeeDailyChart';
+import DailyEfficiency from './DailyEfficiency';
 
 export const dynamic = 'force-dynamic';
 const money = (value: number) => new Intl.NumberFormat('ar-EG', { maximumFractionDigits: 2 }).format(value) + ' ج.م';
 
 export default async function EmployeePortalPage({
   searchParams,
-}: { searchParams: Promise<{ month?: string }> }) {
+}: { searchParams: Promise<{ month?: string; tab?: string }> }) {
   const identity = await getEmployeePortalIdentity();
   if (!identity) return <EmployeePortalLogin />;
   if (identity.mustChangePassword) redirect('/employee-portal/change-password');
 
-  const requested = (await searchParams).month;
+  const params = await searchParams;
+  const requested = params.month;
+  const activeTab = params.tab === 'daily' ? 'daily' : 'account';
   const cairoMonthParts = new Intl.DateTimeFormat('en-US', { timeZone: 'Africa/Cairo', year: 'numeric', month: '2-digit' }).formatToParts(new Date());
   const current = `${cairoMonthParts.find(p => p.type === 'year')?.value}-${cairoMonthParts.find(p => p.type === 'month')?.value}`;
   const month = requested && /^20\d\d-(0[1-9]|1[0-2])$/.test(requested) ? requested : current;
@@ -46,11 +49,19 @@ export default async function EmployeePortalPage({
           </div>
           <div className="flex gap-2"><a href="/employee-portal/account-settings" className="rounded-xl border border-zinc-700 px-4 py-2 text-sm">إعدادات الحساب</a><form action="/employee-portal/logout" method="post"><button className="rounded-xl border border-zinc-700 px-4 py-2 text-sm">تسجيل خروج</button></form></div>
         </header>
+        <nav aria-label="أقسام حساب الموظف" className="grid grid-cols-2 gap-2 rounded-2xl bg-zinc-900 p-1.5 border border-zinc-800">
+          <a href={`/employee-portal?month=${month}&tab=account`} aria-current={activeTab === 'account' ? 'page' : undefined} className={`rounded-xl px-4 py-3 text-center font-bold transition-colors ${activeTab === 'account' ? 'bg-amber-500 text-zinc-950' : 'text-zinc-300 hover:bg-zinc-800'}`}>حسابي</a>
+          <a href={`/employee-portal?month=${month}&tab=daily`} aria-current={activeTab === 'daily' ? 'page' : undefined} className={`rounded-xl px-4 py-3 text-center font-bold transition-colors ${activeTab === 'daily' ? 'bg-amber-500 text-zinc-950' : 'text-zinc-300 hover:bg-zinc-800'}`}>كفاءة اليوم</a>
+        </nav>
         <form className="flex items-center gap-3" action="/employee-portal">
+          <input type="hidden" name="tab" value={activeTab}/>
           <label htmlFor="month" className="text-sm text-zinc-300">الشهر</label>
           <input id="month" name="month" type="month" defaultValue={month} className="rounded-lg border border-zinc-700 bg-zinc-900 p-2 text-white" />
           <button className="rounded-lg bg-amber-500 px-4 py-2 font-bold text-zinc-950">عرض</button>
         </form>
+        {activeTab === 'daily' ? (
+          <DailyEfficiency month={month} today={new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Cairo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())} entries={ledger.entries} />
+        ) : (<>
         <section aria-label="ملخص مستحقات الشهر" className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
             {[
@@ -105,6 +116,7 @@ export default async function EmployeePortalPage({
               ))}
           </div>
         </section>
+        </>)}
       </div>
     </main>
   );
