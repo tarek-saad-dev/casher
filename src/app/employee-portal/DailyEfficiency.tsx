@@ -49,7 +49,7 @@ export default function DailyEfficiency({month,today,entries,attendance}:Props){
    <div className="grid grid-cols-[52px_minmax(0,1fr)_52px] items-center gap-2" dir="rtl">
     <button type="button" onClick={()=>setSelected(days[index-1])} disabled={index===0}
       className="h-14 min-h-14 rounded-xl border border-zinc-700 bg-zinc-950 text-white text-3xl font-bold disabled:opacity-25 focus-visible:ring-2 focus-visible:ring-amber-400"
-      aria-label="اليوم السابق" title="اليوم السابق">‹</button>
+      aria-label="اليوم السابق" title="اليوم السابق">›</button>
     <div className="min-w-0 text-center" aria-live="polite">
       <p className="text-sm md:text-lg font-semibold text-white">{dateLabel}</p>
       <label className="mt-1 block text-xs text-zinc-400">اختار يوم تاني
@@ -61,7 +61,7 @@ export default function DailyEfficiency({month,today,entries,attendance}:Props){
     </div>
     <button type="button" onClick={()=>setSelected(days[index+1])} disabled={index===days.length-1}
       className="h-13 min-h-13 rounded-xl border border-zinc-700 bg-zinc-950 text-white text-3xl font-bold disabled:opacity-25 focus-visible:ring-2 focus-visible:ring-amber-400"
-      aria-label="اليوم التالي" title="اليوم التالي">›</button>
+      aria-label="اليوم التالي" title="اليوم التالي">‹</button>
    </div>
   </div>
   <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4 md:p-5 space-y-3">
