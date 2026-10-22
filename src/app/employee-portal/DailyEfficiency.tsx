@@ -1,15 +1,21 @@
 'use client';
 import {useMemo,useState} from 'react';
 import type {EmpLedgerEntryRow} from '@/lib/types/employee-ledger';
+import type {PortalAttendance} from '@/lib/employee-portal/attendance';
 const money=(n:number)=>new Intl.NumberFormat('ar-EG',{maximumFractionDigits:2}).format(n)+' ج.م';
 const signed=(n:number)=>money(n);
-type Props={month:string;today:string;entries:EmpLedgerEntryRow[]};
-export default function DailyEfficiency({month,today,entries}:Props){
+type Props={month:string;today:string;entries:EmpLedgerEntryRow[];attendance:PortalAttendance[]};
+export default function DailyEfficiency({month,today,entries,attendance}:Props){
  const days=useMemo(()=>{const [y,m]=month.split('-').map(Number);const count=new Date(Date.UTC(y,m,0)).getUTCDate();return Array.from({length:count},(_,i)=>month+'-'+String(i+1).padStart(2,'0'));},[month]);
  const [selected,setSelected]=useState(()=>month===today.slice(0,7)?today:days[days.length-1]);
  const selectedDay=days.includes(selected)?selected:days[days.length-1];
  const index=days.indexOf(selectedDay);
  const daily=entries.filter(e=>e.entryDate===selectedDay);
+ const attendanceToday=attendance.filter(a=>a.day===selectedDay);
+ const dateLabel=new Intl.DateTimeFormat('ar-EG',{weekday:'long',day:'numeric',month:'long',year:'numeric',timeZone:'UTC'}).format(new Date(selectedDay+'T12:00:00Z'));
+ const fmtTime=(value:string|null)=>value?value:'غير مسجل';
+ const totalMinutes=attendanceToday.reduce((sum,a)=>sum+(a.workedMinutes??0),0);
+ const hasFinishedShift=attendanceToday.some(a=>a.workedMinutes!==null);
  const total=(reasons:string[],dir:'credit'|'debit')=>daily.filter(e=>e.entryDirection===dir&&reasons.includes(e.entryReason)).reduce((s,e)=>s+e.amount,0);
  const salary=total(['hourly_wage','monthly_salary'],'credit');
  const target=total(['target','commission'],'credit');
@@ -33,21 +39,46 @@ export default function DailyEfficiency({month,today,entries}:Props){
    {rows.length>0&&<div className="mt-2 space-y-1.5">{rows.map(e=><div key={e.id} className="flex items-start justify-between gap-3 text-xs text-zinc-400"><span className="break-words">{e.notes||e.entryReason}{e.branchName?' · '+e.branchName:''}</span><span className="shrink-0">{money(e.amount)}</span></div>)}</div>}
   </div>;
  };
- return <section className="space-y-5" aria-label="كفاءة اليوم">
-  <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4 md:p-6 space-y-4">
-   <div className="flex items-center justify-between gap-2">
-    <div><h2 className="font-bold text-lg">كفاءة اليوم</h2><p className="text-xs text-zinc-400">اختار يوم من الشهر للاطلاع على حركاته المعتمدة</p></div>
-    <div className="flex gap-2">
-     <button type="button" onClick={()=>setSelected(days[index-1])} disabled={index===0} className="rounded-lg border border-zinc-700 px-3 py-2 disabled:opacity-30" aria-label="اليوم السابق">›</button>
-     <button type="button" onClick={()=>setSelected(days[index+1])} disabled={index===days.length-1} className="rounded-lg border border-zinc-700 px-3 py-2 disabled:opacity-30" aria-label="اليوم التالي">‹</button>
-    </div>
-   </div>
-   <label className="block text-sm text-zinc-300">اليوم
-    <select value={selectedDay} onChange={e=>setSelected(e.target.value)} className="mt-2 block w-full rounded-xl border border-zinc-700 bg-zinc-950 p-3 text-white">
-     {days.map(day=><option key={day} value={day}>{new Intl.DateTimeFormat('ar-EG',{weekday:'long',day:'numeric',month:'long',timeZone:'UTC'}).format(new Date(day+'T12:00:00Z'))}</option>)}
-    </select>
-   </label>
+ return <section className="space-y-4" aria-label="كفاءة اليوم">
+  <div className="flex items-center gap-3 pt-4 border-t border-zinc-700">
+   <h2 className="text-xl md:text-2xl font-extrabold text-white">كفاءة اليوم</h2>
+   <span className="text-xs text-zinc-500">تفاصيل يوم بيوم</span>
   </div>
+  <div className="rounded-2xl border border-zinc-800 bg-zinc-900 px-3 py-4 md:p-6 space-y-4">
+   <p className="text-sm text-zinc-400">تنقّل بين أيام الشهر لعرض الحضور والحركات المعتمدة</p>
+   <div className="grid grid-cols-[52px_minmax(0,1fr)_52px] items-center gap-2" dir="rtl">
+    <button type="button" onClick={()=>setSelected(days[index-1])} disabled={index===0}
+      className="h-14 min-h-14 rounded-xl border border-zinc-700 bg-zinc-950 text-white text-3xl font-bold disabled:opacity-25 focus-visible:ring-2 focus-visible:ring-amber-400"
+      aria-label="اليوم السابق" title="اليوم السابق">‹</button>
+    <div className="min-w-0 text-center" aria-live="polite">
+      <p className="text-sm md:text-lg font-semibold text-white">{dateLabel}</p>
+      <label className="mt-1 block text-xs text-zinc-400">اختار يوم تاني
+        <select aria-label="اختيار يوم من الشهر" value={selectedDay} onChange={e=>setSelected(e.target.value)}
+          className="block mx-auto mt-1 max-w-full w-full rounded-lg border border-zinc-700 bg-zinc-950 p-2 text-center text-sm text-white">
+          {days.map(day=><option key={day} value={day}>{new Intl.DateTimeFormat('ar-EG',{day:'numeric',month:'long',timeZone:'UTC'}).format(new Date(day+'T12:00:00Z'))}</option>)}
+        </select>
+      </label>
+    </div>
+    <button type="button" onClick={()=>setSelected(days[index+1])} disabled={index===days.length-1}
+      className="h-13 min-h-13 rounded-xl border border-zinc-700 bg-zinc-950 text-white text-3xl font-bold disabled:opacity-25 focus-visible:ring-2 focus-visible:ring-amber-400"
+      aria-label="اليوم التالي" title="اليوم التالي">›</button>
+   </div>
+  </div>
+  <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4 md:p-5 space-y-3">
+   <h3 className="font-bold text-lg">الحضور والانصراف</h3>
+   {attendanceToday.length===0?<p className="text-sm text-zinc-400">لا توجد بيانات حضور مسجلة لليوم ده.</p>:<>
+    {attendanceToday.map((a,i)=><div key={i} className="grid grid-cols-3 gap-2 border-b border-zinc-800 pb-3 last:border-0">
+     <div className="min-w-0"><p className="text-xs text-zinc-400">الحضور</p><p className="mt-1 text-sm font-bold" dir="ltr">{fmtTime(a.checkIn)}</p></div>
+     <div className="min-w-0"><p className="text-xs text-zinc-400">الانصراف</p><p className="mt-1 text-sm font-bold" dir="ltr">{fmtTime(a.checkOut)}</p></div>
+     <div className="min-w-0"><p className="text-xs text-zinc-400">الفرع</p><p className="mt-1 text-sm font-bold">{a.branch||'—'}</p></div>
+    </div>)}
+    <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm">
+      <span>ساعات العمل: <strong>{hasFinishedShift?`${Math.floor(totalMinutes/60)} س ${totalMinutes%60} د`:'لم يكتمل الانصراف'}</strong></span>
+      <span>التأخير: <strong>{attendanceToday.reduce((n,a)=>n+a.lateMinutes,0)} دقيقة</strong></span>
+      <span>انصراف مبكر: <strong>{attendanceToday.reduce((n,a)=>n+a.earlyMinutes,0)} دقيقة</strong></span>
+    </div>
+   </>}
+  </section>
   <div className="grid grid-cols-2 gap-3">
    <section className="rounded-2xl border border-emerald-700/30 bg-zinc-900 p-3 md:p-5 space-y-4 min-w-0">
     <div className="space-y-1"><h3 className="font-bold text-emerald-300">الدخل اليوم</h3><p className="text-xs text-zinc-400">الاستحقاقات</p></div>
