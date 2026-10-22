@@ -40,7 +40,8 @@ export default async function EmployeePortalPage({
     .filter(e => reasons.includes(e.entryReason) && e.entryDirection === direction)
     .reduce((total, e) => total + e.amount, 0);
   const salary = sum(['hourly_wage', 'monthly_salary'], 'credit');
-  const bonuses = sum(['target', 'commission', 'bonus', 'tip'], 'credit');
+  const bonuses = sum(['target', 'commission', 'bonus'], 'credit');
+  const revenueTips = sum(['tip', 'employee_funding'], 'credit');
   const advances = sum(['advance'], 'debit');
   const deductions = sum(['deduction', 'settlement', 'adjustment'], 'debit');
   const payouts = sum(['payout'], 'debit');
@@ -79,16 +80,26 @@ export default async function EmployeePortalPage({
           </div>
         </header>
         <section aria-label="ملخص مستحقات الشهر" className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-2 md:gap-3">
             {[
               ['مستحقات الراتب', salary],
               ['العمولات والمكافآت', bonuses],
+              ['الإيراد والـTips', revenueTips],
+            ].map(([label, value]) => (
+              <div key={String(label)} className="flex min-w-0 flex-col justify-between rounded-2xl border border-zinc-800 bg-zinc-900 px-2.5 py-3.5 md:p-5">
+                <p className="min-h-9 text-[11px] leading-4 text-zinc-400 md:min-h-0 md:text-sm">{label}</p>
+                <p className="mt-2 break-words text-base font-bold leading-snug tabular-nums text-white md:text-xl" dir="rtl">{money(Number(value))}</p>
+              </div>
+            ))}
+          </div>
+          <div className="grid grid-cols-2 gap-2 md:gap-3">
+            {[
               ['السلف', advances],
               ['الخصومات والتسويات', deductions],
             ].map(([label, value]) => (
-              <div key={String(label)} className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4 md:p-5">
+              <div key={String(label)} className="min-w-0 rounded-2xl border border-zinc-800 bg-zinc-900 p-4 md:p-5">
                 <p className="text-xs text-zinc-400">{label}</p>
-                <p className="mt-3 text-xl font-bold">{money(Number(value))}</p>
+                <p className="mt-2 text-xl font-bold tabular-nums">{money(Number(value))}</p>
               </div>
             ))}
           </div>
