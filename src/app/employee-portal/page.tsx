@@ -5,6 +5,7 @@ import { getEmployeeLedgerEntries } from '@/lib/services/employeeLedgerService';
 import EmployeePortalLogin from './portal-login';
 import EmployeeDailyChart from './EmployeeDailyChart';
 import DailyEfficiency from './DailyEfficiency';
+import { getPortalAttendance } from '@/lib/employee-portal/attendance';
 
 export const dynamic = 'force-dynamic';
 const money = (value: number) => new Intl.NumberFormat('ar-EG', { maximumFractionDigits: 2 }).format(value) + ' ج.م';
@@ -28,7 +29,13 @@ export default async function EmployeePortalPage({
   `);
   const profile = employee.recordset[0] as { EmpName: string; Job: string | null } | undefined;
   if (!profile) redirect('/employee-portal');
-  const ledger = await getEmployeeLedgerEntries({ tenantId: identity.tenantId, empId: identity.empId, month });
+  const [ledger, attendance] = await Promise.all([
+    getEmployeeLedgerEntries({ tenantId: identity.tenantId, empId: identity.empId, month }),
+    getPortalAttendance(identity.tenantId, identity.empId, month).catch(error => {
+      console.error('[employee-portal] attendance unavailable', error instanceof Error ? error.message : 'unknown');
+      return [];
+    }),
+  ]);
   const sum = (reasons: string[], direction: string) => ledger.entries
     .filter(e => reasons.includes(e.entryReason) && e.entryDirection === direction)
     .reduce((total, e) => total + e.amount, 0);
@@ -90,7 +97,7 @@ export default async function EmployeePortalPage({
           )}
         </section>
         <EmployeeDailyChart entries={ledger.entries} month={month} />
-        <DailyEfficiency month={month} today={new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Cairo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())} entries={ledger.entries} />
+        <DailyEfficiency month={month} today={new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Cairo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())} entries={ledger.entries} attendance={attendance} />
       </div>
     </main>
   );
