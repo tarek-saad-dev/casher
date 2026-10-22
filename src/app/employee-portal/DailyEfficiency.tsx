@@ -15,7 +15,6 @@ export default function DailyEfficiency({month,today,entries,attendance}:Props){
  const dateLabel=new Intl.DateTimeFormat('ar-EG',{weekday:'long',day:'numeric',month:'long',year:'numeric',timeZone:'UTC'}).format(new Date(selectedDay+'T12:00:00Z'));
  const fmtTime=(value:string|null)=>value?value:'غير مسجل';
  const totalMinutes=attendanceToday.reduce((sum,a)=>sum+(a.workedMinutes??0),0);
- const hasFinishedShift=attendanceToday.some(a=>a.workedMinutes!==null);
  const total=(reasons:string[],dir:'credit'|'debit')=>daily.filter(e=>e.entryDirection===dir&&reasons.includes(e.entryReason)).reduce((s,e)=>s+e.amount,0);
  const salary=total(['hourly_wage','monthly_salary'],'credit');
  const target=total(['target','commission'],'credit');
@@ -49,7 +48,7 @@ export default function DailyEfficiency({month,today,entries,attendance}:Props){
    <div className="grid grid-cols-[52px_minmax(0,1fr)_52px] items-center gap-2" dir="rtl">
     <button type="button" onClick={()=>setSelected(days[index-1])} disabled={index===0}
       className="h-14 min-h-14 rounded-xl border border-zinc-700 bg-zinc-950 text-white text-3xl font-bold disabled:opacity-25 focus-visible:ring-2 focus-visible:ring-amber-400"
-      aria-label="اليوم السابق" title="اليوم السابق">›</button>
+      aria-label="اليوم السابق" title="اليوم السابق">‹</button>
     <div className="min-w-0 text-center" aria-live="polite">
       <p className="text-sm md:text-lg font-semibold text-white">{dateLabel}</p>
       <label className="mt-1 block text-xs text-zinc-400">اختار يوم تاني
@@ -60,24 +59,42 @@ export default function DailyEfficiency({month,today,entries,attendance}:Props){
       </label>
     </div>
     <button type="button" onClick={()=>setSelected(days[index+1])} disabled={index===days.length-1}
-      className="h-13 min-h-13 rounded-xl border border-zinc-700 bg-zinc-950 text-white text-3xl font-bold disabled:opacity-25 focus-visible:ring-2 focus-visible:ring-amber-400"
-      aria-label="اليوم التالي" title="اليوم التالي">‹</button>
+      className="h-14 min-h-14 rounded-xl border border-zinc-700 bg-zinc-950 text-white text-3xl font-bold disabled:opacity-25 focus-visible:ring-2 focus-visible:ring-amber-400"
+      aria-label="اليوم التالي" title="اليوم التالي">›</button>
    </div>
   </div>
   <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4 md:p-5 space-y-3">
    <h3 className="font-bold text-lg">الحضور والانصراف</h3>
-   {attendanceToday.length===0?<p className="text-sm text-zinc-400">لا توجد بيانات حضور مسجلة لليوم ده.</p>:<>
-    {attendanceToday.map((a,i)=><div key={i} className="grid grid-cols-3 gap-2 border-b border-zinc-800 pb-3 last:border-0">
-     <div className="min-w-0"><p className="text-xs text-zinc-400">الحضور</p><p className="mt-1 text-sm font-bold" dir="ltr">{fmtTime(a.checkIn)}</p></div>
-     <div className="min-w-0"><p className="text-xs text-zinc-400">الانصراف</p><p className="mt-1 text-sm font-bold" dir="ltr">{fmtTime(a.checkOut)}</p></div>
-     <div className="min-w-0"><p className="text-xs text-zinc-400">الفرع</p><p className="mt-1 text-sm font-bold">{a.branch||'—'}</p></div>
-    </div>)}
-    <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm">
-      <span>ساعات العمل: <strong>{hasFinishedShift?`${Math.floor(totalMinutes/60)} س ${totalMinutes%60} د`:'لم يكتمل الانصراف'}</strong></span>
-      <span>التأخير: <strong>{attendanceToday.reduce((n,a)=>n+a.lateMinutes,0)} دقيقة</strong></span>
-      <span>انصراف مبكر: <strong>{attendanceToday.reduce((n,a)=>n+a.earlyMinutes,0)} دقيقة</strong></span>
-    </div>
-   </>}
+   {attendanceToday.length===0 ? (
+    <p className="text-sm text-zinc-400">لا توجد بيانات حضور مسجلة لليوم ده.</p>
+   ) : (
+    <>
+     <div className="overflow-hidden rounded-xl border border-zinc-700">
+      <table className="w-full table-fixed border-collapse text-center">
+       <thead className="bg-zinc-950/70">
+        <tr className="text-xs text-zinc-400">
+         <th scope="col" className="w-1/3 px-2 py-3 font-medium">الحضور</th>
+         <th scope="col" className="w-1/3 px-2 py-3 font-medium">الانصراف</th>
+         <th scope="col" className="w-1/3 px-2 py-3 font-medium">الفرع</th>
+        </tr>
+       </thead>
+       <tbody>
+        {attendanceToday.map((a,i)=>(
+         <tr key={i} className="border-t border-zinc-800 text-sm font-semibold text-white">
+          <td className="px-2 py-3 align-middle" dir="ltr">{fmtTime(a.checkIn)}</td>
+          <td className="px-2 py-3 align-middle" dir="ltr">{fmtTime(a.checkOut)}</td>
+          <td className="break-words px-2 py-3 align-middle">{a.branch||'—'}</td>
+         </tr>
+        ))}
+       </tbody>
+      </table>
+     </div>
+     <div className="flex items-center justify-between gap-3 border-t border-zinc-800 pt-3">
+      <span className="text-sm text-zinc-400">ساعات العمل</span>
+      <strong className="text-base text-white">{attendanceToday.every(a=>a.workedMinutes!==null)?`${Math.floor(totalMinutes/60)} س ${totalMinutes%60} د`:'لم يكتمل الانصراف'}</strong>
+     </div>
+    </>
+   )}
   </section>
   <div className="grid grid-cols-2 gap-3">
    <section className="rounded-2xl border border-emerald-700/30 bg-zinc-900 p-3 md:p-5 space-y-4 min-w-0">
