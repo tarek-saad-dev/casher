@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPool } from '@/lib/db';
 import { hashPassword } from '@/lib/auth/passwordHash';
 import { requirePageAccess, isAuthResult } from '@/lib/api-auth';
+import { pickEmployeeUsername } from '@/lib/employee-portal/username';
 
 export const runtime = 'nodejs';
 export async function POST(request:NextRequest) {
@@ -19,12 +20,12 @@ export async function POST(request:NextRequest) {
     AND NOT EXISTS(SELECT 1 FROM dbo.TblEmployeePortalAccount a WHERE a.EmpID=e.EmpID)
     ORDER BY e.EmpID
   `);
+  const currentNames=await pool.request().query('SELECT LoginName FROM dbo.TblEmployeePortalAccount');
+  const occupied=new Set<string>(currentNames.recordset.map((r:{LoginName:string})=>String(r.LoginName).toLowerCase()));
   const created:{empId:number;name:string;username:string}[]=[];
   // IDs make usernames unique and stable even when Arabic names are duplicated.
   for(const row of employees.recordset as {EmpID:number;EmpName:string}[]) {
-    const prefix=String(row.EmpName||'employee').toLowerCase().normalize('NFKD')
-      .replace(/[^\p{L}\p{N}]+/gu,'.').replace(/^\.+|\.+$/g,'').slice(0,40)||'employee';
-    const username=`${prefix}.${row.EmpID}`;
+    const username=pickEmployeeUsername(row.EmpName,occupied);
     const result=await pool.request().input('empId',row.EmpID).input('tenantId',auth.tenantId)
       .input('username',username).input('hash',hash).query(`
       INSERT INTO dbo.TblEmployeePortalAccount(EmpID,TenantId,LoginName,PasswordHash,MustChangePassword)
