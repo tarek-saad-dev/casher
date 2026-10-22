@@ -126,7 +126,7 @@ export default async function EmployeePortalPage({
           </div>
           )}
         </section>
-        <EmployeeDailyChart entries={ledger.entries} month={month} />
+        <EmployeeDailyChart entries={ledger.entries} month={month} attendance={attendance} />
         <DailyEfficiency month={month} today={new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Cairo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())} entries={ledger.entries} attendance={attendance} />
       </div>
     </main>
