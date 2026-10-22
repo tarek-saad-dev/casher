@@ -17,7 +17,22 @@ export default function DailyEfficiency({month,today,entries}:Props){
  const advances=total(['advance'],'debit');
  const deductions=total(['deduction','settlement','adjustment'],'debit');
  const net=salary+target+tips-advances-deductions;
- const details=[['الأساسي',salary,false],['التارجت',target,false],['إيراد أو Tips (المستحق للموظف)',tips,false],['سلف اليوم',advances,true],['خصومات اليوم',deductions,true]] as const;
+ const incomeGroups=[
+  {label:'الأساسي',amount:salary,reasons:['hourly_wage','monthly_salary']},
+  {label:'التارجت',amount:target,reasons:['target','commission']},
+  {label:'إيراد / Tips',amount:tips,reasons:['tip','employee_funding']},
+ ];
+ const expenseGroups=[
+  {label:'السلف',amount:advances,reasons:['advance']},
+  {label:'الخصومات',amount:deductions,reasons:['deduction','settlement','adjustment']},
+ ];
+ const renderGroup=(group:{label:string;amount:number;reasons:string[]},dir:'credit'|'debit')=>{
+  const rows=daily.filter(e=>e.entryDirection===dir&&group.reasons.includes(e.entryReason));
+  return <div key={group.label} className="border-b border-zinc-800 pb-3 last:border-0 last:pb-0">
+   <div className="flex items-center justify-between gap-2 text-sm"><span className="font-semibold text-zinc-200">{group.label}</span><strong className={dir==='credit'?'text-emerald-300':'text-rose-300'}>{dir==='credit'?'+':'−'}{money(group.amount)}</strong></div>
+   {rows.length>0&&<div className="mt-2 space-y-1.5">{rows.map(e=><div key={e.id} className="flex items-start justify-between gap-3 text-xs text-zinc-400"><span className="break-words">{e.notes||e.entryReason}{e.branchName?' · '+e.branchName:''}</span><span className="shrink-0">{money(e.amount)}</span></div>)}</div>}
+  </div>;
+ };
  return <section className="space-y-5" aria-label="كفاءة اليوم">
   <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4 md:p-6 space-y-4">
    <div className="flex items-center justify-between gap-2">
@@ -33,16 +48,24 @@ export default function DailyEfficiency({month,today,entries}:Props){
     </select>
    </label>
   </div>
-  <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5 space-y-3">
-   <h3 className="font-bold">الحضور والانصراف</h3>
-   <p className="text-sm text-zinc-400">الحضور، الانصراف، عدد ساعات العمل والتأخير: في انتظار ربط سجلات الحضور المعتمدة. مش بنحسبها من الفواتير أو حركة المرتب.</p>
+  <div className="grid grid-cols-2 gap-3">
+   <section className="rounded-2xl border border-emerald-700/30 bg-zinc-900 p-3 md:p-5 space-y-4 min-w-0">
+    <div className="space-y-1"><h3 className="font-bold text-emerald-300">الدخل اليوم</h3><p className="text-xs text-zinc-400">الاستحقاقات</p></div>
+    {incomeGroups.map(g=>renderGroup(g,'credit'))}
+    <div className="flex justify-between gap-1 text-sm border-t border-zinc-700 pt-3"><span>الإجمالي</span><strong className="text-emerald-300">{money(salary+target+tips)}</strong></div>
+   </section>
+   <section className="rounded-2xl border border-rose-700/30 bg-zinc-900 p-3 md:p-5 space-y-4 min-w-0">
+    <div className="space-y-1"><h3 className="font-bold text-rose-300">المسحوبات اليوم</h3><p className="text-xs text-zinc-400">السلف والخصومات</p></div>
+    {expenseGroups.map(g=>renderGroup(g,'debit'))}
+    <div className="flex justify-between gap-1 text-sm border-t border-zinc-700 pt-3"><span>الإجمالي</span><strong className="text-rose-300">{money(advances+deductions)}</strong></div>
+   </section>
   </div>
-  <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5 space-y-4">
-   <h3 className="font-bold">المستحقات اليومية</h3>
-   {details.map(([label,amount,debit])=><div className="flex items-center justify-between gap-3" key={label}><span className="text-sm text-zinc-300">{label}</span><strong className={debit?'text-rose-400':'text-white'}>{debit?'−':'+'}{signed(amount)}</strong></div>)}
-   <div className="border-t border-zinc-700 pt-4 flex items-center justify-between gap-3"><span className="font-bold">صافي اليوم</span><strong className="text-2xl text-amber-300">{money(net)}</strong></div>
-   <p className="text-xs text-zinc-500">صافي الحركات اليومية المختارة، بدون حركة صرف المرتب. إيراد الخدمات للمحل لا يُضاف كدخل للموظف؛ المعروض فقط الاستحقاقات المسجلة في دفتره.</p>
-   {daily.length===0?<p className="text-sm text-zinc-400">لا توجد حركات مالية معتمدة لليوم المحدد.</p>:<details className="border-t border-zinc-800 pt-3"><summary className="cursor-pointer text-sm text-amber-300">عرض {daily.length} حركة مسجلة</summary><div className="mt-3 space-y-2">{daily.map(e=><div key={e.id} className="text-sm flex justify-between gap-3"><span>{e.notes||e.entryReason}</span><span>{money(e.amount)}</span></div>)}</div></details>}
+  <div className="rounded-3xl border border-amber-500/40 bg-amber-500/10 p-5 md:p-7 space-y-2">
+   <p className="text-sm text-amber-300">صافي اليوم</p>
+   <p className="text-3xl md:text-4xl font-extrabold">{money(net)}</p>
+   <p className="text-xs text-zinc-400">الأساسي + التارجت + الإيراد المستحق / Tips − السلف − الخصومات. لا يشمل الصرف النهائي للراتب.</p>
+   {daily.length===0&&<p className="text-sm text-zinc-400">لا توجد حركات مسجلة لهذا اليوم.</p>}
   </div>
+  <p className="text-xs text-zinc-500">جميع التفاصيل من دفتر الموظف المعتمد. إيراد خدمات المحل لا يُضاف لمستحقات الموظف تلقائيًا.</p>
  </section>;
 }
