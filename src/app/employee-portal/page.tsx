@@ -70,6 +70,7 @@ export default async function EmployeePortalPage({
             <p className="mt-3 text-4xl font-extrabold tracking-tight text-white md:text-5xl" dir="auto">{money(ledger.balance)}</p>
             <p className="mt-3 text-sm text-zinc-400">المتبقي من مستحقاتك بعد السلف والخصومات والمبالغ المصروفة خلال الشهر</p>
           </div>
+          {month < current && (
           <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
             <div>
               <p className="text-sm text-zinc-400">المبالغ المصروفة</p>
@@ -85,6 +86,7 @@ export default async function EmployeePortalPage({
               <div className="text-sm text-zinc-500">لم يتم تسجيل صرف لهذا الشهر</div>
             )}
           </div>
+          )}
         </section>
         <EmployeeDailyChart entries={ledger.entries} month={month} />
         <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
