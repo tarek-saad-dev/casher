@@ -67,17 +67,17 @@ export async function loginEmployee(loginName: string, password: string): Promis
   });
   return true;
 }
-export async function getEmployeePortalIdentity(): Promise<(Claims & { mustChangePassword: boolean }) | null> {
+export async function getEmployeePortalIdentity(): Promise<(Claims & { mustChangePassword: boolean; loginName: string }) | null> {
   const claims = parse((await cookies()).get(COOKIE)?.value);
   if (!claims) return null;
   const pool = await getPool();
   const result = await pool.request()
     .input('accountId', claims.accountId).input('empId', claims.empId).input('tenantId', claims.tenantId)
-    .query(`SELECT a.ID, a.MustChangePassword FROM dbo.TblEmployeePortalAccount a
+    .query(`SELECT a.ID, a.MustChangePassword, a.LoginName FROM dbo.TblEmployeePortalAccount a
       INNER JOIN dbo.TblEmp e ON e.EmpID=a.EmpID
       WHERE a.ID=@accountId AND a.EmpID=@empId AND a.TenantId=@tenantId
         AND e.TenantId=@tenantId AND a.IsEnabled=1 AND e.isActive=1`);
-  return result.recordset.length ? { ...claims, mustChangePassword: Boolean(result.recordset[0].MustChangePassword) } : null;
+  return result.recordset.length ? { ...claims, mustChangePassword: Boolean(result.recordset[0].MustChangePassword), loginName: String(result.recordset[0].LoginName ?? '') } : null;
 }
 export async function changeEmployeePassword(currentPassword: string, nextPassword: string): Promise<boolean> {
   const identity = await getEmployeePortalIdentity();
