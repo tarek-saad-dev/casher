@@ -51,19 +51,40 @@ export default async function EmployeePortalPage({
           <input id="month" name="month" type="month" defaultValue={month} className="rounded-lg border border-zinc-700 bg-zinc-900 p-2 text-white" />
           <button className="rounded-lg bg-amber-500 px-4 py-2 font-bold text-zinc-950">عرض</button>
         </form>
-        <section className="grid grid-cols-2 gap-3 md:grid-cols-3">
-          {[
-            ['مستحقات الراتب', salary],
-            ['العمولات والمكافآت', bonuses],
-            ['السلف', advances],
-            ['الخصومات والتسويات', deductions],
-            ['المبالغ المصروفة', payouts],
-            ['الرصيد الحالي للشهر', ledger.balance],
-          ].map(([label, value]) => (
-            <div key={String(label)} className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
-              <p className="text-xs text-zinc-400">{label}</p><p className="mt-3 text-xl font-bold">{money(Number(value))}</p>
+        <section aria-label="ملخص مستحقات الشهر" className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            {[
+              ['مستحقات الراتب', salary],
+              ['العمولات والمكافآت', bonuses],
+              ['السلف', advances],
+              ['الخصومات والتسويات', deductions],
+            ].map(([label, value]) => (
+              <div key={String(label)} className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4 md:p-5">
+                <p className="text-xs text-zinc-400">{label}</p>
+                <p className="mt-3 text-xl font-bold">{money(Number(value))}</p>
+              </div>
+            ))}
+          </div>
+          <div className="rounded-3xl border border-amber-500/40 bg-gradient-to-bl from-amber-500/15 via-zinc-900 to-zinc-900 p-6 md:p-9">
+            <p className="text-sm font-semibold text-amber-300">الرصيد الحالي للشهر</p>
+            <p className="mt-3 text-4xl font-extrabold tracking-tight text-white md:text-5xl" dir="auto">{money(ledger.balance)}</p>
+            <p className="mt-3 text-sm text-zinc-400">المتبقي من مستحقاتك بعد السلف والخصومات والمبالغ المصروفة خلال الشهر</p>
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
+            <div>
+              <p className="text-sm text-zinc-400">المبالغ المصروفة</p>
+              <p className="mt-2 text-2xl font-bold">{money(payouts)}</p>
             </div>
-          ))}
+            {payouts > 0 && Math.abs(ledger.balance) < 0.005 ? (
+              <div className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-4 py-2 text-sm font-bold text-emerald-300">
+                خالص ✓
+              </div>
+            ) : payouts > 0 ? (
+              <div className="text-sm text-zinc-400">صرف جزئي — لم تتم التسوية بالكامل</div>
+            ) : (
+              <div className="text-sm text-zinc-500">لم يتم تسجيل صرف لهذا الشهر</div>
+            )}
+          </div>
         </section>
         <EmployeeDailyChart entries={ledger.entries} month={month} />
         <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
