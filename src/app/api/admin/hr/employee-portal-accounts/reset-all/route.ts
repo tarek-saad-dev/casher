@@ -20,7 +20,6 @@ export async function POST(request:NextRequest) {
    LEFT JOIN dbo.TblEmployeePortalAccount a WITH (UPDLOCK,HOLDLOCK) ON a.EmpID=e.EmpID AND a.TenantId=e.TenantId
    WHERE e.TenantId=@tenantId AND e.isActive=1 ORDER BY e.EmpID
   `);
-  const names=await new sql.Request(tx).query(`SELECT LoginName FROM dbo.TblEmployeePortalAccount WITH (UPDLOCK,HOLDLOCK)`);
   // Existing accounts will be renamed. Reserve only usernames belonging to inactive/other-tenant accounts.
   const ownIds=new Set<number>(staff.recordset.map((r:{AccountID:number|null})=>Number(r.AccountID)).filter(Boolean));
   const existing=await new sql.Request(tx).query('SELECT ID, LoginName FROM dbo.TblEmployeePortalAccount WITH (UPDLOCK,HOLDLOCK)');
