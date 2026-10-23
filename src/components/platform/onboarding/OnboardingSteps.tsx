@@ -23,11 +23,11 @@ import {
   type OnboardingDraft,
 } from '@/platform/onboarding/wizard/draft';
 import {
-  JOB_OPTIONS,
   MIN_PASSWORD_LENGTH,
   ONBOARDING_USER_ROLES,
   conversationPackForIndustry,
   defaultAcceptsBookings,
+  jobOptionsForPack,
   generateStrongPassword,
   packAppGroups,
   usesServiceCatalog,
@@ -98,7 +98,7 @@ export function BusinessStep({ draft, update, issues, packs }: StepProps & { pac
                   key={p.packCode}
                   type="button"
                   aria-pressed={b.industryPackCode === p.packCode}
-                  onClick={() => update((d) => setIndustryPack(d, p.packCode))}
+                  onClick={() => update((d) => setIndustryPack(d, p))}
                   className={`rounded-lg border px-3 py-2 text-sm ${
                     b.industryPackCode === p.packCode
                       ? 'border-primary bg-primary/10 text-primary'
@@ -221,7 +221,7 @@ export function ServicesStep({ draft, update, issues, pack }: StepProps) {
   );
 }
 
-export function TeamStep({ draft, update, issues, apps }: StepProps) {
+export function TeamStep({ draft, update, issues, apps, pack }: StepProps) {
   const err = (f: string) => fieldError(issues, f);
   const bookingOn = apps.includes('booking');
   const payrollOn = apps.includes('payroll') || apps.includes('attendance');
@@ -239,13 +239,13 @@ export function TeamStep({ draft, update, issues, apps }: StepProps) {
           <div key={i} className="space-y-2 rounded-lg border border-border p-3">
             <div className="grid items-start gap-2 sm:grid-cols-3">
               <Field label="الاسم" required value={e.name} error={err(`employees.${i}.name`)} onChange={(v) => setEmp(i, { name: v })} />
-              <SelectField label="الوظيفة" required placeholder="— اختر —" value={e.job} error={err(`employees.${i}.job`)} options={JOB_OPTIONS.map((j) => ({ value: j, label: j }))} onChange={(v) => setEmp(i, { job: v })} />
+              <SelectField label="الوظيفة" required placeholder="— اختر —" value={e.job} error={err(`employees.${i}.job`)} options={jobOptionsForPack(pack).map((j) => ({ value: j, label: j }))} onChange={(v) => setEmp(i, { job: v })} />
               <SelectField label="الفرع الأساسي" required value={String(e.branchIndex)} error={err(`employees.${i}.primaryBranchCode`)} options={branchOptions(draft)} onChange={(v) => setEmp(i, { branchIndex: Number(v) })} />
             </div>
             <div className="flex flex-wrap items-center gap-4">
               <Toggle label="نشط" checked={e.active} onChange={(v) => setEmp(i, { active: v })} />
               {bookingOn && (
-                <Toggle label="يستقبل حجوزات" checked={e.acceptsBookings ?? defaultAcceptsBookings(e.job)} onChange={(v) => setEmp(i, { acceptsBookings: v })} />
+                <Toggle label="يستقبل حجوزات" checked={e.acceptsBookings ?? defaultAcceptsBookings(pack, e.job)} onChange={(v) => setEmp(i, { acceptsBookings: v })} />
               )}
               <span className="text-xs text-muted-foreground">مواعيد العمل: نفس مواعيد الفرع</span>
               <SmallButton tone="danger" onClick={() => update((d) => ({ ...d, employees: d.employees.filter((_, j) => j !== i) }))}>حذف</SmallButton>

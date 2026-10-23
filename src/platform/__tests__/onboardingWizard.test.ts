@@ -39,6 +39,7 @@ vi.mock('@/lib/db', () => ({
 
 const salon = findIndustryPack('salon')!;
 const supermarket = findIndustryPack('supermarket')!;
+const clinic = findIndustryPack('clinic')!;
 
 const plan = (over: Partial<SaaSPlanRecord> = {}): SaaSPlanRecord => ({
   planCode: 'starter',
@@ -54,7 +55,8 @@ const plan = (over: Partial<SaaSPlanRecord> = {}): SaaSPlanRecord => ({
 });
 
 function filledDraft(packCode = 'salon'): OnboardingDraft {
-  let d = setIndustryPack(setBusinessName(initialDraft(), 'Salon Nour'), packCode);
+  const selected = findIndustryPack(packCode)!;
+  let d = setIndustryPack(setBusinessName(initialDraft(), 'Salon Nour'), selected);
   d = {
     ...d,
     branches: [{ ...d.branches[0]!, branchName: 'Main' }],
@@ -72,7 +74,7 @@ describe('industry composition', () => {
     for (const off of ['inventory', 'purchasing', 'messaging', 'ai-receptionist']) expect(apps).not.toContain(off);
     expect(request.booking).toHaveLength(1);
     expect(request.ai).toBeNull();
-    const steps = visibleWizardSteps('salon', apps);
+    const steps = visibleWizardSteps(salon, apps);
     expect(steps).toEqual(expect.arrayContaining(['services', 'booking']));
     expect(steps).not.toContain('ai');
     expect(validateOnboardingRequest(request, { pack: salon, plan: plan() }).filter((i) => i.severity === 'error')).toEqual([]);
@@ -81,18 +83,36 @@ describe('industry composition', () => {
   it('supermarket: no salon services, no booking step, catalog configured later', () => {
     let d = filledDraft('salon');
     d = { ...d, services: [{ ...emptyService(), name: 'Cut', price: 50 }] };
-    d = setIndustryPack(d, 'supermarket');
+    d = setIndustryPack(d, supermarket);
     expect(d.services).toEqual([]);
     const { request, apps } = buildOnboardingRequest(d, supermarket);
     expect(apps).toEqual(expect.arrayContaining(['pos', 'inventory', 'purchasing', 'treasury', 'reports']));
     expect(apps).not.toContain('booking');
     expect(request.services).toEqual([]);
     expect(request.booking).toEqual([]);
-    expect(visibleWizardSteps('supermarket', apps)).not.toContain('booking');
+    expect(visibleWizardSteps(supermarket, apps)).not.toContain('booking');
 
     const forced: OnboardingRequest = { ...request, services: [{ ...emptyService(), name: 'Milk', price: 10 }] };
     const issues = validateOnboardingRequest(forced, { pack: supermarket, plan: plan() });
     expect(issues.some((i) => i.step === 'services' && i.severity === 'error')).toBe(true);
+  });
+
+  it('clinic: reuses booking/POS/workforce apps with clinic-specific semantics', () => {
+    let d = setIndustryPack(setBusinessName(initialDraft(), 'Care Clinic'), clinic);
+    d = {
+      ...d,
+      branches: [{ ...d.branches[0]!, branchName: 'Main Clinic' }],
+      owner: { displayName: 'Doctor Owner', loginName: 'doctor.owner', password: 'Strong123' },
+      services: [{ ...emptyService(), name: 'Consultation', arabicName: 'كشف', price: 350 }],
+      employees: [{ name: 'Dr Ahmed', job: 'طبيب', branchIndex: 0, active: true, acceptsBookings: true }],
+    };
+    const { request, apps } = buildOnboardingRequest(d, clinic);
+    expect(apps).toEqual(expect.arrayContaining(['booking', 'queue', 'pos', 'attendance', 'payroll', 'treasury', 'reports']));
+    expect(request.services).toHaveLength(1);
+    expect(request.booking).toHaveLength(1);
+    expect(request.employees[0]).toMatchObject({ job: 'طبيب', acceptsBookings: true });
+    expect(visibleWizardSteps(clinic, apps)).toContain('booking');
+    expect(validateOnboardingRequest(request, { pack: clinic, plan: plan() }).filter((i) => i.severity === 'error')).toEqual([]);
   });
 
   it('a required app cannot be disabled', () => {
@@ -107,7 +127,7 @@ describe('industry composition', () => {
     let d = toggleApp(filledDraft('salon'), salon, 'messaging', true);
     d = toggleApp(d, salon, 'ai-receptionist', true);
     const { request, apps } = buildOnboardingRequest(d, salon);
-    expect(visibleWizardSteps('salon', apps)).toContain('ai');
+    expect(visibleWizardSteps(salon, apps)).toContain('ai');
     expect(request.ai).toMatchObject({ businessName: 'Salon Nour', locale: 'ar-EG' });
     const issues = validateOnboardingRequest(request, { pack: salon, plan: plan() });
     expect(issues.find((i) => i.step === 'ai')).toMatchObject({ severity: 'attention' });

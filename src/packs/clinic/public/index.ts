@@ -1,0 +1,1 @@
+export { CLINIC_PACK, CLINIC_PACK_CODE, CLINIC_PACK_SURFACES } from '../manifest';
