@@ -25,9 +25,11 @@ describe('manager daily close', () => {
   it('does not report success for partial failure', async () => {
     vi.stubGlobal('confirm', vi.fn(() => true));
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, json: async () => ({ ok: false, errors: ['تعذر حساب اليوميات'] }) }));
-    render(<ManagerDailyClose workDate="2026-10-22" blocked={false} onClosed={async () => {}} />);
+    let historyNeedsRefresh = false;
+    render(<ManagerDailyClose workDate="2026-10-22" blocked={false} onClosed={async () => {}} onAttemptFinished={() => { historyNeedsRefresh = true; }} />);
     fireEvent.click(screen.getByRole('button'));
     await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('تعذر حساب اليوميات'));
     expect(screen.queryByText(/بنجاح/)).toBeNull();
+    expect(historyNeedsRefresh).toBe(true);
   });
 });

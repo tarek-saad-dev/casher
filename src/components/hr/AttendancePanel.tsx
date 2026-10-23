@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import ManagerDailyClose from '@/components/manager/ManagerDailyClose';
+import ManagerClosingHistory from '@/components/manager/ManagerClosingHistory';
 import {
   Users, Clock, CheckCircle2, AlertCircle,
   Loader2, RefreshCw, Save, CalendarDays, UserCheck,
@@ -269,6 +270,7 @@ function TodayBranchBadge({
 
 export default function AttendancePanel({ managerWorkspace = false }: { managerWorkspace?: boolean }) {
   const [managerClosing, setManagerClosing] = useState(false);
+  const [closingHistoryRevision, setClosingHistoryRevision] = useState(0);
   const searchParams = useSearchParams();
   const managerClosingMode = searchParams.get('managerClosing') === '1';
   const requestedDate = searchParams.get('date');
@@ -799,6 +801,7 @@ export default function AttendancePanel({ managerWorkspace = false }: { managerW
 
   return (
     <fieldset disabled={managerClosing} className="min-w-0 space-y-5">
+      {managerWorkspace && <ManagerClosingHistory workDate={date} revision={closingHistoryRevision} />}
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2 text-sm text-zinc-400">
           <CalendarDays className="w-4 h-4 text-amber-400" />
@@ -1223,6 +1226,7 @@ export default function AttendancePanel({ managerWorkspace = false }: { managerW
         <ManagerDailyClose
           key={date}
           onBusyChange={setManagerClosing}
+          onAttemptFinished={() => setClosingHistoryRevision(value => value + 1)}
           workDate={date}
           blocked={loadedSelection !== `${date}|${employeeScope}` || loading || Boolean(error) || dirty.size > 0 || savingAll || savingKey !== null || switchingBranch}
           onClosed={() => fetchAttendance(date, employeeScope, { preserveFeedback: true })}
