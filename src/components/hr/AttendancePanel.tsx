@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
+import ManagerDailyClose from '@/components/manager/ManagerDailyClose';
 import {
   Users, Clock, CheckCircle2, AlertCircle,
   Loader2, RefreshCw, Save, CalendarDays, UserCheck,
@@ -266,7 +267,8 @@ function TodayBranchBadge({
   );
 }
 
-export default function AttendancePanel() {
+export default function AttendancePanel({ managerWorkspace = false }: { managerWorkspace?: boolean }) {
+  const [managerClosing, setManagerClosing] = useState(false);
   const searchParams = useSearchParams();
   const managerClosingMode = searchParams.get('managerClosing') === '1';
   const requestedDate = searchParams.get('date');
@@ -282,6 +284,8 @@ export default function AttendancePanel() {
   const [summary, setSummary]         = useState<AttendanceSummary | null>(null);
   const [branchLabel, setBranchLabel] = useState<string | null>(null);
   const [sessionBranchId, setSessionBranchId] = useState<number | null>(null);
+  const attendanceRequestId = useRef(0);
+  const [loadedSelection, setLoadedSelection] = useState<string | null>(null);
   const [loading, setLoading]         = useState(true);
   const [error, setError]             = useState('');
   const [savingAll, setSavingAll]     = useState(false);
@@ -356,6 +360,8 @@ export default function AttendancePanel() {
     scope: EmployeeScopeFilter = employeeScope,
     opts?: { preserveFeedback?: boolean },
   ) => {
+    const requestId = ++attendanceRequestId.current;
+    setLoadedSelection(null);
     setLoading(true);
     if (!opts?.preserveFeedback) {
       setError('');
@@ -367,7 +373,9 @@ export default function AttendancePanel() {
         `/api/admin/attendance?date=${encodeURIComponent(targetDate)}&employeeScope=${encodeURIComponent(scope)}`,
       );
       const data = await res.json();
-      if (data.success) {
+      if (requestId !== attendanceRequestId.current) return;
+      if (res.ok && data.success) {
+        setLoadedSelection(`${targetDate}|${scope}`);
         setAttendance(data.attendance);
         setSummary(data.summary ?? null);
         setTransferSummary(data.transferSummary ?? null);
@@ -382,9 +390,9 @@ export default function AttendancePanel() {
         setError(data.error || 'خطأ في تحميل البيانات');
       }
     } catch {
-      setError('خطأ في الاتصال بالخادم');
+      if (requestId === attendanceRequestId.current) setError('خطأ في الاتصال بالخادم');
     } finally {
-      setLoading(false);
+      if (requestId === attendanceRequestId.current) setLoading(false);
     }
   }, [employeeScope]);
 
@@ -790,7 +798,7 @@ export default function AttendancePanel() {
   const pending = summary?.pending ?? attendance.filter(r => r.isAttendanceRequired && r.Status === 'Pending').length;
 
   return (
-    <div className="space-y-5">
+    <fieldset disabled={managerClosing} className="min-w-0 space-y-5">
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2 text-sm text-zinc-400">
           <CalendarDays className="w-4 h-4 text-amber-400" />
@@ -1211,6 +1219,16 @@ export default function AttendancePanel() {
         </div>
       )}
 
+      {managerWorkspace && (
+        <ManagerDailyClose
+          key={date}
+          onBusyChange={setManagerClosing}
+          workDate={date}
+          blocked={loadedSelection !== `${date}|${employeeScope}` || loading || Boolean(error) || dirty.size > 0 || savingAll || savingKey !== null || switchingBranch}
+          onClosed={() => fetchAttendance(date, employeeScope, { preserveFeedback: true })}
+        />
+      )}
+
       <Dialog open={freelanceOpen} onOpenChange={setFreelanceOpen}>
         <DialogContent className="bg-zinc-900 border-zinc-700 text-white max-w-md" dir="rtl">
           <DialogHeader>
@@ -1442,6 +1460,6 @@ export default function AttendancePanel() {
           setTimeout(() => setSuccessMsg(''), 4000);
         }}
       />
-    </div>
+    </fieldset>
   );
 }

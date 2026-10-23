@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { randomUUID } from 'crypto';
+import { shouldSkipShiftPrompt } from '@/lib/partnerAccess';
 import { getPool, getUserFriendlyError } from '@/lib/db';
 import {
   assertSessionSecretConfigured,
@@ -253,7 +254,7 @@ export async function POST(req: NextRequest) {
       logStep(requestId, 'permissions:load', { userId: user.UserID });
       const access = await getUserAccess(user.UserID, user.UserName, user.UserLevel);
       redirectTo = access.defaultLandingPath;
-      skipShiftPrompt = access.isPartnerOnly;
+      skipShiftPrompt = shouldSkipShiftPrompt(access.roles);
       roles = access.roles;
       allowedPagePaths = access.allowedPagePaths;
     } catch (permErr: unknown) {

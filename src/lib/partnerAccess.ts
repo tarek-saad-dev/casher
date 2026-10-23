@@ -4,7 +4,7 @@ export const PARTNER_ROLE_KEY = 'partner';
 export const PARTNERS_REPORT_PAGE_PATH = '/admin/reports/partners';
 export const PARTNERS_REPORT_PAGE_KEY = 'reports.partners';
 
-export const STAFF_LAYOUT_ROLE_KEYS = ['admin', 'super_admin'] as const;
+export const STAFF_LAYOUT_ROLE_KEYS = ['admin', 'super_admin', 'manager'] as const;
 
 export function isStaffLayoutUser(roles: string[]): boolean {
   return roles.some((role) => STAFF_LAYOUT_ROLE_KEYS.includes(role as typeof STAFF_LAYOUT_ROLE_KEYS[number]));
@@ -14,7 +14,12 @@ export function isPartnerOnlyUser(roles: string[]): boolean {
   return roles.includes(PARTNER_ROLE_KEY) && !isStaffLayoutUser(roles);
 }
 
+export function isDailyManager(roles: string[]): boolean {
+  return roles.includes('manager') && roles.some(role => role === 'admin' || role === 'super_admin');
+}
+
 export function getDefaultLandingPath(access: Pick<UserAccess, 'roles' | 'isSuperAdmin'>): string {
+  if (isDailyManager(access.roles)) return '/manager';
   if (isPartnerOnlyUser(access.roles)) {
     return PARTNERS_REPORT_PAGE_PATH;
   }
@@ -22,7 +27,7 @@ export function getDefaultLandingPath(access: Pick<UserAccess, 'roles' | 'isSupe
 }
 
 export function shouldSkipShiftPrompt(roles: string[]): boolean {
-  return isPartnerOnlyUser(roles);
+  return isDailyManager(roles) || isPartnerOnlyUser(roles);
 }
 
 export function normalizePagePath(path: string): string {

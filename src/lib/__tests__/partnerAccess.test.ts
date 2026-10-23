@@ -58,3 +58,17 @@ describe('partnerAccess', () => {
     expect(PARTNER_ROLE_KEY).toBe('partner');
   });
 });
+
+describe('manager landing', () => {
+  it('opens the manager workspace and skips cashier shifts, including full access managers', () => {
+    for (const roles of [['manager', 'admin'], ['manager', 'super_admin'], ['partner', 'manager', 'admin']]) {
+      expect(getDefaultLandingPath({ roles, isSuperAdmin: roles.includes('super_admin') })).toBe('/manager');
+      expect(shouldSkipShiftPrompt(roles)).toBe(true);
+      expect(isPartnerOnlyUser(roles)).toBe(false);
+    }
+    expect(getDefaultLandingPath({ roles: ['admin'], isSuperAdmin: false })).toBe('/income/pos');
+    expect(shouldSkipShiftPrompt(['admin'])).toBe(false);
+    expect(shouldSkipShiftPrompt(['manager'])).toBe(false);
+    expect(getDefaultLandingPath({ roles: ['manager'], isSuperAdmin: false })).toBe('/income/pos');
+  });
+});
