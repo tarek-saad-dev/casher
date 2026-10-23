@@ -3,11 +3,12 @@
 import { useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 
-export default function ManagerDailyClose({ workDate, blocked, onClosed, onBusyChange }: {
+export default function ManagerDailyClose({ workDate, blocked, onClosed, onBusyChange, onAttemptFinished }: {
   workDate: string;
   blocked: boolean;
   onClosed: () => Promise<void>;
   onBusyChange?: (busy: boolean) => void;
+  onAttemptFinished?: () => void;
 }) {
   const inFlight = useRef(false);
   const [busy, setBusy] = useState(false);
@@ -39,6 +40,7 @@ export default function ManagerDailyClose({ workDate, blocked, onClosed, onBusyC
       inFlight.current = false;
       setBusy(false);
       onBusyChange?.(false);
+      onAttemptFinished?.();
     }
   }
 
