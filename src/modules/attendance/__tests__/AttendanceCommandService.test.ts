@@ -8,7 +8,13 @@ import {
   PAYROLL_DAY_CLOSED_MESSAGE,
 } from '@/lib/hr/empBranchWorkDayClose.transitions';
 import { EmpBranchWorkDayCloseError } from '@/lib/hr/empBranchWorkDayClose.types';
-import { resolveAdminPutAttendanceStatus } from '@/modules/attendance/domain/adminPutAttendance';
+import {
+  assertPayableStatusHasCheckIn,
+  AttendanceCommandError,
+  PAYABLE_WITHOUT_CHECKIN_CODE,
+  PAYABLE_WITHOUT_CHECKIN_MESSAGE,
+  resolveAdminPutAttendanceStatus,
+} from '@/modules/attendance/domain/adminPutAttendance';
 
 vi.mock('server-only', () => ({}));
 
@@ -729,6 +735,55 @@ describe('resolveAdminPutAttendanceStatus', () => {
       }),
     ).toBe('Excused');
   });
+
+  it('forces Pending when client sends payable status without check-in', () => {
+    expect(
+      resolveAdminPutAttendanceStatus({
+        clientStatus: 'Late',
+        checkInTime: null,
+        checkOutTime: null,
+        lateMinutes: 0,
+        earlyLeaveMinutes: 0,
+      }),
+    ).toBe('Pending');
+    expect(
+      resolveAdminPutAttendanceStatus({
+        clientStatus: 'Present',
+        checkInTime: undefined,
+        checkOutTime: undefined,
+        lateMinutes: 0,
+        earlyLeaveMinutes: 0,
+      }),
+    ).toBe('Pending');
+    expect(
+      resolveAdminPutAttendanceStatus({
+        clientStatus: 'EarlyLeave',
+        checkInTime: null,
+        checkOutTime: '17:00',
+        lateMinutes: 0,
+        earlyLeaveMinutes: 60,
+      }),
+    ).toBe('Pending');
+  });
+
+  it('assertPayableStatusHasCheckIn rejects Late/Present without check-in', () => {
+    expect(() => assertPayableStatusHasCheckIn('Late', null)).toThrow(
+      AttendanceCommandError,
+    );
+    try {
+      assertPayableStatusHasCheckIn('Present', undefined);
+    } catch (e) {
+      expect(e).toMatchObject({
+        name: 'AttendanceCommandError',
+        message: PAYABLE_WITHOUT_CHECKIN_MESSAGE,
+        statusCode: 400,
+        code: PAYABLE_WITHOUT_CHECKIN_CODE,
+      });
+    }
+    expect(() => assertPayableStatusHasCheckIn('Pending', null)).not.toThrow();
+    expect(() => assertPayableStatusHasCheckIn('Absent', null)).not.toThrow();
+    expect(() => assertPayableStatusHasCheckIn('Late', '11:00')).not.toThrow();
+  });
 });
 
 describe('saveAdminAttendance', () => {
@@ -741,6 +796,29 @@ describe('saveAdminAttendance', () => {
     txSnapshot = null;
     assertEmpBranchWorkDayMutable.mockResolvedValue(undefined);
     assertEmployeeEligibleForBranchAttendance.mockResolvedValue(undefined);
+  });
+
+  it('rejects Late without check-in (PAYABLE_WITHOUT_CHECKIN)', async () => {
+    const { saveAdminAttendance } = await import(
+      '@/modules/attendance/application/AttendanceCommandService'
+    );
+    await expect(
+      saveAdminAttendance({
+        branchId: 10,
+        userId: 1,
+        empId: 42,
+        workDate: '2026-08-24',
+        status: 'Late',
+        checkInTime: null,
+        checkOutTime: null,
+      }),
+    ).rejects.toMatchObject({
+      name: 'AttendanceCommandError',
+      message: PAYABLE_WITHOUT_CHECKIN_MESSAGE,
+      statusCode: 400,
+      code: PAYABLE_WITHOUT_CHECKIN_CODE,
+    });
+    expect(store.rows).toHaveLength(0);
   });
 
   it('rejects same-WorkDate other-branch OPEN with ALREADY_OPEN; stale historical does not block', async () => {

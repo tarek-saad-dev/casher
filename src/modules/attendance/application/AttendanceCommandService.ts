@@ -40,6 +40,7 @@ import {
   ADMIN_PUT_WORK_ON_DAY_OFF_REASON,
   ADMIN_PUT_WORK_ON_DAY_OFF_SOURCE_TAG,
   AttendanceCommandError,
+  assertPayableStatusHasCheckIn,
   resolveAdminPutAttendanceStatus,
   type SaveAdminAttendanceInput,
   type SaveAdminAttendanceResult,
@@ -149,6 +150,8 @@ export async function saveAdminAttendance(
   if (CheckOutTime && !TIME_RE.test(CheckOutTime)) {
     throw new AttendanceCommandError('صيغة وقت الانصراف غير صحيحة', 400);
   }
+
+  assertPayableStatusHasCheckIn(Status, CheckInTime || null);
 
   const clearBreaks =
     Status === 'Absent' || Status === 'DayOff' || (!CheckInTime && !CheckOutTime);
@@ -823,10 +826,25 @@ export async function saveAdminAttendanceBulk(
       const schedEnd = empDef?.schedEnd ?? null;
       const checkIn = (item.CheckInTime || null) as string | null;
       const checkOut = (item.CheckOutTime || null) as string | null;
+      const clientStatus = (item.Status as string | undefined) || 'Pending';
+      try {
+        assertPayableStatusHasCheckIn(clientStatus, checkIn);
+      } catch (payErr) {
+        if (payErr instanceof AttendanceCommandError) {
+          throw new AttendanceCommandError(
+            `${payErr.message} (موظف ${item.EmpID}${
+              empDef?.empName ? ` — ${empDef.empName}` : ''
+            })`,
+            payErr.statusCode,
+            payErr.code,
+          );
+        }
+        throw payErr;
+      }
       const lateMinutes = calcLateMinutes(checkIn, schedStart);
       const earlyLeaveMinutes = calcEarlyLeaveMinutes(checkOut, schedEnd);
       const finalStatus = resolveAdminPutAttendanceStatus({
-        clientStatus: (item.Status as string | undefined) || 'Pending',
+        clientStatus,
         checkInTime: checkIn,
         checkOutTime: checkOut,
         lateMinutes,

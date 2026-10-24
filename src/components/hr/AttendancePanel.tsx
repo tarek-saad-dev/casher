@@ -540,19 +540,41 @@ export default function AttendancePanel() {
     value: string | null,
   ) => {
     const key = attendanceRowKey(empId, branchId);
+    const payableStatuses = ['Present', 'Late', 'EarlyLeave'];
+    const manualStatuses = ['Absent', 'DayOff', 'Excused'];
+    let blockedPayableWithoutCheckIn = false;
     setAttendance(prev => prev.map(row => {
       if (!sameAttendanceRow(row, empId, branchId)) return row;
       const updated = { ...row, [field]: value };
       if (field === 'CheckInTime' && value) {
-        const manualStatuses = ['Absent', 'DayOff', 'Excused'];
         if (!manualStatuses.includes(updated.Status)) {
           const late = calcLate(value, updated.ScheduledStartTime);
           updated.LateMinutes = late;
           updated.Status = late > 0 ? 'Late' : 'Present';
         }
       }
+      // Clearing check-in must drop payable status (same invariant as server).
+      if (field === 'CheckInTime' && !value && payableStatuses.includes(updated.Status)) {
+        updated.Status = 'Pending';
+        updated.LateMinutes = 0;
+        updated.EarlyLeaveMinutes = 0;
+      }
+      // Cannot pick Present/Late/EarlyLeave without a check-in time.
+      if (
+        field === 'Status' &&
+        value &&
+        payableStatuses.includes(value) &&
+        !updated.CheckInTime
+      ) {
+        updated.Status = 'Pending';
+        blockedPayableWithoutCheckIn = true;
+      }
       return updated;
     }));
+    if (blockedPayableWithoutCheckIn) {
+      setError('لا يمكن تسجيل حاضر/متأخر بدون وقت حضور — سجّل الحضور أولاً');
+      setTimeout(() => setError(''), 4000);
+    }
     setDirty(prev => new Set(prev).add(key));
     // A fresh check-in value must be re-validated: drop any prior confirmation.
     if (field === 'CheckInTime') {

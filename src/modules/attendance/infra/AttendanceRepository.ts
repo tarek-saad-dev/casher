@@ -827,7 +827,7 @@ export async function ensurePresentAttendancePlaceholder(args: {
     .query(`
       INSERT INTO dbo.TblEmpAttendance (BranchID, EmpID, WorkDate, Status, Notes, CreatedAt)
       OUTPUT INSERTED.ID
-      VALUES (@branchId, @empId, @workDate, N'Present', NULL, GETDATE())
+      VALUES (@branchId, @empId, @workDate, N'Pending', NULL, GETDATE())
     `);
 
   return inserted.recordset[0].ID as number;

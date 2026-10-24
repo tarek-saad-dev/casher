@@ -1,6 +1,7 @@
 /**
- * Present placeholder for break attach. Isolated from CommandService barrel
- * to avoid schedule-sync ↔ AttendanceCommandService import cycles.
+ * Attendance row placeholder for break attach (Status=Pending, no punches).
+ * Pending is not payroll-payable — avoids blocking nightly generate.
+ * Isolated from CommandService barrel to avoid schedule-sync import cycles.
  */
 import type { AttendanceWriteDb } from '../domain/nightlyFinalizeAttendance';
 import * as attendanceRepo from '../infra/AttendanceRepository';

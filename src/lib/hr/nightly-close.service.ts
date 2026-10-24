@@ -361,13 +361,19 @@ export async function runNightlyClose(params?: {
       });
       if (missing.length > 0) {
         anyIncomplete = true;
+        const sample = missing
+          .slice(0, 3)
+          .map((m) => `${m.empName}(${m.reason})`)
+          .join(', ');
+        const more =
+          missing.length > 3 ? ` +${missing.length - 3} more` : '';
         if (payDay === workDate) {
           errors.push(
-            `payroll blocked ${branch.branchCode}: ${missing.length} attendance/rate issues`,
+            `payroll blocked ${branch.branchCode}: ${missing.length} attendance/rate issues — ${sample}${more}`,
           );
         }
         console.error(
-          `[nightly-close] payroll incomplete branch=${branch.branchCode} day=${payDay} missing=${missing.length}`,
+          `[nightly-close] payroll incomplete branch=${branch.branchCode} day=${payDay} missing=${missing.length} sample=${sample}${more}`,
         );
         continue;
       }

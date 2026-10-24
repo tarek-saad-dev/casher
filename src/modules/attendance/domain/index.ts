@@ -5,7 +5,12 @@ export {
 
 export {
   AttendanceCommandError,
+  assertPayableStatusHasCheckIn,
+  isAdminPutPayableStatus,
   resolveAdminPutAttendanceStatus,
+  ADMIN_PUT_PAYABLE_STATUSES,
+  PAYABLE_WITHOUT_CHECKIN_CODE,
+  PAYABLE_WITHOUT_CHECKIN_MESSAGE,
   type SaveAdminAttendanceInput,
   type SaveAdminAttendanceResult,
 } from './adminPutAttendance';

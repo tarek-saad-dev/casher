@@ -1,6 +1,6 @@
 /**
- * Characterization: Present placeholder for break attach (syncBreakFromBlockRange).
- * Freeze — Present with no punches is intentional legacy behavior.
+ * Characterization: attendance placeholder for break attach (syncBreakFromBlockRange).
+ * Uses Pending (not Present) so empty placeholders never block payroll.
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -50,14 +50,14 @@ const harness = vi.hoisted(() => {
           );
           return { recordset: row ? [{ ID: row.ID }] : [], rowsAffected: [1] };
         }
-        if (/INSERT INTO dbo\.TblEmpAttendance/i.test(sqlText) && /N'Present'/i.test(sqlText)) {
+        if (/INSERT INTO dbo\.TblEmpAttendance/i.test(sqlText) && /N'Pending'/i.test(sqlText)) {
           const id = nextId++;
           attendance.push({
             ID: id,
             BranchID: Number(inputs.branchId),
             EmpID: Number(inputs.empId),
             WorkDate: ymd(inputs.workDate),
-            Status: 'Present',
+            Status: 'Pending',
             Notes: null,
             CheckInTime: null,
             CheckOutTime: null,
@@ -86,7 +86,7 @@ import { ensurePresentAttendancePlaceholder } from '@/modules/attendance/applica
 describe('Present placeholder break characterization', () => {
   beforeEach(() => harness.reset());
 
-  it('INSERT Present with NULL notes and no punches when missing', async () => {
+  it('INSERT Pending with NULL notes and no punches when missing', async () => {
     const id = await ensurePresentAttendancePlaceholder({
       db: harness.db,
       empId: EMP_ID,
@@ -99,7 +99,7 @@ describe('Present placeholder break characterization', () => {
       BranchID: BRANCH_ID,
       EmpID: EMP_ID,
       WorkDate: WORK_DATE,
-      Status: 'Present',
+      Status: 'Pending',
       Notes: null,
       CheckInTime: null,
       CheckOutTime: null,

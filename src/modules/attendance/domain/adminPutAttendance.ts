@@ -1,7 +1,9 @@
 /**
  * Admin PUT attendance — current production semantics (Phase B1).
  * OPEN is other-branch + any WorkDate. WorkDate is caller-supplied.
- * Runtime Behavior Changes: NONE
+ *
+ * Invariant: Present / Late / EarlyLeave require CheckInTime.
+ * Without check-in those statuses must not persist (blocks branch payroll).
  */
 
 export const ADMIN_PUT_ALREADY_OPEN_CODE = 'ALREADY_OPEN' as const;
@@ -19,6 +21,18 @@ export const ADMIN_PUT_WORK_ON_DAY_OFF_REASON =
 export const ADMIN_PUT_WORK_ON_DAY_OFF_SOURCE_TAG = 'work-on-day-off';
 
 export const ADMIN_PUT_MANUAL_STATUSES = ['Absent', 'DayOff', 'Excused'] as const;
+
+/** Statuses that imply payable attendance and therefore need a check-in. */
+export const ADMIN_PUT_PAYABLE_STATUSES = [
+  'Present',
+  'Late',
+  'EarlyLeave',
+] as const;
+
+export const PAYABLE_WITHOUT_CHECKIN_CODE = 'PAYABLE_WITHOUT_CHECKIN' as const;
+
+export const PAYABLE_WITHOUT_CHECKIN_MESSAGE =
+  'لا يمكن تسجيل حاضر/متأخر/انصراف مبكر بدون وقت حضور';
 
 export const ADMIN_PUT_VALID_STATUSES = [
   'Pending',
@@ -44,7 +58,36 @@ export class AttendanceCommandError extends Error {
   }
 }
 
-/** Current server status resolution for admin PUT. Do not redesign in B1. */
+export function isAdminPutPayableStatus(
+  status: string | null | undefined,
+): boolean {
+  return (ADMIN_PUT_PAYABLE_STATUSES as readonly string[]).includes(
+    String(status ?? ''),
+  );
+}
+
+/**
+ * Reject explicit Present/Late/EarlyLeave when check-in is missing.
+ * Call before persist on admin PUT / bulk.
+ */
+export function assertPayableStatusHasCheckIn(
+  status: string | null | undefined,
+  checkInTime: string | null | undefined,
+): void {
+  if (isAdminPutPayableStatus(status) && !checkInTime) {
+    throw new AttendanceCommandError(
+      PAYABLE_WITHOUT_CHECKIN_MESSAGE,
+      400,
+      PAYABLE_WITHOUT_CHECKIN_CODE,
+    );
+  }
+}
+
+/**
+ * Resolve persisted status for admin PUT / bulk.
+ * Manual statuses (Absent/DayOff/Excused) are trusted.
+ * Otherwise status is derived from punches — never Present/Late/EarlyLeave without check-in.
+ */
 export function resolveAdminPutAttendanceStatus(args: {
   clientStatus: string | undefined;
   checkInTime: string | null | undefined;
@@ -57,13 +100,16 @@ export function resolveAdminPutAttendanceStatus(args: {
   if (!manualStatuses.includes(finalStatus)) {
     if (args.checkInTime) {
       finalStatus = args.lateMinutes > 0 ? 'Late' : 'Present';
-    }
-    if (
-      args.checkOutTime &&
-      args.earlyLeaveMinutes > 0 &&
-      finalStatus === 'Present'
-    ) {
-      finalStatus = 'EarlyLeave';
+      if (
+        args.checkOutTime &&
+        args.earlyLeaveMinutes > 0 &&
+        finalStatus === 'Present'
+      ) {
+        finalStatus = 'EarlyLeave';
+      }
+    } else {
+      // Belt-and-suspenders: never persist payable without check-in.
+      finalStatus = 'Pending';
     }
   }
   return finalStatus;
