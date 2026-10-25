@@ -1,5 +1,5 @@
 import { findIndustryPack } from '@/packs';
-import { isLegacyOnlyAppCode, getAppInstallDependencies } from '@/platform/apps/appCatalog';
+import { isSelfServiceAvailableAppCode, getAppInstallDependencies } from '@/platform/apps/appCatalog';
 import { resolveTenantComposition } from '@/platform/apps/compositionResolver';
 import { TenantAppError } from '@/platform/apps/errors';
 
@@ -8,7 +8,6 @@ import { TenantAppError } from '@/platform/apps/errors';
  * Channel-dependent products are not commercially self-service ready in V1.
  * Operator-managed installation remains governed by the generic app policy.
  */
-const SELF_SERVICE_UNAVAILABLE = new Set(['messaging', 'ai-receptionist']);
 
 export type SignupAppOption = {
   code: string;
@@ -34,7 +33,7 @@ export function getPublicSignupAppChoices(industry: string): {
   const apps: SignupAppOption[] = [];
   for (const group of ['required', 'recommended', 'optional'] as const) {
     for (const code of pack[group]) {
-      if (SELF_SERVICE_UNAVAILABLE.has(code) || isLegacyOnlyAppCode(code)) continue;
+      if (!isSelfServiceAvailableAppCode(code)) continue;
       apps.push({ code, group, requires: [...getAppInstallDependencies(code as Parameters<typeof getAppInstallDependencies>[0])] });
     }
   }

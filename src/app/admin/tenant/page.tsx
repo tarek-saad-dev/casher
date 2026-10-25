@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import BrandProfileForm from '@/components/tenant/BrandProfileForm';
 import WorkspaceReadinessPanel from '@/components/tenant/WorkspaceReadinessPanel';
 import { useTenantShell } from '@/components/tenant/TenantShellProvider';
@@ -79,7 +80,12 @@ export default function TenantSettingsPage() {
         </section>
 
         <section className="space-y-2 rounded-xl border border-border p-4">
-          <h2 className="font-semibold">التطبيقات المثبتة</h2>
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="font-semibold">التطبيقات المثبتة</h2>
+            <Link href="/admin/apps" className="rounded-lg border border-border px-3 py-2 text-xs font-semibold hover:bg-muted">
+              إدارة التطبيقات
+            </Link>
+          </div>
           <div className="flex flex-wrap gap-2">
             {APP_REGISTRY_CODES.map((code) => (
               <span
@@ -95,7 +101,9 @@ export default function TenantSettingsPage() {
             ))}
           </div>
           <p className="text-xs text-muted-foreground">
-            إضافة أو إزالة التطبيقات تتم عن طريق مزود الخدمة.
+            {snapshot?.tenant.code === 'CASHER_BOOT'
+              ? 'التطبيقات في الحساب الأساسي تحت إدارة المنصة.'
+              : 'يمكنك إضافة أو إيقاف التطبيقات من صفحة إدارة التطبيقات.'}
           </p>
         </section>
       </div>
