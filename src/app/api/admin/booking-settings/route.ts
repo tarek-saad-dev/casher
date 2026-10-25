@@ -6,23 +6,10 @@ import {
   isActiveBranchContext,
 } from "@/lib/branch/context";
 import { bookingSettingsValidationError } from "@/lib/booking/bookingSettingsValidation";
+import { bookingDefaultsForBranch } from "@/lib/booking/bookingBranchDefaults";
+import { getBranchById } from "@/lib/branch/repository";
 
 export const runtime = "nodejs";
-
-// Default settings matching the existing system
-const DEFAULT_SETTINGS = {
-  SalonName: "Cut Salon",
-  Timezone: "Africa/Cairo",
-  Currency: "EGP",
-  BookingEnabled: true,
-  AllowSpecificBarber: true,
-  AllowNearestBarber: true,
-  DefaultMode: "nearest",
-  SlotIntervalMinutes: 15,
-  MinNoticeMinutes: 30,
-  MaxBookingDaysAhead: 14,
-  DefaultServiceDurationMinutes: 30,
-};
 
 // Helper to ensure table and columns exist (schema-level only — never seeds an
 // unscoped row; per-branch rows are lazily inserted by ensureBranchSettingsRow).
@@ -41,10 +28,10 @@ async function ensureTableAndColumns(db: sql.ConnectionPool) {
       CREATE TABLE [dbo].[QueueBookingSettings] (
         SettingID INT PRIMARY KEY IDENTITY(1,1),
         BranchID INT NOT NULL,
-        SalonName NVARCHAR(200) NOT NULL DEFAULT N'Cut Salon',
+        SalonName NVARCHAR(200) NOT NULL DEFAULT N'الفرع الرئيسي',
         Timezone NVARCHAR(100) NOT NULL DEFAULT N'Africa/Cairo',
         Currency NVARCHAR(10) NOT NULL DEFAULT N'EGP',
-        BookingEnabled BIT NOT NULL DEFAULT 1,
+        BookingEnabled BIT NOT NULL DEFAULT 0,
         AllowSpecificBarber BIT NOT NULL DEFAULT 1,
         AllowNearestBarber BIT NOT NULL DEFAULT 1,
         DefaultMode NVARCHAR(20) NOT NULL DEFAULT N'nearest',
@@ -84,7 +71,7 @@ async function ensureTableAndColumns(db: sql.ConnectionPool) {
     {
       name: "SalonName",
       type: "NVARCHAR(200)",
-      default: "DEFAULT N'Cut Salon'",
+      default: "DEFAULT N'الفرع الرئيسي'",
     },
   ];
 
@@ -112,26 +99,41 @@ async function ensureTableAndColumns(db: sql.ConnectionPool) {
 }
 
 /** Lazily insert a scoped default settings row for this branch only (idempotent). */
-async function ensureBranchSettingsRow(db: sql.ConnectionPool, branchId: number) {
-  const existing = await db
-    .request()
-    .input("branchId", sql.Int, branchId)
-    .query(`SELECT TOP 1 SettingID FROM [dbo].[QueueBookingSettings] WHERE BranchID = @branchId`);
-  if (existing.recordset.length) return;
-
+async function ensureBranchSettingsRow(
+  db: sql.ConnectionPool,
+  branch: { branchId: number; branchName: string; timeZone: string },
+) {
+  const defaults = bookingDefaultsForBranch(branch);
+  // One atomic, branch-scoped seed. No cross-tenant template, no automatic public launch.
   await db
     .request()
-    .input("branchId", sql.Int, branchId)
+    .input("branchId", sql.Int, branch.branchId)
+    .input("salonName", sql.NVarChar(200), defaults.SalonName)
+    .input("timezone", sql.NVarChar(100), defaults.Timezone)
+    .input("currency", sql.NVarChar(10), defaults.Currency)
+    .input("bookingEnabled", sql.Bit, defaults.BookingEnabled ? 1 : 0)
+    .input("defaultMode", sql.NVarChar(20), defaults.DefaultMode)
+    .input("slot", sql.Int, defaults.SlotIntervalMinutes)
+    .input("notice", sql.Int, defaults.MinNoticeMinutes)
+    .input("horizon", sql.Int, defaults.MaxBookingDaysAhead)
+    .input("duration", sql.Int, defaults.DefaultServiceDurationMinutes)
     .query(`
-      INSERT INTO [dbo].[QueueBookingSettings] (
-        BranchID, SalonName, Timezone, Currency, BookingEnabled,
-        AllowSpecificBarber, AllowNearestBarber, DefaultMode,
-        SlotIntervalMinutes, MinNoticeMinutes, MaxBookingDaysAhead,
-        DefaultServiceDurationMinutes
-      ) VALUES (
-        @branchId, N'Cut Salon', N'Africa/Cairo', N'EGP', 1,
-        1, 1, N'nearest', 15, 30, 14, 30
+      IF NOT EXISTS (
+        SELECT 1 FROM dbo.QueueBookingSettings WITH (UPDLOCK, HOLDLOCK)
+        WHERE BranchID = @branchId
       )
+      BEGIN
+        INSERT INTO dbo.QueueBookingSettings (
+          BranchID, SalonName, Timezone, Currency, BookingEnabled,
+          AllowSpecificBarber, AllowNearestBarber, DefaultMode,
+          SlotIntervalMinutes, MinNoticeMinutes, MaxBookingDaysAhead,
+          DefaultServiceDurationMinutes, DefaultServiceMinutes
+        ) VALUES (
+          @branchId, @salonName, @timezone, @currency, @bookingEnabled,
+          1, 1, @defaultMode,
+          @slot, @notice, @horizon, @duration, @duration
+        );
+      END
     `);
 }
 
@@ -143,7 +145,7 @@ export async function GET() {
 
     const db = await getPool();
     await ensureTableAndColumns(db);
-    await ensureBranchSettingsRow(db, branch.branchId);
+    await ensureBranchSettingsRow(db, branch);
 
     const result = await db
       .request()
@@ -166,30 +168,41 @@ export async function GET() {
       WHERE BranchID = @branchId
     `);
 
-    const row = result.recordset[0] || DEFAULT_SETTINGS;
+    const defaults = bookingDefaultsForBranch(branch);
+    const row = result.recordset[0] || defaults;
+    const branchDetails = await getBranchById(branch.branchId);
 
     return NextResponse.json({
       ok: true,
+      branch: {
+        branchId: branch.branchId,
+        branchCode: branch.branchCode,
+        branchName: branch.branchName,
+        lifecycleStatus: branchDetails?.lifecycleStatus ?? 'SETUP',
+        publicBookingEnabled: branchDetails?.publicBookingEnabled ?? false,
+        defaultOpenTime: branchDetails?.defaultOpenTime ?? null,
+        defaultCloseTime: branchDetails?.defaultCloseTime ?? null,
+      },
       settings: {
-        salonName: row.SalonName || DEFAULT_SETTINGS.SalonName,
-        timezone: row.Timezone || DEFAULT_SETTINGS.Timezone,
-        currency: row.Currency || DEFAULT_SETTINGS.Currency,
-        bookingEnabled: row.BookingEnabled ?? DEFAULT_SETTINGS.BookingEnabled,
+        salonName: row.SalonName || defaults.SalonName,
+        timezone: row.Timezone || defaults.Timezone,
+        currency: row.Currency || defaults.Currency,
+        bookingEnabled: row.BookingEnabled ?? defaults.BookingEnabled,
         allowSpecificBarber:
-          row.AllowSpecificBarber ?? DEFAULT_SETTINGS.AllowSpecificBarber,
+          row.AllowSpecificBarber ?? defaults.AllowSpecificBarber,
         allowNearestBarber:
-          row.AllowNearestBarber ?? DEFAULT_SETTINGS.AllowNearestBarber,
-        defaultMode: row.DefaultMode || DEFAULT_SETTINGS.DefaultMode,
+          row.AllowNearestBarber ?? defaults.AllowNearestBarber,
+        defaultMode: row.DefaultMode || defaults.DefaultMode,
         slotIntervalMinutes:
-          row.SlotIntervalMinutes ?? DEFAULT_SETTINGS.SlotIntervalMinutes,
+          row.SlotIntervalMinutes ?? defaults.SlotIntervalMinutes,
         minNoticeMinutes:
-          row.MinNoticeMinutes ?? DEFAULT_SETTINGS.MinNoticeMinutes,
+          row.MinNoticeMinutes ?? defaults.MinNoticeMinutes,
         maxBookingDaysAhead:
-          row.MaxBookingDaysAhead ?? DEFAULT_SETTINGS.MaxBookingDaysAhead,
+          row.MaxBookingDaysAhead ?? defaults.MaxBookingDaysAhead,
         defaultServiceDurationMinutes:
           row.DefaultServiceDurationMinutes ??
           row.DefaultServiceMinutes ??
-          DEFAULT_SETTINGS.DefaultServiceDurationMinutes,
+          defaults.DefaultServiceDurationMinutes,
       },
     });
   } catch (err) {
