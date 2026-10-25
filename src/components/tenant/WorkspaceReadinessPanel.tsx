@@ -121,7 +121,7 @@ export default function WorkspaceReadinessPanel() {
                     href={app.actionHref}
                     className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
                   >
-                    افتح {app.label}
+                    {app.status === 'needs_setup' ? 'استكمل الإعداد' : `افتح ${app.label}`}
                     <ArrowUpLeft className="h-3.5 w-3.5" />
                   </Link>
                 )}
