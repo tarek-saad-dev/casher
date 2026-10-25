@@ -30,6 +30,7 @@ jobs:
           scripts/drvo/__tests__
           src/platform/drvo/__tests__
           src/platform/__tests__/publicSignup.test.ts
+          src/lib/booking/__tests__/bookingBranchDefaults.test.ts
           src/platform/__tests__/publicSignupAppSelection.test.ts
           src/platform/__tests__/drvo012Composition.test.ts
           src/platform/__tests__/drvo012Commercial.test.ts
