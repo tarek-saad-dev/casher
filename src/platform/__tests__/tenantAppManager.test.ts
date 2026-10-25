@@ -10,6 +10,11 @@ function state(appCode: string, status: TenantAppState['status'] = 'installed', 
   return { appCode, status, source, installedAt: null, disabledAt: null };
 }
 
+function codeFromFailure(call: () => unknown): string {
+  try { call(); } catch (err) { return (err as { code?: string }).code ?? 'UNKNOWN_ERROR'; }
+  return 'NO_ERROR';
+}
+
 describe('DRVO tenant self-service app manager policy', () => {
   it('read model shows only self-service-ready pack options and protects the required booking app', () => {
     const apps = buildAppManagerCatalog(SALON_PACK, [state('booking'), state('pos')]);
@@ -37,24 +42,24 @@ describe('DRVO tenant self-service app manager policy', () => {
   });
 
   it('never disables a required app or a dependency in use', () => {
-    expect(() => planSelfServiceChange(SALON_PACK, [
+    expect(codeFromFailure(() => planSelfServiceChange(SALON_PACK, [
       state('booking'), state('inventory'), state('purchasing'),
-    ], { action: 'disable', appCode: 'booking' })).toMatchObject({ code: 'REQUIRED_BY_PACK' });
-    expect(() => planSelfServiceChange(SALON_PACK, [
+    ], { action: 'disable', appCode: 'booking' }))).toBe('REQUIRED_BY_PACK');
+    expect(codeFromFailure(() => planSelfServiceChange(SALON_PACK, [
       state('booking'), state('inventory'), state('purchasing'),
-    ], { action: 'disable', appCode: 'inventory' })).toThrowError(/required by installed app/);
+    ], { action: 'disable', appCode: 'inventory' }))).toBe('DEPENDENCY_IN_USE');
   });
 
   it('refuses out-of-pack apps, unready channels, and operator-managed changes', () => {
-    expect(() => planSelfServiceChange(SALON_PACK, [state('booking')], {
+    expect(codeFromFailure(() => planSelfServiceChange(SALON_PACK, [state('booking')], {
       action: 'install', appCode: 'loyalty',
-    })).toMatchObject({ code: 'APP_NOT_AVAILABLE' });
-    expect(() => planSelfServiceChange(SALON_PACK, [state('booking')], {
+    }))).toBe('APP_NOT_AVAILABLE');
+    expect(codeFromFailure(() => planSelfServiceChange(SALON_PACK, [state('booking')], {
       action: 'install', appCode: 'messaging',
-    })).toMatchObject({ code: 'APP_NOT_AVAILABLE' });
-    expect(() => planSelfServiceChange(SALON_PACK, [state('booking'), state('pos', 'disabled', 'platform_admin')], {
+    }))).toBe('APP_NOT_AVAILABLE');
+    expect(codeFromFailure(() => planSelfServiceChange(SALON_PACK, [state('booking'), state('pos', 'disabled', 'platform_admin')], {
       action: 'install', appCode: 'pos',
-    })).toMatchObject({ code: 'APP_NOT_AVAILABLE' });
+    }))).toBe('APP_NOT_AVAILABLE');
   });
 
   it('supermarket POS is required while optional attendance is independently addable', () => {
