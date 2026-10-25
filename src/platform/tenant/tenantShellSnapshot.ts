@@ -5,6 +5,7 @@ import { getTenantBrandProfileCached } from '@/platform/branding/brandRepository
 import { getTenantInstalledAppsForGate } from '@/platform/commercial/tenantAccessGate';
 import { getPlan, getTenantSubscription } from '@/platform/commercial/planRepository';
 import type { SubscriptionEvaluation } from '@/platform/commercial/types';
+import type { TenantLocationRef } from './tenantContext';
 import type { TenantShellSnapshot } from './tenantShellTypes';
 
 export type { TenantShellSnapshot } from './tenantShellTypes';
@@ -16,6 +17,7 @@ function iso(d: Date | null | undefined): string | null {
 export async function loadTenantShellSnapshot(input: {
   tenantId: string;
   tenantCode: string;
+  activeLocation: TenantLocationRef;
   evaluation: SubscriptionEvaluation;
   isPlatformOperator: boolean;
 }): Promise<TenantShellSnapshot> {
@@ -39,6 +41,7 @@ export async function loadTenantShellSnapshot(input: {
       code: input.tenantCode,
       name,
       industryPackCode: pack?.packCode ?? null,
+      activeLocation: input.activeLocation,
     },
     brand: brand ?? {
       tenantId: input.tenantId,
