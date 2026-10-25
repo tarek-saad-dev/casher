@@ -61,7 +61,10 @@ export default function TenantSettingsPage() {
 
       <div className="grid gap-4 md:grid-cols-2">
         <section className="space-y-2 rounded-xl border border-border p-4">
-          <h2 className="font-semibold">الاشتراك</h2>
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="font-semibold">الاشتراك</h2>
+            <Link href="/admin/billing" className="rounded-lg border border-border px-3 py-2 text-xs font-semibold hover:bg-muted">إدارة الاشتراك</Link>
+          </div>
           {sub ? (
             <ul className="space-y-1 text-sm">
               <li>
@@ -76,7 +79,7 @@ export default function TenantSettingsPage() {
           ) : (
             <p className="text-sm text-muted-foreground">—</p>
           )}
-          <p className="text-xs text-muted-foreground">تغيير الخطة يتم عن طريق مزود الخدمة.</p>
+          <p className="text-xs text-muted-foreground">اختار الباقة والمدة من صفحة الاشتراك، وطلبك هيتراجع قبل أي تغيير.</p>
         </section>
 
         <section className="space-y-2 rounded-xl border border-border p-4">

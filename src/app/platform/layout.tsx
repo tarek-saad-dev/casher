@@ -26,6 +26,9 @@ export default async function PlatformLayout({ children }: { children: React.Rea
           <Link href="/platform" className="rounded-lg border border-border px-3 py-1.5 hover:bg-muted">
             المنشآت
           </Link>
+          <Link href="/platform/billing-requests" className="rounded-lg border border-border px-3 py-1.5 hover:bg-muted">
+            طلبات الاشتراك
+          </Link>
           <Link href="/platform/pricing" className="rounded-lg border border-border px-3 py-1.5 hover:bg-muted">
             الأسعار والباقات
           </Link>
