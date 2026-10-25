@@ -223,7 +223,7 @@ export async function PATCH(request: NextRequest) {
     const body = await request.json();
     const db = await getPool();
     await ensureTableAndColumns(db);
-    await ensureBranchSettingsRow(db, branch.branchId);
+    await ensureBranchSettingsRow(db, branch);
 
     const validationError = bookingSettingsValidationError(body);
     if (validationError) {
