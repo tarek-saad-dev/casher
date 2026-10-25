@@ -37,7 +37,7 @@ export interface WorkspaceReadinessProvider {
 const KNOWN = new Set<string>(APP_REGISTRY_CODES);
 
 function safeInternalHref(href: string | null | undefined): string | null {
-  if (!href || !href.startsWith('/') || href.startsWith('//') || href.includes('\\') ||
+  if (typeof href !== 'string' || !href.startsWith('/') || href.startsWith('//') || href.includes('\\') ||
     /[\r\n\t]/.test(href)) return null;
   return href;
 }
@@ -57,7 +57,7 @@ function applySignal(
   signal: WorkspaceAppReadinessSignal,
   tenantId: string,
 ): WorkspaceAppSummary {
-  if (signal.tenantId.toLowerCase() !== tenantId.toLowerCase() ||
+  if (typeof signal.tenantId !== 'string' || signal.tenantId.toLowerCase() !== tenantId.toLowerCase() ||
     signal.appCode !== item.code ||
     !Array.isArray(signal.checks) ||
     signal.checks.length === 0 ||
