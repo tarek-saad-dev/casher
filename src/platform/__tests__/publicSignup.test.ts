@@ -18,7 +18,10 @@ vi.mock('@/platform/onboarding/wizard/coordinator', () => ({
   defaultOnboardingDeps: vi.fn(),
 }));
 
+import { findIndustryPack } from '@/packs';
+import { SALON_PACK } from '@/packs/salon/public';
 import {
+  buildOnboardingRequest,
   normalizeEgyptPhone,
   parsePublicSignupInput,
   signupIpHash,
@@ -65,6 +68,60 @@ describe('public signup input', () => {
         startMode: 'demo',
       }).startMode,
     ).toBe('real');
+  });
+
+  it('rejects invalid exact app selections before any signup database mutation', () => {
+    const input = {
+      industry: 'salon',
+      needs: [],
+      contactName: 'Owner',
+      businessName: 'New Salon',
+      phone: '01012345678',
+      password: 'StrongPass1',
+      startMode: 'real',
+      selectedApps: ['booking', 'purchasing'],
+    };
+    // Pack lookup is mocked in this service-level suite; the pure selection suite
+    // exercises actual pack composition. Invalid type is still rejected here.
+    expect(() => parsePublicSignupInput({ ...input, selectedApps: 'booking' })).toThrow();
+  });
+
+  it('forwards chosen apps to tenant provisioning independently of the Starter trial', () => {
+    vi.mocked(findIndustryPack).mockReturnValue(SALON_PACK);
+    const signup = parsePublicSignupInput({
+      industry: 'salon',
+      needs: ['booking'],
+      selectedApps: ['booking', 'pos', 'inventory', 'purchasing'],
+      contactName: 'Owner',
+      businessName: 'Nova',
+      phone: '01012345678',
+      password: 'StrongPass1',
+      startMode: 'real',
+    });
+    const onboarding = buildOnboardingRequest(signup);
+    expect(onboarding.apps).toEqual({
+      add: ['inventory', 'purchasing'],
+      remove: ['queue', 'attendance', 'payroll', 'treasury', 'reports'],
+    });
+    expect(onboarding.subscription).toEqual({ planCode: 'starter', status: 'trial' });
+    expect(onboarding.business.industryPackCode).toBe('salon');
+    expect(onboarding.ai).toBeNull();
+  });
+
+  it('keeps old signup payloads on the legacy needs compatibility path', () => {
+    const signup = parsePublicSignupInput({
+      industry: 'salon',
+      needs: ['inventory'],
+      contactName: 'Owner',
+      businessName: 'Nova',
+      phone: '01012345678',
+      password: 'StrongPass1',
+      startMode: 'real',
+    });
+    expect(buildOnboardingRequest(signup).apps).toEqual({
+      add: ['inventory', 'purchasing'],
+      remove: [],
+    });
   });
 
   it('hashes IP addresses without persisting the raw address', () => {
