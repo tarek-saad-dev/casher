@@ -233,7 +233,7 @@ export default function PublicSignupFlow() {
             <p className="text-xs font-bold tracking-[0.2em] text-cyan-300">02 — التطبيقات</p>
             <h2 className="mt-2 text-3xl font-black sm:text-4xl">جهّز التطبيقات اللي تحتاجها.</h2>
             <p className="mt-2 text-sm text-slate-400">
-              بدأنا بتطبيقات نشاطك الموصى بها. الأساسي ثابت، والباقي تقدر تضيفه أو تشيله في أي وقت من إدارة التطبيقات.
+              بدأنا بتطبيقات نشاطك الموصى بها. الأساسي ثابت، والباقي تقدر تضيفه أو تشيله قبل إنشاء الحساب.
             </p>
             <div className="mt-6 grid gap-2 sm:grid-cols-2">
               {choices?.apps.map((item) => {
