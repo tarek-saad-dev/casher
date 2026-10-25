@@ -151,7 +151,7 @@ function identityFrom(input: PublicSignupInput) {
  * A shared literal 'الفرع الرئيسي' breaks the second public signup.
  */
 export function publicSignupMainBranchName(businessName: string, branchCode: string): string {
-  const tenantSuffix = String(branchCode).replace(/[^a-zA-Z0-9]/g, '').slice(-10);
+  const tenantSuffix = /^DRVO_([0-9A-F]{10})_MAIN$/i.exec(String(branchCode).trim())?.[1];
   const name = String(businessName ?? '').trim().slice(0, 70);
   if (!name || !tenantSuffix) throw new Error('Public signup branch identity is incomplete');
   return `${name} - الرئيسي - ${tenantSuffix}`;
