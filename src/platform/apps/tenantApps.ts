@@ -20,6 +20,7 @@ import {
   type ResolvedComposition,
 } from './compositionResolver';
 import { TenantAppError } from './errors';
+import { planSelfServiceChange, type SelfServiceAction } from './selfServiceAppManager';
 
 export type TenantAppSource = 'bootstrap' | 'pack' | 'customer' | 'platform_admin';
 export type TenantAppStatus = 'installed' | 'disabled';
@@ -401,5 +402,56 @@ export async function uninstallTenantApp(
       occurredAt: now,
     });
     return { appCode: code };
+  });
+}
+
+/**
+ * Tenant-admin self-service. Canonical tenant ID and actor come only from requireAdmin().
+ * Pack, protected sources, dependencies, and active state are RE-CHECKED under the same
+ * tenant applock as platform-operator mutations, then recorded through the outbox.
+ * No deletions: disabling preserves financial and historical app data.
+ */
+export async function changeSelfServiceTenantApps(
+  tenantId: string,
+  args: { action: SelfServiceAction; appCode: string; confirmDependencies?: boolean },
+  opts: { actor: TenantAppActor; resolvePack: PackResolver; now?: Date },
+): Promise<{ action: SelfServiceAction; appCodes: string[]; autoAddedDependencies: string[] }> {
+  const now = opts.now ?? new Date();
+  return withTenantAppsTx(tenantId, 'changeSelfServiceTenantApps', async (tx) => {
+    const packState = await getTenantPackState(tx, tenantId);
+    const pack = packState ? opts.resolvePack(packState.packCode) : null;
+    const states = await listTenantApps(tenantId, { executor: tx, forUpdate: true });
+    const plan = planSelfServiceChange(pack, states, args);
+
+    if (plan.action === 'install') {
+      await ensureAppRegistryRows(tx);
+      for (const code of plan.appCodes) {
+        const outcome = await setAppInstalled(tx, tenantId, code, 'customer', now);
+        if (outcome === 'unchanged') {
+          throw new TenantAppError('APP_ALREADY_INSTALLED', 'التطبيق مفعّل بالفعل', 409);
+        }
+      }
+    } else {
+      if (!(await setAppDisabled(tx, tenantId, plan.appCodes[0]!, now))) {
+        throw new TenantAppError('APP_NOT_INSTALLED', 'التطبيق غير مفعّل', 409);
+      }
+    }
+    await publishPlatformOutboxEvent(tx, {
+      tenantId,
+      aggregateType: 'tenant_apps',
+      aggregateId: tenantId,
+      eventType: plan.action === 'install' ? 'tenant.app.self_service_installed' : 'tenant.app.self_service_disabled',
+      payload: JSON.stringify({
+        appCodes: plan.appCodes,
+        autoAddedDependencies: plan.autoAddedDependencies,
+        dataPreserved: true,
+        actorUserId: opts.actor.actorUserId,
+        source: 'customer',
+      }),
+      idempotencyKey: 'tenant-apps:self-service:' + plan.action + ':' + randomUUID(),
+      correlationId: 'tenant-apps:' + tenantId,
+      occurredAt: now,
+    });
+    return plan;
   });
 }
