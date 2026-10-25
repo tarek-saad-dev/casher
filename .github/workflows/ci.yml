@@ -49,6 +49,19 @@ jobs:
           src/modules/messaging/__tests__/adminWhatsAppTemplates.test.ts
           --reporter=default
 
+      # Keep independent tenant/security regressions mandatory on every PR.
+      # These tests use isolated in-memory fixtures; they never connect to staging or production.
+      - name: Tenant isolation and API entitlement security regression
+        run: >
+          npx vitest run
+          src/platform/__tests__/qaCrossTenantEntitlement.test.ts
+          src/platform/__tests__/drvo013TenantIsolation.test.ts
+          src/platform/__tests__/drvo013RouteAuthGuards.test.ts
+          src/platform/__tests__/drvo013TenantJobsAndGates.test.ts
+          src/platform/__tests__/drvo015MasterDataIsolation.test.ts
+          src/platform/__tests__/platformOutboxRollback.test.ts
+          --reporter=default
+
       - name: Production build
         run: npm run build
 
