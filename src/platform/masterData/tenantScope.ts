@@ -1,5 +1,5 @@
 import { getPool, sql } from '@/lib/db';
-import { TenantContextError, type TenantSqlExecutor } from '@/platform/tenant/tenantContext';
+import { assertLegacyBranchInTenant, TenantContextError, type TenantSqlExecutor } from '@/platform/tenant/tenantContext';
 
 const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -46,11 +46,22 @@ export async function resolveLegacyBranchTenantId(
   return String(rows[0].TenantId).toLowerCase();
 }
 
-/** Tenant of a resolved branch context (DRVO-013 stamp when present, else derived from the branch). */
+/**
+ * Tenant of a branch context (DRVO-013 stamp when present, else derived from the branch).
+ *
+ * A caller-provided tenant stamp is NOT proof that the legacy branch belongs to that
+ * tenant. Check the active Location mapping before giving downstream master-data
+ * services a TenantId, so a mixed tenant/branch context cannot access or mutate data.
+ * Use the caller's executor to keep the check within an existing transaction.
+ */
 export async function tenantIdForBranchContext(
   branch: { branchId: number; tenantId?: string | null },
   executor?: TenantSqlExecutor,
 ): Promise<string> {
-  if (branch.tenantId) return requireMasterDataTenantId(branch.tenantId, 'branch context');
+  if (branch.tenantId) {
+    const tenantId = requireMasterDataTenantId(branch.tenantId, 'branch context');
+    await assertLegacyBranchInTenant(tenantId, branch.branchId, { executor });
+    return tenantId;
+  }
   return resolveLegacyBranchTenantId(branch.branchId, executor);
 }
