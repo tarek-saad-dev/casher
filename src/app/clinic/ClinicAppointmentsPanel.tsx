@@ -83,8 +83,9 @@ export default function ClinicAppointmentsPanel() {
         await load();
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'تعذر تحديث الحجز');
+      const actionError = err instanceof Error ? err.message : 'تعذر تحديث الحجز';
       await load();
+      setError(actionError);
     } finally {
       setWorkingId(null);
     }
