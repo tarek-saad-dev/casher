@@ -43,6 +43,13 @@ export function isInstallableAppCode(code: string): code is AppRegistryCode {
   return INSTALLABLE.has(code);
 }
 
+/** Channel-dependent apps are not safe for tenant self-service activation in V1. */
+const SELF_SERVICE_UNAVAILABLE = new Set<string>(['messaging', 'ai-receptionist']);
+
+export function isSelfServiceAvailableAppCode(code: string): boolean {
+  return isInstallableAppCode(code) && !isLegacyOnlyAppCode(code) && !SELF_SERVICE_UNAVAILABLE.has(code);
+}
+
 export function isLegacyOnlyAppCode(code: string): boolean {
   return LEGACY_ONLY_APPS.has(code);
 }
