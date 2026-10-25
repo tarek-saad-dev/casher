@@ -66,6 +66,22 @@ describe('public signup input', () => {
     ).toBe('real');
   });
 
+  it('rejects invalid exact app selections before any signup database mutation', () => {
+    const input = {
+      industry: 'salon',
+      needs: [],
+      contactName: 'Owner',
+      businessName: 'New Salon',
+      phone: '01012345678',
+      password: 'StrongPass1',
+      startMode: 'real',
+      selectedApps: ['booking', 'purchasing'],
+    };
+    // Pack lookup is mocked in this service-level suite; the pure selection suite
+    // exercises actual pack composition. Invalid type is still rejected here.
+    expect(() => parsePublicSignupInput({ ...input, selectedApps: 'booking' })).toThrow();
+  });
+
   it('hashes IP addresses without persisting the raw address', () => {
     expect(signupIpHash('127.0.0.1')).toMatch(/^[0-9a-f]{64}$/);
     expect(signupIpHash(null)).toBeNull();

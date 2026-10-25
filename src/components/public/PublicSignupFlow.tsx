@@ -18,23 +18,28 @@ import {
 } from 'lucide-react';
 import type {
   PublicSignupIndustry,
-  PublicSignupNeed,
   PublicSignupStartMode,
 } from '@/platform/publicSignup/types';
+import {
+  getPublicSignupAppChoices,
+  resolvePublicSignupAppSelection,
+} from '@/platform/publicSignup/appSelection';
 
-const NEEDS: Array<{ code: PublicSignupNeed; label: string; icon: React.ComponentType<{ className?: string }> }> = [
-  { code: 'booking', label: 'الحجوزات', icon: CalendarDays },
-  { code: 'pos', label: 'الكاشير والمبيعات', icon: ReceiptText },
-  { code: 'workforce', label: 'الموظفين والحضور', icon: Users },
-  { code: 'payroll', label: 'المرتبات', icon: CircleDollarSign },
-  { code: 'treasury', label: 'الخزنة', icon: ShieldCheck },
-  { code: 'reports', label: 'التقارير', icon: ClipboardList },
-  { code: 'inventory', label: 'المخزون والمشتريات', icon: Package },
-];
+const APP_INFO: Record<string, { label: string; icon: React.ComponentType<{ className?: string }> }> = {
+  booking: { label: 'الحجوزات', icon: CalendarDays },
+  queue: { label: 'طابور العملاء', icon: Users },
+  pos: { label: 'الكاشير والمبيعات', icon: ReceiptText },
+  attendance: { label: 'الحضور', icon: Users },
+  payroll: { label: 'المرتبات', icon: CircleDollarSign },
+  treasury: { label: 'الخزنة', icon: ShieldCheck },
+  reports: { label: 'التقارير', icon: ClipboardList },
+  inventory: { label: 'المخزون', icon: Package },
+  purchasing: { label: 'المشتريات', icon: Store },
+};
 
 type FormState = {
   industry: PublicSignupIndustry | null;
-  needs: PublicSignupNeed[];
+  selectedApps: string[];
   contactName: string;
   businessName: string;
   phone: string;
@@ -45,7 +50,7 @@ type FormState = {
 
 const initial: FormState = {
   industry: null,
-  needs: ['booking', 'pos', 'workforce', 'reports'],
+  selectedApps: [],
   contactName: '',
   businessName: '',
   phone: '',
@@ -61,9 +66,20 @@ export default function PublicSignupFlow() {
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<{ tenantCode: string; nextPath: string } | null>(null);
 
+  const choices = form.industry ? getPublicSignupAppChoices(form.industry) : null;
+  const selectionError = useMemo(() => {
+    if (!form.industry) return null;
+    try {
+      resolvePublicSignupAppSelection(form.industry, form.selectedApps);
+      return null;
+    } catch (err) {
+      return err instanceof Error ? err.message : 'اختيارات التطبيقات غير صحيحة.';
+    }
+  }, [form.industry, form.selectedApps]);
+
   const canContinue = useMemo(() => {
     if (step === 0) return !!form.industry;
-    if (step === 1) return form.needs.length > 0;
+    if (step === 1) return form.selectedApps.length > 0 && !selectionError;
     if (step === 2) {
       return (
         form.contactName.trim().length >= 2 &&
@@ -72,12 +88,15 @@ export default function PublicSignupFlow() {
       );
     }
     return form.password.length >= 10;
-  }, [form, step]);
+  }, [form, step, selectionError]);
 
-  const toggleNeed = (code: PublicSignupNeed) => {
+  const toggleApp = (code: string) => {
+    if (choices?.apps.some((app) => app.code === code && app.group === 'required')) return;
     setForm((f) => ({
       ...f,
-      needs: f.needs.includes(code) ? f.needs.filter((x) => x !== code) : [...f.needs, code],
+      selectedApps: f.selectedApps.includes(code)
+        ? f.selectedApps.filter((x) => x !== code)
+        : [...f.selectedApps, code],
     }));
   };
 
@@ -86,10 +105,7 @@ export default function PublicSignupFlow() {
       ...f,
       industry,
       startMode: industry === 'salon' ? f.startMode : 'real',
-      needs:
-        industry === 'salon'
-          ? ['booking', 'pos', 'workforce', 'reports']
-          : ['pos', 'inventory', 'reports'],
+      selectedApps: getPublicSignupAppChoices(industry).defaults,
     }));
   };
 
@@ -104,7 +120,9 @@ export default function PublicSignupFlow() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           industry: form.industry,
-          needs: form.needs,
+          // Keep legacy needs analytics compatible; installed apps come from selectedApps.
+          needs: [],
+          selectedApps: form.selectedApps,
           contactName: form.contactName,
           businessName: form.businessName,
           phone: form.phone,
@@ -212,37 +230,49 @@ export default function PublicSignupFlow() {
 
         {step === 1 && (
           <div>
-            <p className="text-xs font-bold tracking-[0.2em] text-cyan-300">02 — احتياجاتك</p>
-            <h2 className="mt-2 text-3xl font-black sm:text-4xl">عاوز DRVO يمسك إيه؟</h2>
+            <p className="text-xs font-bold tracking-[0.2em] text-cyan-300">02 — التطبيقات</p>
+            <h2 className="mt-2 text-3xl font-black sm:text-4xl">جهّز التطبيقات اللي تحتاجها.</h2>
             <p className="mt-2 text-sm text-slate-400">
-              اختار اللي يهمك. ده بيساعدنا نجهز البداية المناسبة؛ مش بنقص النظام حسب الاختيار.
+              بدأنا بتطبيقات نشاطك الموصى بها. الأساسي ثابت، والباقي تقدر تضيفه أو تشيله في أي وقت من إدارة التطبيقات.
             </p>
             <div className="mt-6 grid gap-2 sm:grid-cols-2">
-              {NEEDS.map((item) => {
-                const Icon = item.icon;
-                const active = form.needs.includes(item.code);
+              {choices?.apps.map((item) => {
+                const info = APP_INFO[item.code];
+                const Icon = info?.icon ?? Package;
+                const active = form.selectedApps.includes(item.code);
+                const required = item.group === 'required';
                 return (
                   <button
                     key={item.code}
                     type="button"
-                    onClick={() => toggleNeed(item.code)}
-                    className={`flex items-center gap-3 rounded-2xl border px-4 py-3 text-right transition ${
-                      active
-                        ? 'border-cyan-300/60 bg-cyan-300/10'
-                        : 'border-white/10 bg-black/10 hover:bg-white/5'
+                    disabled={required}
+                    aria-pressed={active}
+                    onClick={() => toggleApp(item.code)}
+                    className={`flex items-center gap-3 rounded-2xl border px-4 py-3 text-right transition disabled:cursor-default ${
+                      active ? 'border-cyan-300/60 bg-cyan-300/10' : 'border-white/10 bg-black/10 hover:bg-white/5'
                     }`}
                   >
                     <span className={`grid h-9 w-9 place-items-center rounded-xl ${active ? 'bg-cyan-300 text-slate-950' : 'bg-white/5 text-slate-400'}`}>
                       <Icon className="h-4 w-4" />
                     </span>
-                    <span className="flex-1 text-sm font-bold">{item.label}</span>
+                    <span className="flex-1">
+                      <span className="block text-sm font-bold">{info?.label ?? item.code}</span>
+                      <span className="block text-[11px] text-slate-400">
+                        {required ? 'أساسي للنشاط' : item.group === 'recommended' ? 'موصى به · اختياري' : 'إضافة اختيارية'}
+                        {item.requires.length ? ` · يحتاج ${item.requires.map((dep) => APP_INFO[dep]?.label ?? dep).join(' و')}` : ''}
+                      </span>
+                    </span>
                     {active && <Check className="h-4 w-4 text-cyan-300" />}
                   </button>
                 );
               })}
             </div>
+            {selectionError && <p role="alert" className="mt-3 rounded-xl border border-amber-400/30 px-4 py-2 text-xs text-amber-200">{selectionError}</p>}
+            <p className="mt-3 text-xs text-slate-400">
+              المختار: {form.selectedApps.length} تطبيقات · الخطة التجارية منفصلة عن التطبيقات، والتجربة تبدأ على Starter.
+            </p>
             <div className="mt-3 rounded-2xl border border-amber-300/10 bg-amber-300/5 px-4 py-3 text-xs text-amber-100/70">
-              WhatsApp + AI Receptionist هيظهر كإضافة بعد ما ربط رقم مستقل لكل منشأة يبقى متاح تجاريًا.
+              WhatsApp + AI Receptionist مش متاحين للتسجيل الذاتي لحد ما ربط رقم مستقل لكل منشأة يبقى جاهز تجاريًا.
             </div>
           </div>
         )}

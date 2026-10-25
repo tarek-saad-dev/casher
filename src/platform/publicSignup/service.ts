@@ -5,6 +5,7 @@ import { findIndustryPack } from '@/packs';
 import { onboardBusiness, defaultOnboardingDeps } from '@/platform/onboarding/wizard/coordinator';
 import type { OnboardingRequest } from '@/platform/onboarding/wizard/types';
 import { TenantOnboardingError } from '@/platform/onboarding/errors';
+import { PublicSignupAppSelectionError, resolvePublicSignupAppSelection } from './appSelection';
 import {
   PUBLIC_SIGNUP_INDUSTRIES,
   PUBLIC_SIGNUP_NEEDS,
@@ -99,9 +100,21 @@ export function parsePublicSignupInput(body: unknown): PublicSignupInput {
       400,
     );
   }
+  let selectedApps: string[] | undefined;
+  if (x.selectedApps !== undefined) {
+    try {
+      selectedApps = resolvePublicSignupAppSelection(industry, x.selectedApps).apps;
+    } catch (err) {
+      if (err instanceof PublicSignupAppSelectionError) {
+        throw new PublicSignupError(err.code, err.message, 400);
+      }
+      throw err;
+    }
+  }
   return {
     industry,
     needs: normalizeNeeds(x.needs),
+    ...(selectedApps === undefined ? {} : { selectedApps }),
     contactName,
     businessName,
     phone: normalizeEgyptPhone(x.phone),
@@ -161,7 +174,9 @@ function appCustomizations(industry: PublicSignupIndustry, needs: PublicSignupNe
 
 function buildOnboardingRequest(input: PublicSignupInput): OnboardingRequest {
   const ids = identityFrom(input);
-  const custom = appCustomizations(input.industry, input.needs);
+  const custom = input.selectedApps === undefined
+    ? appCustomizations(input.industry, input.needs)
+    : resolvePublicSignupAppSelection(input.industry, input.selectedApps).customizations;
   const salon = input.industry === 'salon';
   const withDemo = salon && input.startMode === 'demo';
 

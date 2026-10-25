@@ -17,6 +17,8 @@ export type PublicSignupStartMode = 'real' | 'demo';
 export type PublicSignupInput = {
   industry: PublicSignupIndustry;
   needs: PublicSignupNeed[];
+  /** Exact self-service app choice; omitted by older clients to preserve legacy needs mapping. */
+  selectedApps?: string[];
   contactName: string;
   businessName: string;
   phone: string;
