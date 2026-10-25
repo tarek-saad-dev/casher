@@ -174,7 +174,7 @@ export default function BranchActivatePage() {
                   onChange={(e) => setConfirmText(e.target.checked)}
                   className="mt-1"
                 />
-                <span>أؤكد فتح فرع كامب شيزار للتشغيل الداخلي بدون تفعيل الحجز العام</span>
+                <span>أؤكد فتح هذا الفرع للتشغيل الداخلي بدون تفعيل الحجز العام</span>
               </label>
               {error && <p className="text-sm text-rose-300">{error}</p>}
               {message && <p className="text-sm text-emerald-300">{message}</p>}

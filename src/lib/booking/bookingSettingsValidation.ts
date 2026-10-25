@@ -5,6 +5,7 @@ export type BookingDefaultMode = (typeof BOOKING_DEFAULT_MODES)[number];
 export const BOOKING_MIN_NOTICE_OPTIONS = [0, 5, 10, 15, 30, 60] as const;
 export const BOOKING_SLOT_INTERVAL_OPTIONS = [5, 10, 15, 30] as const;
 export const BOOKING_MAX_DAYS_AHEAD_RANGE = { min: 1, max: 60 } as const;
+export const BOOKING_DEFAULT_DURATION_RANGE = { min: 5, max: 240 } as const;
 
 /** Runtime defaults of a freshly seeded QueueBookingSettings row. */
 export const BOOKING_SETTINGS_DEFAULTS = {
@@ -22,6 +23,7 @@ export type BookingSettingsValues = {
   slotIntervalMinutes?: unknown;
   minNoticeMinutes?: unknown;
   maxBookingDaysAhead?: unknown;
+  defaultServiceDurationMinutes?: unknown;
 };
 
 /** First validation error (Arabic, as shown to staff) for the provided values, or null. */
@@ -40,10 +42,19 @@ export function bookingSettingsValidationError(values: BookingSettingsValues): s
   }
   if (
     values.maxBookingDaysAhead !== undefined &&
-    ((values.maxBookingDaysAhead as number) < BOOKING_MAX_DAYS_AHEAD_RANGE.min ||
+    (!Number.isInteger(values.maxBookingDaysAhead) ||
+      (values.maxBookingDaysAhead as number) < BOOKING_MAX_DAYS_AHEAD_RANGE.min ||
       (values.maxBookingDaysAhead as number) > BOOKING_MAX_DAYS_AHEAD_RANGE.max)
   ) {
-    return 'قيمة MaxBookingDaysAhead يجب أن تكون بين 1 و 60';
+    return 'قيمة MaxBookingDaysAhead يجب أن تكون عدد أيام صحيح بين 1 و 60';
+  }
+  if (
+    values.defaultServiceDurationMinutes !== undefined &&
+    (!Number.isInteger(values.defaultServiceDurationMinutes) ||
+      (values.defaultServiceDurationMinutes as number) < BOOKING_DEFAULT_DURATION_RANGE.min ||
+      (values.defaultServiceDurationMinutes as number) > BOOKING_DEFAULT_DURATION_RANGE.max)
+  ) {
+    return 'مدة الخدمة الافتراضية يجب أن تكون بين 5 و 240 دقيقة';
   }
   if (
     values.defaultMode !== undefined &&
