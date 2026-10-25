@@ -172,7 +172,7 @@ function appCustomizations(industry: PublicSignupIndustry, needs: PublicSignupNe
   return { add: [...new Set(add)], remove: [] as string[] };
 }
 
-function buildOnboardingRequest(input: PublicSignupInput): OnboardingRequest {
+export function buildOnboardingRequest(input: PublicSignupInput): OnboardingRequest {
   const ids = identityFrom(input);
   const custom = input.selectedApps === undefined
     ? appCustomizations(input.industry, input.needs)
