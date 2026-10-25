@@ -2,6 +2,7 @@ import 'server-only';
 import crypto from 'node:crypto';
 import { getPool, sql } from '@/lib/db';
 import { findIndustryPack } from '@/packs';
+import { buildSalonOnboardingPreset } from '@/packs/salon/onboardingPreset';
 import { onboardBusiness, defaultOnboardingDeps } from '@/platform/onboarding/wizard/coordinator';
 import type { OnboardingRequest } from '@/platform/onboarding/wizard/types';
 import { TenantOnboardingError } from '@/platform/onboarding/errors';
@@ -131,22 +132,6 @@ function identityFrom(input: PublicSignupInput) {
   };
 }
 
-function demoSalonServices() {
-  return [
-    { name: 'Hair Cut', arabicName: 'قص شعر', categoryName: 'خدمات', price: 200, durationMinutes: 30, active: true },
-    { name: 'Beard Styling', arabicName: 'تهذيب دقن', categoryName: 'خدمات', price: 100, durationMinutes: 20, active: true },
-    { name: 'Hair & Beard', arabicName: 'شعر ودقن', categoryName: 'خدمات', price: 280, durationMinutes: 45, active: true },
-    { name: 'Classic Skin Care', arabicName: 'تنظيف بشرة كلاسيك', categoryName: 'خدمات', price: 300, durationMinutes: 45, active: true },
-  ];
-}
-
-function demoSalonEmployees(branchCode: string) {
-  return [
-    { name: 'أحمد Demo', job: 'حلاق', primaryBranchCode: branchCode, active: true, acceptsBookings: true },
-    { name: 'كريم Demo', job: 'حلاق', primaryBranchCode: branchCode, active: true, acceptsBookings: true },
-  ];
-}
-
 function appCustomizations(industry: PublicSignupIndustry, needs: PublicSignupNeed[]) {
   const add: string[] = [];
   if (industry === 'salon' && needs.includes('inventory')) {
@@ -163,7 +148,9 @@ function buildOnboardingRequest(input: PublicSignupInput): OnboardingRequest {
   const ids = identityFrom(input);
   const custom = appCustomizations(input.industry, input.needs);
   const salon = input.industry === 'salon';
-  const withDemo = salon && input.startMode === 'demo';
+  const salonPreset = salon
+    ? buildSalonOnboardingPreset({ branchCode: ids.branchCode, startMode: input.startMode })
+    : { services: [], employees: [], booking: [] };
 
   return {
     business: {
@@ -190,8 +177,8 @@ function buildOnboardingRequest(input: PublicSignupInput): OnboardingRequest {
         defaultCloseTime: '23:00',
       },
     ],
-    services: withDemo ? demoSalonServices() : [],
-    employees: withDemo ? demoSalonEmployees(ids.branchCode) : [],
+    services: salonPreset.services,
+    employees: salonPreset.employees,
     owner: {
       displayName: input.contactName,
       loginName: ids.ownerLoginName,
@@ -200,20 +187,7 @@ function buildOnboardingRequest(input: PublicSignupInput): OnboardingRequest {
     users: [],
     apps: custom,
     subscription: { planCode: 'starter', status: 'trial' },
-    booking: salon
-      ? [
-          {
-            branchCode: ids.branchCode,
-            defaultMode: 'nearest',
-            slotIntervalMinutes: 15,
-            minNoticeMinutes: 30,
-            maxBookingDaysAhead: 14,
-            defaultServiceDurationMinutes: 30,
-            allowSpecificBarber: true,
-            allowNearestBarber: true,
-          },
-        ]
-      : [],
+    booking: salonPreset.booking,
     ai: null,
   };
 }

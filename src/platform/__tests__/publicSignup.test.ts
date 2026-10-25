@@ -23,6 +23,7 @@ import {
   parsePublicSignupInput,
   signupIpHash,
 } from '@/platform/publicSignup/service';
+import { buildSalonOnboardingPreset } from '@/packs/salon/onboardingPreset';
 
 describe('public signup input', () => {
   it('normalizes Egyptian local and international phone formats', () => {
@@ -69,6 +70,23 @@ describe('public signup input', () => {
   it('hashes IP addresses without persisting the raw address', () => {
     expect(signupIpHash('127.0.0.1')).toMatch(/^[0-9a-f]{64}$/);
     expect(signupIpHash(null)).toBeNull();
+  });
+});
+
+describe('public signup Salon Pack composition', () => {
+  it('does not bootstrap a real salon with shared CUT demo catalog', () => {
+    const preset = buildSalonOnboardingPreset({ branchCode: 'NOVA_MAIN', startMode: 'real' });
+    expect(preset.booking[0].branchCode).toBe('NOVA_MAIN');
+    expect(preset.services).toEqual([]);
+    expect(preset.employees).toEqual([]);
+  });
+
+  it('creates only new-tenant branch references for demo workers', () => {
+    const alpha = buildSalonOnboardingPreset({ branchCode: 'ALPHA_MAIN', startMode: 'demo' });
+    const beta = buildSalonOnboardingPreset({ branchCode: 'BETA_MAIN', startMode: 'demo' });
+    expect(alpha.employees.every((e) => e.primaryBranchCode === 'ALPHA_MAIN')).toBe(true);
+    expect(beta.employees.every((e) => e.primaryBranchCode === 'BETA_MAIN')).toBe(true);
+    expect(alpha.employees).not.toBe(beta.employees);
   });
 });
 
