@@ -117,18 +117,17 @@ export function buildTenantWorkspace(
       };
     }
 
-    const missing = rule.prerequisites
-      .map((id) => milestones.get(id))
-      .find((step) => !step || step.status !== 'done');
+    const missingId = rule.prerequisites.find((id) => milestones.get(id)?.status !== 'done');
+    const missing = missingId ? milestones.get(missingId) : undefined;
 
-    if (missing) {
+    if (missingId) {
       return {
         code,
         label,
         status: 'needs_setup',
         description: missing?.detail ?? 'لم تكتمل معلومات الإعداد المطلوبة.',
         nextAction: missing?.action ?? 'راجع إعدادات المنشأة.',
-        actionHref: missing ? SETUP_LINKS[missing.id] ?? null : null,
+        actionHref: missingId ? SETUP_LINKS[missingId] ?? null : null,
       };
     }
 
