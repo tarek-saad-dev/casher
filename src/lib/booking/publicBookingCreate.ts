@@ -1181,17 +1181,21 @@ export async function createPublicBooking(
       whatsapp = { scheduled: false, skipped: true, reason: 'suppressed' };
     }
 
-    scheduleBookingTeamGroupNotify({
-      eventKey: 'booking.created',
-      bookingId,
-      customerName,
-      bookingDate: calendarDate,
-      bookingTime: precheck.requestedTime,
-      barberName: selectedNameAr,
-      services: servicesNow.services.map((s) => s.nameAr),
-      branchName: branchNow.branchName,
-      branchId: branchNow.branchId,
-    });
+    // Suppress *all* outbound messages during isolated staging booking proofs.
+    // Previously suppressNotification guarded customer WhatsApp but not team groups.
+    if (!input.suppressNotification) {
+      scheduleBookingTeamGroupNotify({
+        eventKey: 'booking.created',
+        bookingId,
+        customerName,
+        bookingDate: calendarDate,
+        bookingTime: precheck.requestedTime,
+        barberName: selectedNameAr,
+        services: servicesNow.services.map((s) => s.nameAr),
+        branchName: branchNow.branchName,
+        branchId: branchNow.branchId,
+      });
+    }
 
     if (holdKey) {
       try {
