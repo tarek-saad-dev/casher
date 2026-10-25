@@ -1,9 +1,17 @@
 import type { TenantBrandProfile } from '@/platform/branding/brandProfile';
 import type { SubscriptionEvaluation, SubscriptionStatus } from '@/platform/commercial/types';
+import type { TenantLocationRef } from './tenantContext';
 
 /** Read-only state the tenant UI shell renders (brand, apps, subscription banner / block). */
 export interface TenantShellSnapshot {
-  tenant: { tenantId: string; code: string; name: string; industryPackCode: string | null };
+  tenant: {
+    tenantId: string;
+    code: string;
+    name: string;
+    industryPackCode: string | null;
+    /** Authenticated view location; permission checks remain server-authoritative. */
+    activeLocation: TenantLocationRef;
+  };
   brand: TenantBrandProfile;
   installedApps: string[];
   subscription: {
