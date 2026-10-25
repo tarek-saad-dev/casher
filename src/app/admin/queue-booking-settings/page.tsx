@@ -6,6 +6,7 @@ import {
   Hash, Clock, CalendarDays, Shield, ArrowRight, Volume2, Database,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { speakWithAzure } from '@/lib/queueVoice';
 // Settings icon from lucide-react is used in Section component
 
@@ -18,6 +19,16 @@ interface QueueSettings {
   AutoNoShowAfterMin: number;
   AllowDoubleBooking: boolean;
   BookingPriorityMode: string;
+}
+
+interface BookingBranchInfo {
+  branchId: number;
+  branchCode: string;
+  branchName: string;
+  lifecycleStatus: string;
+  publicBookingEnabled: boolean;
+  defaultOpenTime: string | null;
+  defaultCloseTime: string | null;
 }
 
 interface BookingSettings {
@@ -46,10 +57,10 @@ const DEFAULT_SETTINGS: QueueSettings = {
 };
 
 const DEFAULT_BOOKING_SETTINGS: BookingSettings = {
-  salonName: "Cut Salon",
+  salonName: "الفرع الرئيسي",
   timezone: "Africa/Cairo",
   currency: "EGP",
-  bookingEnabled: true,
+  bookingEnabled: false,
   allowSpecificBarber: true,
   allowNearestBarber: true,
   defaultMode: "nearest",
@@ -126,6 +137,7 @@ export default function QueueBookingSettingsPage() {
   const router = useRouter();
   const [settings, setSettings] = useState<QueueSettings>(DEFAULT_SETTINGS);
   const [bookingSettings, setBookingSettings] = useState<BookingSettings>(DEFAULT_BOOKING_SETTINGS);
+  const [bookingBranch, setBookingBranch] = useState<BookingBranchInfo | null>(null);
   const [bookingLoading, setBookingLoading] = useState(true);
   const [bookingSaving, setBookingSaving] = useState(false);
   const [bookingSaved, setBookingSaved] = useState(false);
@@ -163,7 +175,7 @@ export default function QueueBookingSettingsPage() {
     setVoiceTesting(true);
     setVoiceToast(null);
     try {
-      await speakWithAzure('عميلنا طارق سعد، يتفضل يتوجه إلى الأستاذ كريم.');
+      await speakWithAzure('عميلنا العزيز، يتفضل يتوجه إلى الموظف المتاح.');
       setVoiceToast({ msg: 'تم تشغيل النداء الصوتي بنجاح ✅', ok: true });
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'خطأ غير معروف';
@@ -194,6 +206,7 @@ export default function QueueBookingSettingsPage() {
           });
         }
         if (bookingData.ok && bookingData.settings) {
+          if (bookingData.branch) setBookingBranch(bookingData.branch as BookingBranchInfo);
           setBookingSettings({
             salonName: bookingData.settings.salonName ?? DEFAULT_BOOKING_SETTINGS.salonName,
             timezone: bookingData.settings.timezone ?? DEFAULT_BOOKING_SETTINGS.timezone,
@@ -360,13 +373,63 @@ export default function QueueBookingSettingsPage() {
             </div>
           </div>
 
+          {/* Active branch identity, hours and public launch path */}
+          {bookingBranch && (
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 space-y-3">
+              <div>
+                <p className="text-xs text-zinc-500 mb-1">إعدادات الفرع الحالي</p>
+                <p className="font-semibold text-white">{bookingBranch.branchName}</p>
+                <p className="text-xs text-zinc-400 mt-1">
+                  ساعات العمل: {bookingBranch.defaultOpenTime?.slice(0, 5) || 'غير محدد'} –{' '}
+                  {bookingBranch.defaultCloseTime?.slice(0, 5) || 'غير محدد'}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2 text-xs">
+                <Link
+                  href={`/admin/branches/${bookingBranch.branchId}`}
+                  className="rounded-lg border border-zinc-700 px-3 py-2 text-zinc-200 hover:border-amber-500"
+                >
+                  تعديل ساعات العمل
+                </Link>
+                <Link
+                  href={`/admin/branches/${bookingBranch.branchId}/readiness`}
+                  className="rounded-lg border border-zinc-700 px-3 py-2 text-zinc-200 hover:border-amber-500"
+                >
+                  جاهزية الحجز العام
+                </Link>
+                <Link href="/admin/services" className="rounded-lg border border-zinc-700 px-3 py-2 text-zinc-200">
+                  إدارة الخدمات
+                </Link>
+                <Link href="/admin/employees" className="rounded-lg border border-zinc-700 px-3 py-2 text-zinc-200">
+                  إدارة الموظفين
+                </Link>
+              </div>
+              {bookingSettings.bookingEnabled &&
+                bookingBranch.publicBookingEnabled &&
+                bookingBranch.lifecycleStatus === 'PUBLIC_LIVE' ? (
+                  <Link
+                    href={`/book/${encodeURIComponent(bookingBranch.branchCode)}`}
+                    target="_blank"
+                    className="inline-flex text-xs text-emerald-300 underline underline-offset-4"
+                  >
+                    فتح صفحة حجز العملاء
+                  </Link>
+                ) : (
+                  <p className="text-xs text-amber-200/90">
+                    الحجز العام لم يُنشر بعد. اضبط الخدمات والموظفين والمواعيد، ثم أكمل مراجعة جاهزية الفرع وتفعيله.
+                    تغيير زر الحجز أدناه وحده لا ينشر الفرع.
+                  </p>
+                )}
+            </div>
+          )}
+
           {/* Online Booking Settings */}
           <Section title="إعدادات الحجز الأونلاين" icon={<CalendarDays size={14} />}>
 
             {/* Booking Enabled */}
             <Toggle
-              label="تفعيل الحجز من الموقع"
-              description="عند الإيقاف، لن يستطيع العملاء إنشاء حجوزات جديدة من الموقع"
+              label="السماح باستقبال الحجوزات"
+              description="يعمل بعد تفعيل الفرع للحجز العام؛ هذا الزر وحده لا ينشر صفحة الحجز"
               checked={bookingSettings.bookingEnabled}
               onChange={v => setBooking('bookingEnabled', v)}
             />
