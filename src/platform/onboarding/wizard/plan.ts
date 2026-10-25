@@ -1,4 +1,3 @@
-import { JobType } from '@/lib/types';
 import {
   BOOKING_SETTINGS_DEFAULTS,
   bookingSettingsValidationError,
@@ -13,7 +12,12 @@ import {
 import { resolveTenantComposition } from '@/platform/apps/compositionResolver';
 import { TenantAppError } from '@/platform/apps/errors';
 import type { SaaSPlanRecord } from '@/platform/commercial/types';
-import type { IndustryPackDefinition } from '@/platform/packs/types';
+import {
+  packJobOptions,
+  packJobReceivesBookingsByDefault,
+  packUsesServiceCatalog,
+  type IndustryPackDefinition,
+} from '@/platform/packs/types';
 import { TenantOnboardingError } from '../errors';
 import { assertValidTenantCode } from '../validation';
 import type {
@@ -42,11 +46,11 @@ const CURRENCY_RE = /^[A-Z]{3}$/;
 const LOGIN_RE = /^[A-Za-z0-9._-]{3,50}$/;
 const MAX_SERVICE_DURATION = 600;
 
-/** Packs whose catalog is quick-set as services (salon-style service businesses). */
-const SERVICE_CATALOG_PACKS = new Set(['salon']);
-
-export function usesServiceCatalog(packCode: string | null | undefined): boolean {
-  return SERVICE_CATALOG_PACKS.has(String(packCode ?? ''));
+/** Data-driven catalog policy from the selected Industry Pack. */
+export function usesServiceCatalog(
+  pack: IndustryPackDefinition | null | undefined,
+): boolean {
+  return packUsesServiceCatalog(pack);
 }
 
 /** Conversation pack an industry may opt into; null when the industry has none. */
@@ -54,13 +58,17 @@ export function conversationPackForIndustry(packCode: string | null | undefined)
   return packCode === 'salon' ? SALON_CONCIERGE_PACK_CODE : null;
 }
 
-export const JOB_OPTIONS: readonly string[] = Object.values(JobType);
+export function jobOptionsForPack(
+  pack: IndustryPackDefinition | null | undefined,
+): readonly string[] {
+  return packJobOptions(pack);
+}
 
-/** Jobs public booking lists as bookable staff (see publicBookingBarbers). */
-const BOOKABLE_JOBS = new Set<string>([JobType.BARBER, JobType.ASSISTANT]);
-
-export function defaultAcceptsBookings(job: string): boolean {
-  return BOOKABLE_JOBS.has(job);
+export function defaultAcceptsBookings(
+  pack: IndustryPackDefinition | null | undefined,
+  job: string,
+): boolean {
+  return packJobReceivesBookingsByDefault(pack, job);
 }
 
 /**
@@ -156,14 +164,14 @@ export function resolveWizardApps(
 }
 
 export function visibleWizardSteps(
-  packCode: string | null,
+  pack: IndustryPackDefinition | null,
   installedApps: readonly string[] | null,
 ): WizardStepKey[] {
   const apps = new Set(installedApps ?? []);
   return WIZARD_STEPS.filter((step) => {
     if (step === 'booking') return apps.has('booking');
     if (step === 'ai') return apps.has('messaging') || apps.has('ai-receptionist');
-    if (step === 'services') return packCode != null;
+    if (step === 'services') return pack != null;
     return true;
   });
 }
@@ -261,7 +269,7 @@ export function validateOnboardingRequest(
   }
 
   const packCode = ctx.pack?.packCode ?? null;
-  if (usesServiceCatalog(packCode)) {
+  if (usesServiceCatalog(ctx.pack)) {
     const names = new Set<string>();
     req.services.forEach((s, i) => {
       const label = `الخدمة ${i + 1}`;
@@ -285,7 +293,7 @@ export function validateOnboardingRequest(
     if (!name) add('team', `${label}: الاسم مطلوب`, `employees.${i}.name`);
     else if (empNames.has(name)) add('team', `${label}: الاسم مكرر`, `employees.${i}.name`);
     empNames.add(name);
-    if (!JOB_OPTIONS.includes(e.job)) add('team', `${label}: اختر الوظيفة`, `employees.${i}.job`);
+    if (!jobOptionsForPack(ctx.pack).includes(e.job)) add('team', `${label}: اختر الوظيفة`, `employees.${i}.job`);
     if (!branchCodes.has(String(e.primaryBranchCode ?? '').toUpperCase())) {
       add('team', `${label}: اختر الفرع الأساسي`, `employees.${i}.primaryBranchCode`);
     }
