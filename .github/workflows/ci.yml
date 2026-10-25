@@ -31,6 +31,8 @@ jobs:
           src/platform/drvo/__tests__
           src/platform/__tests__/publicSignup.test.ts
           src/platform/__tests__/publicSignupAppSelection.test.ts
+          src/platform/__tests__/tenantAppManager.test.ts
+          src/platform/__tests__/tenantAppManagerService.test.ts
           src/platform/__tests__/drvo012Composition.test.ts
           src/platform/__tests__/drvo012Commercial.test.ts
           src/platform/__tests__/tenantOnboarding.test.ts
