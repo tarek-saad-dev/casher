@@ -2,7 +2,6 @@ import { findIndustryPack } from '@/packs';
 import { isLegacyOnlyAppCode, getAppInstallDependencies } from '@/platform/apps/appCatalog';
 import { resolveTenantComposition } from '@/platform/apps/compositionResolver';
 import { TenantAppError } from '@/platform/apps/errors';
-import type { AppCustomizations } from '@/platform/packs/types';
 
 /**
  * Self-service signup may only offer apps declared by the selected Industry Pack.
@@ -50,7 +49,7 @@ export function getPublicSignupAppChoices(industry: string): {
 /** Validate the exact requested app set before any tenant or signup DB mutation. */
 export function resolvePublicSignupAppSelection(industry: string, raw: unknown): {
   apps: string[];
-  customizations: AppCustomizations;
+  customizations: { add: string[]; remove: string[] };
 } {
   const choices = getPublicSignupAppChoices(industry);
   if (!Array.isArray(raw) || raw.length > choices.apps.length ||
@@ -70,7 +69,7 @@ export function resolvePublicSignupAppSelection(industry: string, raw: unknown):
     throw new PublicSignupAppSelectionError('REQUIRED_BY_PACK', 'مينفعش تشيل التطبيقات الأساسية للنشاط.');
   }
   const defaults = new Set(choices.defaults);
-  const customizations: AppCustomizations = {
+  const customizations: { add: string[]; remove: string[] } = {
     add: requested.filter((code: string) => !defaults.has(code)),
     remove: choices.apps
       .filter((item) => item.group === 'recommended' && !selected.has(item.code))
