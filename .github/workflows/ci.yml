@@ -24,6 +24,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Booking operator-script dry-run regression tests
+        run: node --test scripts/__tests__/reschedule-ali-mohamed-20261025.test.mjs
+
       - name: DRVO migration + rollout + runner tests
         run: >
           npx vitest run
