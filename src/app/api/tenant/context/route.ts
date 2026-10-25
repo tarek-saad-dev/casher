@@ -18,6 +18,7 @@ export async function GET() {
     const snapshot = await loadTenantShellSnapshot({
       tenantId: auth.tenantId,
       tenantCode: auth.tenant.tenantCode,
+      activeLocation: auth.tenant.activeLocation,
       evaluation: auth.subscription,
       isPlatformOperator: await isPlatformOperatorUser(auth.userId, auth.roles),
     });
