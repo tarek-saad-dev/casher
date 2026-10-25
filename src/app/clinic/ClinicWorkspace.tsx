@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import ClinicAppointmentsPanel from './ClinicAppointmentsPanel';
 import { useRouter } from 'next/navigation';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import {
@@ -239,6 +240,8 @@ export default function ClinicWorkspace() {
             </Link>
           </div>
         </header>
+
+        <ClinicAppointmentsPanel />
 
         <section className="mt-6 grid gap-4 lg:grid-cols-[1.05fr_.95fr]">
           <div className="rounded-3xl border bg-white p-5 shadow-sm">
