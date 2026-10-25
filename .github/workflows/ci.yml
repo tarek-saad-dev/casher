@@ -33,6 +33,7 @@ jobs:
           src/platform/__tests__/publicSignupAppSelection.test.ts
           src/platform/__tests__/drvo012Composition.test.ts
           src/platform/__tests__/drvo012Commercial.test.ts
+          src/platform/__tests__/tenantOnboarding.test.ts
           src/apps/booking/__tests__/bookingPathRegression.test.ts
           src/apps/booking/__tests__/holdKeyPersistence.test.ts
           src/apps/booking/__tests__/publicBootstrapErrorLeak.test.ts
