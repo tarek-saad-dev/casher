@@ -54,7 +54,7 @@ export default function MainNav({ suppressMobileChrome = false }: MainNavProps) 
   const { count: whatsAppAttentionCount } = useWhatsAppAttention();
   const { snapshot: tenantShell, isAppRouteAvailable } = useTenantShell();
   const canSeePage = useCallback(
-    (href: string) => canSeePageByRole(href) && isAppRouteAvailable(href),
+    (href: string) => (href === '/admin/apps' ? canSeePageByRole('/admin/tenant') : canSeePageByRole(href)) && isAppRouteAvailable(href),
     [canSeePageByRole, isAppRouteAvailable],
   );
   const brandName = tenantShell?.brand.displayName ?? '';
