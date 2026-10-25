@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import BrandProfileForm from '@/components/tenant/BrandProfileForm';
+import WorkspaceReadinessPanel from '@/components/tenant/WorkspaceReadinessPanel';
 import { useTenantShell } from '@/components/tenant/TenantShellProvider';
 import { platformFetch, SUBSCRIPTION_STATUS_LABELS } from '@/components/platform/platformFetch';
 import type { TenantBrandProfile } from '@/platform/branding/brandProfile';
@@ -34,6 +35,8 @@ export default function TenantSettingsPage() {
           الاسم والشعار وبيانات الإيصالات تظهر في القائمة والإيصالات والتقارير المطبوعة.
         </p>
       </div>
+
+      <WorkspaceReadinessPanel />
 
       <section className="space-y-3 rounded-xl border border-border p-4">
         <h2 className="font-semibold">الهوية والإيصالات</h2>
