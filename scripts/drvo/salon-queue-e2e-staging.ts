@@ -136,10 +136,20 @@ async function main() {
     const empId = Number(staff.recordset[0].EmpID);
 
     // One controlled staging test roster. Payroll validation is outside booking scope.
+    // Keep the synthetic roster within a normal shift length while including
+    // the current Cairo time (the smoke can execute at any hour of the day).
+    const cairoHour = Number(new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Africa/Cairo', hour: '2-digit', hourCycle: 'h23',
+    }).format(new Date()));
+    const shiftStart = Math.min(11, Math.max(0, cairoHour - 2));
+    const shiftEnd = Math.min(23, shiftStart + 12);
     await saveEmployeeBranchWeeklySchedule({
       empId, branchId, effectiveFrom: futureDate(0), skipPayrollCheck: true,
       cells: Array.from({ length: 7 }, (_, dayOfWeek) => ({
-        dayOfWeek, isWorking: true, startTime: '00:00', endTime: '23:59', canReceiveBookings: true,
+        dayOfWeek, isWorking: true,
+        startTime: String(shiftStart).padStart(2, '0') + ':00',
+        endTime: String(shiftEnd).padStart(2, '0') + ':59',
+        canReceiveBookings: true,
       })),
     });
 
