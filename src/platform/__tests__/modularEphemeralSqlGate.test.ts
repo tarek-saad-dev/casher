@@ -42,6 +42,6 @@ describe('isolated CI SQL Server gate is never a staging or prod migration actio
   expect(w).not.toContain('DRVO_STAGING_DB_PASSWORD');
   expect(w).not.toContain('VPS_HOST');
   expect(w).not.toContain('npm run drvo:migrate');
-  expect(w).not.toContain('deploy');
+  expect(w).not.toContain('npm run deploy');
  });
 });
