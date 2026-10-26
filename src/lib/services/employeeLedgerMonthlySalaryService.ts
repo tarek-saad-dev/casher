@@ -124,23 +124,29 @@ async function fetchEligibleMonthlyEmployees(
     .input('MonthStart', sql.Date, `${month}-01`);
   if (empId != null && empId > 0) req.input('EmpID', sql.Int, empId);
 
-  // Prefer branch payroll plan; no GLEEM fallback for other branches.
+  // Resolve exactly one effective branch agreement per employee and payroll month.
   const result = await req.query(`
+    WITH effectivePlan AS (
+      SELECT p.*, ROW_NUMBER() OVER (
+        PARTITION BY p.EmpID ORDER BY p.EffectiveFrom DESC, p.PlanID DESC
+      ) AS rn
+      FROM dbo.TblEmpBranchPayrollPlan p
+      WHERE p.BranchID = @BranchID AND p.IsActive = 1
+        AND p.EffectiveFrom <= @MonthStart
+        AND (p.EffectiveTo IS NULL OR p.EffectiveTo >= @MonthStart)
+    )
     SELECT
       e.EmpID AS empId,
       e.EmpName AS empName,
       CAST(p.MonthlySalary AS DECIMAL(12,2)) AS baseSalary,
       p.PayType AS payrollMethod,
       e.EmploymentType AS employmentType
-    FROM dbo.TblEmpBranchPayrollPlan p
+    FROM effectivePlan p
     INNER JOIN dbo.TblEmp e ON e.EmpID = p.EmpID
       AND e.TenantId IN (SELECT tloc.TenantId FROM dbo.Location tloc WHERE tloc.LegacyBranchId = @BranchID)
-    WHERE p.BranchID = @BranchID
-      AND p.IsActive = 1
+    WHERE p.rn = 1
       AND p.PayType = N'monthly'
       AND ISNULL(p.MonthlySalary, 0) > 0
-      AND (p.EffectiveTo IS NULL OR p.EffectiveTo >= @MonthStart)
-      AND p.EffectiveFrom <= @MonthStart
       AND ISNULL(e.isActive, 1) = 1
       AND ISNULL(e.IsPayrollEnabled, 1) = 1
       AND ISNULL(e.EmploymentType, N'full_time') <> N'freelance'
