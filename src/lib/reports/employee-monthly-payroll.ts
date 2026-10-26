@@ -479,6 +479,7 @@ export async function getEmployeeMonthlyPayrollReport(
             WHERE EmpID = @empId
               AND WorkDate >= @startDate
               AND WorkDate < @endDateExclusive
+              AND SupersededByPayrollRevisionID IS NULL
           `),
       ),
 
