@@ -357,6 +357,7 @@ export function scheduleEmployeeTipWhatsApp(
  * Resolves quickly after lookup + enqueue (does not wait for bot send).
  */
 export async function maybeScheduleAdvanceWhatsAppFromExpenseCategory(input: {
+  branchId: number;
   expINID: number;
   invID: number;
   amount: number;
@@ -374,6 +375,7 @@ export async function maybeScheduleAdvanceWhatsAppFromExpenseCategory(input: {
     amount: input.amount,
     paymentMethodId: input.paymentMethodId,
     notes: input.notes,
+    branchId: input.branchId,
   });
   return { scheduled: true };
 }
