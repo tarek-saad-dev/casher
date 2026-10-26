@@ -9,6 +9,7 @@ import {
 import { bookingQueueNotFoundResponse } from "@/lib/branch/bookingQueueOwnership";
 import { userCanManageOpsBranchRecord } from "@/lib/branch/opsWriteBranch";
 import { detectQueueTicketsSchema } from "@/lib/queueSchema";
+import { resolveQueueHistoryActorColumn } from "@/lib/queue/queueTicketHistoryActor";
 
 export const runtime = "nodejs";
 
@@ -69,12 +70,13 @@ export async function GET(_req: NextRequest, context: RouteContext) {
       }
     }
 
+    const actorColumn = await resolveQueueHistoryActorColumn(db);
     const histRes = await db.request()
       .input("id", sql.Int, parseInt(id))
       .query(`
         SELECT h.*, u.UserName
         FROM [dbo].[QueueTicketHistory] h
-        LEFT JOIN [dbo].[TblUser] u ON u.UserID = h.UserID
+        LEFT JOIN [dbo].[TblUser] u ON u.UserID = h.[${actorColumn}]
         WHERE h.QueueTicketID = @id
         ORDER BY h.ActionAt DESC
       `);
@@ -147,6 +149,7 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: "تذكرة غير موجودة" }, { status: 404 });
 
     const currentStatus = cur.recordset[0].Status;
+    const historyActorColumn = await resolveQueueHistoryActorColumn(db);
 
     // Handle transfer separately
     if (action === "transfer") {
@@ -167,7 +170,7 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
         .input("notes",     sql.NVarChar, notes || null)
         .query(`
           INSERT INTO [dbo].[QueueTicketHistory]
-            (QueueTicketID, OldStatus, NewStatus, ActionType, UserID, Notes)
+            (QueueTicketID, OldStatus, NewStatus, ActionType, [${historyActorColumn}], Notes)
           VALUES (@ticketId, @oldStatus, @newStatus, @action, @userID, @notes)
         `);
 
@@ -246,7 +249,7 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
       .input("notes",     sql.NVarChar, notes || null)
       .query(`
         INSERT INTO [dbo].[QueueTicketHistory]
-          (QueueTicketID, OldStatus, NewStatus, ActionType, UserID, Notes)
+          (QueueTicketID, OldStatus, NewStatus, ActionType, [${historyActorColumn}], Notes)
         VALUES (@ticketId, @oldStatus, @newStatus, @action, @userID, @notes)
       `);
 
