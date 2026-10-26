@@ -395,6 +395,25 @@ async function main() {
         Number(completedTarget.recordset[0].ProcessedVersion),
         t.code + ' target request terminal completed at exact version');
 
+      // A terminal request status is insufficient: the worker may legitimately
+      // complete without a target plan and therefore compute no commission.
+      // Fail closed until this smoke seeds a real plan and sale, then validates
+      // the exact payable against the target ledger and revenue projections.
+      const generatedTarget = await pool.request()
+        .input('empId', sql.Int, empId)
+        .input('branchId', sql.Int, t.branchId)
+        .input('date', sql.Date, WORK_DATE)
+        .query(`SELECT ID, NetSalesAfterDiscount, TargetAmount
+          FROM dbo.TblEmpDailyTarget
+          WHERE EmpID=@empId AND BranchID=@branchId AND WorkDate=@date
+            AND Status <> N'voided'`);
+      check(generatedTarget.recordset.length === 1,
+        t.code + ' target worker persisted an actual calculated daily target (not just completed the request)');
+      check(Number(generatedTarget.recordset[0].NetSalesAfterDiscount) > 0,
+        t.code + ' target calculation consumed real persisted service sales');
+      check(Number(generatedTarget.recordset[0].TargetAmount) > 0,
+        t.code + ' target calculation produced a positive payable commission');
+
       const pm = await pool.request().input('tenantId', sql.UniqueIdentifier, t.tenantId)
         .query(`SELECT TOP 1 PaymentID FROM dbo.TblPaymentMethods WHERE TenantId = @tenantId ORDER BY PaymentID;`);
       check(pm.recordset.length === 1, `${t.code} has a seeded payment method`);
