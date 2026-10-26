@@ -229,6 +229,7 @@ export default function ClinicWorkspace() {
           </div>
           <div className="flex flex-wrap gap-2">
             <Link href="/clinic" className="inline-flex items-center gap-2 rounded-xl border bg-white px-4 py-2 text-sm font-bold">العودة للاستقبال</Link>
+            <Link href="/clinic/settings" className="inline-flex items-center gap-2 rounded-xl border bg-white px-4 py-2 text-sm font-bold">الخدمات والمواعيد</Link>
             <Link
               href="/bookings"
               className="inline-flex items-center gap-2 rounded-xl border bg-white px-4 py-2 text-sm font-bold"
