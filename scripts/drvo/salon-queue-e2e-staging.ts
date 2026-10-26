@@ -217,13 +217,34 @@ async function main() {
     // POST can legitimately omit its optional expanded ticket projection after
     // a successful insert; the new ticket ID and its authoritative SQL row
     // determine actual lifecycle state and configured branch duration.
+    const columnInfo = await pool.request().query(`
+      SELECT
+        COL_LENGTH('dbo.QueueTickets', 'DurationMinutes') AS durationCol,
+        COL_LENGTH('dbo.QueueTickets', 'EstimatedWaitMinutes') AS waitCol
+    `);
+    const hasDuration = columnInfo.recordset[0]?.durationCol != null;
+    const hasWait = columnInfo.recordset[0]?.waitCol != null;
+    // Older staging schemas legitimately omit additive queue ETA columns.
+    // Never use SQL CASE to refer to a missing column: SQL Server still binds it.
     const meta = await pool.request().input('ticketId', sql.Int, queueTicketId)
-      .query('SELECT BranchID, EmpID, Source, Status, DurationMinutes, EstimatedWaitMinutes FROM dbo.QueueTickets WHERE QueueTicketID=@ticketId');
+      .query(`SELECT BranchID, EmpID, Source, Status,
+        ${hasDuration ? 'DurationMinutes' : 'CAST(NULL AS INT) AS DurationMinutes'},
+        ${hasWait ? 'EstimatedWaitMinutes' : 'CAST(NULL AS INT) AS EstimatedWaitMinutes'}
+        FROM dbo.QueueTickets WHERE QueueTicketID=@ticketId`);
     check(meta.recordset[0]?.Status === 'waiting', 'Fresh walk-in persisted with waiting status');
-    check(meta.recordset[0]?.DurationMinutes === 45, 'Walk-in persisted with this salon 45-minute default');
-    check(Number.isFinite(Number(meta.recordset[0]?.EstimatedWaitMinutes)) ||
-      Number.isFinite(Number(ticket.estimatedWaitMinutes)),
-      'Queue ETA calculated and persisted for walk-in');
+    const { getDefaultDuration } = await import('../../src/lib/queueEstimateEngine');
+    check(await getDefaultDuration(pool, branchId) === 45,
+      'Queue duration engine reads this branch 45-minute default');
+    if (hasDuration) {
+      check(meta.recordset[0]?.DurationMinutes === 45, 'Walk-in duration persisted in optional column');
+    }
+    if (hasWait) {
+      check(Number.isFinite(Number(meta.recordset[0]?.EstimatedWaitMinutes)),
+        'Queue ETA calculated and persisted for walk-in');
+    } else {
+      check(Number.isFinite(Number(ticket.estimatedWaitMinutes)),
+        'Queue ETA calculated for walk-in without legacy wait column');
+    }
     check(meta.recordset[0]?.BranchID === branchId && meta.recordset[0]?.EmpID === empId,
       'Walk-in belongs to new salon and new barber');
     check(meta.recordset[0]?.Source === 'walk_in', 'Walk-in uses queue source not booking source');
