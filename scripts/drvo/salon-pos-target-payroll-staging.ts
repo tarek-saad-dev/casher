@@ -372,6 +372,29 @@ async function main() {
       check(Number(requests.recordset[0].n) === 1,
         t.code + ' target recalculation queued once in own branch');
 
+      // Prove the queued target request reaches a terminal processor state,
+      // not only that the request row was inserted.
+      const { processEmployeeTargetRecalcRequests } =
+        await import('../../src/lib/payroll/employee-target/employee-target-recalc-process.service');
+      const processedTarget = await processEmployeeTargetRecalcRequests({
+        workDate: WORK_DATE, empIds: [empId], maxRequests: 1,
+        actorUserId: actor.actorUserId,
+      });
+      check(processedTarget.claimed === 1 && processedTarget.completed === 1 &&
+        processedTarget.failed === 0,
+        t.code + ' employee target recomputation completed');
+      const completedTarget = await pool.request()
+        .input('empId',sql.Int,empId).input('branchId',sql.Int,t.branchId)
+        .input('date',sql.Date,WORK_DATE)
+        .query(`SELECT Status,RequestedVersion,ProcessedVersion
+          FROM dbo.TblEmpTargetRecalcRequest
+          WHERE EmpID=@empId AND BranchID=@branchId AND WorkDate=@date`);
+      check(completedTarget.recordset.length === 1 &&
+        completedTarget.recordset[0].Status === 'completed' &&
+        Number(completedTarget.recordset[0].RequestedVersion) ===
+        Number(completedTarget.recordset[0].ProcessedVersion),
+        t.code + ' target request terminal completed at exact version');
+
       const pm = await pool.request().input('tenantId', sql.UniqueIdentifier, t.tenantId)
         .query(`SELECT TOP 1 PaymentID FROM dbo.TblPaymentMethods WHERE TenantId = @tenantId ORDER BY PaymentID;`);
       check(pm.recordset.length === 1, `${t.code} has a seeded payment method`);
