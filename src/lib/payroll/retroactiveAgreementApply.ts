@@ -1,5 +1,6 @@
 import 'server-only';
 import { getPool, sql } from '@/lib/db';
+import { getCairoBusinessDate } from '@/lib/businessDate';
 import { previewRetroVip, prorateSalary, validateRetroInput, type RetroInput } from './retroactiveAgreementPreview';
 import { buildMonthlySalaryRefType, buildMonthlySalaryNote } from '@/lib/services/employeeLedgerMonthlySalaryService';
 
@@ -38,6 +39,10 @@ export async function applyRetroVip(params: {
   const req = () => new sql.Request(tx);
   let committed = false;
   try {
+    const owned = await req().input('emp',sql.Int,params.empId)
+      .input('tenant',sql.UniqueIdentifier,params.tenantId)
+      .query('SELECT EmpID FROM dbo.TblEmp WITH (UPDLOCK,HOLDLOCK) WHERE EmpID=@emp AND TenantId=@tenant');
+    if (!owned.recordset.length) throw new Error('الموظف غير موجود أو خارج النشاط');
     const existing = await req().input('key',sql.NVarChar(80),key)
       .query('SELECT RevisionID, EmpID, AgreementJson, ImpactJson FROM dbo.TblEmpPayrollAgreementRevision WITH (UPDLOCK, HOLDLOCK) WHERE RequestKey=@key');
     if (existing.recordset.length) {
@@ -82,7 +87,7 @@ export async function applyRetroVip(params: {
     // Mark the source, not just the ledger; otherwise reconciliation regenerates old wage credits.
     const superseded = await req().input('emp',sql.Int,params.empId)
       .input('effective',sql.Date,params.input.effectiveFrom)
-      .input('today',sql.Date,preview.month+'-'+String(new Date(Date.UTC(Number(preview.month.slice(0,4)),Number(preview.month.slice(5,7)),0)).getUTCDate()).padStart(2,'0'))
+      .input('today',sql.Date,getCairoBusinessDate())
       .input('revision',sql.BigInt,revisionId)
       .query([
         'UPDATE dbo.TblEmpDailyPayroll SET SupersededByPayrollRevisionID=@revision',
