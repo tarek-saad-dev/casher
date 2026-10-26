@@ -20,6 +20,10 @@ type Preview = {
   daysInMonth: number;
   blockers: string[];
   fingerprint: string;
+  branchImpacts: Array<{
+    branchId: number; dailyCount: number; oldLedgerCredits: number;
+    monthlySalary: number; newEntitlement: number; difference: number;
+  }>;
 };
 
 export type RetroReviewActionState = {
@@ -39,6 +43,7 @@ type Props = {
   empId: number;
   effectiveFrom: string;
   branches: CompensationBranch[];
+  readiness?: { schemaReady: boolean; enabledForEmployee: boolean };
   onApplied: (message: string) => void;
   onActionStateChange: (state: RetroReviewActionState) => void;
 };
@@ -50,7 +55,7 @@ const amount = (value: number) => new Intl.NumberFormat('en-US', {
 
 const RetroPayrollAgreementReview = forwardRef<RetroReviewHandle, Props>(
   function RetroPayrollAgreementReview({
-    empId, effectiveFrom, branches, onApplied, onActionStateChange,
+    empId, effectiveFrom, branches, readiness, onApplied, onActionStateChange,
   }, ref) {
     const [reason, setReason] = useState('');
     const [preview, setPreview] = useState<Preview | null>(null);
@@ -58,6 +63,7 @@ const RetroPayrollAgreementReview = forwardRef<RetroReviewHandle, Props>(
     const [loading, setLoading] = useState(false);
     const [applying, setApplying] = useState(false);
     const [error, setError] = useState('');
+    const [confirmed, setConfirmed] = useState(false);
     const requestKey = useRef<string | null>(null);
 
     const signature = JSON.stringify({
@@ -70,9 +76,11 @@ const RetroPayrollAgreementReview = forwardRef<RetroReviewHandle, Props>(
         Number.isFinite(Number(b.monthlySalary)) && Number(b.monthlySalary) > 0);
     const busy = loading || applying;
     const currentPreview = previewSignature === signature ? preview : null;
-    const canReview = !busy && reason.trim().length >= 8 && validBranches;
+    const schemaReady = readiness?.schemaReady === true;
+    const rolloutEnabled = readiness?.enabledForEmployee === true;
+    const canReview = schemaReady && !busy && reason.trim().length >= 8 && validBranches;
     const blocked = Boolean(currentPreview?.blockers.length);
-    const canApprove = Boolean(currentPreview && !blocked && !busy);
+    const canApprove = Boolean(currentPreview && !blocked && !busy && confirmed && rolloutEnabled);
 
     // A preview is only usable for the exact fields that the user reviewed.
     useEffect(() => {
@@ -84,6 +92,7 @@ const RetroPayrollAgreementReview = forwardRef<RetroReviewHandle, Props>(
 
     useEffect(() => {
       requestKey.current = null;
+      setConfirmed(false);
       setError('');
     }, [signature]);
 
@@ -132,7 +141,7 @@ const RetroPayrollAgreementReview = forwardRef<RetroReviewHandle, Props>(
     };
 
     const approve = async () => {
-      if (!canApprove) return;
+      if (!canApprove || !currentPreview) return;
       if (!requestKey.current) requestKey.current = crypto.randomUUID();
       setApplying(true);
       setError('');
@@ -163,6 +172,16 @@ const RetroPayrollAgreementReview = forwardRef<RetroReviewHandle, Props>(
           هنحسب فرق الأجر من تاريخ الاتفاقية، ونراجع اليوميات المتأثرة قبل أي تعديل.
           الحضور والمدفوعات والسلف وحركات الخزنة هتفضل محفوظة.
         </p>
+        {!schemaReady && (
+          <p role="alert" className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs leading-relaxed text-amber-600 dark:text-amber-400">
+            التسوية بأثر رجعي غير جاهزة على قاعدة البيانات بعد. لن يتم تنفيذ أي تعديل مالي لحين تجهيز Payroll V2.
+          </p>
+        )}
+        {schemaReady && !rolloutEnabled && (
+          <p role="status" className="rounded-lg border border-border bg-surface-muted/40 p-3 text-xs leading-relaxed">
+            معاينة الأثر المالي متاحة، لكن اعتماد التسوية لم يُفعَّل لهذا الموظف بعد. لازم المسؤول يفعّل الإتاحة من الخادم.
+          </p>
+        )}
         <div className="space-y-1.5">
           <Label htmlFor="retro-payroll-reason">سبب تعديل اتفاقية القبض *</Label>
           <Input
@@ -206,10 +225,47 @@ const RetroPayrollAgreementReview = forwardRef<RetroReviewHandle, Props>(
                 <dd className="font-semibold tabular-nums">{amount(currentPreview.difference)}</dd>
               </div>
             </dl>
+            {currentPreview.branchImpacts?.length > 0 && (
+              <div className="space-y-2 border-t border-border pt-3">
+                <h4 className="text-xs font-semibold">التسوية حسب كل فرع</h4>
+                {currentPreview.branchImpacts.map((impact) => {
+                  const branch = branches.find((b) => b.branchId === impact.branchId);
+                  return (
+                    <div key={impact.branchId} className="space-y-2 rounded-lg border border-border bg-surface-muted/20 p-3 text-xs">
+                      <div className="flex items-center justify-between gap-2">
+                        <strong>{branch?.branchName ?? 'فرع #' + impact.branchId}</strong>
+                        <span className="tabular-nums font-semibold">{amount(impact.monthlySalary)} / شهر</span>
+                      </div>
+                      <div className="flex flex-wrap justify-between gap-2 text-muted-foreground">
+                        <span>أجر قديم: {amount(impact.oldLedgerCredits)} ({impact.dailyCount} يومية)</span>
+                        <span>استحقاق جديد: {amount(impact.newEntitlement)}</span>
+                      </div>
+                      <div className="flex items-center justify-between gap-2 border-t border-border/70 pt-2">
+                        <span>فرق استحقاق الفرع</span>
+                        <strong className="tabular-nums">{amount(impact.difference)}</strong>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
             <p className="text-xs leading-relaxed text-muted-foreground">
               المدفوع: {amount(currentPreview.paidOut)}، السلف: {amount(currentPreview.advances)}،
               الخصومات: {amount(currentPreview.deductions)} — لن يتم تعديل هذه الحركات.
+              فرق الاستحقاق المعروض ليس مبلغًا جاهزًا للصرف، ولا ينشئ صرفًا من الخزنة.
             </p>
+            {!blocked && rolloutEnabled && (
+              <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-primary/25 bg-primary/5 p-3 text-xs leading-relaxed">
+                <input
+                  type="checkbox"
+                  checked={confirmed}
+                  disabled={busy}
+                  onChange={(event) => setConfirmed(event.target.checked)}
+                  className="mt-0.5 h-4 w-4 shrink-0 accent-primary"
+                />
+                <span>راجعت مبالغ الفروع واليوميات وفرق الاستحقاق. أوافق على إلغاء أثر الأجور القديمة وإثبات الاستحقاق الشهري، بدون تغيير السلف أو الخزنة.</span>
+              </label>
+            )}
             {blocked && (
               <div role="alert" className="space-y-2">
                 {currentPreview.blockers.map((message, index) => (
