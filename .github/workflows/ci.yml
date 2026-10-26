@@ -73,6 +73,9 @@ jobs:
           src/platform/__tests__/platformOutboxRollback.test.ts
           --reporter=default
 
+      - name: Retroactive payroll agreement math regression
+        run: npx vitest run src/lib/payroll/__tests__/payrollAgreementMath.test.ts
+
       - name: Production build
         run: npm run build
 
