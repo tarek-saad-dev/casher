@@ -22,6 +22,10 @@ export default function ClinicReceptionPage() {
               className="inline-flex items-center gap-2 rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-bold text-white"
             ><CalendarPlus className="h-4 w-4" /> حجز جديد</Link>
             <Link
+              href="/clinic/doctor"
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold"
+            ><Stethoscope className="h-4 w-4" /> جدول الدكتور</Link>
+            <Link
               href="/clinic/setup"
               className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold"
             ><ContactRound className="h-4 w-4" /> المرضى والأطباء</Link>

@@ -143,4 +143,38 @@ describe('canonical Booking -> Clinic Encounter handoff', () => {
       .rejects.toBeInstanceOf(ClinicAppointmentConflict);
     expect(db.rollback).toHaveBeenCalledOnce();
   });
+
+  it('locks only the current doctor booking during a doctor-owned start', async () => {
+    db.query.mockResolvedValueOnce({ recordset: [] });
+    await expect(transitionClinicAppointment({
+      ...params, action: 'start', expectedPractitionerEmpId: 42,
+    })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    expect(db.input).toHaveBeenCalledWith('expectedDoctor', 'int', 42);
+    expect(String(db.query.mock.calls[0][0]))
+      .toContain('b.AssignedEmpID=@expectedDoctor');
+    expect(db.rollback).toHaveBeenCalledOnce();
+    expect(db.query).toHaveBeenCalledTimes(1);
+  });
+
+  it('never reuses a visit that belongs to a different practitioner after booking reassignment', async () => {
+    db.query
+      .mockResolvedValueOnce({ recordset: [{ ...booking, AssignedEmpID: 42, Status: 'in_service' }] })
+      .mockResolvedValueOnce({ recordset: [{ EncounterId: 'visit-old', PractitionerEmpID: 99 }] });
+    await expect(transitionClinicAppointment({
+      ...params, action: 'start', expectedPractitionerEmpId: 42,
+    })).rejects.toMatchObject({ code: 'DOCTOR_UNAVAILABLE' });
+    expect(db.query).toHaveBeenCalledTimes(2);
+    expect(db.rollback).toHaveBeenCalledOnce();
+  });
+
+  it('allows an idempotent retry of the same doctor encounter', async () => {
+    db.query
+      .mockResolvedValueOnce({ recordset: [{ ...booking, AssignedEmpID: 42, Status: 'in_service' }] })
+      .mockResolvedValueOnce({ recordset: [{ EncounterId: 'visit-own', PractitionerEmpID: 42 }] });
+    const result = await transitionClinicAppointment({
+      ...params, action: 'start', expectedPractitionerEmpId: 42,
+    });
+    expect(result).toMatchObject({ encounterId: 'visit-own', reused: true });
+    expect(db.commit).toHaveBeenCalledOnce();
+  });
 });
