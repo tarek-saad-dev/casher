@@ -8,7 +8,7 @@
 - Inserts synthetic reviewed research and pending policy, validates rejection of foreign-key bypass, duplicate research candidate, illegal commercial approval state, reviewer self-approval, duplicate policy revision, cross-tenant quote snapshot, illegal paid state, deadline exceeding 48h and duplicate snapshot. Stores one internal-only snapshot, reloads it, validates its hash and 48-hour boundary.
 - Validates only synthetic data; the SQL container is destroyed after the job.
 
-**Still required:** isolated actual Staging with the four staging-only secrets including `DRVO_STAGING_SSH_HOST`, migration 015–022 ledger/structure checks, live authenticated operator API/retries/tenant security tests and Cut Salon booking/invoice/day-close regressions. No real customer quote/order/payment/activation. PR #154 and Draft #157 remain **DO NOT MERGE** pending real staging and production signoff.
+**Still required:** isolated actual Staging with the five staging-only secrets including `DRVO_STAGING_SSH_HOST`, migration 015–022 ledger/structure checks, live authenticated operator API/retries/tenant security tests and Cut Salon booking/invoice/day-close regressions. No real customer quote/order/payment/activation. PR #154 and Draft #157 remain **DO NOT MERGE** pending real staging and production signoff.
 
 ## Real operator services SQL integration (same disposable fixture)
 
