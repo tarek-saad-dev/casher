@@ -88,6 +88,7 @@ function cairoDateString(dt: Date): string {
 export async function getBarberAvailabilityReason(
   empId: number,
   dt: Date,
+  opts?: { branchId?: number | null },
 ): Promise<{ available: boolean; reason: string; startTime: string | null; endTime: string | null }> {
   const db = await getPool();
   // CRITICAL: use Cairo local date/time, not server local time
@@ -134,6 +135,37 @@ export async function getBarberAvailabilityReason(
       return { available: false, reason: 'غائب', startTime: null, endTime: null };
     }
   } catch { /* table may not exist */ }
+
+  // Independent salons use the authoritative branch-weekly HR roster.
+  // CUT-compatible callers without branchId retain the historical global path.
+  // For branch-planned employees, do not require a second TblEmpWorkSchedule
+  // row: the HR branch schedule already defines the work day.
+  if (opts?.branchId != null) {
+    const { resolveEmployeeDayPlan } = await import('@/lib/availability/resolveEmployeeDayPlan');
+    const day = await resolveEmployeeDayPlan({
+      empId, branchId: opts.branchId, businessDate: dateStr, source: 'operations',
+    });
+    if (day.weeklyWindows?.source === 'BRANCH_WEEKLY' ||
+        day.baseScheduleSource === 'BRANCH_WEEKLY' ||
+        day.baseScheduleSource === 'TEMPORARY_TRANSFER') {
+      if (!day.isWorking || !day.effectiveWindows.length) {
+        return { available: false, reason: 'لا توجد ساعات عمل متاحة لهذا اليوم', startTime: null, endTime: null };
+      }
+      const first = day.effectiveWindows[0];
+      const last = day.effectiveWindows[day.effectiveWindows.length - 1];
+      const blocked = (day.effSched?.blockedIntervals ?? [])
+        .some((b) => dt.getTime() >= b.startMs && dt.getTime() < b.endMs);
+      const within = day.effectiveWindows.some(
+        (w) => dt.getTime() >= w.startMs && dt.getTime() < w.endMs,
+      );
+      return {
+        available: within && !blocked,
+        reason: blocked ? 'النطاق الزمني محجوب' : within ? 'متاح' : 'خارج ساعات العمل',
+        startTime: first.start,
+        endTime: last.end,
+      };
+    }
+  }
 
   // 2b. Freelance Present/Late/EarlyLeave unlocks the day for booking
   const freelanceUnlocks = await loadFreelanceBookingUnlocks([empId], dateStr);
@@ -263,7 +295,7 @@ export async function getBarberAvailabilityReason(
  * Return all active barbers (Job IN حلاق/مساعد/Barber) with
  * their availability at the given datetime.
  */
-export async function getAvailableBarbers(dt: Date): Promise<BarberAvailability[]> {
+export async function getAvailableBarbers(dt: Date, opts?: { branchId?: number | null }): Promise<BarberAvailability[]> {
   const db = await getPool();
 
   const empRes = await db.request().query(`
@@ -276,7 +308,7 @@ export async function getAvailableBarbers(dt: Date): Promise<BarberAvailability[
 
   const results: BarberAvailability[] = [];
   for (const emp of empRes.recordset) {
-    const avail = await getBarberAvailabilityReason(emp.EmpID, dt);
+    const avail = await getBarberAvailabilityReason(emp.EmpID, dt, opts);
     results.push({
       EmpID:              emp.EmpID,
       EmpName:            emp.EmpName,
