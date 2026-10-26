@@ -406,6 +406,7 @@ export async function executeDailyPayrollGenerate(
       WHERE p.WorkDate = @WorkDate
         AND p.BranchID = @BranchID
         AND p.Status IN (N'Generated', N'Earned', N'PendingCheckout')
+        AND p.SupersededByPayrollRevisionID IS NULL
         AND v.HasOpenSession = 0
         ${updateEmpFilter}
     `);
@@ -465,6 +466,7 @@ export async function executeDailyPayrollGenerate(
       WHERE WorkDate = @WorkDate
         AND BranchID = @BranchID
         AND Status = N'Generated'
+        AND SupersededByPayrollRevisionID IS NULL
         ${summaryEmpFilter}
     `);
 
