@@ -69,6 +69,7 @@ Engineering scope: **no database tables or migrations**, no commercial entitleme
 - [x] Add protected read-only scenario engine/API/UI with scenario only (no checkout).
 - [x] Document current scenario rates as **research assumptions**, not approved tariffs.
 - [x] Move pricing math into a separately versioned pure integer-minor-unit engine with explicit internal-only state and tests.
+- [x] Add both pricing regression suites to mandatory pull-request CI (`.github/workflows/ci.yml`), not just stand-alone local tests.
 - [x] Compare no-base versus base-plus-app research alternatives in the operator-only interface.
 - [ ] Verify PR CI + staging acceptance, and smoke current expired-trial, admin, non-admin and CASHER_BOOT paths.
 - [ ] Interview 15–20 owners with actual pay-now pricing exercises and app combinations.
