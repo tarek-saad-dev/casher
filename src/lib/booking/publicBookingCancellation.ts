@@ -85,6 +85,8 @@ export type CancelPublicBookingInput = {
   requestContext?: { ip?: string; userAgent?: string };
   schedulingPortHooks?: SchedulingPortHooks;
   useExtractedEventDelivery?: boolean;
+  /** Suppress all outbound customer/team messages in controlled staging acceptance. */
+  suppressNotification?: boolean;
   /** DRVO-019: booking must belong to one of this tenant's branches. */
   tenantId?: string | null;
 };
@@ -899,7 +901,7 @@ export async function cancelPublicBooking(
     }
 
     // Post-commit WhatsApp cancel (idempotent; never blocks cancel success).
-    if (!input.useExtractedEventDelivery) {
+    if (!input.useExtractedEventDelivery && !input.suppressNotification) {
       try {
         const { scheduleCancelWhatsAppAfterCommit } = await import(
           '@/lib/booking/bookingEventWhatsApp'
