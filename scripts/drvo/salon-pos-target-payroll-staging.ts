@@ -11,6 +11,7 @@
  * Never loads .env.local (it may point at production). Requires DRVO_STAGING_DB_PASSWORD.
  */
 import Module from 'module';
+import { randomBytes } from 'node:crypto';
 
 const moduleWithLoad = Module as unknown as {
   _load: (request: string, parent: unknown, isMain: boolean) => unknown;
@@ -29,7 +30,7 @@ const PRODUCTION_DB = 'last132';
 
 // Each run owns different synthetic tenants. The original DRVO-016 job also
 // runs on PR pushes; never share its fixed tenant codes or cleanup targets.
-const RUN_TOKEN = require('node:crypto').randomBytes(4).toString('hex').toUpperCase();
+const RUN_TOKEN = randomBytes(4).toString('hex').toUpperCase();
 const SMOKE_TENANTS = [
   { code: `SPL_${RUN_TOKEN}_A`, branch: `SP${RUN_TOKEN}A`, login: `spl_${RUN_TOKEN.toLowerCase()}_a` },
   { code: `SPL_${RUN_TOKEN}_B`, branch: `SP${RUN_TOKEN}B`, login: `spl_${RUN_TOKEN.toLowerCase()}_b` },
