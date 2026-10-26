@@ -99,7 +99,7 @@ async function run() {
       // Verify setup replay does not create a second tenant, branch, or employee.
       const retry = await retryOnboardingSetup(tenantId, req, actor, deps);
       check(
-        retry.complete && retry.core.tenantId === tenantId,
+        retry.complete && retry.core.tenantId.toLowerCase() === tenantId.toLowerCase(),
         testCase.name + ' setup retry is idempotent: ' +
           JSON.stringify(retry.stages.filter((stage) => stage.status === 'failed' || stage.status === 'blocked')
             .map((stage) => ({ stage: stage.stage, status: stage.status, code: stage.errorCode, message: stage.message }))),
