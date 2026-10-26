@@ -743,6 +743,7 @@ export default function EmployeeHrFormModal({
                 globalSalary={compGlobalSalary}
                 onGlobalSalaryChange={setCompGlobalSalary}
                 vipEligible={vipEligible}
+                today={cairoToday}
               />
               {isRetroVip && employee && (
                 <RetroPayrollAgreementReview
