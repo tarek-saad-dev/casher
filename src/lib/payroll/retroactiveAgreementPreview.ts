@@ -96,7 +96,7 @@ export async function previewRetroVip(params: {
   return {
     month,effectiveFrom:start,previousDailyAmount:oldAmount,
     previousLedgerCredits:money(Number(l.DailyCredits||0)),
-    proposedMonthlyAmount:newAmount,difference:money(newAmount-oldAmount),
+    proposedMonthlyAmount:newAmount,difference:money(newAmount-money(Number(l.DailyCredits||0))),
     dailyCount:dailyRows.length,paidOut:money(Number(l.Payouts||0)),
     advances:money(Number(l.Advances||0)),deductions:money(Number(l.Deductions||0)),
     proratedDays:portion.days,daysInMonth:portion.monthDays,
