@@ -166,15 +166,27 @@ async function main() {
     console.log('Scenario 1 — migration 014 schema + ledger');
     const schema = await verifyClinicCoreSchema(pool);
     check(schema.ok, `clinic schema verify (${schema.failures.join('; ') || 'clean'})`);
+    // The staging database can carry legacy migration IDs. In particular, ID 14
+    // may belong to tenant-plan-requests; never rewrite the existing ledger.
     const ledger = await pool.request().query(`
-      SELECT MigrationId, MigrationKey, Checksum
+      SELECT MigrationId, MigrationKey
       FROM dbo.DrvoSchemaMigration
-      WHERE MigrationId=14;
+      WHERE MigrationId = 14 OR MigrationKey = N'clinic-core';
     `);
-    if (ledger.recordset.length) {
-      check(String(ledger.recordset[0].MigrationKey) === 'clinic-core', 'migration 14 ledger key is clinic-core');
+    const clinicRows = ledger.recordset.filter(
+      (row: { MigrationKey: string }) => String(row.MigrationKey) === 'clinic-core',
+    );
+    if (clinicRows.length) {
+      console.log('  ok: clinic-core migration key recorded in ledger');
     } else {
-      console.log('  note: schema was applied manually; migration ledger row absent');
+      console.log('  note: clinic schema verified; no clinic-core ledger entry (manual schema apply)');
+    }
+    const occupiedId14 = ledger.recordset.find(
+      (row: { MigrationId: number; MigrationKey: string }) =>
+        Number(row.MigrationId) === 14 && String(row.MigrationKey) !== 'clinic-core',
+    );
+    if (occupiedId14) {
+      console.log('  note: legacy migration ID 14 is reserved by another migration; ledger unchanged');
     }
 
     const actorRow = await pool.request().query(`
