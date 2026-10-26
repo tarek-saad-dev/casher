@@ -3,6 +3,7 @@
 import { Crown, CalendarDays } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { formatPayrollEffectiveDate } from '@/components/hr/payrollAgreementDate';
 
 export type CompensationMode = 'global' | 'branch_monthly';
 export type CompensationBranch = {
@@ -47,11 +48,7 @@ export default function EmployeeBranchPayrollFields({
   const showEffectiveDate = isVip || returningToGlobal;
   const isRetro = isVip && details?.employee.scope === 'global' &&
     effectiveFrom.slice(0, 7) === today.slice(0, 7) && effectiveFrom <= today;
-  const displayDate = effectiveFrom && /^\d{4}-\d{2}-\d{2}$/.test(effectiveFrom)
-    ? new Intl.DateTimeFormat('ar-EG-u-nu-latn', {
-      year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC',
-    }).format(new Date(effectiveFrom + 'T12:00:00Z'))
-    : '';
+  const displayDate = formatPayrollEffectiveDate(effectiveFrom);
   const total = branches.reduce(
     (sum, branch) => sum + (branch.enabled && branch.isAssigned ? Number(branch.monthlySalary) || 0 : 0),
     0,
