@@ -255,7 +255,7 @@ export default function EmployeeHrFormModal({
     if (form.employmentType === 'freelance' && (isVipScope || isPersistedVip)) {
       return 'يجب إيقاف نظام VIP أولًا قبل تحويل الموظف إلى فري لانس';
     }
-    if (isVipScope) {
+    if (isVipScope && compensationChanged) {
       if (!vipEligible) return 'نظام الفروع متاح للموظف الشهري المفعّل فقط. اضبط النظام الشهري واحفظ أولًا.';
       const active = compBranches.filter((b) => b.enabled);
       if (!active.length) return 'فعّل مرتب فرع واحد على الأقل';
@@ -758,7 +758,6 @@ export default function EmployeeHrFormModal({
                   min="0"
                   step="0.01"
                   value={form.manualHourlyRate}
-                  
                   onChange={(e) => patchForm({ manualHourlyRate: e.target.value })}
                   placeholder="25"
                   dir="ltr"
@@ -778,7 +777,6 @@ export default function EmployeeHrFormModal({
                   min="0"
                   step="0.01"
                   value={form.dailyRate}
-                  
                   onChange={(e) => patchForm({ dailyRate: e.target.value })}
                   placeholder="150"
                   dir="ltr"
@@ -798,7 +796,6 @@ export default function EmployeeHrFormModal({
                   min="0"
                   step="0.01"
                   value={form.monthlySalary}
-                  
                   onChange={(e) => patchForm({ monthlySalary: e.target.value })}
                   placeholder="5000"
                   dir="ltr"
