@@ -206,6 +206,7 @@ export default function EmployeeHrFormModal({
     }
   }, [form.employmentType, form.payrollMethod, form.dayOffPolicy, payrollOptions, patchForm]);
 
+  const isBranchSalary = mode === 'edit' && employee?.PayrollScope === 'branch_monthly';
   const preview = schedulePreviewText(form);
   const validation = validateEmployeeHrForm(form);
   const canSubmit = validation.ok && !saving && !loadingProfile;
@@ -250,6 +251,12 @@ export default function EmployeeHrFormModal({
           : scheduleTouched && form.employmentType !== 'freelance';
 
       const hrPayload = buildEmployeeHrApiPayload(form, { mode, includeSchedule });
+      if (isBranchSalary) {
+        delete hrPayload.payrollMethod;
+        delete hrPayload.monthlySalary;
+        delete hrPayload.manualHourlyRate;
+        delete hrPayload.dailyRate;
+      }
 
       if (mode === 'create') {
         const res = await fetch('/api/employees', {
