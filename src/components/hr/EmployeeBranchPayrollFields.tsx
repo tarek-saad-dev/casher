@@ -86,12 +86,10 @@ export default function EmployeeBranchPayrollFields({
 
       {isVip && !createMode && (
         <div className="space-y-3 rounded-xl border border-primary/25 bg-primary/5 p-3">
-          {!vipEligible && (
-            <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
-              يلزم أن يكون الموظف مسجّلًا بالفعل بنظام شهري، غير فري لانس، مع تفعيل الرواتب.
-              لو كان حاليًا بالساعة أو اليومية، احفظ تغييره إلى شهري بالنظام العام أولًا ثم افتح التعديل مرة ثانية.
-            </p>
-          )}
+          {!vipEligible && <p className="text-xs text-muted-foreground">
+            لو الموظف حاليًا بالساعة أو اليومية، اختار تاريخًا من الشهر الجاري لمعاينة تحويل اتفاقه مباشرة.
+            الحساب هيتحول لشهري عند اعتماد التسوية، بدون حفظه مرتين.
+          </p>}
           <p className="text-xs text-muted-foreground">كل فرع بيحاسب الموظف على مرتبه الخاص. الفروع غير المعين عليها الموظف لا يمكن تفعيل مرتب لها.</p>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
@@ -104,7 +102,7 @@ export default function EmployeeBranchPayrollFields({
                     type="checkbox"
                     className="h-4 w-4 accent-primary"
                     checked={b.enabled}
-                    disabled={!vipEligible || (!b.isAssigned && !b.enabled)}
+                    disabled={!b.isAssigned && !b.enabled}
                     onChange={(event) => onBranchChange(b.branchId, { enabled: event.target.checked })}
                   />
                 </label>
@@ -117,7 +115,7 @@ export default function EmployeeBranchPayrollFields({
                   step="0.01"
                   value={b.monthlySalary ?? ''}
                   dir="ltr"
-                  disabled={!b.enabled || !b.isAssigned || !vipEligible}
+                  disabled={!b.enabled || !b.isAssigned}
                   onChange={(event) => onBranchChange(b.branchId, {
                     monthlySalary: event.target.value === '' ? null : Number(event.target.value),
                   })}
@@ -156,11 +154,11 @@ export default function EmployeeBranchPayrollFields({
             aria-label="تاريخ سريان اتفاقية القبض"
             type="date"
             dir="ltr"
-            min={details.effectiveFrom}
+            min={isVip ? undefined : details.effectiveFrom}
             value={effectiveFrom}
             onChange={(event) => onEffectiveFromChange(event.target.value)}
           />
-          <p className="text-xs text-muted-foreground">بداية شهر قادم فقط؛ لن نعدّل مرتبات الشهور المقفولة.</p>
+          <p className="text-xs text-muted-foreground">تقدر تختار يومًا من الشهر الجاري للتسوية بأثر رجعي، أو أول يوم في شهر قادم لجدولة الاتفاقية. الفترات المقفولة تحتاج مسار تسوية خاص.</p>
         </div>
       )}
     </div>
