@@ -377,6 +377,7 @@ export async function getEmployeeLedgerReconciliation(
       WHERE p.WorkDate >= @monthStart
         AND p.WorkDate <= @monthEnd
         AND p.Status IN (N'Generated', N'Earned', N'PostedToCashMove')
+        AND p.SupersededByPayrollRevisionID IS NULL
         ${empClausePayroll}
         ${branchClausePayroll}
     `);
@@ -677,6 +678,7 @@ async function fetchMissingPayrollCredits(
       WHERE p.WorkDate >= @monthStart
         AND p.WorkDate <= @monthEnd
         AND p.Status IN (N'Generated', N'Earned', N'PostedToCashMove')
+        AND p.SupersededByPayrollRevisionID IS NULL
         AND l.ID IS NULL
         ${empFilter('p.EmpID', empId)}
         ${branchFilter('p.BranchID', branchScope)}
