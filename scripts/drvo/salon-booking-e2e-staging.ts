@@ -166,9 +166,9 @@ async function main() {
     booked = true;
     check(created.body.whatsapp?.scheduled === false, 'No customer WhatsApp scheduled');
     const bookingId = Number(created.body.booking.id);
-    const persisted = await pool.request().input('bookingId', sql.Int, bookingId).query(`SELECT BookingID, BranchID, EmpID FROM dbo.Bookings WHERE BookingID=@bookingId`);
+    const persisted = await pool.request().input('bookingId', sql.Int, bookingId).query(`SELECT BookingID, BranchID, AssignedEmpID FROM dbo.Bookings WHERE BookingID=@bookingId`);
     check(persisted.recordset[0]?.BranchID === branchId, 'Persisted booking uses new salon branch');
-    check(persisted.recordset[0]?.EmpID === empId, 'Persisted booking uses new salon barber');
+    check(persisted.recordset[0]?.AssignedEmpID === empId, 'Persisted booking uses new salon barber');
     const replay = await createPublicBooking(payload);
     check(replay.body.meta.idempotentReplay === true, 'Retry reuses the existing booking');
     console.log('SALON_BOOKING_E2E_STAGING_PASS');
