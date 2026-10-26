@@ -21,6 +21,7 @@ export type CompensationDetails = {
     payrollEnabled: boolean;
   };
   effectiveFrom: string;
+  retroactive?: { schemaReady: boolean; enabledForEmployee: boolean };
   branches: CompensationBranch[];
 };
 
