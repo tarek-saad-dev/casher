@@ -21,6 +21,12 @@ describe('Salon daily close checklist', () => {
     expect(implementation).toContain('BranchID = @branchId AND NewDay = @dayId');
     expect(implementation).toContain("Status IN ('waiting', 'called', 'arrived', 'in_service')");
     expect(implementation).toContain("code: 'TREASURY_UNRECONCILED'");
+    expect(implementation).toContain('ShiftMoveID IS NULL AND IsActive = 1');
+    expect(implementation).toContain('AbsoluteVariance');
+    expect(implementation).toContain('NetVariance');
+    expect(implementation).toContain("code: 'TREASURY_VARIANCE'");
+    expect(implementation).toContain('treasuryVarianceAbsolute');
+    expect(implementation).toContain('treasuryVarianceNet');
     expect(implementation).toContain('blocking: false');
     expect(implementation).toContain('treasuryReconciliationRecorded');
     expect(implementation).not.toContain('readyForFinalClose');
