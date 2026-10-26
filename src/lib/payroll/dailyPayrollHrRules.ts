@@ -451,18 +451,27 @@ export const SQL_BRANCH_PAYROLL_PLAN_APPLY = `
       AND bp0.IsActive = 1
       AND bp0.EffectiveFrom <= v.WorkDate
       AND (bp0.EffectiveTo IS NULL OR bp0.EffectiveTo >= v.WorkDate)
-      AND bp0.PayType IN (N'hourly', N'daily')
+      -- Resolve the latest effective agreement regardless of pay type.
+      -- A monthly branch plan must suppress inherited hourly wages.
       AND (
         bp0.BranchID = v.BranchID
-        OR NOT EXISTS (
-          SELECT 1
-          FROM dbo.TblEmpBranchPayrollPlan bx
-          WHERE bx.EmpID = v.EmpID
-            AND bx.BranchID = v.BranchID
-            AND bx.IsActive = 1
-            AND bx.EffectiveFrom <= v.WorkDate
-            AND (bx.EffectiveTo IS NULL OR bx.EffectiveTo >= v.WorkDate)
-            AND bx.PayType IN (N'hourly', N'daily')
+        OR (
+          NOT EXISTS (
+            SELECT 1 FROM dbo.TblEmpBranchPayrollPlan bx
+            WHERE bx.EmpID = v.EmpID AND bx.BranchID = v.BranchID
+              AND bx.IsActive = 1
+              AND bx.EffectiveFrom <= v.WorkDate
+              AND (bx.EffectiveTo IS NULL OR bx.EffectiveTo >= v.WorkDate)
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM dbo.TblEmpBranchPayrollAudit a
+            WHERE a.EmpID = bp0.EmpID AND a.NewPayrollScope = N'branch_monthly'
+              AND a.AuditID = (
+                SELECT TOP 1 z.AuditID FROM dbo.TblEmpBranchPayrollAudit z
+                WHERE z.EmpID = bp0.EmpID AND z.EffectiveFrom <= v.WorkDate
+                ORDER BY z.EffectiveFrom DESC, z.AuditID DESC
+              )
+          )
         )
       )
     ORDER BY
