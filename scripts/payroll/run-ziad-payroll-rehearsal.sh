@@ -102,7 +102,7 @@ echo "=== App-level preview, apply, ledger/cash reconciliation and idempotent re
 PAYROLL_E2E_ENV_DIR=/home/casher/app \
 PAYROLL_E2E_ALLOW_WRITE=isolated-clone \
 NODE_OPTIONS="--conditions=react-server" \
-node --require tsx/cjs scripts/payroll/qa-ziad-retroactive-clone.ts
+./node_modules/.bin/tsx --tsconfig "$ROOT/tsconfig.json" scripts/payroll/qa-ziad-retroactive-clone.ts
 
 echo "PAYROLL REHEARSAL PASSED; last132 and last132_agent were not modified."
 echo "Retained backup: $BACKUP"
