@@ -27,9 +27,12 @@ const STAGING_DB = 'last132_agent';
 const STAGING_LOGIN = 'drvo_agent';
 const PRODUCTION_DB = 'last132';
 
+// Each run owns different synthetic tenants. The original DRVO-016 job also
+// runs on PR pushes; never share its fixed tenant codes or cleanup targets.
+const RUN_TOKEN = require('node:crypto').randomBytes(4).toString('hex').toUpperCase();
 const SMOKE_TENANTS = [
-  { code: 'DRVO016_A', branch: 'DRVO016_ABR', login: 'drvo016_a_owner' },
-  { code: 'DRVO016_B', branch: 'DRVO016_BBR', login: 'drvo016_b_owner' },
+  { code: `SPL_${RUN_TOKEN}_A`, branch: `SP${RUN_TOKEN}A`, login: `spl_${RUN_TOKEN.toLowerCase()}_a` },
+  { code: `SPL_${RUN_TOKEN}_B`, branch: `SP${RUN_TOKEN}B`, login: `spl_${RUN_TOKEN.toLowerCase()}_b` },
 ] as const;
 
 const WORK_DATE = '2026-09-15';
@@ -413,7 +416,7 @@ async function main() {
 
     console.log('Scenario 4 — cleanup; CASHER_BOOT unchanged');
     await cleanupAll(pool);
-    const residue = await pool.request().query(`SELECT COUNT(*) AS cnt FROM dbo.Tenant WHERE Code LIKE N'DRVO016[_]%';`);
+    const residue = await pool.request().input('codeA',sql.NVarChar(64),SMOKE_TENANTS[0].code).input('codeB',sql.NVarChar(64),SMOKE_TENANTS[1].code).query(`SELECT COUNT(*) AS cnt FROM dbo.Tenant WHERE Code IN (@codeA, @codeB);`);
     check(Number(residue.recordset[0].cnt) === 0, 'no DRVO016 tenants left');
     for (const code of Object.keys(emp)) {
       const left = await pool.request().input('empId', sql.Int, emp[code])
