@@ -69,6 +69,6 @@ describe('clinic patient to encounter workflow', () => {
     fireEvent.click(screen.getByRole('button', { name: 'إضافة الطبيب' }));
     await waitFor(() => expect(fetchMock.mock.calls.some(([url, options]) => url === '/api/clinic/practitioners' && options?.method === 'POST')).toBe(true));
     const [, options] = fetchMock.mock.calls.find(([url, options]) => url === '/api/clinic/practitioners' && options?.method === 'POST')!;
-    expect(JSON.parse(options.body)).toEqual({ name: 'Doctor A', userId: 24, linkCurrentUser: false });
+    expect(JSON.parse(options.body)).toEqual({ name: 'Doctor A', specialty: null, userId: 24, linkCurrentUser: false });
   });
 });

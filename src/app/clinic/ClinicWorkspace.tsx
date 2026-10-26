@@ -1,7 +1,6 @@
 'use client';
 
 import Link from 'next/link';
-import ClinicAppointmentsPanel from './ClinicAppointmentsPanel';
 import { useRouter } from 'next/navigation';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import {
@@ -28,6 +27,7 @@ type Practitioner = {
   EmpID: number;
   EmpName: string;
   Job?: string | null;
+  Specialty?: string | null;
   UserID?: number | null;
 };
 
@@ -61,6 +61,7 @@ export default function ClinicWorkspace() {
 
   const [newDoctorOpen, setNewDoctorOpen] = useState(false);
   const [newDoctorName, setNewDoctorName] = useState('');
+  const [newDoctorSpecialty, setNewDoctorSpecialty] = useState('');
   const [linkDoctorToCurrentUser, setLinkDoctorToCurrentUser] = useState(false);
   const [staffLogins, setStaffLogins] = useState<StaffLogin[]>([]);
   const [doctorUserId, setDoctorUserId] = useState('');
@@ -167,13 +168,14 @@ export default function ClinicWorkspace() {
       const res = await fetch('/api/clinic/practitioners', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, linkCurrentUser: linkDoctorToCurrentUser, userId: doctorUserId ? Number(doctorUserId) : null }),
+        body: JSON.stringify({ name, specialty: newDoctorSpecialty.trim() || null, linkCurrentUser: linkDoctorToCurrentUser, userId: doctorUserId ? Number(doctorUserId) : null }),
       });
       const data = (await res.json()) as Practitioner & { error?: string };
       if (!res.ok || !data.EmpID) throw new Error(data.error || 'تعذر إضافة الطبيب');
       await loadPractitioners();
       setDoctorId(String(data.EmpID));
       setNewDoctorName('');
+      setNewDoctorSpecialty('');
       setLinkDoctorToCurrentUser(false);
       setDoctorUserId('');
       setNewDoctorOpen(false);
@@ -220,12 +222,13 @@ export default function ClinicWorkspace() {
               <Stethoscope className="h-4 w-4" />
               DRVO Clinics
             </div>
-            <h1 className="mt-1 text-3xl font-black">تشغيل العيادة</h1>
+            <h1 className="mt-1 text-3xl font-black">المرضى والأطباء</h1>
             <p className="mt-1 text-sm text-slate-500">
-              المريض → الموعد → الزيارة → الروشتة → الحساب → المتابعة
+              إضافة المرضى وتجهيز الأطباء وبدء زيارة بدون حجز مسبق
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <Link href="/clinic" className="inline-flex items-center gap-2 rounded-xl border bg-white px-4 py-2 text-sm font-bold">العودة للاستقبال</Link>
             <Link
               href="/bookings"
               className="inline-flex items-center gap-2 rounded-xl border bg-white px-4 py-2 text-sm font-bold"
@@ -240,8 +243,6 @@ export default function ClinicWorkspace() {
             </Link>
           </div>
         </header>
-
-        <ClinicAppointmentsPanel />
 
         <section className="mt-6 grid gap-4 lg:grid-cols-[1.05fr_.95fr]">
           <div className="rounded-3xl border bg-white p-5 shadow-sm">
@@ -355,14 +356,14 @@ export default function ClinicWorkspace() {
           <div className="rounded-3xl border bg-white p-5 shadow-sm">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <h2 className="text-lg font-black">ابدأ زيارة</h2>
+                <h2 className="text-lg font-black">زيارة بدون حجز مسبق</h2>
                 <p className="text-xs text-slate-500">
                   اختار المريض والطبيب وسجّل سبب الزيارة.
                 </p>
               </div>
               <button
                 type="button"
-                onClick={() => { setNewDoctorName(selectedDoctor?.EmpName ?? ''); setNewDoctorOpen((x) => !x); }}
+                onClick={() => { setNewDoctorName(selectedDoctor?.EmpName ?? ''); setNewDoctorSpecialty(selectedDoctor?.Specialty ?? ''); setNewDoctorOpen((x) => !x); }}
                 className="inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-bold"
               >
                 <UserPlus className="h-4 w-4" /> {selectedDoctor ? 'إعداد حساب الطبيب' : 'إضافة طبيب'}
@@ -388,6 +389,17 @@ export default function ClinicWorkspace() {
                     إضافة الطبيب
                   </button>
                 </div>
+                <label className="grid gap-1 text-xs text-slate-600">
+                  <span>تخصص الطبيب (اختياري)</span>
+                  <input
+                    aria-label="تخصص الطبيب"
+                    value={newDoctorSpecialty}
+                    onChange={e => setNewDoctorSpecialty(e.target.value)}
+                    placeholder="مثال: باطنة، أطفال، جلدية"
+                    maxLength={120}
+                    className="rounded-xl border bg-white px-3 py-2 text-sm"
+                  />
+                </label>
                 <label className="flex items-center gap-2 text-xs text-slate-600">
                   <input
                     type="checkbox"
@@ -424,7 +436,7 @@ export default function ClinicWorkspace() {
                   <option value="">اختار الطبيب</option>
                   {practitioners.map((emp) => (
                     <option key={emp.EmpID} value={emp.EmpID}>
-                      {emp.EmpName}
+                      {emp.EmpName}{emp.Specialty ? ` — ${emp.Specialty}` : ''}
                     </option>
                   ))}
                 </select>

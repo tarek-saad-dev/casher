@@ -23,7 +23,7 @@ export async function GET() {
       .input('branchId', sql.Int, auth.activeBranchId)
       .input('day', sql.Date, getCairoBusinessDate())
       .query(`
-        SELECT DISTINCT e.EmpID, e.EmpName, e.Job, p.UserID
+        SELECT DISTINCT e.EmpID, e.EmpName, e.Job, p.UserID, p.Specialty
         FROM dbo.TblEmp e
         INNER JOIN dbo.TblEmpBranchAssignment a ON a.EmpID = e.EmpID
         LEFT JOIN dbo.ClinicPractitioner p
@@ -53,6 +53,13 @@ export async function POST(req: NextRequest) {
     const body = (await req.json()) as Record<string, unknown>;
     const name = String(body.name ?? '').trim().replace(/\s+/g, ' ').slice(0, 200);
     const linkCurrentUser = body.linkCurrentUser === true;
+    if (body.specialty != null && typeof body.specialty !== 'string') {
+      return NextResponse.json({ error: 'تخصص الطبيب غير صحيح' }, { status: 400 });
+    }
+    const specialty = String(body.specialty ?? '').trim().replace(/\s+/g, ' ');
+    if (specialty.length > 120) {
+      return NextResponse.json({ error: 'تخصص الطبيب طويل جدًا' }, { status: 400 });
+    }
     const targetUserId = body.userId == null || body.userId === '' ? null : Number(body.userId);
     if (targetUserId !== null && (!Number.isSafeInteger(targetUserId) || targetUserId <= 0 || targetUserId > 2147483647)) {
       return NextResponse.json({ error: 'اختار حساب دخول صحيح للطبيب' }, { status: 400 });
@@ -110,6 +117,7 @@ export async function POST(req: NextRequest) {
       empId,
       userId: clinicalUserId,
       actorUserId: auth.userId,
+      specialty: specialty || null,
     });
     invalidatePublicBookingBarbersCache();
 
@@ -118,6 +126,7 @@ export async function POST(req: NextRequest) {
         EmpID: empId,
         EmpName: name,
         Job: 'طبيب',
+        Specialty: specialty || null,
         UserID: clinicalUserId,
         created,
         linkedToCurrentUser: clinicalUserId === auth.userId,
