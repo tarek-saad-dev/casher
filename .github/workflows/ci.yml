@@ -80,6 +80,9 @@ jobs:
       - name: Payroll agreement date UX regression
         run: npx vitest run src/components/hr/__tests__/payrollAgreementDate.test.ts
 
+      - name: Payroll rehearsal script syntax
+        run: bash -n scripts/payroll/run-ziad-payroll-rehearsal.sh
+
       - name: Production build
         run: npm run build
 
