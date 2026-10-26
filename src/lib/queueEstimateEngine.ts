@@ -210,8 +210,30 @@ export function sqlTimeToDate(dateStr: string, timeVal: unknown): Date {
 // ── Default durations ─────────────────────────────────────────────────────────
 
 export async function getDefaultDuration(
-  _db?: Awaited<ReturnType<typeof getPool>>,
+  db?: Awaited<ReturnType<typeof getPool>>,
+  branchId?: number | null,
 ): Promise<number> {
+  if (branchId != null) {
+    // Every tenant-owned branch gets its own queue duration, even if it is
+    // not configured yet. Falling back to CUT's global settings is incorrect.
+    const { normalizeBranchQueueDuration } = await import('@/lib/queue/queueBranchDuration');
+    if (!Number.isInteger(branchId) || branchId <= 0) return normalizeBranchQueueDuration(null);
+    try {
+      const pool = db ?? await getPool();
+      const result = await pool.request()
+        .input('branchId', sql.Int, branchId)
+        .query(`
+          SELECT TOP 1 DefaultServiceMinutes
+          FROM dbo.QueueBookingSettings
+          WHERE BranchID = @branchId
+          ORDER BY SettingID DESC
+        `);
+      return normalizeBranchQueueDuration(result.recordset[0]?.DefaultServiceMinutes);
+    } catch {
+      return normalizeBranchQueueDuration(null);
+    }
+  }
+  // Compatibility for older internal callers that have no active branch.
   try {
     const { getGlobalTimingDefaults } = await import('@/lib/publicBookingHelpers');
     const settings = await getGlobalTimingDefaults();
@@ -730,6 +752,7 @@ export async function computeBarberEstimate(
   serviceIds: number[],
   requestedAt: string | undefined,
   excludeTicketId?: number,
+  branchId?: number,
 ): Promise<BarberEstimate> {
   const db = await getPool();
   // Always compute business date in Cairo timezone (cutoff 4AM)
@@ -747,7 +770,7 @@ export async function computeBarberEstimate(
   }
 
   // Check working hours at requestedAt (not at slot) — this is "is the barber working now?"
-  const availResult = await getBarberAvailabilityReason(empId, now);
+  const availResult = await getBarberAvailabilityReason(empId, now, { branchId });
   const isWorking = availResult.available;
 
   if (!isWorking) {
@@ -773,7 +796,7 @@ export async function computeBarberEstimate(
     return result;
   }
 
-  const defaultDur = await getDefaultDuration(db);
+  const defaultDur = await getDefaultDuration(db, branchId);
   const customerDur = await getServicesDuration(db, serviceIds, defaultDur);
 
   const qIntervals = await buildQueueIntervals(

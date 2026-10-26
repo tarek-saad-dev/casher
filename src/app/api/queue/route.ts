@@ -21,6 +21,7 @@ import {
   isActiveBranchContext,
 } from "@/lib/branch/context";
 import { detectQueueTicketsSchema } from "@/lib/queueSchema";
+import { resolveQueueHistoryActorColumn } from "@/lib/queue/queueTicketHistoryActor";
 import { isEmployeeEligibleForBranchBookings } from "@/lib/branch/bookingQueueOwnership";
 
 export const runtime = "nodejs";
@@ -290,7 +291,7 @@ export async function POST(req: NextRequest) {
     // Must be done BEFORE the interval math so a day_off barber is rejected outright.
     if (empId) {
       const guardNow = new Date();
-      const avail = await getBarberAvailabilityReason(empId, guardNow);
+      const avail = await getBarberAvailabilityReason(empId, guardNow, { branchId: branch.branchId });
       if (!avail.available) {
         return NextResponse.json(
           { error: avail.reason ?? "الحلاق غير متاح", reason: "barber_unavailable" },
@@ -314,7 +315,7 @@ export async function POST(req: NextRequest) {
 
     // ── Re-calculate estimate server-side inside a SERIALIZABLE transaction ──
     // This prevents two concurrent requests from getting the same slot.
-    const defaultDur = await getDefaultDuration(db);
+    const defaultDur = await getDefaultDuration(db, branch.branchId);
     const serviceProIds = services
       .map((s) => s.proId)
       .filter((id): id is number => !!id);
@@ -676,8 +677,12 @@ export async function POST(req: NextRequest) {
       throw txErr;
     }
 
-    // Write history (outside transaction — non-critical)
-    await db
+    // Write history (outside transaction — non-critical).
+    // The original schema calls the actor column ActionByUserID; some legacy
+    // installations have UserID instead.
+    try {
+      const actorColumn = await resolveQueueHistoryActorColumn(db);
+      await db
       .request()
       .input("ticketId", sql.Int, newId)
       .input("action", sql.NVarChar, "created")
@@ -685,13 +690,13 @@ export async function POST(req: NextRequest) {
       .query(
         `
         INSERT INTO [dbo].[QueueTicketHistory]
-          (QueueTicketID, OldStatus, NewStatus, ActionType, UserID)
+          (QueueTicketID, OldStatus, NewStatus, ActionType, [${actorColumn}])
         VALUES (@ticketId, NULL, 'waiting', @action, @userID)
       `,
-      )
-      .catch((e: unknown) =>
-        console.error("[queue POST] history write failed", e),
       );
+    } catch (e) {
+      console.error("[queue POST] history write failed", e);
+    }
 
     // Save ticket services (non-critical — outside transaction)
     if (services.length > 0) {
@@ -763,15 +768,8 @@ export async function POST(req: NextRequest) {
           qt.ClientID,      qt.EmpID,
           qt.QueueDate,     qt.CreatedTime,
           qt.Status,        qt.Notes,
-          qt.EstimatedStartTime,
-          qt.EstimatedWaitMinutes,
-          qt.WaitingCountAtCreation,
-          CASE WHEN COL_LENGTH('dbo.QueueTickets','ExpectedStartAt') IS NOT NULL
-               THEN qt.ExpectedStartAt ELSE NULL END AS ExpectedStartAt,
-          CASE WHEN COL_LENGTH('dbo.QueueTickets','ExpectedEndAt') IS NOT NULL
-               THEN qt.ExpectedEndAt ELSE NULL END AS ExpectedEndAt,
-          CASE WHEN COL_LENGTH('dbo.QueueTickets','DurationMinutes') IS NOT NULL
-               THEN qt.DurationMinutes ELSE NULL END AS DurationMinutes,
+          ${await getEstimateColsSelect(db)},
+          ${await getLifecycleColsSelect(db)},
           c.[Name]   AS ClientName,
           c.Mobile   AS ClientMobile,
           e.EmpName  AS EmpName

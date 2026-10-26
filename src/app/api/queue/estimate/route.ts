@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
       resolvedEmpName = nr.recordset[0]?.EmpName ?? '';
     } catch { /* non-fatal */ }
 
-    const est = await computeBarberEstimate(empId, resolvedEmpName, serviceIds, requestedAt);
+    const est = await computeBarberEstimate(empId, resolvedEmpName, serviceIds, requestedAt, undefined, branch.branchId);
 
     const now2      = requestedAt ? new Date(requestedAt) : new Date();
     const slot      = new Date(est.estimatedStartTime);
@@ -214,7 +214,7 @@ async function handleNearest(
     const eligibleIds = new Set(
       await listQueueEligibleEmployeeIdsForBranch(branchId, getCairoBusinessDate(now)),
     );
-    let allBarbers = await getAvailableBarbers(now);
+    let allBarbers = await getAvailableBarbers(now, { branchId });
     allBarbers = allBarbers.filter((b) => eligibleIds.has(b.EmpID));
 
     if (allBarbers.length === 0) {
@@ -223,7 +223,7 @@ async function handleNearest(
     }
 
     const estimates = await Promise.all(
-      allBarbers.map(b => computeBarberEstimate(b.EmpID, b.EmpName, serviceIds, requestedAt))
+      allBarbers.map(b => computeBarberEstimate(b.EmpID, b.EmpName, serviceIds, requestedAt, undefined, branchId))
     );
 
     console.log('[estimate API handleNearest] Estimates:', estimates.map(e => ({
