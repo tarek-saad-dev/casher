@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: valid.error }, { status: 400, headers: NO_STORE });
   }
   try {
-    const planId = await createTreatmentPlan({ ...auth, encounterId, ...valid });
+    const planId = await createTreatmentPlan({ ...auth, encounterId, title: valid.title, totalSessions: valid.totalSessions });
     return NextResponse.json({ planId }, { status: 201, headers: NO_STORE });
   } catch (err) {
     if (err instanceof TreatmentPlanConflict) {

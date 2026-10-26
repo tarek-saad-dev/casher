@@ -7,7 +7,7 @@ import { redistributeFromClearing } from '@/lib/splitPaymentService';
 import type { InvoiceItemsTotals } from '@/lib/sales/service-line-totals';
 import { getCairoInvTimeDotStr, getCairoPayTimeStr } from '@/lib/businessDate';
 import { lockOperationalWrite } from '@/lib/branch/operationalGates';
-import { linkClinicSaleWithinTransaction } from '@/apps/medical-records/public/billing';
+import { linkClinicSaleWithinTransaction } from '@/platform/integrations/clinicBilling';
 import type { TargetRecalcScope } from '@/lib/payroll/employee-target/employee-target-recalc-scope';
 import type { SaleCashMovePoster } from '../public/saleCashMovePoster';
 import type { InvoicePaymentAllocationInput } from './legacySaleRepository';

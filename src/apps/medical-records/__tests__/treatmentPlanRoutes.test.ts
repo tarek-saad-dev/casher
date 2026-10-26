@@ -87,7 +87,7 @@ describe('clinic treatment plan routes', () => {
     expect(mocks.create).not.toHaveBeenCalled();
   });
 
-  it('links only numeric booking IDs to assigned doctor's plan', async () => {
+  it('links only numeric booking IDs to assigned doctor plan', async () => {
     expect((await LINK(link({ bookingId: 'bogus' }), ctx('1'))).status).toBe(400);
     expect((await LINK(link({ bookingId: 19 }), ctx('0'))).status).toBe(400);
     const res = await LINK(link({ bookingId: 19, doctorId: 200 }), ctx('1'));
