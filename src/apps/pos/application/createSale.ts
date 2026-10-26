@@ -28,13 +28,17 @@ export async function createSale(input: CreateSaleInput): Promise<CreateSaleResu
   console.log(`[pos-api]   Transaction started (SERIALIZABLE)`);
 
   const { branchName, ...txInput } = input;
-  let postSaleCashMove = null;
-  if (isPosSaleTreasuryPostingEnabled()) {
-    const ports = await buildPosPortsForStaffUser(input.userID);
-    postSaleCashMove = buildSaleCashMovePoster(ports.tenantId, ports.actor);
-  }
 
   try {
+    // Resolve and authorize the Treasury posting adapter INSIDE the transaction
+    // rollback boundary. Adapter/bootstrap errors must never leave an open SQL
+    // transaction holding locks on a branch or tenant.
+    let postSaleCashMove = null;
+    if (isPosSaleTreasuryPostingEnabled()) {
+      const ports = await buildPosPortsForStaffUser(input.userID);
+      postSaleCashMove = buildSaleCashMovePoster(ports.tenantId, ports.actor);
+    }
+
     const { invID, invType, targetRecalcScopes } = await executeLegacySaleCreateTransaction(
       transaction,
       { ...txInput, postSaleCashMove },

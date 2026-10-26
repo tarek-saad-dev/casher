@@ -27,12 +27,17 @@ export type PostSaleCashMoveOptions = {
  */
 export async function postSaleCashMove(
   tx: Transaction,
-  _actor: ActorContext,
+  actor: ActorContext,
   command: PostSaleCommand,
   options?: PostSaleCashMoveOptions,
 ): Promise<number> {
   if (!command.tenantId) {
     throw new Error('Treasury sale post requires tenantId');
+  }
+  // TenantId in the command is untrusted metadata until it matches the
+  // caller's authenticated tenant context. Check before idempotent replay too.
+  if (!actor.tenantId || actor.tenantId.toLowerCase() !== command.tenantId.toLowerCase()) {
+    throw new Error('Treasury sale post tenant context mismatch');
   }
   if (!Number.isFinite(command.saleInvId) || command.saleInvId <= 0) {
     throw new Error('Treasury sale post requires a positive saleInvId');
@@ -99,6 +104,23 @@ export async function insertSaleCashMoveResolvingConflict(
       DECLARE @existingFingerprint NVARCHAR(128) = NULL;
       DECLARE @outcome NVARCHAR(16) = N'inserted';
       DECLARE @inserted TABLE (ID INT);
+
+      -- The direct insert helper must also support idempotent replay.
+      -- Lock the registry key BEFORE touching TblCashMove, so a competing
+      -- transaction cannot create a duplicate and doom this SQL transaction.
+      SELECT
+        @existingCashMoveId = CashMoveId,
+        @existingFingerprint = Fingerprint
+      FROM dbo.TreasuryMovementRegistry WITH (UPDLOCK, HOLDLOCK)
+      WHERE TenantId = @tenantId AND IdempotencyKey = @key;
+
+      IF @existingCashMoveId IS NOT NULL
+      BEGIN
+        SELECT N'replay' AS Outcome,
+               @existingCashMoveId AS CashMoveId,
+               @existingFingerprint AS ExistingFingerprint;
+        RETURN;
+      END
 
       SAVE TRANSACTION ${SALE_POST_SAVEPOINT};
 
