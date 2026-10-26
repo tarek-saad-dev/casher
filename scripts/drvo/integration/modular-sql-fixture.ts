@@ -143,12 +143,9 @@ async function main(){
    .query(`INSERT INTO dbo.ModularCommercialReleaseCandidate
      (CandidateId,SourceProposalId,SourceVersion,IndustryCode,SourceDigest,RequestedByUserId)
       VALUES (@id,@source,1,N'salon',@digest,103);`),[2601,2627],'duplicate source candidate');
-  await refused(db.request().input('id',sql.UniqueIdentifier,randomUUID())
-   .input('source',sql.UniqueIdentifier,proposalId)
-   .input('digest',sql.Char(64),digest)
-   .query(`INSERT INTO dbo.ModularCommercialReleaseCandidate
-     (CandidateId,SourceProposalId,SourceVersion,IndustryCode,SourceDigest,Status,RequestedByUserId)
-     VALUES (@id,@source,1,N'salon',@digest,N'approved',103);`),[547],'candidate approval state forbidden');
+  await refused(db.request().input('id',sql.UniqueIdentifier,candidateId)
+   .query(`UPDATE dbo.ModularCommercialReleaseCandidate
+     SET Status=N'approved' WHERE CandidateId=@id;`),[547],'candidate approval state forbidden');
 
   const blocker='COMMERCIAL_PRICING_NOT_APPROVED';
   await db.request().input('evidenceId',sql.UniqueIdentifier,evidenceId)

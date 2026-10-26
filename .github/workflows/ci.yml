@@ -41,6 +41,7 @@ jobs:
           src/platform/__tests__/commercialPolicyEvidence.test.ts
           src/platform/__tests__/internalQuoteSnapshots.test.ts
           src/platform/__tests__/modularStagingReadiness.test.ts
+          src/platform/__tests__/modularEphemeralSqlGate.test.ts
           src/platform/__tests__/modularCommercialDrafts.test.ts
           src/platform/__tests__/modularDraftSelfService.test.ts
           src/platform/__tests__/modularQuoteInquiry.test.ts
