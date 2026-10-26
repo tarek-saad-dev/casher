@@ -27,12 +27,17 @@ export type PostSaleCashMoveOptions = {
  */
 export async function postSaleCashMove(
   tx: Transaction,
-  _actor: ActorContext,
+  actor: ActorContext,
   command: PostSaleCommand,
   options?: PostSaleCashMoveOptions,
 ): Promise<number> {
   if (!command.tenantId) {
     throw new Error('Treasury sale post requires tenantId');
+  }
+  // TenantId in the command is untrusted metadata until it matches the
+  // caller's authenticated tenant context. Check before idempotent replay too.
+  if (!actor.tenantId || actor.tenantId.toLowerCase() !== command.tenantId.toLowerCase()) {
+    throw new Error('Treasury sale post tenant context mismatch');
   }
   if (!Number.isFinite(command.saleInvId) || command.saleInvId <= 0) {
     throw new Error('Treasury sale post requires a positive saleInvId');
