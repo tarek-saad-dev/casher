@@ -32,7 +32,7 @@ export function validateTreatmentPlan(input: unknown):
   if (typeof row.title !== 'string' || row.title.trim().length < 3 ||
       row.title.trim().length > 180)
     return { ok: false, error: 'اسم خطة العلاج لازم يكون من 3 إلى 180 حرف' };
-  const totalSessions = parseTreatmentInteger(row.totalSessions, MAX_TREATMENT_SESSIONS);
+  const totalSessions = typeof row.totalSessions === 'number' ? parseTreatmentInteger(row.totalSessions, MAX_TREATMENT_SESSIONS) : null;
   if (totalSessions === null)
     return { ok: false, error: 'عدد الجلسات من 1 إلى 50 جلسة' };
   return { ok: true, title: row.title.trim(), totalSessions };
