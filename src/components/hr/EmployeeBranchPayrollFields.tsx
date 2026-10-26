@@ -22,6 +22,10 @@ export type CompensationDetails = {
   };
   effectiveFrom: string;
   retroactive?: { schemaReady: boolean; enabledForEmployee: boolean };
+  latestRevision?: null | {
+    id: number; effectiveFrom: string; createdAt: string; reversedDailyCount: number;
+    reversedDailyAmount: number; newEntitlement: number;
+  };
   branches: CompensationBranch[];
 };
 
@@ -190,6 +194,20 @@ export default function EmployeeBranchPayrollFields({
             </p>
           )}
         </div>
+      )}
+      {!createMode && details?.latestRevision && (
+        <details className="rounded-xl border border-border bg-surface-muted/15 p-3">
+          <summary className="cursor-pointer text-xs font-medium">
+            آخر تسوية معتمدة — مراجعة #{details.latestRevision.id}
+          </summary>
+          <div className="mt-3 space-y-1.5 text-xs leading-relaxed text-muted-foreground">
+            <p>بداية الاتفاقية: {formatPayrollEffectiveDate(details.latestRevision.effectiveFrom)}</p>
+            <p>اليوميات التي تمت تسويتها: {details.latestRevision.reversedDailyCount}</p>
+            <p>أجور مستبدلة: {details.latestRevision.reversedDailyAmount.toLocaleString('en-US')} ج.م</p>
+            <p>الاستحقاق الشهري المسجل: {details.latestRevision.newEntitlement.toLocaleString('en-US')} ج.م</p>
+            <p>التسوية لا تعني صرف مبلغ من الخزنة. تفاصيل القيود محفوظة في سجل المراجعة المحاسبي.</p>
+          </div>
+        </details>
       )}
     </div>
   );
