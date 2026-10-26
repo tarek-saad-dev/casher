@@ -242,9 +242,7 @@ export default function EmployeeHrFormModal({
   const isVipScope = compScope === 'branch_monthly';
   const isPersistedVip = mode === 'edit' && compDetails?.employee.scope === 'branch_monthly';
   const vipEligible = Boolean(
-    compDetails?.employee.payrollMethod === 'monthly' &&
-    compDetails.employee.payrollEnabled &&
-    form.payrollMethod === 'monthly' &&
+    compDetails?.employee.payrollEnabled &&
     form.isPayrollEnabled &&
     form.employmentType !== 'freelance',
   );
@@ -267,7 +265,7 @@ export default function EmployeeHrFormModal({
       return 'يجب إيقاف نظام VIP أولًا قبل تحويل الموظف إلى فري لانس';
     }
     if (isVipScope && compensationChanged && !isRetroVip) {
-      if (!vipEligible) return 'نظام الفروع متاح للموظف الشهري المفعّل فقط. اضبط النظام الشهري واحفظ أولًا.';
+      if (!vipEligible) return 'اتفاقية VIP تتطلب تفعيل الرواتب وموظفًا غير فري لانس.';
       const active = compBranches.filter((b) => b.enabled);
       if (!active.length) return 'فعّل مرتب فرع واحد على الأقل';
       if (active.some((b) => !b.isAssigned || !Number.isFinite(Number(b.monthlySalary)) ||
