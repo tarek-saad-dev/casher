@@ -233,8 +233,16 @@ async function main() {
       actor,
     );
 
-    check(a.readiness.overall === 'PASS', 'clinic tenant A readiness PASS');
-    check(b.readiness.overall === 'PASS', 'clinic tenant B readiness PASS');
+    for (const [label, tenant] of [['A', a], ['B', b]] as const) {
+      const failed = tenant.readiness.checks.filter((item) => !item.pass);
+      if (failed.length) {
+        console.error(`Clinic tenant ${label} readiness failures:`);
+        for (const item of failed) {
+          console.error(`  - ${item.id}: ${item.detail}`);
+        }
+      }
+      check(tenant.readiness.overall === 'PASS', `clinic tenant ${label} readiness PASS`);
+    }
     check(a.apps.includes('medical-records'), 'clinic tenant A has medical-records');
     check(a.apps.includes('booking'), 'clinic tenant A has booking');
     check(a.tenantId !== b.tenantId, 'clinic tenants are isolated identities');
