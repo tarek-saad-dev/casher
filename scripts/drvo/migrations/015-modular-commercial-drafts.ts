@@ -50,6 +50,27 @@ export async function verifyModularCommercialDraftSchema(
       if (Number(r.recordset[0]?.ok) !== 1) failures.push('Missing index ' + index);
     }
   }
+  for (const [table, constraint] of [
+    ['ModularPriceCatalogItem', 'FK_ModularPriceCatalogItem_Catalog'],
+    ['TenantModularDraft', 'FK_TenantModularDraft_Tenant'],
+    ['TenantModularDraft', 'FK_TenantModularDraft_Catalog'],
+    ['TenantModularDraftApp', 'FK_TenantModularDraftApp_Draft'],
+  ] as const) {
+    const r = await pool.request().input('tableName', 'dbo.' + table).input('fk', constraint).query(
+      'SELECT CASE WHEN EXISTS (SELECT 1 FROM sys.foreign_keys WHERE parent_object_id = OBJECT_ID(@tableName) AND name=@fk AND is_disabled=0 AND is_not_trusted=0) THEN 1 ELSE 0 END AS ok;');
+    if (Number(r.recordset[0]?.ok) !== 1) failures.push('Missing or untrusted FK ' + constraint);
+  }
+  for (const [table, constraint] of [
+    ['ModularPriceCatalog', 'CK_ModularPriceCatalog_Status'],
+    ['ModularPriceCatalogItem', 'CK_ModularPriceCatalogItem_Kind'],
+    ['ModularPriceCatalogItem', 'CK_ModularPriceCatalogItem_Amount'],
+    ['TenantModularDraft', 'CK_TenantModularDraft_Status'],
+    ['TenantModularDraft', 'CK_TenantModularDraft_Cycle'],
+  ] as const) {
+    const r = await pool.request().input('tableName', 'dbo.' + table).input('checkName', constraint).query(
+      'SELECT CASE WHEN EXISTS (SELECT 1 FROM sys.check_constraints WHERE parent_object_id=OBJECT_ID(@tableName) AND name=@checkName AND is_disabled=0 AND is_not_trusted=0) THEN 1 ELSE 0 END AS ok;');
+    if (Number(r.recordset[0]?.ok) !== 1) failures.push('Missing or untrusted CHECK ' + constraint);
+  }
   // This first migration must NEVER seed an approved catalog or a tenant contract.
   return { ok: failures.length === 0, failures };
 }
