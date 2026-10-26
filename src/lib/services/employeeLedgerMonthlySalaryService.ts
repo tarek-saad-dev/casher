@@ -112,6 +112,7 @@ function formatDateValue(value: unknown): string {
 async function fetchEligibleMonthlyEmployees(
   pool: { request: () => sql.Request },
   branchId: number,
+  month: string,
   empId?: number | null,
   transaction?: sql.Transaction,
 ): Promise<MonthlySalaryEmployeeRow[]> {
@@ -119,7 +120,8 @@ async function fetchEligibleMonthlyEmployees(
     throw new EmployeeLedgerMonthlySalaryError('branchId مطلوب لترحيل الراتب الشهري (Phase 1L)');
   }
 
-  const req = ledgerRequest(pool, transaction).input('BranchID', sql.Int, branchId);
+  const req = ledgerRequest(pool, transaction).input('BranchID', sql.Int, branchId)
+    .input('MonthStart', sql.Date, `${month}-01`);
   if (empId != null && empId > 0) req.input('EmpID', sql.Int, empId);
 
   // Prefer branch payroll plan; no GLEEM fallback for other branches.
@@ -137,8 +139,8 @@ async function fetchEligibleMonthlyEmployees(
       AND p.IsActive = 1
       AND p.PayType = N'monthly'
       AND ISNULL(p.MonthlySalary, 0) > 0
-      AND (p.EffectiveTo IS NULL OR p.EffectiveTo >= CAST(GETDATE() AS date))
-      AND p.EffectiveFrom <= CAST(GETDATE() AS date)
+      AND (p.EffectiveTo IS NULL OR p.EffectiveTo >= @MonthStart)
+      AND p.EffectiveFrom <= @MonthStart
       AND ISNULL(e.isActive, 1) = 1
       AND ISNULL(e.IsPayrollEnabled, 1) = 1
       AND ISNULL(e.EmploymentType, N'full_time') <> N'freelance'
@@ -288,7 +290,7 @@ export async function postMonthlySalaryEntitlements(params: {
   const pool = await getPool();
   const branchId = params.branchId;
 
-  const employees = await fetchEligibleMonthlyEmployees(pool, branchId, params.empId);
+  const employees = await fetchEligibleMonthlyEmployees(pool, branchId, params.month, params.empId);
   const rows: MonthlySalaryPreviewRow[] = [];
   const counts: MonthlySalaryPostCounts = {
     eligible: 0,
@@ -322,6 +324,10 @@ export async function postMonthlySalaryEntitlements(params: {
     }
 
     rows.push(previewRow);
+  }
+
+  if (rows.some((row) => row.status === 'willUpdate')) {
+    throw new EmployeeLedgerMonthlySalaryError('يوجد استحقاق راتب مرحّل بقيمة أو تاريخ مختلف؛ راجع الدفتر قبل إعادة الترحيل، لن نعدل التاريخ المالي تلقائيًا');
   }
 
   if (dryRun) {
