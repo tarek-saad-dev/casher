@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { AlertCircle, CalendarDays, Loader2, ShieldCheck } from 'lucide-react';
 import Link from 'next/link';
 import { platformFetch } from '@/components/platform/platformFetch';
+import ModularDraftClient from './ModularDraftClient';
 
 type RequestRow = {
   requestId: string; requestedPlanCode: string; billingCycle: 'monthly' | 'annual';
@@ -74,6 +75,7 @@ export default function TenantBillingClient() {
         {mayManageApps ? <Link href="/admin/apps" className="inline-flex min-h-10 items-center rounded-xl border border-border px-4 py-2 text-sm font-medium hover:bg-muted">إدارة تطبيقاتي</Link> :
           <p className="text-sm text-muted-foreground">إدارة التطبيقات التشغيلية تتطلب اشتراكًا ساريًا. سجل البيانات والطلبات القديمة ظاهر هنا حتى بعد انتهاء التجربة.</p>}
       </section>
+      <ModularDraftClient />
       {data.protectedTenant && <p className="rounded-xl border border-border p-3 text-sm text-muted-foreground">حساب CUT الأساسي محمي من تغييرات الاشتراك.</p>}
       <section className="space-y-3 rounded-2xl border border-border p-5">
         <h2 className="flex items-center gap-2 font-semibold"><CalendarDays className="h-4 w-4" /> الطلبات السابقة (النظام القديم)</h2>
