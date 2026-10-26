@@ -15,6 +15,7 @@ export type ModularResearchCatalog = {
   industry: string;
   monthlyPerAppMinor: Readonly<Record<string, number>>;
   includedBranches: number;
+  baseMonthlyMinor: number;
   extraBranchMonthlyMinor: number;
   maxBranches: number;
   annualMonthsCharged: number;
@@ -103,6 +104,7 @@ function assertResearchCatalog(catalog: ModularResearchCatalog, rules: ModularRe
       catalog.annualMonthsCharged < 1 || catalog.annualMonthsCharged > 12) {
     throw new ModularQuoteError('CATALOG_INVALID', 'Research catalog has invalid metadata');
   }
+  positiveMoney(catalog.baseMonthlyMinor, 'baseMonthlyMinor', true);
   positiveMoney(catalog.extraBranchMonthlyMinor, 'extraBranchMonthlyMinor', true);
   if (!catalog.monthlyPerAppMinor || typeof catalog.monthlyPerAppMinor !== 'object' ||
       Array.isArray(catalog.monthlyPerAppMinor) || !Array.isArray(rules.requiredApps) ||
@@ -112,7 +114,7 @@ function assertResearchCatalog(catalog: ModularResearchCatalog, rules: ModularRe
   const eligible = new Set(rules.eligibleApps);
   if (eligible.size !== rules.eligibleApps.length ||
       rules.requiredApps.some((c) => !eligible.has(c)) ||
-      rules.eligibleApps.some((c) => !APP_CODE.test(c))) {
+      rules.eligibleApps.some((c) => !APP_CODE.test(c) || c === 'platform-base' || c === 'extra-branch')) {
     throw new ModularQuoteError('CATALOG_INVALID', 'Invalid research eligibility rules');
   }
   for (const [code, amount] of Object.entries(catalog.monthlyPerAppMinor)) {
@@ -169,12 +171,17 @@ export function calculateModularResearchQuote(
       }
     }
   }
-  const lines: ModularQuoteLine[] = [...selected].sort().map((code) => ({
+  const lines: ModularQuoteLine[] = catalog.baseMonthlyMinor > 0 ? [{
+    code: 'platform-base', label: 'Platform base fee (research hypothesis)',
+    quantity: 1, unitMonthlyMinor: catalog.baseMonthlyMinor,
+    totalMonthlyMinor: catalog.baseMonthlyMinor,
+  }] : [];
+  lines.push(...[...selected].sort().map((code) => ({
     code, label: rules.labels[code]!,
     quantity: 1,
     unitMonthlyMinor: catalog.monthlyPerAppMinor[code]!,
     totalMonthlyMinor: catalog.monthlyPerAppMinor[code]!,
-  }));
+  })));
   const extraBranchCount = Math.max(0, input.branches - catalog.includedBranches);
   if (extraBranchCount) {
     lines.push({

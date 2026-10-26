@@ -36,6 +36,7 @@ const catalog: ModularResearchCatalog = {
   currency: 'EGP',
   monthlyPerAppMinor: Object.fromEntries(Object.entries(RESEARCH_RATES).map(([code, egp]) => [code, egp * 100])),
   includedBranches: 1,
+  baseMonthlyMinor: 0,
   extraBranchMonthlyMinor: EXPERIMENTAL_BRANCH_FEE * 100,
   maxBranches: MAX_BRANCHES_SCENARIO,
   annualMonthsCharged: MONTHS_PER_YEAR,

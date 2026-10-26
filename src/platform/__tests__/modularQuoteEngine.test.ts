@@ -17,6 +17,7 @@ const catalog: ModularResearchCatalog = {
   industry: 'salon',
   monthlyPerAppMinor: { booking: 19900, pos: 29900, queue: 9900 },
   includedBranches: 1,
+  baseMonthlyMinor: 0,
   extraBranchMonthlyMinor: 19900,
   maxBranches: 8,
   annualMonthsCharged: 10,
@@ -49,6 +50,12 @@ describe('versioned pure modular research quote engine', () => {
       chargedMonths:1,
       lines:[{code:'booking',quantity:1,totalMonthlyMinor:19900},{code:'pos',quantity:1,totalMonthlyMinor:29900}],
     });
+  });
+  it('supports zero or explicit base fee and keeps it separate from selected app prices', () => {
+    const quoted=calc({}, {baseMonthlyMinor:14900});
+    expect(quoted.lines[0]).toMatchObject({code:'platform-base',quantity:1,totalMonthlyMinor:14900});
+    expect(quoted.totalMonthlyMinor).toBe(64700);
+    expect(errorCode(()=>calc({}, {baseMonthlyMinor:-1}))).toBe('CATALOG_INVALID');
   });
   it('dedupes branch billing and uses configured annual months without floating money', () => {
     const q=calc({cycle:'annual',branches:3,apps:['booking','pos','queue']});
