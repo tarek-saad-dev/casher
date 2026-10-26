@@ -122,7 +122,8 @@ describe('live service transactions using synthetic SQL Server',()=>{
       VALUES (@tenantId,@requestId,1,N'awaiting_pricing',N'salon',@apps,2,N'annual');`);
   const args={requestId,candidateId,actorUserId:611};
   const first=await createInternalQuoteSnapshot(args);
-  expect(first).toMatchObject({requestId,tenantId,candidateId,
+  expect(first).toMatchObject({requestId:requestId.toLowerCase(),
+   tenantId:tenantId.toLowerCase(),candidateId:candidateId.toLowerCase(),
    status:'internal_only',canIssueCustomerQuote:false,canAcceptOrder:false,
    canCheckout:false,canActivate:false,orderCreated:false,paid:false,
    createdByUserId:611,availability:'internal_current'});
