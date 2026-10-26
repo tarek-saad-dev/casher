@@ -79,7 +79,7 @@ export default function EmployeeBranchCompensationModal(p: Props) {
               <div className="flex items-center justify-between text-sm font-semibold">
                 <span>{b.branchName}</span>
                 <input aria-label={'تفعيل ' + b.branchName} type="checkbox" checked={b.enabled}
-                  disabled={!allowed || !b.isAssigned} onChange={(e) => patch(b.branchId, { enabled: e.target.checked })} />
+                  disabled={!allowed || (!b.isAssigned && !b.enabled)} onChange={(e) => patch(b.branchId, { enabled: e.target.checked })} />
               </div>
               {!b.isAssigned && <p className="text-xs text-muted-foreground">عيّن الموظف على الفرع من «الفروع ومواعيد العمل».</p>}
               <label className="block text-xs text-muted-foreground">الراتب الشهري (ج.م)</label>
