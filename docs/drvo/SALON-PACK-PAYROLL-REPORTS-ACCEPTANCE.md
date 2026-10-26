@@ -29,3 +29,11 @@ Baseline: main@85ba112dc002e9666fc61eb8545049f892af35e7. Agent 2. **Not final Sa
 ## Merge guidance
 
 Draft until CI and staging are green, then Ready for Review. Human owner must review; main can deploy to production automatically. No merge or deploy by agent.
+
+## Target recalculation staging gate (2026-10-26)
+
+The current invoice-snapshot scenario only queues a recalculation request, **not a persisted POS sale**. It then processes the request but does not seed `TblEmpTargetPlan` / `TblEmpTargetTier` for its smoke employees. A `completed` request can therefore represent a no-op calculation (zero eligible plans) instead of earned commission.
+
+The staging script now **fails closed** unless it finds a non-voided `TblEmpDailyTarget` row with positive net service sales and a positive target amount. This is deliberately a blocking acceptance test until synthetic target-plan + sale fixtures are implemented. Do **not** report that staging passed merely because `RequestedVersion === ProcessedVersion`. Even once these assertions pass, prove the target-linked ledger entry amount and POS/Treasury/daily revenue reconciliation, without touching production.
+
+Next stage: provision per-tenant target plans/tiers; create genuine tenant-owned invoice headers/details using production posting paths; process requests; assert target amount, ledger balance delta, and both tenants' isolated financial reports against independently computed expected values; ensure all financial fixture rows and queued requests are purged after the run.
