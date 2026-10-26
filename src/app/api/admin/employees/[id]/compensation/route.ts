@@ -86,6 +86,19 @@ export async function GET(_request: NextRequest, { params }: Context) {
         ORDER BY b.BranchName
       `);
     const e = employee.recordset[0];
+    const schema = await db.request().query(`
+      SELECT
+        COL_LENGTH(N'dbo.TblEmpDailyPayroll', N'SupersededByPayrollRevisionID') AS DailyRevisionColumn,
+        OBJECT_ID(N'dbo.TblEmpPayrollAgreementRevision', N'U') AS RevisionTable,
+        OBJECT_ID(N'dbo.TblEmpBranchPayrollAudit', N'U') AS AuditTable
+    `);
+    const schemaStatus = schema.recordset[0];
+    const retroSchemaReady = schemaStatus?.DailyRevisionColumn != null &&
+      schemaStatus?.RevisionTable != null && schemaStatus?.AuditTable != null;
+    const allowedIds = String(process.env.PAYROLL_RETROACTIVE_EMPLOYEE_IDS || '')
+      .split(',').map(id => id.trim()).filter(id => /^[1-9][0-9]*$/.test(id)).map(Number);
+    const retroEnabledForEmployee = process.env.PAYROLL_RETROACTIVE_ENABLED === 'true' &&
+      (process.env.NODE_ENV !== 'production' || allowedIds.includes(empId));
     return NextResponse.json({
       employee: {
         empId: Number(e.EmpID),
@@ -97,6 +110,7 @@ export async function GET(_request: NextRequest, { params }: Context) {
         scopeEffectiveFrom: e.PayrollScopeEffectiveFrom,
       },
       effectiveFrom,
+      retroactive: { schemaReady: retroSchemaReady, enabledForEmployee: retroEnabledForEmployee },
       branches: branches.recordset.map((b: Record<string, unknown>) => ({
         branchId: Number(b.branchId),
         branchCode: String(b.branchCode),
