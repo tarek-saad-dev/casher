@@ -39,8 +39,18 @@ export async function listCommercialPolicyEvidence(candidateId:string){
   .query(`SELECT TOP 250 ${COLS} FROM dbo.ModularCommercialPolicyEvidence
     WHERE CandidateId=@id ORDER BY SubmittedAt DESC,EvidenceId DESC;`);
  const rows=(r.recordset as Record<string,unknown>[]).map(shape);
+ // Latest status is independent of the capped 250-row display history.
+ const latest=await pool.request().input('id',sql.UniqueIdentifier,candidateId).query(`
+  SELECT BlockerCode,Revision,Status FROM (
+   SELECT BlockerCode,Revision,Status,
+     ROW_NUMBER() OVER (PARTITION BY BlockerCode ORDER BY Revision DESC) AS rn
+   FROM dbo.ModularCommercialPolicyEvidence WHERE CandidateId=@id
+  ) AS ranked WHERE rn=1;`);
  return {...RESPONSE,candidateId,sourceDigest:candidate.sourceDigest,
-   rows,summary:summarizePolicyEvidence(COMMERCIAL_RELEASE_BLOCKERS,rows)};
+   rows,summary:summarizePolicyEvidence(COMMERCIAL_RELEASE_BLOCKERS,
+    (latest.recordset as Array<{BlockerCode:string;Revision:number;Status:string}>).map(x=>({
+      blockerCode:String(x.BlockerCode),revision:Number(x.Revision),status:String(x.Status),
+    })))};
 }
 function assertActor(actor:number):void {
  if(!Number.isSafeInteger(actor)||actor<=0)
