@@ -211,6 +211,11 @@ export async function PUT(request: NextRequest, { params }: Context) {
         enabled = [{ branchId: homeBranchId, monthlySalary: amount, enabled: true }];
       }
 
+      const posted = await new sql.Request(tx).input('empId', sql.Int, empId)
+        .input('month', sql.NVarChar(7), body.effectiveFrom.slice(0, 7))
+        .query(`SELECT TOP 1 ID FROM dbo.TblEmpLedgerEntry WHERE EmpID = @empId AND IsVoided = 0 AND EntryReason = N'monthly_salary' AND PayrollMonth >= @month`);
+      if (posted.recordset.length) throw new Error('الراتب مرحل بالفعل؛ لا يمكن تغيير اتفاقية شهر مسجل');
+
       const oldPlans = await new sql.Request(tx)
         .input('empId', sql.Int, empId)
         .query(`
