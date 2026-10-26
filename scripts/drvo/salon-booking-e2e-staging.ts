@@ -64,6 +64,31 @@ function futureDate(days: number): string {
   return date.toISOString().slice(0, 10);
 }
 
+/**
+ * Libraries used by the booking stack may keep pooled SQL requests/handles alive
+ * after the complete staging proof. Closing is best-effort only AFTER tenant
+ * cleanup has been verified; do not hang the job just to drain test connections.
+ */
+async function closeSmokePool(pool: sql.ConnectionPool, maxWaitMs = 12_000): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      pool.close(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('SQL pool close deadline exceeded')), maxWaitMs);
+      }),
+    ]);
+    console.log('PASS: Smoke SQL pool closed');
+  } catch (err) {
+    console.warn(
+      'WARN: Test SQL pool did not close cleanly after cleanup:',
+      err instanceof Error ? err.message : String(err),
+    );
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 async function main() {
   const config = forceStagingConfig();
   const pool = await sql.connect(config);
@@ -188,11 +213,20 @@ async function main() {
         .query('SELECT COUNT(*) AS count FROM dbo.Tenant WHERE Code=@code');
       check(Number(leftover.recordset[0].count) === 0, 'Synthetic salon cleaned completely');
     }
-    await pool.close();
+    await closeSmokePool(pool);
     if (!booked) console.error('SALON_BOOKING_E2E_STAGING_INCOMPLETE');
   }
 }
-main().catch((err) => {
-  console.error('SALON_BOOKING_E2E_STAGING_FAIL:', err instanceof Error ? err.message : String(err));
-  process.exitCode = 1;
-});
+// This is a one-off CLI smoke, not a persistent server. Explicitly terminate
+// after verified tenant cleanup and bounded pool close; Node/Next may hold open
+// background handles even when all booking and cleanup assertions have passed.
+void main().then(
+  () => {
+    console.log('SALON_BOOKING_E2E_STAGING_EXIT_OK');
+    process.exit(0);
+  },
+  (err: unknown) => {
+    console.error('SALON_BOOKING_E2E_STAGING_FAIL:', err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  },
+);
