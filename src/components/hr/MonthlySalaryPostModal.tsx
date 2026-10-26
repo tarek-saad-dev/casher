@@ -205,7 +205,7 @@ export default function MonthlySalaryPostModal({
         <div className="flex items-start gap-2 p-3 rounded-lg border border-sky-500/30 bg-sky-500/10 text-sky-200 text-xs">
           <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
           <span>
-            هذا الترحيل لا ينشئ حركة خزنة. يتم تسجيل استحقاق الراتب فقط في دفتر الموظف.
+            هذا الترحيل لا ينشئ حركة خزنة. يتم تسجيل استحقاق الراتب فقط في دفتر الموظف. بالنسبة لموظفي VIP، اعرض المعاينة ثم رحّل استحقاق كل فرع من سياق الفرع نفسه؛ القيمة تعتمد على اتفاقية الفرع والشهر المختار.
           </span>
         </div>
 
@@ -251,7 +251,7 @@ export default function MonthlySalaryPostModal({
             <SelectContent className="bg-zinc-800 border-zinc-700 max-h-56">
               {monthlyEmployees.map((e) => (
                 <SelectItem key={e.EmpID} value={String(e.EmpID)}>
-                  {e.EmpName} — {fmt(Number(e.BaseSalary ?? 0))} ج.م
+                  {e.EmpName}
                 </SelectItem>
               ))}
             </SelectContent>
