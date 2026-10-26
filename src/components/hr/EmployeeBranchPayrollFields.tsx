@@ -104,7 +104,7 @@ export default function EmployeeBranchPayrollFields({
                     type="checkbox"
                     className="h-4 w-4 accent-primary"
                     checked={b.enabled}
-                    disabled={!b.isAssigned || !vipEligible}
+                    disabled={!vipEligible || (!b.isAssigned && !b.enabled)}
                     onChange={(event) => onBranchChange(b.branchId, { enabled: event.target.checked })}
                   />
                 </label>
