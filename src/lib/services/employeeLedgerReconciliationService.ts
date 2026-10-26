@@ -382,6 +382,26 @@ export async function getEmployeeLedgerReconciliation(
         ${branchClausePayroll}
     `);
 
+  // Monthly entitlements are not daily wage rows. Include the prorated
+  // branch-plan commitment when reconciling against salary ledger credits.
+  const monthlyExpected = await bindMonthAndEmp(db.request(), month, startDate, endDate, empId, branchScope)
+    .query([
+      'SELECT ISNULL(SUM(CAST(ROUND(CAST(p.MonthlySalary AS decimal(18,4)) *',
+      'DATEDIFF(day,CASE WHEN p.EffectiveFrom>@monthStart THEN p.EffectiveFrom ELSE @monthStart END,',
+      'DATEADD(day,1,CASE WHEN p.EffectiveTo IS NOT NULL AND p.EffectiveTo<@monthEnd',
+      'THEN p.EffectiveTo ELSE @monthEnd END))',
+      '/DAY(EOMONTH(@monthStart)),2) AS decimal(12,2))),0) AS TotalAmount',
+      'FROM dbo.TblEmpBranchPayrollPlan p',
+      'INNER JOIN dbo.TblEmp e ON e.EmpID=p.EmpID AND e.TenantId=@tenantId',
+      "WHERE p.IsActive=1 AND p.PayType=N'monthly' AND ISNULL(p.MonthlySalary,0)>0",
+      'AND p.EffectiveFrom<=@monthEnd',
+      'AND (p.EffectiveTo IS NULL OR p.EffectiveTo>=@monthStart)',
+      'AND ISNULL(e.IsPayrollEnabled,1)=1 AND ISNULL(e.isActive,1)=1',
+      "AND ISNULL(e.EmploymentType,N'full_time')<>N'freelance'",
+      empFilter('p.EmpID',empId),
+      branchFilter('p.BranchID',branchScope),
+    ].join(' '));
+
   const ledgerSalaryTotals = await bindMonthAndEmp(db.request(), month, startDate, endDate, empId, branchScope)
     .query(`
       SELECT ISNULL(SUM(l.Amount), 0) AS TotalAmount
@@ -476,7 +496,10 @@ export async function getEmployeeLedgerReconciliation(
     legacyExpenseTotal = roundMoney(Number(legacyTotals.recordset[0]?.ExpenseTotal ?? 0));
   }
 
-  const payrollGeneratedTotal = roundMoney(Number(payrollTotals.recordset[0]?.TotalAmount ?? 0));
+  const payrollGeneratedTotal = roundMoney(
+    Number(payrollTotals.recordset[0]?.TotalAmount ?? 0) +
+    Number(monthlyExpected.recordset[0]?.TotalAmount ?? 0)
+  );
   const ledgerSalaryCreditsTotal = roundMoney(Number(ledgerSalaryTotals.recordset[0]?.TotalAmount ?? 0));
   const payoutCashMoveTotal = roundMoney(Number(payoutCashTotals.recordset[0]?.TotalAmount ?? 0));
   const ledgerPayoutDebitsTotal = roundMoney(Number(ledgerPayoutTotals.recordset[0]?.TotalAmount ?? 0));
