@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { getPool, sql } from '@/lib/db';
 import { getCairoBusinessDate } from '@/lib/businessDate';
 
-import { validateRetroInput, prorateSalary, type RetroInput } from './payrollAgreementMath';
+import { calculateRetroBranchImpacts, validateRetroInput, prorateSalary, type RetroInput, type RetroBranchImpact } from './payrollAgreementMath';
 export type { RetroBranch, RetroInput } from './payrollAgreementMath';
 
 export type RetroDailyRow = {
@@ -17,6 +17,7 @@ export type RetroPreview = {
   difference:number; dailyCount:number; paidOut:number;
   advances:number; deductions:number; proratedDays:number;
   daysInMonth:number; blockers:string[]; dailyRows:RetroDailyRow[]; fingerprint:string;
+  branchImpacts: RetroBranchImpact[];
 };
 const money=(n:number)=>Math.round(n*100)/100;
 const formatDate=(v:Date|string)=>v instanceof Date?v.toISOString().slice(0,10):String(v).slice(0,10);
@@ -141,7 +142,8 @@ export async function previewRetroVip(params: {
     blocker.push('إجمالي أجور اليوميات لا يطابق قيود الأجور النشطة في الدفتر؛ يجب المراجعة قبل التسوية');
   }
   const portion=prorateSalary(start,1);
-  const newAmount=money(enabled.reduce((sum,b)=>sum+prorateSalary(start,b.monthlySalary).amount,0));
+  const branchImpacts=calculateRetroBranchImpacts(start,enabled,dailyRows);
+  const newAmount=money(branchImpacts.reduce((sum,b)=>sum+b.newEntitlement,0));
   const snapshot = {
     empId:params.empId,tenantId:params.tenantId,month,effectiveFrom:start,
     branches:[...params.input.branches].sort((a,b)=>a.branchId-b.branchId),
@@ -162,6 +164,6 @@ export async function previewRetroVip(params: {
     dailyCount:dailyRows.length,paidOut:money(Number(l.Payouts||0)),
     advances:money(Number(l.Advances||0)),deductions:money(Number(l.Deductions||0)),
     proratedDays:portion.days,daysInMonth:portion.monthDays,
-    blockers:blocker,dailyRows,fingerprint,
+    blockers:blocker,dailyRows,fingerprint,branchImpacts,
   };
 }
