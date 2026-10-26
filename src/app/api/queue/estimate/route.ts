@@ -214,7 +214,7 @@ async function handleNearest(
     const eligibleIds = new Set(
       await listQueueEligibleEmployeeIdsForBranch(branchId, getCairoBusinessDate(now)),
     );
-    let allBarbers = await getAvailableBarbers(now);
+    let allBarbers = await getAvailableBarbers(now, { branchId });
     allBarbers = allBarbers.filter((b) => eligibleIds.has(b.EmpID));
 
     if (allBarbers.length === 0) {
