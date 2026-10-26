@@ -44,7 +44,7 @@ export async function getSalonCloseReadiness(
     return {
       branchId: branch.branchId, businessDayId: null, workDate: null,
       canCloseOperations: false, financialReviewComplete: false,
-      final-settlement-claim: false, items: [item],
+      operationalBlockersClear: false, items: [item],
       metrics: { pendingClients: 0, openShifts: 0, treasuryReconciliations: 0 },
     };
   }
