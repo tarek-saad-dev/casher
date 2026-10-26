@@ -414,6 +414,27 @@ async function main() {
       check(Number(generatedTarget.recordset[0].TargetAmount) > 0,
         t.code + ' target calculation produced a positive payable commission');
 
+
+      // Commission must be posted exactly once into the employee ledger,
+      // with the same branch/date/amount as the generated daily target.
+      const targetLedger = await pool.request()
+        .input('targetId', sql.Int, Number(generatedTarget.recordset[0].ID))
+        .input('empId', sql.Int, empId)
+        .input('branchId', sql.Int, t.branchId)
+        .input('date', sql.Date, WORK_DATE)
+        .query(`SELECT ID, Amount, EntryDirection, EntryReason, IsVoided
+          FROM dbo.TblEmpLedgerEntry
+          WHERE RefType=N'TblEmpDailyTarget' AND RefID=@targetId
+            AND EmpID=@empId AND BranchID=@branchId AND EntryDate=@date`);
+      check(targetLedger.recordset.length === 1,
+        t.code + ' exactly one daily target ledger entry exists in the correct employee and branch');
+      check(targetLedger.recordset[0].EntryDirection === 'credit' &&
+        targetLedger.recordset[0].EntryReason === 'target' &&
+        !targetLedger.recordset[0].IsVoided &&
+        Math.abs(Number(targetLedger.recordset[0].Amount) -
+          Number(generatedTarget.recordset[0].TargetAmount)) < 0.005,
+        t.code + ' earned target agrees exactly with a live credit in the employee ledger');
+
       const pm = await pool.request().input('tenantId', sql.UniqueIdentifier, t.tenantId)
         .query(`SELECT TOP 1 PaymentID FROM dbo.TblPaymentMethods WHERE TenantId = @tenantId ORDER BY PaymentID;`);
       check(pm.recordset.length === 1, `${t.code} has a seeded payment method`);
