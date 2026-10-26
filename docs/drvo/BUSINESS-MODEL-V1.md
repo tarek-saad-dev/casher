@@ -18,6 +18,8 @@ This is the **canonical living source of truth for the TARGET commercial model**
 **Important distinction:** approval of the Hybrid SaaS direction is **not** authorization to charge customers, turn on free-forever accounts, change legacy tenant subscriptions, or deploy feature restrictions. Those changes each need a separate approved plan, testing and migration.
 
 Related documents:
+- [Salon Pack feature inventory (source-backed audit)](./SALON-FEATURE-INVENTORY-V1.md)
+- [Salon Pricing & Feature Matrix (proposed; not implemented)](./SALON-PRICING-FEATURE-MATRIX-V1.md)
 - [Current, implemented V1 commercial pricing](./COMMERCIAL-PRICING-V1.md)
 - [DRVO-012 subscription + app installation model](./DRVO-012-IMPLEMENTATION-NOTE.md)
 - [Platform decision register](./DRVO-002-DECISION-REGISTER.md)
