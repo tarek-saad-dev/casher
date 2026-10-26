@@ -11,7 +11,7 @@ import {
 
 const NAMES: Record<string, string> = {
   booking: 'الحجوزات', queue: 'الدور', pos: 'الكاشير',
-  attendance: 'الحضور', payroll: 'الرواتب', treasury: 'الخزنة', reports: 'التقارير',
+  attendance: 'الحضور', payroll: 'الرواتب', treasury: 'تقارير الخزنة المتقدمة', reports: 'التقارير المتقدمة',
 };
 const money = (v: number) => new Intl.NumberFormat('ar-EG').format(v) + ' ج.م';
 

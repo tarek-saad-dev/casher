@@ -40,8 +40,8 @@ Engineering scope: **no database tables or migrations**, no commercial entitleme
 | Queue | 99 | Source exists; E2E validation needed |
 | Attendance | 99 | Source exists; staging proof needed |
 | Payroll | 199 | Source exists; staging proof needed |
-| Treasury operational views | 99 | Source exists; core financial safety cannot be separately blocked |
-| Reports advanced | 149 | Source exists; validate tenant report correctness |
+| Treasury advanced analysis views only (not core financial posting/closing) | 99 | Source exists; core financial safety cannot be separately blocked |
+| Reports advanced (not basic daily sales) | 149 | Source exists; validate tenant report correctness |
 | Extra active branch (after first) | 199 | **Research-only expansion assumption**, not effective cap |
 | Inventory, Purchasing | **Not priced** | On hold pending sellable E2E |
 | Loyalty / CUT CLUB | **Not priced** | Legacy-only for CASHER_BOOT |

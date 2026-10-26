@@ -25,7 +25,7 @@ const MAX_BRANCHES_SCENARIO = 10;
 const LABELS: Record<keyof typeof RESEARCH_RATES, string> = {
   booking: 'الحجوزات', queue: 'الدور', pos: 'الكاشير',
   attendance: 'الحضور', payroll: 'الرواتب',
-  treasury: 'الخزنة', reports: 'التقارير',
+  treasury: 'تقارير الخزنة المتقدمة', reports: 'التقارير المتقدمة',
 };
 const appCodes = Object.keys(RESEARCH_RATES);
 const perAppCatalog: ModularResearchCatalog = {
