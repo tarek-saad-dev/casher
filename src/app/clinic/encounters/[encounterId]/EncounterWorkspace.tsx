@@ -6,6 +6,7 @@ import {
   Activity,
   ArrowRight,
   CheckCircle2,
+  CalendarDays,
   ClipboardPlus,
   FileText,
   HeartPulse,
@@ -142,6 +143,8 @@ export default function EncounterWorkspace({ encounterId }: { encounterId: strin
   const [data, setData] = useState<WorkspacePayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [activeTab, setActiveTab] = useState<'exam' | 'prescription' | 'follow_up'>('exam');
+  const [dirty, setDirty] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
   const [bloodType, setBloodType] = useState('');
@@ -166,6 +169,7 @@ export default function EncounterWorkspace({ encounterId }: { encounterId: strin
 
   const hydrate = useCallback((payload: WorkspacePayload) => {
     setData(payload);
+    setDirty(false);
     const profile = payload.patientProfile;
     setBloodType(profile?.BloodType ?? '');
     setAllergies(profile?.Allergies ?? '');
@@ -225,6 +229,11 @@ export default function EncounterWorkspace({ encounterId }: { encounterId: strin
 
   async function saveEncounter(action: 'save' | 'complete') {
     if (!canEdit || busy) return;
+    if (action === 'complete' && rxItems.some((item) => item.medicationName.trim())) {
+      setActiveTab('prescription');
+      setNotice('فيه أدوية مكتوبة لسه ما اتحفظتش. احفظ مسودة الروشتة أو امسحها قبل إنهاء الكشف.');
+      return;
+    }
     if (action === 'complete' && !diagnosisSummary.trim()) {
       setNotice('اكتب ملخص التشخيص قبل إكمال الزيارة.');
       return;
@@ -346,10 +355,11 @@ export default function EncounterWorkspace({ encounterId }: { encounterId: strin
   }
 
   const { encounter, prescriptions, clinicalAccess } = data;
+  const signedPrescriptions = prescriptions.filter((rx) => rx.Status === 'signed');
 
   return (
     <main className="min-h-full overflow-y-auto bg-slate-50 p-4 text-slate-950 sm:p-6" dir="rtl">
-      <div className="mx-auto max-w-7xl">
+      <div className="mx-auto max-w-7xl print:hidden">
         <header className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <Link href="/clinic" className="inline-flex items-center gap-1 text-xs font-bold text-slate-500 hover:text-slate-900">
@@ -367,10 +377,12 @@ export default function EncounterWorkspace({ encounterId }: { encounterId: strin
           </div>
           <button
             type="button"
+            disabled={signedPrescriptions.length === 0}
             onClick={() => window.print()}
-            className="inline-flex items-center gap-2 rounded-xl border bg-white px-4 py-2 text-sm font-bold"
+            title={signedPrescriptions.length ? 'طباعة الروشتات الموقعة فقط' : 'اعتمد روشتة أولاً لتفعيل الطباعة'}
+            className="inline-flex items-center gap-2 rounded-xl border bg-white px-4 py-2 text-sm font-bold disabled:cursor-not-allowed disabled:opacity-40"
           >
-            <Printer className="h-4 w-4" /> طباعة
+            <Printer className="h-4 w-4" /> طباعة الروشتة
           </button>
         </header>
 
@@ -391,7 +403,27 @@ export default function EncounterWorkspace({ encounterId }: { encounterId: strin
           </div>
         )}
 
-        <section className="mt-5 grid gap-4 xl:grid-cols-[.8fr_1.2fr]">
+        <nav aria-label="مراحل الزيارة" className="mt-5 flex gap-2 rounded-2xl border border-slate-200 bg-white p-2">
+          {([
+            { id: 'exam', label: '01 — الكشف', icon: Activity },
+            { id: 'prescription', label: '02 — الروشتة', icon: Pill },
+            { id: 'follow_up', label: '03 — المتابعة', icon: CalendarDays },
+          ] as const).map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveTab(tab.id)}
+              aria-pressed={activeTab === tab.id}
+              className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-2 py-3 text-xs font-bold transition sm:text-sm ${activeTab === tab.id
+                ? 'bg-cyan-50 text-cyan-800 ring-1 ring-cyan-200'
+                : 'text-slate-500 hover:bg-slate-50'}`}
+            >
+              <tab.icon className="h-4 w-4" /> {tab.label}
+            </button>
+          ))}
+        </nav>
+
+        <section className="mt-5 grid items-start gap-4 xl:grid-cols-[.8fr_1.2fr]">
           <div className="space-y-4">
             <div className="rounded-3xl border bg-white p-5 shadow-sm">
               <div className="flex items-center gap-2">
@@ -437,11 +469,11 @@ export default function EncounterWorkspace({ encounterId }: { encounterId: strin
               </div>
             </div>
 
-            <div className="rounded-3xl border bg-white p-5 shadow-sm">
-              <div className="flex items-center gap-2">
+            <details onChange={() => setDirty(true)} className="rounded-3xl border bg-white p-5 shadow-sm">
+              <summary className="flex cursor-pointer items-center gap-2 font-black">
                 <HeartPulse className="h-5 w-5 text-rose-600" />
-                <h2 className="font-black">التاريخ الطبي المختصر</h2>
-              </div>
+                <span>التاريخ الطبي — عرض / تعديل</span>
+              </summary>
               <div className="mt-4 grid gap-3">
                 <label className="grid gap-1">
                   <span className="text-xs font-bold text-slate-600">فصيلة الدم</span>
@@ -468,10 +500,15 @@ export default function EncounterWorkspace({ encounterId }: { encounterId: strin
                 </div>
                 <textarea disabled={!canEdit} value={profileNotes} onChange={(e) => setProfileNotes(e.target.value)} rows={2} placeholder="ملاحظات عامة على الملف الطبي" className="rounded-xl border px-3 py-2 text-sm disabled:bg-slate-50" />
               </div>
-            </div>
+            </details>
           </div>
 
-          <div className="space-y-4">
+          <div className="min-w-0">
+            <section
+              aria-label="الكشف والتشخيص"
+              className={activeTab === 'exam' ? 'space-y-4' : 'hidden'}
+              onChange={() => setDirty(true)}
+            >
             <div className="rounded-3xl border bg-white p-5 shadow-sm">
               <div className="flex items-center gap-2">
                 <Activity className="h-5 w-5 text-cyan-700" />
@@ -514,21 +551,15 @@ export default function EncounterWorkspace({ encounterId }: { encounterId: strin
                   <span className="text-xs font-bold text-slate-600">ملخص التشخيص</span>
                   <textarea disabled={!canEdit} value={diagnosisSummary} onChange={(e) => setDiagnosisSummary(e.target.value)} rows={3} className="rounded-xl border px-3 py-2 text-sm disabled:bg-slate-50" placeholder="التشخيص يكتبه الطبيب المسؤول فقط" />
                 </label>
-                <label className="grid gap-1 sm:max-w-sm">
-                  <span className="text-xs font-bold text-slate-600">موعد متابعة مقترح</span>
-                  <input disabled={!canEdit} type="datetime-local" value={followUpAt} onChange={(e) => setFollowUpAt(e.target.value)} className="rounded-xl border px-3 py-2 text-sm disabled:bg-slate-50" />
-                </label>
-                <div className="flex flex-wrap gap-2">
-                  <button disabled={!canEdit || busy} type="button" onClick={() => void saveEncounter('save')} className="inline-flex items-center gap-2 rounded-xl border bg-white px-4 py-2 text-sm font-bold disabled:opacity-40">
-                    <Save className="h-4 w-4" /> حفظ
-                  </button>
-                  <button disabled={!canEdit || busy} type="button" onClick={() => void saveEncounter('complete')} className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-40">
-                    <CheckCircle2 className="h-4 w-4" /> إكمال الزيارة
-                  </button>
-                </div>
+                <p className="text-xs leading-6 text-slate-500">
+                  اكتب ملاحظات الكشف والتشخيص، وبعدها احفظ المسودة أو راجع خطوة المتابعة قبل إنهاء الزيارة.
+                </p>
               </div>
             </div>
 
+            </section>
+
+            <section aria-label="الروشتة الطبية" className={activeTab === 'prescription' ? 'space-y-4' : 'hidden'}>
             <div className="rounded-3xl border bg-white p-5 shadow-sm">
               <div className="flex items-center gap-2">
                 <Pill className="h-5 w-5 text-violet-700" />
@@ -567,6 +598,10 @@ export default function EncounterWorkspace({ encounterId }: { encounterId: strin
                 </div>
               )}
 
+              <div className="mt-5 rounded-xl border border-dashed border-cyan-200 bg-cyan-50/50 p-3 text-xs leading-6 text-cyan-900">
+                إنشاء مسودة الروشتة يحفظ الأدوية فقط، ومش بيحفظ ملاحظات الكشف غير لما تضغط «حفظ المسودة» تحت.
+                والطباعة متاحة للروشتات الموقعة فقط.
+              </div>
               <div className="mt-5 space-y-3">
                 {prescriptions.length === 0 && (
                   <div className="rounded-2xl border border-dashed p-4 text-xs text-slate-500">لا توجد روشتات في الزيارة حتى الآن.</div>
@@ -604,9 +639,93 @@ export default function EncounterWorkspace({ encounterId }: { encounterId: strin
                 ))}
               </div>
             </div>
+            </section>
+
+            <section aria-label="المتابعة وإنهاء الزيارة" className={activeTab === 'follow_up' ? 'space-y-4' : 'hidden'} onChange={() => setDirty(true)}>
+              <div className="rounded-3xl border bg-white p-5 shadow-sm">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="h-5 w-5 text-cyan-700" />
+                  <h2 className="font-black">المتابعة وإنهاء الكشف</h2>
+                </div>
+                <p className="mt-2 text-xs leading-6 text-slate-500">
+                  متابعة المريض اختيارية. لإكمال الزيارة لازم يكون فيه تشخيص مسجّل بواسطة الطبيب المسؤول.
+                </p>
+                <label className="mt-5 grid max-w-md gap-2">
+                  <span className="text-xs font-bold text-slate-600">موعد متابعة مقترح</span>
+                  <input disabled={!canEdit} type="datetime-local" value={followUpAt}
+                    onChange={(e) => setFollowUpAt(e.target.value)}
+                    className="rounded-xl border bg-white px-3 py-2.5 text-sm disabled:bg-slate-50" />
+                </label>
+                <div className="mt-5 space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm">
+                  <p className="font-black">مراجعة سريعة</p>
+                  <p>✓ المريض: {encounter.PatientName}</p>
+                  <p>✓ الطبيب: د. {encounter.PractitionerName}</p>
+                  <p className={diagnosisSummary.trim() ? 'text-emerald-700' : 'text-amber-700'}>
+                    {diagnosisSummary.trim() ? '✓ التشخيص مكتوب' : '• التشخيص مطلوب لإكمال الزيارة'}
+                  </p>
+                  <p>• الروشتة اختيارية — {prescriptions.length} مسودة / روشتة مسجلة</p>
+                  <p className="text-xs text-slate-500">الحسابات والدفع بتتم من Shared POS في مرحلة مستقلة.</p>
+                </div>
+              </div>
+            </section>
           </div>
         </section>
+        {canEdit && (
+          <footer className="sticky bottom-2 z-10 mt-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-lg backdrop-blur sm:px-5">
+            <div className="text-xs text-slate-500" aria-live="polite">
+              {dirty ? 'تعديلات الكشف لم تُحفظ بعد' : 'احفظ أي تعديلات قبل مغادرة الزيارة'}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button disabled={busy} type="button" onClick={() => void saveEncounter('save')}
+                className="inline-flex items-center gap-2 rounded-xl border bg-white px-4 py-2.5 text-sm font-bold disabled:opacity-40">
+                <Save className="h-4 w-4" /> حفظ المسودة
+              </button>
+              <button disabled={busy} type="button" onClick={() => {
+                if (activeTab !== 'follow_up') { setActiveTab('follow_up'); return; }
+                void saveEncounter('complete');
+              }} className="inline-flex items-center gap-2 rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-40">
+                <CheckCircle2 className="h-4 w-4" /> {activeTab === 'follow_up' ? 'إكمال الزيارة' : 'مراجعة وإنهاء'}
+              </button>
+            </div>
+          </footer>
+        )}
       </div>
+
+      {signedPrescriptions.length > 0 && canClinicalAct && (
+        <section aria-label="نسخة طباعة الروشتة" className="hidden print:block">
+          {signedPrescriptions.map((rx) => (
+            <article key={rx.PrescriptionId} className="mx-auto w-full max-w-3xl bg-white px-8 py-8 text-black"
+              style={{ breakAfter: 'page' }}>
+              <header className="border-b-2 border-slate-900 pb-5 text-center">
+                <h1 className="text-2xl font-bold">روشتة طبية — DRVO Clinics</h1>
+                <p className="mt-2 text-sm">د. {encounter.PractitionerName}</p>
+              </header>
+              <div className="mt-5 flex justify-between gap-4 text-sm">
+                <span>المريض: <strong>{encounter.PatientName}</strong></span>
+                <span>تاريخ الاعتماد: {rx.SignedAt ? new Date(rx.SignedAt).toLocaleDateString('ar-EG') : '—'}</span>
+              </div>
+              <div className="mt-8 min-h-[450px]">
+                <h2 className="font-serif text-2xl">Rx</h2>
+                <ol className="mt-5 space-y-5">
+                  {rx.items.map((item) => (
+                    <li key={item.PrescriptionItemId} className="border-b border-slate-200 pb-4">
+                      <strong className="text-base">{item.MedicationName} {item.Strength || ''}</strong>
+                      <p className="mt-2 text-sm">
+                        {[item.Dosage, item.Frequency, item.Duration, item.Route].filter(Boolean).join(' • ')}
+                      </p>
+                      {item.Instructions && <p className="mt-1 text-sm">{item.Instructions}</p>}
+                    </li>
+                  ))}
+                </ol>
+                {rx.Notes && <p className="mt-6 text-sm">تعليمات الطبيب: {rx.Notes}</p>}
+              </div>
+              <footer className="mt-5 border-t border-slate-900 pt-4 text-sm">
+                تم اعتماد الروشتة إلكترونيًا بواسطة الطبيب المسؤول
+              </footer>
+            </article>
+          ))}
+        </section>
+      )}
     </main>
   );
 }
