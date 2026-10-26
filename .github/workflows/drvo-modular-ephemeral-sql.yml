@@ -1,0 +1,61 @@
+name: DRVO Modular Disposable SQL Integration
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+jobs:
+  modular-ephemeral-sql:
+    # Temporary feature-stage gate: never touches the actual staging or production DB.
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'agent/modular-commercial-release-gates-v1'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      disposable-mssql:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: Y
+          MSSQL_PID: Developer
+          MSSQL_SA_PASSWORD: DrvoCIOnly2026_Fixture!
+        ports:
+          - 14331:1433
+    env:
+      CI: 'true'
+      DRVO_MODULAR_SQL_FIXTURE: '1'
+      DRVO_MODULAR_SQL_FIXTURE_PASSWORD: DrvoCIOnly2026_Fixture!
+    steps:
+      - name: Checkout exact feature head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Execute SQL Server constraints and snapshot roundtrip
+        run: npx tsx scripts/drvo/integration/modular-sql-fixture.ts
+
+      - name: Clarify environment boundary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '## Disposable SQL Server test'
+            echo ''
+            echo '- Synthetic ephemeral SQL Server container only'
+            echo '- Tests DRVO 019–022 migration scripts, SQL constraints and archive hash roundtrip'
+            echo '- Test SQL password is synthetic and has no access to staging/production'
+            echo '- Does not deploy, merge, or certify real tenant E2E'
+          } >> "$GITHUB_STEP_SUMMARY"
