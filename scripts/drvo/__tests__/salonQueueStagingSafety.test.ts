@@ -44,6 +44,14 @@ describe('Salon Queue authenticated staging acceptance', () => {
     expect(eta).toContain('getAvailableBarbers(now, { branchId })');
   });
 
+  it('keeps created walk-in response usable when legacy optional queue columns are absent', () => {
+    const queue = source('src/app/api/queue/route.ts');
+    const refetch = queue.slice(queue.indexOf('// ── STEP 2: Re-fetch full ticket'));
+    expect(refetch).toContain('${await getEstimateColsSelect(db)}');
+    expect(refetch).toContain('${await getLifecycleColsSelect(db)}');
+    expect(refetch).not.toContain("THEN qt.DurationMinutes ELSE NULL");
+  });
+
   it('runs only on designated staging PR and has no deploy step', () => {
     const workflow = source('.github/workflows/salon-queue-staging-e2e.yml');
     expect(workflow).toContain("head.ref == 'agent/salon-queue-e2e'");
