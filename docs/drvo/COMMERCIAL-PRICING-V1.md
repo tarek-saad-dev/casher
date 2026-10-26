@@ -1,5 +1,7 @@
 # DRVOERP V1 — Commercial Pricing
 
+> ⚠️ **LEGACY IMPLEMENTATION SNAPSHOT (2026-10-26):** Starter/Growth/Pro are no longer target product tiers. Values below may still exist in live catalog/database and must NOT be removed destructively. See [Business Model V2 — Modular Hybrid SaaS](./BUSINESS-MODEL-V2.md) for current commercial direction.
+
 > **Implementation snapshot, not the finalized business model (2026-10-26).** 
 > See **[DRVO ERP — Business Model & Pricing Strategy](./BUSINESS-MODEL-V1.md)** for the approved commercial direction and **[Salon Pricing & Feature Matrix](./SALON-PRICING-FEATURE-MATRIX-V1.md)** for the *proposed, unimplemented* feature packaging and validation gates. 
 > The prices/capacities below document the **existing V1 code/catalog** only. They are **not yet** the approved final market offer and do not imply the future feature matrix is implemented.
