@@ -667,6 +667,13 @@ export default function EmployeeMonthlyReportPanel() {
               value={formatCurrencyAr(report.summary.totalBaseWage)}
               icon={<Banknote className="h-5 w-5" />}
             />
+            {report.summary.monthlySalaryDue > 0 && (
+              <KpiCard
+                title="الراتب الشهري للفرع"
+                value={formatCurrencyAr(report.summary.monthlySalaryDue)}
+                icon={<Banknote className="h-5 w-5" />}
+              />
+            )}
             <KpiCard
               title="التارجت"
               value={formatCurrencyAr(report.summary.totalTargetAmount)}
