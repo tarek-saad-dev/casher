@@ -51,6 +51,11 @@ describe('versioned pure modular research quote engine', () => {
       lines:[{code:'booking',quantity:1,totalMonthlyMinor:19900},{code:'pos',quantity:1,totalMonthlyMinor:29900}],
     });
   });
+  it('supports an explicit zero-priced research app but not a missing price', () => {
+    const free=calc({}, {monthlyPerAppMinor:{...catalog.monthlyPerAppMinor,booking:0}});
+    expect(free.lines.find(x=>x.code==='booking')?.totalMonthlyMinor).toBe(0);
+    expect(errorCode(()=>calc({}, {monthlyPerAppMinor:{pos:29900,queue:9900}}))).toBe('CATALOG_INVALID');
+  });
   it('supports zero or explicit base fee and keeps it separate from selected app prices', () => {
     const quoted=calc({}, {baseMonthlyMinor:14900});
     expect(quoted.lines[0]).toMatchObject({code:'platform-base',quantity:1,totalMonthlyMinor:14900});

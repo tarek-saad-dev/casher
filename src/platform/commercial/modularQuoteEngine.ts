@@ -121,7 +121,7 @@ function assertResearchCatalog(catalog: ModularResearchCatalog, rules: ModularRe
     if (!eligible.has(code) || !rules.labels[code]) {
       throw new ModularQuoteError('CATALOG_INVALID', 'Unrecognized catalog app: ' + code);
     }
-    positiveMoney(amount, 'app price: ' + code);
+    positiveMoney(amount, 'app price: ' + code, true);
   }
   for (const code of eligible) {
     if (!Object.prototype.hasOwnProperty.call(catalog.monthlyPerAppMinor, code)) {
