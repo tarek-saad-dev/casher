@@ -25,9 +25,25 @@ describe('Salon booking staging acceptance safety', () => {
     expect(smoke).toContain('suppressNotification: true');
   });
 
+  it('terminates the one-shot runner only after verified synthetic cleanup', () => {
+    const source = read('scripts/drvo/salon-booking-e2e-staging.ts');
+    const cleanup = source.indexOf("check(Number(leftover.recordset[0].count) === 0");
+    const close = source.indexOf('await closeSmokePool(pool);');
+    const exit = source.indexOf("console.log('SALON_BOOKING_E2E_STAGING_EXIT_OK')");
+    expect(cleanup).toBeGreaterThan(0);
+    expect(close).toBeGreaterThan(cleanup);
+    expect(exit).toBeGreaterThan(close);
+    expect(source).toContain('SQL pool close deadline exceeded');
+    expect(source).toContain('if (timer) clearTimeout(timer);');
+    expect(source).toContain('process.exit(0);');
+    expect(source).toContain('process.exit(1);');
+    expect(source).toContain('await purgeSmokeTenant(pool, tenantCode);');
+  });
+
   it('does not run a staging job on arbitrary PR branches or invoke deploy workflows', () => {
     const workflow = read('.github/workflows/salon-booking-staging-e2e.yml');
-    expect(workflow).toContain("github.event.pull_request.head.ref == 'agent/salon-booking-e2e'");
+    expect(workflow).toContain("github.event.pull_request.head.ref == 'agent/salon-e2e-exit'");
+    expect(workflow).toContain('timeout-minutes: 15');
     expect(workflow).toContain('environment: drvo-staging');
     expect(workflow).toContain('DRVO_STAGING_SSH_KEY');
     expect(workflow).toContain('DRVO_STAGING_DB_PASSWORD');
