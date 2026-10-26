@@ -150,7 +150,7 @@ export async function PUT(request: NextRequest, { params }: Context) {
         .input('empId', sql.Int, empId)
         .input('tenantId', sql.UniqueIdentifier, tenantId)
         .query(`
-          SELECT EmpID, EmploymentType, PayrollMethod, IsPayrollEnabled,
+          SELECT EmpID, EmploymentType, PayrollMethod, ISNULL(IsPayrollEnabled, 1) AS IsPayrollEnabled,
                  PayrollScope, PayrollScopeEffectiveFrom
           FROM dbo.TblEmp WITH (UPDLOCK, HOLDLOCK)
           WHERE EmpID = @empId AND TenantId = @tenantId
