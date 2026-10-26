@@ -12,6 +12,7 @@
 import 'server-only';
 
 import { getPool, sql } from '@/lib/db';
+import { getCairoBusinessDate } from '@/lib/businessDate';
 
 export type BranchPayrollPayType = 'hourly' | 'daily' | 'monthly';
 
@@ -147,6 +148,16 @@ export async function resolveBranchPayrollPlanForDate(params: {
       p.EffectiveFrom, p.EffectiveTo, p.IsActive,
       CAST(1 AS bit) AS InheritedFromPrimary
     FROM dbo.TblEmpBranchPayrollPlan p
+    INNER JOIN dbo.TblEmp e ON e.EmpID = p.EmpID
+      AND NOT EXISTS (
+        SELECT 1 FROM dbo.TblEmpBranchPayrollAudit a
+        WHERE a.EmpID = p.EmpID AND a.NewPayrollScope = N'branch_monthly'
+          AND a.AuditID = (
+            SELECT TOP 1 z.AuditID FROM dbo.TblEmpBranchPayrollAudit z
+            WHERE z.EmpID = p.EmpID AND z.EffectiveFrom <= @workDate
+            ORDER BY z.EffectiveFrom DESC, z.AuditID DESC
+          )
+      )
     LEFT JOIN dbo.TblEmpBranchAssignment ea
       ON ea.EmpID = p.EmpID
      AND ea.BranchID = p.BranchID
@@ -229,6 +240,16 @@ export async function loadBranchDayPayrollPlans(
               p.PlanID DESC
           ) AS rn
         FROM dbo.TblEmpBranchPayrollPlan p
+        INNER JOIN dbo.TblEmp e ON e.EmpID = p.EmpID
+          AND NOT EXISTS (
+        SELECT 1 FROM dbo.TblEmpBranchPayrollAudit a
+        WHERE a.EmpID = p.EmpID AND a.NewPayrollScope = N'branch_monthly'
+          AND a.AuditID = (
+            SELECT TOP 1 z.AuditID FROM dbo.TblEmpBranchPayrollAudit z
+            WHERE z.EmpID = p.EmpID AND z.EffectiveFrom <= @workDate
+            ORDER BY z.EffectiveFrom DESC, z.AuditID DESC
+          )
+      )
         LEFT JOIN dbo.TblEmpBranchAssignment ea
           ON ea.EmpID = p.EmpID
          AND ea.BranchID = p.BranchID
@@ -376,7 +397,7 @@ export async function loadActiveBranchPayrollRatesByEmpIds(
   if (!ids.length) return out;
 
   const db = await getPool();
-  const req = db.request();
+  const req = db.request().input('asOfDate', sql.Date, getCairoBusinessDate());
   const placeholders = ids.map((id, i) => {
     const name = `e${i}`;
     req.input(name, sql.Int, id);
@@ -402,7 +423,8 @@ export async function loadActiveBranchPayrollRatesByEmpIds(
        AND (ea.EffectiveTo IS NULL OR ea.EffectiveTo >= CAST(SYSUTCDATETIME() AS date))
       WHERE p.EmpID IN (${placeholders.join(',')})
         AND p.IsActive = 1
-        AND p.EffectiveTo IS NULL
+        AND p.EffectiveFrom <= @asOfDate
+        AND (p.EffectiveTo IS NULL OR p.EffectiveTo >= @asOfDate)
     )
     SELECT PlanID, EmpID, BranchID, PayType, HourlyRate, DailyRate, MonthlySalary
     FROM ranked
@@ -438,6 +460,11 @@ export async function syncHrRatesToActiveBranchPlans(args: {
   sourceNotes?: string;
 }): Promise<{ updatedPlanIds: number[]; createdPlanId: number | null }> {
   const db = await getPool();
+  const scope = await db.request().input('empId', sql.Int, args.empId)
+    .query(`SELECT PayrollScope FROM dbo.TblEmp WHERE EmpID = @empId`);
+  if (scope.recordset[0]?.PayrollScope === 'branch_monthly') {
+    throw new Error('الراتب مستقل حسب الفرع: استخدم إعدادات مرتبات الفروع بدلاً من تعديل الراتب العام');
+  }
   const existing = await db
     .request()
     .input('empId', sql.Int, args.empId)

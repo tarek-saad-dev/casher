@@ -14,6 +14,7 @@ import { parseTimeToMinutes } from '@/lib/timeUtils';
 import KpiCard from '@/components/shared/KpiCard';
 import EmployeeHrFormModal from '@/components/hr/EmployeeHrFormModal';
 import EmployeeTargetSettingsModal from '@/components/hr/EmployeeTargetSettingsModal';
+import EmployeeBranchCompensationModal from '@/components/hr/EmployeeBranchCompensationModal';
 import {
   labelDayOffPolicy,
   labelEmploymentType,
@@ -73,6 +74,7 @@ interface Employee extends HrEmployeeListRow {
   RevenueCatName: string | null;
   Job: JobType | string | null;
   SalaryType?: string | null;
+  PayrollScope?: 'global' | 'branch_monthly';
   hasTargetPlan?: boolean;
   targetEnabled?: boolean | null;
   targetTierCount?: number | null;
@@ -263,6 +265,7 @@ function EmployeesPanel() {
   const [whatsappDrafts, setWhatsappDrafts] = useState<Record<number, string>>({});
   const [targetModalOpen, setTargetModalOpen] = useState(false);
   const [targetEmployee, setTargetEmployee] = useState<Employee | null>(null);
+  const [salaryEmployee, setSalaryEmployee] = useState<Employee | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true); setError('');
@@ -712,6 +715,7 @@ function EmployeesPanel() {
                       </div>
                       <div>
                         <span className="font-medium text-foreground">{emp.EmpName}</span>
+                        {emp.PayrollScope === "branch_monthly" && <span className="mr-2 rounded-md border border-primary/25 bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary">VIP · مرتبات الفروع</span>}
                         {(emp.EmpNameEn || emp.Job) && (
                           <p className="text-xs text-muted-foreground/70">
                             {[emp.EmpNameEn, emp.Job].filter(Boolean).join(' · ')}
@@ -856,6 +860,10 @@ function EmployeesPanel() {
                             <Target className="w-3.5 h-3.5 ml-2" />
                             إعداد التارجت
                           </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setSalaryEmployee(emp)}>
+                            <Banknote className="w-3.5 h-3.5 ml-2" />
+                            مرتبات الفروع
+                          </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => openFinanceModal(emp)}>
                             <Link2 className="w-3.5 h-3.5 ml-2" />
                             الربط المالي
@@ -904,6 +912,16 @@ function EmployeesPanel() {
           empName={targetEmployee.EmpName}
           onSuccess={(msg) => setSuccessMessage(msg)}
           onSaved={() => { void load(); }}
+        />
+      )}
+
+      {salaryEmployee && (
+        <EmployeeBranchCompensationModal
+          open={Boolean(salaryEmployee)}
+          empId={salaryEmployee.EmpID}
+          empName={salaryEmployee.EmpName}
+          onClose={() => setSalaryEmployee(null)}
+          onSaved={(message) => { setSuccessMessage(message); void load(); }}
         />
       )}
 

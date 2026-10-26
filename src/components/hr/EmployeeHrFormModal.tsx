@@ -206,6 +206,7 @@ export default function EmployeeHrFormModal({
     }
   }, [form.employmentType, form.payrollMethod, form.dayOffPolicy, payrollOptions, patchForm]);
 
+  const isBranchSalary = mode === 'edit' && employee?.PayrollScope === 'branch_monthly';
   const preview = schedulePreviewText(form);
   const validation = validateEmployeeHrForm(form);
   const canSubmit = validation.ok && !saving && !loadingProfile;
@@ -250,6 +251,12 @@ export default function EmployeeHrFormModal({
           : scheduleTouched && form.employmentType !== 'freelance';
 
       const hrPayload = buildEmployeeHrApiPayload(form, { mode, includeSchedule });
+      if (isBranchSalary) {
+        delete hrPayload.payrollMethod;
+        delete hrPayload.monthlySalary;
+        delete hrPayload.manualHourlyRate;
+        delete hrPayload.dailyRate;
+      }
 
       if (mode === 'create') {
         const res = await fetch('/api/employees', {
@@ -580,7 +587,8 @@ export default function EmployeeHrFormModal({
               </div>
             </div>
 
-            <div className="space-y-2">
+            {isBranchSalary && <p className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-xs text-muted-foreground">المرتب مستقل حسب الفرع (VIP). استخدم «مرتبات الفروع» لتعديل الأرقام.</p>}
+            <div className={isBranchSalary ? "space-y-2 pointer-events-none opacity-60" : "space-y-2"}>
               <Label>طريقة المحاسبة *</Label>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 {payrollOptions.map((pm) => (
@@ -609,6 +617,7 @@ export default function EmployeeHrFormModal({
               </div>
               <Switch
                 checked={form.isPayrollEnabled}
+                disabled={isBranchSalary}
                 onCheckedChange={(v) => patchForm({ isPayrollEnabled: v })}
               />
             </div>
@@ -621,6 +630,7 @@ export default function EmployeeHrFormModal({
                   min="0"
                   step="0.01"
                   value={form.manualHourlyRate}
+                  disabled={isBranchSalary}
                   onChange={(e) => patchForm({ manualHourlyRate: e.target.value })}
                   placeholder="25"
                   dir="ltr"
@@ -640,6 +650,7 @@ export default function EmployeeHrFormModal({
                   min="0"
                   step="0.01"
                   value={form.dailyRate}
+                  disabled={isBranchSalary}
                   onChange={(e) => patchForm({ dailyRate: e.target.value })}
                   placeholder="150"
                   dir="ltr"
@@ -659,6 +670,7 @@ export default function EmployeeHrFormModal({
                   min="0"
                   step="0.01"
                   value={form.monthlySalary}
+                  disabled={isBranchSalary}
                   onChange={(e) => patchForm({ monthlySalary: e.target.value })}
                   placeholder="5000"
                   dir="ltr"

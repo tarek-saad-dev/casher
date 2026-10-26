@@ -110,7 +110,7 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
       .input('tenantId', sql.UniqueIdentifier, tenantId)
       .query(`
       SELECT
-        EmploymentType, PayrollMethod, DayOffPolicy, IsPayrollEnabled,
+        EmploymentType, PayrollMethod, DayOffPolicy, IsPayrollEnabled, PayrollScope,
         ManualHourlyRate, DailyRate, BaseSalary
       FROM dbo.TblEmp WHERE EmpID = @empID AND TenantId = @tenantId
     `);
@@ -387,6 +387,13 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
           );
         }
       }
+    }
+
+    if (current.PayrollScope === 'branch_monthly' &&
+        (pendingRateSync || body.baseSalary !== undefined || body.salaryType !== undefined)) {
+      return NextResponse.json({
+        error: 'راتب الموظف مستقل لكل فرع. عدّل المرتبات من «مرتبات الفروع» في صفحة الموظفين',
+      }, { status: 409 });
     }
 
     if (setClauses.length === 0 && !pendingRateSync) {

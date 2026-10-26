@@ -9,6 +9,11 @@ IF NOT EXISTS (
     WHERE name = 'UX_TblEmpLedgerEntry_ActiveRefReason'
       AND object_id = OBJECT_ID('dbo.TblEmpLedgerEntry')
 )
+AND NOT EXISTS (
+    SELECT 1 FROM sys.indexes
+    WHERE name = 'UX_TblEmpLedgerEntry_ActiveRefReason_Branch'
+      AND object_id = OBJECT_ID('dbo.TblEmpLedgerEntry')
+)
 BEGIN
     CREATE UNIQUE NONCLUSTERED INDEX [UX_TblEmpLedgerEntry_ActiveRefReason]
         ON [dbo].[TblEmpLedgerEntry] ([RefType], [RefID], [EntryReason])

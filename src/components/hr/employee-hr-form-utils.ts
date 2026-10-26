@@ -27,6 +27,7 @@ export interface HrEmployeeListRow {
   HireDate?: string | null;
   EmploymentType?: string | null;
   PayrollMethod?: string | null;
+  PayrollScope?: 'global' | 'branch_monthly';
   DayOffPolicy?: string | null;
   DailyRate?: number | null;
   ManualHourlyRate?: number | null;

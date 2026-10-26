@@ -102,6 +102,7 @@ export interface EmployeeMonthlyPayrollReport {
     totalActualHours: number;
     totalScheduledHours: number;
     totalBaseWage: number;
+    monthlySalaryDue: number;
     totalFullDayBase: number;
     totalBaseShortfall: number;
     totalDeductions: number;
