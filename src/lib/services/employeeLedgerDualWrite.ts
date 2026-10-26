@@ -412,6 +412,7 @@ export async function fetchGeneratedPayrollRowsForLedger(
       FROM dbo.TblEmpDailyPayroll p
       WHERE p.WorkDate = @WorkDate
         AND p.Status = N'Generated'
+        AND p.SupersededByPayrollRevisionID IS NULL
         ${branchId != null ? 'AND p.BranchID = @BranchID' : ''}
     `);
 
