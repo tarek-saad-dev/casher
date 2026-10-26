@@ -74,7 +74,7 @@ export async function submitCommercialPolicyEvidence(args:{
       EXEC @ret=sp_getapplock @Resource=@resource,@LockMode='Exclusive',
         @LockOwner='Transaction',@LockTimeout=10000;
       SELECT @ret AS acquired;`);
-  if(Number(lock.recordset[0]?.acquired)<0)
+  if(![0,1].includes(Number(lock.recordset[0]?.acquired)))
    throw new PolicyEvidenceError('BUSY','مراجعة أخرى جارية لهذا الشرط',409);
   const parent=await new sql.Request(tx).input('id',sql.UniqueIdentifier,args.candidateId)
    .query(`SELECT SourceDigest,Status FROM dbo.ModularCommercialReleaseCandidate WITH (UPDLOCK,HOLDLOCK)

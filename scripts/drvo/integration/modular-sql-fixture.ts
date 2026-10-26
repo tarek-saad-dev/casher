@@ -66,6 +66,11 @@ async function main(){
       Code NVARCHAR(50) NOT NULL,
       Status NVARCHAR(20) NOT NULL
     );
+    CREATE TABLE dbo.TenantIndustryPack(
+      TenantId UNIQUEIDENTIFIER NOT NULL,
+      PackCode NVARCHAR(32) NOT NULL,
+      CONSTRAINT UX_CIFixture_TenantPack UNIQUE(TenantId,PackCode)
+    );
     CREATE TABLE dbo.TenantModularQuoteRequest(
       TenantId UNIQUEIDENTIFIER NOT NULL,
       RequestId UNIQUEIDENTIFIER NOT NULL,
@@ -103,6 +108,8 @@ async function main(){
    .query(`INSERT INTO dbo.Tenant(TenantId,Code,Status)
      VALUES (@tenantId,N'DRVO_CI_SYNTHETIC',N'active'),
             (@other,N'DRVO_CI_OTHER_SYNTHETIC',N'active');`);
+  await db.request().input('tenantId',sql.UniqueIdentifier,tenantId)
+   .query(`INSERT INTO dbo.TenantIndustryPack(TenantId,PackCode) VALUES(@tenantId,N'salon');`);
   await db.request().input('tenantId',sql.UniqueIdentifier,tenantId)
    .input('requestId',sql.UniqueIdentifier,requestId)
    .input('apps',sql.NVarChar(sql.MAX),JSON.stringify(['booking','pos']))

@@ -96,6 +96,7 @@ describe('operator-only immutable evidence API and UI',()=>{
   expect(svc).toContain('await getCommercialReleaseCandidate(candidateId)');
   expect(svc).toContain('WITH (UPDLOCK,HOLDLOCK)');
   expect(svc).toContain('sp_getapplock');
+  expect(svc).toContain("![0,1].includes(Number(lock.recordset[0]?.acquired))");
   expect(svc).toContain('if(last?.Status===\'submitted\')');
   expect(svc).toContain('INSERT INTO dbo.ModularCommercialPolicyEvidence');
   expect(svc).toContain("WHERE EvidenceId=@id AND Status=N'submitted' AND SubmittedByUserId<>@actor");
