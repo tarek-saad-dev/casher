@@ -324,7 +324,7 @@ export async function executeLegacySaleCreateTransaction(
       transaction,
       beforeSnapshot: null,
       afterSnapshot: {
-        header: { invDate: workDateStr },
+        header: { invDate: workDateStr, branchId },
         details: items.map((it) => ({ empId: it.empId })),
       },
       reason: 'invoice_create',
