@@ -13,3 +13,14 @@
 ## Real operator services SQL integration (same disposable fixture)
 
 The SQL workflow runs `src/platform/__tests__/modularEphemeralServiceSql.test.ts` after fixture setup. It mocks only the DB connection injection and the Next-only `server-only` import, **not** the actual commercial services. It calls `createCommercialReleaseCandidate`, `getCommercialReleaseCandidate`, `submitCommercialPolicyEvidence`, `reviewCommercialPolicyEvidence`, `listCommercialPolicyEvidence`, `createInternalQuoteSnapshot` and `listInternalQuoteSnapshots` against the same synthetic SQL fixture. Required scenarios: duplicate preparation, review independence, revision 2, repeat review idempotence, actual snapshot create/retry and closed-inquiry rejection. A green result still does not replace real authenticated Staging E2E.
+
+## Merge evidence ledger (26 Oct 2026)
+
+| Gate | Evidence source | Meaning |
+| --- | --- | --- |
+| SQL schema and constraint tests | `DRVO Modular Disposable SQL Integration` | Synthetic SQL 019–022 real DDL and tamper/cross-tenant rejection |
+| Server-side transaction integration | `modularEphemeralServiceSql.test.ts` in disposable SQL workflow | Actual server-side commercial services on isolated SQL, including idempotent requests and independent review |
+| Normal app CI | `CI` on PR #157 head | Security regression, pricing/migration policy and production build |
+| Actual staging | `DRVO Modular Commercial Staging Read-Only Gate` | **Blocked:** missing `DRVO_STAGING_SSH_HOST`; cannot infer real DB/readiness/UX E2E |
+
+Do not report stages as PASS until the exact current head completes the corresponding workflow. None of these checks authorizes publication of tariffs or production deploy.
