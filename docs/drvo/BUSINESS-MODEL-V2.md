@@ -126,6 +126,8 @@ Track activation (first real booking/sale), trial-to-verified-paid, MRR/ARPA, fr
 
 The active work-in-progress **modular-pricing research prototype** is described in [Modular Pricing Research V1](./MODULAR-PRICING-RESEARCH-V1.md). Its versioned per-app and base-plus-app scenarios are **unapproved assumptions**, and the old customer-facing plan selection is closed while preserving historical subscriptions. This is not checkout and does not activate commercial entitlements.
 
+**Commercial schema foundation (shadow-only):** see [Modular Commercial Draft Foundation](./MODULAR-COMMERCIAL-DRAFT-FOUNDATION.md) for migration 015 and its explicitly non-paying/non-authorizing tables. It must not be treated as subscription activation.
+
 ## 8. Implementation roadmap — after commercial approval
 
 1. **Confirm V2 charging unit and candidate pricing** with customer research, cost model and founder signoff.

@@ -13,6 +13,7 @@ import { tenantBrandProfileMigration } from './011-tenant-brand-profile';
 import { messagingTenancyMigration } from './012-messaging-tenancy';
 import { publicSelfServiceSignupMigration } from './013-public-self-service-signup';
 import { tenantPlanRequestsMigration } from './014-tenant-plan-requests';
+import { modularCommercialDraftsMigration } from './015-modular-commercial-drafts';
 import { drvoModuleRequiredMigrationsFromManifest } from '../../../src/platform/drvo/moduleManifest';
 
 /** Ordered DRVO migration manifest — single source of truth for migration order. */
@@ -31,6 +32,7 @@ export const DRVO_MIGRATIONS: DrvoMigrationDefinition[] = [
   messagingTenancyMigration,
   publicSelfServiceSignupMigration,
   tenantPlanRequestsMigration,
+  modularCommercialDraftsMigration,
 ];
 
 export function assertDrvoMigrationManifestValid(): void {
