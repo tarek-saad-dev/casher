@@ -27,6 +27,7 @@ type Practitioner = {
   EmpID: number;
   EmpName: string;
   Job?: string | null;
+  Specialty?: string | null;
   UserID?: number | null;
 };
 
@@ -60,6 +61,7 @@ export default function ClinicWorkspace() {
 
   const [newDoctorOpen, setNewDoctorOpen] = useState(false);
   const [newDoctorName, setNewDoctorName] = useState('');
+  const [newDoctorSpecialty, setNewDoctorSpecialty] = useState('');
   const [linkDoctorToCurrentUser, setLinkDoctorToCurrentUser] = useState(false);
   const [staffLogins, setStaffLogins] = useState<StaffLogin[]>([]);
   const [doctorUserId, setDoctorUserId] = useState('');
@@ -166,13 +168,14 @@ export default function ClinicWorkspace() {
       const res = await fetch('/api/clinic/practitioners', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, linkCurrentUser: linkDoctorToCurrentUser, userId: doctorUserId ? Number(doctorUserId) : null }),
+        body: JSON.stringify({ name, specialty: newDoctorSpecialty.trim() || null, linkCurrentUser: linkDoctorToCurrentUser, userId: doctorUserId ? Number(doctorUserId) : null }),
       });
       const data = (await res.json()) as Practitioner & { error?: string };
       if (!res.ok || !data.EmpID) throw new Error(data.error || 'تعذر إضافة الطبيب');
       await loadPractitioners();
       setDoctorId(String(data.EmpID));
       setNewDoctorName('');
+      setNewDoctorSpecialty('');
       setLinkDoctorToCurrentUser(false);
       setDoctorUserId('');
       setNewDoctorOpen(false);
@@ -360,7 +363,7 @@ export default function ClinicWorkspace() {
               </div>
               <button
                 type="button"
-                onClick={() => { setNewDoctorName(selectedDoctor?.EmpName ?? ''); setNewDoctorOpen((x) => !x); }}
+                onClick={() => { setNewDoctorName(selectedDoctor?.EmpName ?? ''); setNewDoctorSpecialty(selectedDoctor?.Specialty ?? ''); setNewDoctorOpen((x) => !x); }}
                 className="inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-bold"
               >
                 <UserPlus className="h-4 w-4" /> {selectedDoctor ? 'إعداد حساب الطبيب' : 'إضافة طبيب'}
@@ -386,6 +389,17 @@ export default function ClinicWorkspace() {
                     إضافة الطبيب
                   </button>
                 </div>
+                <label className="grid gap-1 text-xs text-slate-600">
+                  <span>تخصص الطبيب (اختياري)</span>
+                  <input
+                    aria-label="تخصص الطبيب"
+                    value={newDoctorSpecialty}
+                    onChange={e => setNewDoctorSpecialty(e.target.value)}
+                    placeholder="مثال: باطنة، أطفال، جلدية"
+                    maxLength={120}
+                    className="rounded-xl border bg-white px-3 py-2 text-sm"
+                  />
+                </label>
                 <label className="flex items-center gap-2 text-xs text-slate-600">
                   <input
                     type="checkbox"
@@ -422,7 +436,7 @@ export default function ClinicWorkspace() {
                   <option value="">اختار الطبيب</option>
                   {practitioners.map((emp) => (
                     <option key={emp.EmpID} value={emp.EmpID}>
-                      {emp.EmpName}
+                      {emp.EmpName}{emp.Specialty ? ` — ${emp.Specialty}` : ''}
                     </option>
                   ))}
                 </select>

@@ -34,3 +34,11 @@ npx vitest run src/apps/medical-records/__tests__/receptionBoard.test.ts src/app
 npm run build
 ```
 Manually: clinic -> book -> check-in -> start -> encounter; setup -> patient/doctor; desktop and mobile; filters by doctor; broken API; tenant branch switch.
+
+### Physician specialization: first real clinic setup field
+- Existing `ClinicPractitioner.Specialty` is used; there is **no new table or migration**.
+- `GET /api/clinic/practitioners` returns the specialty for each clinic doctor.
+- Administrator can add/update an optional specialty using the existing `POST /api/clinic/practitioners` path. Input is a max 120-character string, optional, and the repository's existing tenant/doctor checks are unchanged.
+- `/clinic/setup` shows a specialty text input and doctor selection displays the persisted specialty.
+- Editing doctor schedules and consultation pricing via Shared Booking/Catalog remains the next configuration slice.
+- QA also run `src/apps/medical-records/__tests__/practitionerRoutes.test.ts`.

@@ -25,6 +25,15 @@ describe('administrator practitioner linking', () => {
     expect(mocks.register).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 'tenant-a', empId: 12, userId: 24, actorUserId: 7 }));
     expect(mocks.create).not.toHaveBeenCalled();
   });
+  it('stores optional specialization in the existing clinical practitioner record', async () => {
+    const response = await POST(req({ name: 'Doctor A', userId: 24, specialty: 'باطنة' }));
+    expect(response.status).toBe(200);
+    expect(mocks.register).toHaveBeenCalledWith(expect.objectContaining({ specialty: 'باطنة' }));
+  });
+  it.each([{ specialty: ['باطنة'] }, { specialty: 'x'.repeat(121) }])('rejects malformed specializations', async (extra) => {
+    expect((await POST(req({ name: 'Doctor A', ...extra }))).status).toBe(400);
+    expect(mocks.register).not.toHaveBeenCalled();
+  });
   it.each([0, -1, 1.5, 'invalid'])('rejects invalid target login %j', async (userId) => {
     expect((await POST(req({ name: 'Doctor A', userId }))).status).toBe(400);
     expect(mocks.register).not.toHaveBeenCalled();
