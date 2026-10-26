@@ -33,6 +33,16 @@ describe('Salon daily close checklist', () => {
     expect(implementation).not.toContain('UPDATE dbo.');
   });
 
+  it('renders the preflight in the operations manager interface without automatic close', () => {
+    const card = read('src/components/operations/SalonCloseReadinessCard.tsx');
+    const page = read('src/app/admin/operations/page.tsx');
+    expect(page).toContain('isAdmin && hasActiveDay ? <SalonCloseReadinessCard');
+    expect(card).toContain('/api/operations/day-close-readiness');
+    expect(card).toContain('توجد مطابقة خزينة مسجلة');
+    expect(card).toContain('data.items.map(');
+    expect(card).not.toContain("method: 'POST'");
+  });
+
   it('retains the transaction-level close guard separately from read-only preflight', () => {
     const transaction = read('src/modules/operations/infra/businessDayMutationTx.ts');
     expect(transaction).toContain('assertNoPendingSalonQueueAtClose(tx');
