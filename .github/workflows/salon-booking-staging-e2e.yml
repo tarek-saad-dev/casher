@@ -14,10 +14,10 @@ concurrency:
 
 jobs:
   salon-booking-e2e:
-    if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'agent/salon-booking-e2e'
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'agent/salon-e2e-exit'
     runs-on: ubuntu-latest
     environment: drvo-staging
-    timeout-minutes: 30
+    timeout-minutes: 15
     env:
       DRVO_STAGING_SSH_HOST: ${{ secrets.DRVO_STAGING_SSH_HOST || secrets.VPS_HOST }}
       DRVO_STAGING_SSH_KEY: ${{ secrets.DRVO_STAGING_SSH_KEY }}
