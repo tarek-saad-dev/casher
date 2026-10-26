@@ -10,6 +10,10 @@ describe('Hybrid SaaS entitlement planning: no production gates',()=>{
     expect(evalShadow(base)).toMatchObject({reason:'TRIAL_VALID',source:'trial',
       accessRecommended:true,canCharge:false,canActivate:false,changesCurrentAccess:false});
   });
+  it('does not accept a trial window longer than approved 14 days',()=>{
+    expect(evalShadow({...base,trialEndsEpochMs:15*24*60*60*1000})).toMatchObject({
+      reason:'NO_VALID_GRANT',accessRecommended:false});
+  });
   it('expired trial cannot silently turn into Free Forever',()=>{
     expect(evalShadow({...base,nowEpochMs:1209600000})).toMatchObject({
       reason:'TRIAL_EXPIRED',accessRecommended:false});
