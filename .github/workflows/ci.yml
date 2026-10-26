@@ -32,6 +32,8 @@ jobs:
           src/platform/__tests__/publicSignup.test.ts
           src/lib/booking/__tests__/bookingBranchDefaults.test.ts
           src/platform/__tests__/publicSignupAppSelection.test.ts
+          src/platform/__tests__/tenantBillingRequests.test.ts
+          src/platform/__tests__/tenantBillingService.test.ts
           src/platform/__tests__/tenantAppManager.test.ts
           src/platform/__tests__/tenantAppManagerService.test.ts
           src/platform/__tests__/drvo012Composition.test.ts

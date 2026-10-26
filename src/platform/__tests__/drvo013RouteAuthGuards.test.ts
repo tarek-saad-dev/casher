@@ -70,6 +70,7 @@ const CORE_TENANT_HELPERS = [
 
 /** Domain helpers that wrap a core helper (verified below). */
 const INDIRECT_TENANT_HELPERS = [
+  'requireTenantBillingAdmin', // wraps authenticateTenantShell + tenant-admin RBAC; works on expired trials
   'requireWhatsAppTemplateAdmin',
   'resolveReportBranchScope',
   'resolveDailyPayrollViewScope',

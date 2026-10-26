@@ -74,6 +74,9 @@ export function TenantShellGate({ children }: { children: React.ReactNode }) {
 
   if (!snapshot || isAlwaysOpen(pathname)) return <>{children}</>;
 
+  // Billing remains accessible to admins when a trial has expired; the server page/API enforce RBAC.
+  if (pathname === '/admin/billing') return <>{children}</>;
+
   if (!snapshot.subscription.allowed) {
     const notice = describeSubscriptionNotice(snapshot.subscription);
     return (
@@ -83,6 +86,7 @@ export function TenantShellGate({ children }: { children: React.ReactNode }) {
         detail={notice?.detail ?? ''}
         action={
           <div className="flex justify-center gap-2">
+            <Link href="/admin/billing" className="rounded-lg border border-border px-4 py-2 text-sm">الباقات والاشتراك</Link>
             {snapshot.isPlatformOperator && (
               <Link href="/platform" className="rounded-lg border border-border px-4 py-2 text-sm">
                 لوحة المنصة
