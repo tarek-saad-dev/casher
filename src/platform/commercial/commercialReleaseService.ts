@@ -46,6 +46,16 @@ export async function listCommercialReleaseCandidates():Promise<StoredCommercial
   return (result.recordset as Record<string,unknown>[]).map(shape);
 }
 
+/** Read exactly one candidate and verify its immutable research-source digest. */
+export async function getCommercialReleaseCandidate(candidateId:string):Promise<StoredCommercialCandidate> {
+  const pool=await getPool();
+  const result=await pool.request().input('id',sql.UniqueIdentifier,candidateId)
+    .query(JOIN+' WHERE c.CandidateId=@id;');
+  const row=result.recordset[0] as Record<string,unknown>|undefined;
+  if(!row)throw new CommercialReleaseError('CANDIDATE_NOT_FOUND','ملف الإصدار غير موجود',404);
+  return shape(row);
+}
+
 /** Only prepares a release dossier. Does not create an approved price catalog. */
 export async function createCommercialReleaseCandidate(args:{
   sourceProposalId:string;actorUserId:number;
