@@ -34,6 +34,9 @@ export default function ClinicReceptionPage() {
           <Link href="/clinic/setup" className="inline-flex items-center gap-2 text-xs font-semibold text-slate-600 hover:text-cyan-700">
             <Settings2 className="h-4 w-4" /> إدارة الأطباء وملفات المرضى / زيارة بدون حجز
           </Link>
+          <Link href="/clinic/settings" className="inline-flex items-center gap-2 text-xs font-semibold text-slate-600 hover:text-cyan-700">
+            <Settings2 className="h-4 w-4" /> خدمات العيادة والأسعار والمواعيد
+          </Link>
           <Link href="/income/pos" className="inline-flex items-center gap-2 text-xs font-semibold text-slate-600 hover:text-cyan-700">
             <Receipt className="h-4 w-4" /> الحسابات عبر Shared POS
           </Link>
