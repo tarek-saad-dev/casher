@@ -21,6 +21,21 @@ describe('Salon Pack branch day-close readiness', () => {
     expect(PENDING_SALON_QUEUE_STATUSES).not.toContain('cancelled');
   });
 
+  it('requires staging-only data and cleanup for the full daily close proof', () => {
+    const smoke = read('scripts/drvo/salon-day-close-e2e-staging.ts');
+    const workflow = read('.github/workflows/salon-day-close-staging-e2e.yml');
+    expect(smoke).toContain("const EXPECTED_DB = 'last132_agent'");
+    expect(smoke).toContain("const EXPECTED_LOGIN = 'drvo_agent'");
+    expect(smoke).toContain("pendingCloseCode === 'PENDING_QUEUE_TICKETS'");
+    expect(smoke).toContain("await closeBusinessDay(closeCtx)");
+    expect(smoke).toContain("SALON_DAY_CLOSE_E2E_STAGING_PASS");
+    expect(smoke).toContain("await purgeSmokeTenant(pool, tenantCode)");
+    expect(smoke).toContain("Synthetic queue ticket cleaned completely");
+    expect(workflow).toContain("head.ref == 'agent/salon-day-close-guard'");
+    expect(workflow).toContain('environment: drvo-staging');
+    expect(workflow).not.toContain('deploy-vps');
+  });
+
   it('checks queue status against BOTH active branch and business date inside the locked transaction', () => {
     const check = read('src/packs/salon/closeDayReadiness.ts');
     const tx = read('src/modules/operations/infra/businessDayMutationTx.ts');
