@@ -25,6 +25,7 @@ import {
 } from '@/lib/bookingRescheduleCore';
 import { ScheduleConflictError } from '@/lib/scheduleIntegrity';
 import { resolvePublicBookingBranchContext } from '@/lib/booking/publicBookingBranchContext';
+import { resolvePublicBookingTenantIdForBranch } from '@/lib/booking/publicBookingTenancy';
 import type { PublicBookingErrorCode } from '@/lib/booking/publicBookingErrorCatalog';
 import {
   BOOKING_RESCHEDULE_CONTRACT_VERSION,
@@ -98,6 +99,7 @@ async function loadOwnedBookingHead(args: {
   customerPhone: string;
   status: string;
   branchCode: string | null;
+  tenantId: string;
   serviceIds: number[];
 }> {
   const code = normalizePublicBookingCode(args.code);
@@ -124,6 +126,7 @@ async function loadOwnedBookingHead(args: {
     | {
         BookingID: number;
         BookingCode: string;
+        BranchID: number | null;
         Status: string;
         CustomerPhone: string | null;
         BranchCode: string | null;
@@ -136,12 +139,21 @@ async function loadOwnedBookingHead(args: {
     throw new PublicBookingRescheduleError('BOOKING_NOT_FOUND_OR_UNAUTHORIZED');
   }
 
+  // Source booking determines the only tenant that can receive this move.
+  // A caller's phone alone must never allow moving across organizations.
+  const tenantId = await resolvePublicBookingTenantIdForBranch(
+    Number(row.BranchID),
+    'public-booking-reschedule',
+  );
+  if (!tenantId) throw new PublicBookingRescheduleError('BOOKING_NOT_FOUND');
+
   const loaded = await loadBookingForReschedule(Number(row.BookingID));
   if (!loaded) throw new PublicBookingRescheduleError('BOOKING_NOT_FOUND');
 
   return {
     bookingId: loaded.bookingId,
     bookingCode: String(row.BookingCode).toUpperCase(),
+    tenantId,
     customerPhone: phone,
     status: loaded.status,
     branchCode: row.BranchCode ? String(row.BranchCode) : null,
@@ -181,6 +193,7 @@ export async function previewPublicBookingReschedule(input: {
     const branch = await resolvePublicBookingBranchContext({
       branchCode: input.desired.branchCode,
       purpose: 'public_booking',
+      expectedTenantId: head.tenantId,
     });
 
     const servicesChanged = !sameServiceSet(head.serviceIds, input.desired.serviceIds);
@@ -252,6 +265,7 @@ export async function reschedulePublicBooking(
   const branch = await resolvePublicBookingBranchContext({
     branchCode: input.desired.branchCode,
     purpose: 'public_booking',
+    expectedTenantId: head.tenantId,
   });
   const branchChanged =
     head.branchCode != null &&
