@@ -56,7 +56,7 @@ export async function getClinicBillingPreview(input: {
       JOIN dbo.Location location
         ON location.TenantId=e.TenantId AND location.LocationId=e.LocationId
       WHERE e.TenantId=@tenantId AND e.EncounterId=@encounterId
-        AND location.LegacyBranchID=@branchId;
+        AND location.LegacyBranchId=@branchId;
     `);
   const r = res.recordset[0] as {
     ClientID: number; PatientName: string; PatientMobile: string | null;
@@ -128,7 +128,7 @@ export async function linkClinicSaleWithinTransaction(
       JOIN dbo.Location location
         ON location.TenantId=e.TenantId AND location.LocationId=e.LocationId
       WHERE e.TenantId=@tenantId AND e.EncounterId=@encounterId
-        AND location.LegacyBranchID=@branchId;
+        AND location.LegacyBranchId=@branchId;
     `);
   const row = base.recordset[0] as {
     ClientID: number; PractitionerEmpID: number; Status: string; BookingID: number;

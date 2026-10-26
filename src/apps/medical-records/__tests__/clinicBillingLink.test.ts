@@ -37,7 +37,7 @@ describe('clinic billing link atomic POS adapter', () => {
     const tx = {} as never;
     await linkClinicSaleWithinTransaction(tx, input);
     expect(db.query.mock.calls[0][0]).toContain('WITH (UPDLOCK, HOLDLOCK)');
-    expect(db.query.mock.calls[0][0]).toContain('location.LegacyBranchID=@branchId');
+    expect(db.query.mock.calls[0][0]).toContain('location.LegacyBranchId=@branchId');
     expect(db.input).toHaveBeenCalledWith('tenantId', 'uuid', 'tenant-1');
     expect(db.input).toHaveBeenCalledWith('encounterId', 'uuid', input.encounterId);
     expect(db.input).toHaveBeenCalledWith('invID', 'int', 8123);
