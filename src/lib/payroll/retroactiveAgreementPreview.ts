@@ -70,6 +70,9 @@ export async function previewRetroVip(params: {
   const active = new Set(assigned.recordset.filter((x: {Assigned:number}) => Boolean(x.Assigned))
     .map((x: {BranchID:number}) => Number(x.BranchID)));
   if (enabled.some(b=>!active.has(b.branchId))) blocker.push('يجب تعيين الموظف في كل فرع له مرتب');
+  // The preview endpoint must be read-only without escalation to update locks.
+  // During APPLY, retain locks for the whole serializable transaction.
+  const sourceLock = params.transaction ? 'WITH (UPDLOCK,HOLDLOCK)' : '';
   // Always reconcile each original payroll source to its own active ledger credit.
   // The review cannot approve orphan, misclassified or cross-branch wages.
   const source = await rq().input('emp',sql.Int,params.empId).input('start',sql.Date,start).input('today',sql.Date,today)
@@ -78,14 +81,14 @@ export async function previewRetroVip(params: {
       'p.SupersededByPayrollRevisionID,',
       'w.LedgerCount, w.LedgerAmount, w.LedgerBranchId,',
       'w.LedgerDirection, w.LedgerMonth, w.LedgerCashMoveId',
-      'FROM dbo.TblEmpDailyPayroll p WITH (UPDLOCK,HOLDLOCK)',
+      'FROM dbo.TblEmpDailyPayroll p '+sourceLock,
       'OUTER APPLY (',
       'SELECT COUNT_BIG(*) AS LedgerCount, SUM(le.Amount) AS LedgerAmount,',
       'MIN(le.BranchID) AS LedgerBranchId,',
       'MIN(le.EntryDirection) AS LedgerDirection,',
       'MIN(le.PayrollMonth) AS LedgerMonth,',
       'MAX(le.CashMoveID) AS LedgerCashMoveId',
-      'FROM dbo.TblEmpLedgerEntry le WITH (UPDLOCK,HOLDLOCK)',
+      'FROM dbo.TblEmpLedgerEntry le '+sourceLock,
       "WHERE le.RefType=N'TblEmpDailyPayroll' AND le.RefID=p.ID",
       "AND le.EmpID=p.EmpID AND le.EntryReason=N'hourly_wage' AND le.IsVoided=0",
       ') w',
