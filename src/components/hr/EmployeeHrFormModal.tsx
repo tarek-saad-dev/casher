@@ -41,6 +41,11 @@ import {
 } from '@/lib/hr/employee-hr-model';
 import { JobType } from '@/lib/types';
 import { BARBER_IMAGE_PRESETS } from '@/lib/barberImages';
+import EmployeeBranchPayrollFields, {
+  type CompensationBranch,
+  type CompensationDetails,
+  type CompensationMode,
+} from '@/components/hr/EmployeeBranchPayrollFields';
 
 const JOB_NONE_VALUE = '__none__';
 const JOB_TYPE_OPTIONS = Object.values(JobType);
@@ -112,6 +117,11 @@ export default function EmployeeHrFormModal({
   const [scheduleTouched, setScheduleTouched] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [imageUploadError, setImageUploadError] = useState('');
+  const [compDetails, setCompDetails] = useState<CompensationDetails | null>(null);
+  const [compScope, setCompScope] = useState<CompensationMode>('global');
+  const [compBranches, setCompBranches] = useState<CompensationBranch[]>([]);
+  const [compDate, setCompDate] = useState('');
+  const [compGlobalSalary, setCompGlobalSalary] = useState('');
 
   const patchForm = useCallback((partial: Partial<EmployeeHrFormState>) => {
     setForm((prev) => ({ ...prev, ...partial }));
@@ -148,45 +158,60 @@ export default function EmployeeHrFormModal({
     setScheduleTouched(true);
   }, []);
 
-  const loadEditData = useCallback(async (emp: HrEmployeeListRow) => {
+  const loadEditData = useCallback(async (emp: HrEmployeeListRow, signal: AbortSignal) => {
     setLoadingProfile(true);
+    setCompDetails(null);
     setError('');
     try {
-      let profile = null;
-      let schedule = null;
-      const res = await fetch(`/api/admin/employees/${emp.EmpID}/profile`);
-      if (res.ok) {
-        const data = await res.json();
-        profile = data.employee ?? null;
-        schedule = data.schedule ?? null;
-      }
-      const next = employeeToFormState(emp, profile, schedule);
+      // Both sources are required: never offer a financial save from stale list data.
+      const [profileRes, compensationRes] = await Promise.all([
+        fetch(`/api/admin/employees/${emp.EmpID}/profile`, { signal }),
+        fetch(`/api/admin/employees/${emp.EmpID}/compensation`, { signal }),
+      ]);
+      const profileData = await profileRes.json();
+      const compensationData = await compensationRes.json();
+      if (!profileRes.ok) throw new Error(profileData.error || 'تعذر تحميل ملف الموظف');
+      if (!compensationRes.ok) throw new Error(compensationData.error || 'تعذر تحميل اتفاقيات القبض');
+      if (signal.aborted) return;
+
+      const details = compensationData as CompensationDetails;
+      const next = employeeToFormState(emp, profileData.employee ?? null, profileData.schedule ?? null);
       setForm(next);
       setInitialForm(next);
+      setCompDetails(details);
+      setCompScope(details.employee.scope);
+      setCompBranches(details.branches);
+      setCompDate(details.effectiveFrom);
+      setCompGlobalSalary(String(details.branches.find((b) => b.isAssigned && b.enabled)?.monthlySalary ?? ''));
       setScheduleTouched(false);
-    } catch {
-      const next = employeeToFormState(emp);
-      setForm(next);
-      setInitialForm(next);
-      setScheduleTouched(false);
+    } catch (e: unknown) {
+      if (signal.aborted) return;
+      setError(e instanceof Error ? e.message : 'تعذر تحميل البيانات — أعد فتح تعديل الموظف');
     } finally {
-      setLoadingProfile(false);
+      if (!signal.aborted) setLoadingProfile(false);
     }
   }, []);
 
   useEffect(() => {
     if (!open) return;
+    const controller = new AbortController();
     setError('');
     setImageUploadError('');
     setOptionalOpen(false);
+    setCompDetails(null);
+    setCompScope('global');
+    setCompBranches([]);
+    setCompDate('');
+    setCompGlobalSalary('');
     if (mode === 'create') {
       const empty = createEmptyEmployeeHrFormState();
       setForm(empty);
       setInitialForm(empty);
       setScheduleTouched(true);
     } else if (employee) {
-      void loadEditData(employee);
+      void loadEditData(employee, controller.signal);
     }
+    return () => controller.abort();
   }, [open, mode, employee, loadEditData]);
 
   const payrollOptions = useMemo(
@@ -206,12 +231,68 @@ export default function EmployeeHrFormModal({
     }
   }, [form.employmentType, form.payrollMethod, form.dayOffPolicy, payrollOptions, patchForm]);
 
-  const isBranchSalary = mode === 'edit' && employee?.PayrollScope === 'branch_monthly';
+  const isVipScope = compScope === 'branch_monthly';
+  const isPersistedVip = mode === 'edit' && compDetails?.employee.scope === 'branch_monthly';
+  const vipEligible = Boolean(
+    compDetails?.employee.payrollMethod === 'monthly' &&
+    compDetails.employee.payrollEnabled &&
+    form.payrollMethod === 'monthly' &&
+    form.isPayrollEnabled &&
+    form.employmentType !== 'freelance',
+  );
+  const compensationChanged = Boolean(
+    mode === 'edit' && compDetails && (
+      compScope !== compDetails.employee.scope ||
+      (isVipScope && (
+        compDate !== compDetails.effectiveFrom ||
+        JSON.stringify(compBranches.map((b) => [b.branchId, b.enabled, b.monthlySalary])) !==
+          JSON.stringify(compDetails.branches.map((b) => [b.branchId, b.enabled, b.monthlySalary]))
+      ))
+    ),
+  );
+  const compensationError = (() => {
+    if (mode !== 'edit' || !compDetails) return null;
+    if (form.employmentType === 'freelance' && (isVipScope || isPersistedVip)) {
+      return 'يجب إيقاف نظام VIP أولًا قبل تحويل الموظف إلى فري لانس';
+    }
+    if (isVipScope && compensationChanged) {
+      if (!vipEligible) return 'نظام الفروع متاح للموظف الشهري المفعّل فقط. اضبط النظام الشهري واحفظ أولًا.';
+      const active = compBranches.filter((b) => b.enabled);
+      if (!active.length) return 'فعّل مرتب فرع واحد على الأقل';
+      if (active.some((b) => !b.isAssigned || !Number.isFinite(Number(b.monthlySalary)) ||
+        Number(b.monthlySalary) <= 0 || Number(b.monthlySalary) > 100000000)) {
+        return 'راجع تعيين الفروع وقيم المرتبات الشهرية';
+      }
+    }
+    if (compensationChanged) {
+      if (!/^\d{4}-(0[1-9]|1[0-2])-01$/.test(compDate) ||
+        compDate < compDetails.effectiveFrom) {
+        return 'تاريخ سريان المرتب لازم يكون أول يوم من شهر قادم';
+      }
+      if (!isVipScope && (!(Number(compGlobalSalary) > 0) ||
+        !Number.isFinite(Number(compGlobalSalary)) || Number(compGlobalSalary) > 100000000)) {
+        return 'حدد المرتب الشهري العام عند العودة من VIP';
+      }
+    }
+    return null;
+  })();
+  // Branch-specific salaries are controlled exclusively by the compensation endpoint.
   const preview = schedulePreviewText(form);
-  const validation = validateEmployeeHrForm(form);
-  const canSubmit = validation.ok && !saving && !loadingProfile;
+  const validation = validateEmployeeHrForm(
+    isVipScope || isPersistedVip ? { ...form, isPayrollEnabled: false } : form,
+  );
+  const canSubmit = validation.ok && !compensationError && !saving && !loadingProfile &&
+    (mode === 'create' || compDetails !== null);
+
+  const patchCompBranch = (id: number, partial: Partial<CompensationBranch>) => {
+    setCompBranches((rows) => rows.map((b) => b.branchId === id ? { ...b, ...partial } : b));
+  };
 
   const handleEmploymentTypeChange = (employmentType: EmploymentType) => {
+    if (employmentType === 'freelance' && (isVipScope || isPersistedVip)) {
+      setError('أوقف اتفاقية VIP أولًا، وبعد سريان العودة للنظام العام يمكن تغيير نوع التوظيف.');
+      return;
+    }
     markScheduleTouched();
     const payrollMethod =
       employmentType === 'freelance' && form.payrollMethod === 'monthly'
@@ -236,7 +317,15 @@ export default function EmployeeHrFormModal({
   };
 
   const handleSubmit = async () => {
-    const v = validateEmployeeHrForm(form);
+    if (mode === 'edit' && !compDetails) {
+      setError('اتفاقيات القبض لم تكتمل؛ أعد فتح تعديل الموظف');
+      return;
+    }
+    if (compensationError) {
+      setError(compensationError);
+      return;
+    }
+    const v = validation;
     if (!v.ok) {
       setError(v.error ?? 'تحقق من البيانات');
       return;
@@ -244,6 +333,7 @@ export default function EmployeeHrFormModal({
 
     setSaving(true);
     setError('');
+    let employeeDetailsSaved = false;
     try {
       const includeSchedule =
         mode === 'create'
@@ -251,7 +341,7 @@ export default function EmployeeHrFormModal({
           : scheduleTouched && form.employmentType !== 'freelance';
 
       const hrPayload = buildEmployeeHrApiPayload(form, { mode, includeSchedule });
-      if (isBranchSalary) {
+      if (isVipScope || isPersistedVip) {
         delete hrPayload.payrollMethod;
         delete hrPayload.monthlySalary;
         delete hrPayload.manualHourlyRate;
@@ -305,17 +395,41 @@ export default function EmployeeHrFormModal({
         }
       }
 
-      onSaved(`تم تحديث ملف "${form.empName.trim()}" بنجاح`);
+      employeeDetailsSaved = true;
+
+      if (compensationChanged) {
+        const compRes = await fetch(`/api/admin/employees/${employee.EmpID}/compensation`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            mode: compScope,
+            effectiveFrom: compDate,
+            globalMonthlySalary: Number(compGlobalSalary),
+            branches: compBranches.map((b) => ({
+              branchId: b.branchId,
+              enabled: b.enabled,
+              monthlySalary: Number(b.monthlySalary) || 0,
+            })),
+          }),
+        });
+        const compData = await compRes.json();
+        if (!compRes.ok) throw new Error(compData.error || 'تعذر حفظ اتفاقيات القبض');
+      }
+
+      onSaved(`تم تحديث ملف "${form.empName.trim()}"${compensationChanged ? ' واتفاقيات القبض' : ''} بنجاح`);
       onOpenChange(false);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'خطأ غير متوقع');
+      const message = e instanceof Error ? e.message : 'خطأ غير متوقع';
+      setError(employeeDetailsSaved
+        ? `تم حفظ بيانات الموظف العامة، لكن فشل حفظ اتفاقيات القبض: ${message}. راجع الاتفاقية قبل إعادة المحاولة.`
+        : message);
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(next) => { if (!saving) onOpenChange(next); }}>
       <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto" dir="rtl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -587,8 +701,23 @@ export default function EmployeeHrFormModal({
               </div>
             </div>
 
-            {isBranchSalary && <p className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-xs text-muted-foreground">المرتب مستقل حسب الفرع (VIP). استخدم «مرتبات الفروع» لتعديل الأرقام.</p>}
-            <div className={isBranchSalary ? "space-y-2 pointer-events-none opacity-60" : "space-y-2"}>
+            <div className="space-y-4 rounded-xl border border-border/70 p-3 sm:p-4">
+              <EmployeeBranchPayrollFields
+                createMode={mode === 'create'}
+                scope={compScope}
+                onScopeChange={setCompScope}
+                details={compDetails}
+                branches={compBranches}
+                onBranchChange={patchCompBranch}
+                effectiveFrom={compDate}
+                onEffectiveFromChange={setCompDate}
+                globalSalary={compGlobalSalary}
+                onGlobalSalaryChange={setCompGlobalSalary}
+                vipEligible={vipEligible}
+              />
+              {compScope === 'global' && !isPersistedVip && (
+                <div className="space-y-4">
+            <div className="space-y-2">
               <Label>طريقة المحاسبة *</Label>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 {payrollOptions.map((pm) => (
@@ -617,7 +746,6 @@ export default function EmployeeHrFormModal({
               </div>
               <Switch
                 checked={form.isPayrollEnabled}
-                disabled={isBranchSalary}
                 onCheckedChange={(v) => patchForm({ isPayrollEnabled: v })}
               />
             </div>
@@ -630,7 +758,6 @@ export default function EmployeeHrFormModal({
                   min="0"
                   step="0.01"
                   value={form.manualHourlyRate}
-                  disabled={isBranchSalary}
                   onChange={(e) => patchForm({ manualHourlyRate: e.target.value })}
                   placeholder="25"
                   dir="ltr"
@@ -650,7 +777,6 @@ export default function EmployeeHrFormModal({
                   min="0"
                   step="0.01"
                   value={form.dailyRate}
-                  disabled={isBranchSalary}
                   onChange={(e) => patchForm({ dailyRate: e.target.value })}
                   placeholder="150"
                   dir="ltr"
@@ -670,7 +796,6 @@ export default function EmployeeHrFormModal({
                   min="0"
                   step="0.01"
                   value={form.monthlySalary}
-                  disabled={isBranchSalary}
                   onChange={(e) => patchForm({ monthlySalary: e.target.value })}
                   placeholder="5000"
                   dir="ltr"
@@ -681,6 +806,10 @@ export default function EmployeeHrFormModal({
                 </p>
               </div>
             )}
+
+                </div>
+              )}
+            </div>
           </section>
 
           {/* SECTION 2 */}
@@ -887,10 +1016,10 @@ export default function EmployeeHrFormModal({
             )}
           </section>
 
-          {error && (
+          {(error || compensationError) && (
             <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
               <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-              <span>{error}</span>
+              <span>{error || compensationError}</span>
             </div>
           )}
 

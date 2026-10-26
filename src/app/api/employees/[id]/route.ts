@@ -392,7 +392,7 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
     if (current.PayrollScope === 'branch_monthly' &&
         (pendingRateSync || body.baseSalary !== undefined || body.salaryType !== undefined)) {
       return NextResponse.json({
-        error: 'راتب الموظف مستقل لكل فرع. عدّل المرتبات من «مرتبات الفروع» في صفحة الموظفين',
+        error: 'راتب الموظف مستقل لكل فرع؛ عدّل الاتفاقية من «تعديل الموظف ← نظام القبض»',
       }, { status: 409 });
     }
 

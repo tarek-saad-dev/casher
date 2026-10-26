@@ -336,7 +336,7 @@ export async function PATCH(
           .query(`SELECT PayrollScope FROM dbo.TblEmp WHERE EmpID = @empId AND TenantId = @tenantId`);
         if (salaryScope.recordset[0]?.PayrollScope === 'branch_monthly') {
           await transaction.rollback();
-          return NextResponse.json({ error: 'راتب الموظف مستقل حسب الفرع؛ استخدم مرتبات الفروع' }, { status: 409 });
+          return NextResponse.json({ error: 'راتب الموظف مستقل حسب الفرع؛ افتح «تعديل الموظف ← نظام القبض»' }, { status: 409 });
         }
         updateFields.push("BaseSalary = @baseSalary");
         request.input("baseSalary", sql.Decimal(18, 2), BaseSalary !== null && BaseSalary !== '' ? parseFloat(BaseSalary) : null);
