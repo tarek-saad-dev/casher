@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
 import { getSession } from "@/lib/session";
+import { isAuthResult, requireTenantApp } from '@/lib/api-auth';
+import { ClinicBillingConflict, parseClinicEncounterId } from '@/apps/medical-records/public/billing';
 import type { CreateSalePayload } from "@/lib/types";
 import { resolveSplitPaymentConfig } from "@/lib/clearingMethod";
 import {
@@ -36,6 +38,21 @@ export async function POST(req: NextRequest) {
     const sessionUser = await getSession();
     if (!sessionUser?.TenantId) {
       return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
+    }
+
+    let clinicBilling: { tenantId: string; encounterId: string } | undefined;
+    if (body.clinicEncounterId != null) {
+      const encounterId = parseClinicEncounterId(body.clinicEncounterId);
+      if (!encounterId) {
+        return NextResponse.json({ error: 'رقم الكشف الطبي غير صحيح' }, { status: 400 });
+      }
+      const clinical = await requireTenantApp('medical-records');
+      if (!isAuthResult(clinical)) return clinical;
+      if (clinical.tenantId !== sessionUser.TenantId ||
+          clinical.activeBranchId !== sessionUser.ActiveBranchID) {
+        return NextResponse.json({ error: 'فرع الكشف لا يطابق فرع التحصيل' }, { status: 403 });
+      }
+      clinicBilling = { tenantId: clinical.tenantId, encounterId };
     }
 
     // Lines may only name services/products of the caller's tenant.
@@ -263,6 +280,7 @@ export async function POST(req: NextRequest) {
       clientId: body.clientId,
       notes: body.notes,
       notes2: body.notes2,
+      clinicBilling,
       payCash,
       payVisa,
       paymentAllocations: body.paymentAllocations,
@@ -285,6 +303,11 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ invID: result.invID, invType: result.invType }, { status: 201 });
   } catch (err: unknown) {
+    if (err instanceof ClinicBillingConflict) {
+      const status = err.code === 'ALREADY_BILLED' ? 409
+        : err.code === 'MIGRATION_REQUIRED' ? 503 : 400;
+      return NextResponse.json({ error: err.message, code: err.code }, { status });
+    }
     const { InventoryDomainError } = await import(
       '@/lib/inventory/inventoryMutation.service'
     );

@@ -358,6 +358,8 @@ export interface EmpPayrollTxn {
 // ───────────────────────── API Payloads ─────────────────────────
 
 export interface CreateSalePayload {
+  /** Optional single-use clinic encounter billing link, guarded by Shared POS. */
+  clinicEncounterId?: string;
   clientId: number | null;
   items: {
     proId: number;
