@@ -1,5 +1,7 @@
 # DRVO ERP — Business Model & Pricing Strategy (Living Document)
 
+> ⚠️ **SUPERSEDED (2026-10-26):** Fixed Starter/Growth/Pro tiers were rejected as DRVO ERP's target commercial model. Use [Business Model V2 — Modular Hybrid SaaS](./BUSINESS-MODEL-V2.md) as the canonical direction. The tier and pricing sections below are historical, NOT approved for new sales or implementation.
+
 > **Document ID:** DRVO-BUSINESS-MODEL-V1  
 > **Version:** 1.0 · **Last reviewed:** 2026-10-26  
 > **Status:** APPROVED STRATEGIC DIRECTION · pricing/limits/feature matrix are **hypotheses pending validation**  

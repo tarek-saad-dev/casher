@@ -1,5 +1,7 @@
 # DRVO ERP — Salon Pack: Evidence-Based Feature Inventory (V1)
 
+> **Commercial update (2026-10-26):** This source-code feature audit remains usable, but Starter/Growth/Pro packaging was superseded by [Business Model V2 — Modular Hybrid SaaS](./BUSINESS-MODEL-V2.md).
+
 > **Living document** · Date: 2026-10-26 · Audited against `main@811bdbf68d982998fdd9cca010facb7193fe3879`  
 > **Status:** repository-level functional inventory; **not** end-to-end certification or a production sales promise.  
 > **Companion:** [Proposed Salon Pricing & Feature Matrix](./SALON-PRICING-FEATURE-MATRIX-V1.md) · [Business Model](./BUSINESS-MODEL-V1.md).

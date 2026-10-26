@@ -1,5 +1,7 @@
 # DRVO ERP — Salon Pricing & Feature Matrix (Proposal V1)
 
+> ⚠️ **SUPERSEDED / ARCHIVED (2026-10-26):** All Starter/Growth/Pro feature columns and price ranges below are historical hypotheses, not the target product spec or live pricing. The canonical commercial model is [Business Model V2 — Modular Hybrid SaaS](./BUSINESS-MODEL-V2.md). The separate [Salon Feature Inventory V1](./SALON-FEATURE-INVENTORY-V1.md) remains technical evidence.
+
 > **Document ID:** SALON-PRICING-FEATURE-MATRIX-V1  
 > **Version:** 1.0 · **Last reviewed:** 2026-10-26  
 > **Status:** **PROPOSED FOR PRODUCT / CUSTOMER VALIDATION** — **NOT** final prices or implemented feature gates  
