@@ -47,6 +47,9 @@ jobs:
       - name: Execute SQL Server constraints and snapshot roundtrip
         run: npx tsx scripts/drvo/integration/modular-sql-fixture.ts
 
+      - name: Exercise actual operator services with synthetic SQL transactions
+        run: npx vitest run src/platform/__tests__/modularEphemeralServiceSql.test.ts --reporter=default
+
       - name: Clarify environment boundary
         if: always()
         shell: bash

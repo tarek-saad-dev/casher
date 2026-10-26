@@ -9,3 +9,7 @@
 - Validates only synthetic data; the SQL container is destroyed after the job.
 
 **Still required:** isolated actual Staging with the four staging-only secrets including `DRVO_STAGING_SSH_HOST`, migration 015–022 ledger/structure checks, live authenticated operator API/retries/tenant security tests and Cut Salon booking/invoice/day-close regressions. No real customer quote/order/payment/activation. PR #154 and Draft #157 remain **DO NOT MERGE** pending real staging and production signoff.
+
+## Real operator services SQL integration (same disposable fixture)
+
+The SQL workflow runs `src/platform/__tests__/modularEphemeralServiceSql.test.ts` after fixture setup. It mocks only the DB connection injection and the Next-only `server-only` import, **not** the actual commercial services. It calls `createCommercialReleaseCandidate`, `getCommercialReleaseCandidate`, `submitCommercialPolicyEvidence`, `reviewCommercialPolicyEvidence`, `listCommercialPolicyEvidence`, `createInternalQuoteSnapshot` and `listInternalQuoteSnapshots` against the same synthetic SQL fixture. Required scenarios: duplicate preparation, review independence, revision 2, repeat review idempotence, actual snapshot create/retry and closed-inquiry rejection. A green result still does not replace real authenticated Staging E2E.
