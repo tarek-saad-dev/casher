@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { prorateSalary, validateRetroInput } from '@/lib/payroll/payrollAgreementMath';
+import { calculateRetroBranchImpacts, prorateSalary, validateRetroInput } from '@/lib/payroll/payrollAgreementMath';
 
 describe('Payroll Agreement V2 calendar proration',()=>{
   it('pays the full salary when effective on day one',()=>{
@@ -29,4 +29,37 @@ describe('Payroll Agreement V2 validation',()=>{
     ...base,branches:[{branchId:1,enabled:true,monthlySalary:0}]
   })).toThrow());
   it('requires an audit reason',()=>expect(()=>validateRetroInput({...base,reason:'x'})).toThrow());
+});
+
+describe('Branch-scoped financial preview for October 2026', () => {
+  const branches = [
+    { branchId: 1, enabled: true, monthlySalary: 4000 },
+    { branchId: 2, enabled: true, monthlySalary: 6000 },
+    { branchId: 3, enabled: false, monthlySalary: 3000 },
+  ];
+  it('separately reconciles Ziad\'s actual branch wages and monthly entitlements', () => {
+    const impacts = calculateRetroBranchImpacts('2026-10-01', branches, [
+      { branchId: 1, amount: 2107.27, ledgerAmount: 2107.27 },
+      { branchId: 2, amount: 2840, ledgerAmount: 2840 },
+    ]);
+    expect(impacts).toEqual([
+      {
+        branchId: 1, dailyCount: 1, oldWages: 2107.27,
+        oldLedgerCredits: 2107.27, monthlySalary: 4000,
+        newEntitlement: 4000, difference: 1892.73,
+      },
+      {
+        branchId: 2, dailyCount: 1, oldWages: 2840,
+        oldLedgerCredits: 2840, monthlySalary: 6000,
+        newEntitlement: 6000, difference: 3160,
+      },
+    ]);
+    expect(impacts.reduce((sum, row) => sum + row.difference, 0)).toBeCloseTo(5052.73, 2);
+  });
+
+  it('uses prorated days independently in each branch', () => {
+    const impacts = calculateRetroBranchImpacts('2026-10-16', branches, []);
+    expect(impacts.map(b => b.newEntitlement)).toEqual([2064.52, 3096.77]);
+    expect(impacts.map(b => b.dailyCount)).toEqual([0, 0]);
+  });
 });
