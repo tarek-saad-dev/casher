@@ -105,6 +105,8 @@ async function main() {
     const { getPublicAvailableSlots } = await import('../../src/lib/booking/publicBookingAvailability');
     const { evaluatePublicBookingSelection } = await import('../../src/lib/booking/publicBookingSelectionEvaluator');
     const { createPublicBooking } = await import('../../src/lib/booking/publicBookingCreate');
+    const { reschedulePublicBooking } = await import('../../src/lib/booking/publicBookingReschedule');
+    const { cancelPublicBooking } = await import('../../src/lib/booking/publicBookingCancellation');
     const { resolvePublicBookingBranchContext, invalidatePublicBookingBranchContextCache } = await import('../../src/lib/booking/publicBookingBranchContext');
     const { invalidatePublicBookingTenancyCache } = await import('../../src/lib/booking/publicBookingTenancy');
     const { invalidatePublicSettingsCache } = await import('../../src/lib/publicBookingHelpers');
@@ -196,16 +198,81 @@ async function main() {
     check(persisted.recordset[0]?.AssignedEmpID === empId, 'Persisted booking uses new salon barber');
     const replay = await createPublicBooking(payload);
     check(replay.body.meta.idempotentReplay === true, 'Retry reuses the existing booking');
+
+    // Moving a booking is a single atomic update, not cancel-and-create.
+    // Use a second advertised slot for the SAME new tenant and barber.
+    const nextSlots = await getPublicAvailableSlots({
+      branchCode, date, serviceIds: [service.serviceId], empId, expectedTenantId: tenantId,
+    });
+    const nextSlot = nextSlots.slots.find((s) => s.time !== slot.time && s.barbers.some((b) => b.empId === empId));
+    check(nextSlot, 'Alternative staging appointment is available');
+    const moveInput = {
+      code: String(created.body.booking.code),
+      phone: SMOKE_PHONE,
+      desired: {
+        workDate: date,
+        time: nextSlot.time,
+        empId,
+        branchCode,
+        serviceIds: [service.serviceId],
+      },
+      idempotencyKey: REQUEST_KEY + '-MOVE',
+      suppressCustomerWhatsApp: true,
+    };
+    const moved = await reschedulePublicBooking(moveInput);
+    check(moved.ok && moved.bookingId === bookingId, 'Existing salon booking moved successfully');
+    const movedPersisted = await pool.request().input('bookingId', sql.Int, bookingId)
+      .query('SELECT BookingID, BranchID, AssignedEmpID, StartTime FROM dbo.Bookings WHERE BookingID=@bookingId');
+    check(movedPersisted.recordset[0]?.BranchID === branchId, 'Move preserves salon branch ownership');
+    check(movedPersisted.recordset[0]?.AssignedEmpID === empId, 'Move preserves salon barber');
+    const movedReplay = await reschedulePublicBooking(moveInput);
+    check(movedReplay.idempotentReplay === true && movedReplay.bookingId === bookingId, 'Move replay does not create another booking');
+
+    // Public cancellation releases the previously moved appointment and leaves a
+    // single cancelled booking with no outbound customer or team notification.
+    const cancelled = await cancelPublicBooking({
+      code: String(created.body.booking.code),
+      phone: SMOKE_PHONE,
+      tenantId,
+      reasonCode: 'customer_changed_plans',
+      idempotencyKey: REQUEST_KEY + '-CANCEL',
+      suppressNotification: true,
+    });
+    check(cancelled.httpStatus === 200 && cancelled.body.cancellation.status === 'cancelled', 'Customer cancellation succeeded');
+    const cancelledPersisted = await pool.request().input('bookingId', sql.Int, bookingId)
+      .query('SELECT Status, CancelledAt, BranchID FROM dbo.Bookings WHERE BookingID=@bookingId');
+    check(
+      String(cancelledPersisted.recordset[0]?.Status).toLowerCase() === 'cancelled'
+      && cancelledPersisted.recordset[0]?.CancelledAt != null,
+      'Cancellation persisted on the original booking',
+    );
+    check(cancelledPersisted.recordset[0]?.BranchID === branchId, 'Cancellation stayed inside the salon');
+    const cancelReplay = await cancelPublicBooking({
+      code: String(created.body.booking.code),
+      phone: SMOKE_PHONE,
+      tenantId,
+      idempotencyKey: REQUEST_KEY + '-CANCEL',
+      suppressNotification: true,
+    });
+    check(cancelReplay.body.cancellation.alreadyCancelled === true, 'Repeat cancellation does not mutate again');
+    console.log('SALON_BOOKING_LIFECYCLE_E2E_STAGING_PASS');
     console.log('SALON_BOOKING_E2E_STAGING_PASS');
   } finally {
     if (tenantCode) {
       await assertStaging(pool);
-      // Remove the synthetic idempotency record before smoke tenant purge.
-      try {
-        await pool.request().input('key', sql.NVarChar(128), REQUEST_KEY)
-          .query('DELETE FROM dbo.TblPublicBookingCreateRequest WHERE IdempotencyKey=@key');
-      } catch (err) {
-        console.error('Idempotency cleanup warning:', err instanceof Error ? err.message : String(err));
+      // These idempotency tables are keyed by request ID, not TenantId. Clean
+      // only the synthetic keys from this run before the tenant-owned purge.
+      for (const [table, key] of [
+        ['TblPublicBookingCreateRequest', REQUEST_KEY],
+        ['TblPublicBookingRescheduleRequest', REQUEST_KEY + '-MOVE'],
+        ['TblPublicBookingCancelRequest', REQUEST_KEY + '-CANCEL'],
+      ] as const) {
+        try {
+          await pool.request().input('key', sql.NVarChar(128), key)
+            .query(`DELETE FROM dbo.[${table}] WHERE IdempotencyKey=@key`);
+        } catch (err) {
+          console.error('Idempotency cleanup warning:', table, err instanceof Error ? err.message : String(err));
+        }
       }
       const { purgeSmokeTenant } = await import('./smokeTenantPurge');
       await purgeSmokeTenant(pool, tenantCode);
