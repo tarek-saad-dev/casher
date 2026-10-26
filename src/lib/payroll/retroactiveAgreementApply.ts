@@ -1,7 +1,8 @@
 import 'server-only';
 import { getPool, sql } from '@/lib/db';
 import { getCairoBusinessDate } from '@/lib/businessDate';
-import { previewRetroVip, prorateSalary, validateRetroInput, type RetroInput } from './retroactiveAgreementPreview';
+import { previewRetroVip } from './retroactiveAgreementPreview';
+import { prorateSalary, validateRetroInput, type RetroInput } from './payrollAgreementMath';
 import { buildMonthlySalaryRefType, buildMonthlySalaryNote } from '@/lib/services/employeeLedgerMonthlySalaryService';
 
 export type ApplyRetroResult = {
