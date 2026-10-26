@@ -40,9 +40,29 @@ describe('Salon booking staging acceptance safety', () => {
     expect(source).toContain('await purgeSmokeTenant(pool, tenantCode);');
   });
 
+  it('covers booking move and cancel under the synthetic tenant with no outbound notifications', () => {
+    const staging = read('scripts/drvo/salon-booking-e2e-staging.ts');
+    expect(staging).toContain('await reschedulePublicBooking(moveInput)');
+    expect(staging).toContain('await cancelPublicBooking({');
+    expect(staging).toContain('suppressCustomerWhatsApp: true');
+    expect(staging).toContain('suppressNotification: true');
+    expect(staging).toContain("tenantId,\n      reasonCode: 'customer_changed_plans'");
+    expect(staging).toContain("SALON_BOOKING_LIFECYCLE_E2E_STAGING_PASS");
+    expect(staging).toContain("['TblPublicBookingRescheduleRequest', REQUEST_KEY + '-MOVE']");
+    expect(staging).toContain("['TblPublicBookingCancelRequest', REQUEST_KEY + '-CANCEL']");
+  });
+
+  it('locks public rescheduling to the booking-owning salon', () => {
+    const move = read('src/lib/booking/publicBookingReschedule.ts');
+    expect(move).toContain('resolvePublicBookingTenantIdForBranch(');
+    expect(move).toContain('expectedTenantId: head.tenantId');
+    const cancel = read('src/lib/booking/publicBookingCancellation.ts');
+    expect(cancel).toContain('!input.useExtractedEventDelivery && !input.suppressNotification');
+  });
+
   it('does not run a staging job on arbitrary PR branches or invoke deploy workflows', () => {
     const workflow = read('.github/workflows/salon-booking-staging-e2e.yml');
-    expect(workflow).toContain("github.event.pull_request.head.ref == 'agent/salon-e2e-exit'");
+    expect(workflow).toContain("github.event.pull_request.head.ref == 'agent/salon-booking-lifecycle'");
     expect(workflow).toContain('timeout-minutes: 15');
     expect(workflow).toContain('environment: drvo-staging');
     expect(workflow).toContain('DRVO_STAGING_SSH_KEY');
