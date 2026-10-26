@@ -94,6 +94,8 @@ async function main() {
   const pool = await sql.connect(config);
   let tenantCode: string | null = null;
   let booked = false;
+  let syntheticInvoiceId: number | null = null;
+  let syntheticBranchId: number | null = null;
   try {
     await assertStaging(pool);
     // Dynamic imports happen after staging-only environment and DB identity checks.
@@ -135,6 +137,7 @@ async function main() {
       .input('branchCode', sql.NVarChar(30), branchCode).query(`SELECT LegacyBranchId AS branchId FROM dbo.Location WHERE TenantId=@tenantId AND BranchCode=@branchCode`);
     check(owned.recordset.length === 1, 'New branch is owned by the fresh tenant');
     const branchId = Number(owned.recordset[0].branchId);
+    syntheticBranchId = branchId;
     const staff = await pool.request().input('tenantId', sql.UniqueIdentifier, tenantId)
       .input('name', sql.NVarChar(200), req.employees[0].name)
       .query("SELECT EmpID FROM dbo.TblEmp WHERE TenantId=@tenantId AND EmpName=@name");
@@ -265,6 +268,7 @@ async function main() {
     check(converted.ok && converted.invoiceId > 0 && converted.invoiceType === 'خدمة',
       'Booking converted into a real service invoice within financial shift');
     const invId = converted.invoiceId;
+    syntheticInvoiceId = invId;
     const invoice = await pool.request().input('id',sql.Int,invId)
       .input('branchId',sql.Int,branchId)
       .query(`SELECT invID, invType, BranchID, BusinessDayID, ShiftMoveID, GrandTotal,
@@ -309,6 +313,32 @@ async function main() {
         } catch (err) {
           console.error('Idempotency cleanup warning:', table, err instanceof Error ? err.message : String(err));
         }
+      }
+      if (syntheticInvoiceId != null && syntheticBranchId != null) {
+        // Invoice detail rows lack TenantId/BranchID in the legacy schema.
+        // Delete ONLY after proving the header belongs to this disposable tenant.
+        const isOwned = await pool.request()
+          .input('code', sql.NVarChar(64), tenantCode)
+          .input('branchId', sql.Int, syntheticBranchId)
+          .input('invId', sql.Int, syntheticInvoiceId)
+          .query(`SELECT 1 AS Owned FROM dbo.TblinvServHead h
+            JOIN dbo.Location l ON l.LegacyBranchId = h.BranchID
+            JOIN dbo.Tenant t ON t.TenantId = l.TenantId
+            WHERE t.Code=@code AND h.BranchID=@branchId
+              AND h.invID=@invId AND h.invType=N'خدمة'`);
+        check(isOwned.recordset.length === 1,
+          'Synthetic service invoice ownership revalidated before cleanup');
+        await pool.request().input('invId',sql.Int,syntheticInvoiceId)
+          .input('branchId',sql.Int,syntheticBranchId)
+          .query(`UPDATE dbo.Bookings SET ConvertedInvID=NULL, ConvertedInvType=NULL
+            WHERE BranchID=@branchId AND ConvertedInvID=@invId AND ConvertedInvType=N'خدمة'`);
+        await pool.request().input('invId',sql.Int,syntheticInvoiceId)
+          .query("DELETE FROM dbo.TblinvServDetail WHERE invID=@invId AND invType=N'خدمة'");
+        await pool.request().input('invId',sql.Int,syntheticInvoiceId)
+          .input('branchId',sql.Int,syntheticBranchId)
+          .query(`DELETE FROM dbo.TblinvServHead
+            WHERE invID=@invId AND invType=N'خدمة' AND BranchID=@branchId`);
+        console.log('PASS: Synthetic service invoice and details cleaned');
       }
       const { purgeSmokeTenant } = await import('./smokeTenantPurge');
       await purgeSmokeTenant(pool, tenantCode);
