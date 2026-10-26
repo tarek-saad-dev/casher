@@ -25,6 +25,7 @@ jobs:
       DRVO_STAGING_SSH_KEY: ${{ secrets.DRVO_STAGING_SSH_KEY }}
       DRVO_STAGING_SSH_KNOWN_HOSTS: ${{ secrets.DRVO_STAGING_SSH_KNOWN_HOSTS }}
       DRVO_STAGING_DB_PASSWORD: ${{ secrets.DRVO_STAGING_DB_PASSWORD }}
+      DRVO_STAGING_SQL_SERVER_NAME: ${{ secrets.DRVO_STAGING_SQL_SERVER_NAME }}
       CLOUD_DB_NAME: last132_agent
       CLOUD_DB_USER: drvo_agent
       CLOUD_DB_SERVER: 127.0.0.1
@@ -44,7 +45,7 @@ jobs:
           for f in .env .env.local .env.production .env.production.local; do
             if [[ -f "$f" ]]; then echo "Refusing checked-in env: $f" >&2; exit 30; fi
           done
-          for key in DRVO_STAGING_SSH_HOST DRVO_STAGING_SSH_KEY DRVO_STAGING_SSH_KNOWN_HOSTS DRVO_STAGING_DB_PASSWORD; do
+          for key in DRVO_STAGING_SSH_HOST DRVO_STAGING_SSH_KEY DRVO_STAGING_SSH_KNOWN_HOSTS DRVO_STAGING_DB_PASSWORD DRVO_STAGING_SQL_SERVER_NAME; do
             if [[ -z "${!key:-}" ]]; then
               echo "Missing required staging-only secret: $key" >&2; exit 31
             fi
