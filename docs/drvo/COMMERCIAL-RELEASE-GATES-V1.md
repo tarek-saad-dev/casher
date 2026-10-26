@@ -31,3 +31,10 @@
 - Migration 020 must run on Staging after migrations 015–019, with manifest checksum verification and isolation tests.
 - Test both identities (regular tenant admin must not see operator research), duplicate preparation, source tampering, independent review, quote expiry, payment mismatches and tenant financial regression.
 - GitHub CI is mandatory but does **not** replace staging E2E.
+
+## Internal policy evidence extension (DRVO 021)
+
+- Adds ten versioned, candidate-scoped evidence streams with a distinct reviewer, recorded review notes and history; each new revision is append-only and the previous version stays retained.
+- `/platform/commercial-release/[candidateId]` opens the evidence view from the release candidate card, including the latest internal review status per blocker.
+- These records are internal audit documentation only. All candidate publication, customer quote, order, checkout and entitlement flags remain false, regardless of review count.
+- Staging must apply migration 021 after 020, exercise concurrent reviews and verify `CASHER_BOOT` finance/booking behavior remains unchanged.
