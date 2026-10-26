@@ -189,6 +189,24 @@ export async function validateDailyPayrollAttendance(
       ? await loadBranchDayPayrollPlans(branchId, workDate)
       : null;
 
+  // Monthly agreements are effective-dated even if the legacy employee
+  // PayrollMethod still says 'hourly' until the scheduled transition.
+  const monthlyPlanEmployees = new Set<number>();
+  if (branchId != null) {
+    const activeMonthly = await pool.request()
+      .input('branchId', sql.Int, branchId)
+      .input('workDate', sql.Date, workDate)
+      .query(`
+        SELECT DISTINCT EmpID FROM dbo.TblEmpBranchPayrollPlan
+        WHERE BranchID=@branchId AND PayType=N'monthly' AND IsActive=1
+          AND EffectiveFrom<=@workDate
+          AND (EffectiveTo IS NULL OR EffectiveTo>=@workDate)
+      `);
+    for (const p of activeMonthly.recordset) {
+      monthlyPlanEmployees.add(Number(p.EmpID));
+    }
+  }
+
   const attMap = new Map<
     number,
     { Status: string; CheckInTime: unknown; CheckOutTime: unknown }
@@ -216,7 +234,7 @@ export async function validateDailyPayrollAttendance(
       // Payable attendance needs hourly/daily rates (branch override or inherited
       // primary agreement). Monthly staff are not daily-payroll candidates.
       if (hasPayableBranchAttendance && !plan) {
-        if (empMethod === 'monthly') {
+        if (empMethod === 'monthly' || monthlyPlanEmployees.has(emp.EmpID)) {
           excluded.push({
             empId: emp.EmpID,
             empName: emp.EmpName,
