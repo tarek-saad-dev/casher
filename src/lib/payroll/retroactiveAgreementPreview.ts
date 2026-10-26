@@ -28,6 +28,19 @@ export async function previewRetroVip(params: {
   }
   const pool = await getPool();
   const rq = () => params.transaction ? new sql.Request(params.transaction) : pool.request();
+
+  // A normal application health check does not guarantee the payroll V2
+  // migration exists. Fail with an actionable message before querying it.
+  const schema = await rq().query(`
+    SELECT
+      COL_LENGTH(N'dbo.TblEmpDailyPayroll', N'SupersededByPayrollRevisionID') AS RevisionColumn,
+      OBJECT_ID(N'dbo.TblEmpPayrollAgreementRevision', N'U') AS RevisionTable
+  `);
+  if (schema.recordset[0]?.RevisionColumn == null ||
+      schema.recordset[0]?.RevisionTable == null) {
+    throw new Error('معاينة التسويات غير جاهزة على قاعدة البيانات. يلزم اختبار وتطبيق Payroll V2 Migration قبل الاستخدام.');
+  }
+
   const employee = await rq().input('emp',sql.Int,params.empId)
     .input('tenant',sql.UniqueIdentifier,params.tenantId)
     .query('SELECT EmpID, PayrollScope, EmploymentType FROM dbo.TblEmp WHERE EmpID=@emp AND TenantId=@tenant');
