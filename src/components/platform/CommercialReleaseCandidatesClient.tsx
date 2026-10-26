@@ -118,6 +118,10 @@ export default function CommercialReleaseCandidatesClient(){
         </div>
         <p className="text-xs text-muted-foreground">بصمة المصدر: <code className="break-all">{c.sourceDigest}</code></p>
         <p className="text-xs text-muted-foreground">تم التجهيز: {new Date(c.createdAt).toLocaleString('ar-EG')}</p>
+        <Link href={'/platform/commercial-release/'+c.candidateId}
+          className="inline-flex min-h-10 items-center rounded-lg border border-border px-4 py-2 text-sm font-semibold hover:bg-muted">
+          فتح ملف الأدلة والمراجعات
+        </Link>
         <h4 className="text-sm font-semibold">الاعتمادات الناقصة قبل البيع</h4>
         <ul className="list-disc space-y-1 pr-5 text-sm text-muted-foreground">
           {c.blockers.map(b=><li key={b}>{TITLES[b]??b}</li>)}
