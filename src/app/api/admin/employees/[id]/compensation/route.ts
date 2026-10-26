@@ -220,10 +220,18 @@ export async function PUT(request: NextRequest, { params }: Context) {
           ORDER BY BranchID, EffectiveFrom
         `);
       const future = oldPlans.recordset.some((p: {EffectiveFrom: Date | string}) =>
-        new Date(p.EffectiveFrom).toISOString().slice(0, 10) >= body.effectiveFrom!);
+        new Date(p.EffectiveFrom).toISOString().slice(0, 10) > body.effectiveFrom!);
       if (future) {
         throw new Error('توجد اتفاقية تبدأ في نفس الشهر أو شهر لاحق. راجع خطط المرتبات قبل تغيير النظام');
       }
+
+      // Replacing a not-yet-effective agreement for the same month is safe;
+      // its previous values stay in the audit table (no posted payroll exists).
+      await new sql.Request(tx)
+        .input('empId', sql.Int, empId)
+        .input('from', sql.Date, body.effectiveFrom)
+        .query(`DELETE FROM dbo.TblEmpBranchPayrollPlan
+          WHERE EmpID = @empId AND EffectiveFrom = @from AND IsActive = 1`);
 
       await new sql.Request(tx)
         .input('empId', sql.Int, empId)
