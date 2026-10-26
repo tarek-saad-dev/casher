@@ -15,8 +15,8 @@ export async function assertNoPendingSalonQueueAtClose(
   tx: sql.Transaction,
   args: { branchId: number; businessDate: string; branchCode: string },
 ): Promise<void> {
-  // Keep existing Cut Salon close behavior intact. Fresh public-signup salons
-  // use the standardized DRVO branch code. No system-wide security rewrite.
+  // Preserve existing CUT behavior, and avoid affecting non-salon DRVO tenants.
+  // Standard signup code narrows the scope; TenantIndustryPack proves industry.
   if (!isIndependentSalonBranch(args.branchCode)) return;
   const pending = await new sql.Request(tx)
     .input('branchId', sql.Int, args.branchId)
@@ -27,6 +27,11 @@ export async function assertNoPendingSalonQueueAtClose(
       WHERE BranchID = @branchId
         AND QueueDate = @workDate
         AND Status IN ('waiting', 'called', 'arrived', 'in_service')
+        AND EXISTS (
+          SELECT 1 FROM dbo.Location l
+          INNER JOIN dbo.TenantIndustryPack p ON p.TenantId = l.TenantId
+          WHERE l.LegacyBranchId = @branchId AND p.PackCode = N'salon'
+        )
     `);
   const count = Number(pending.recordset[0]?.PendingCount ?? 0);
   if (count > 0) {
