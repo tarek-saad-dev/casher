@@ -157,6 +157,9 @@ export async function PUT(request: NextRequest, { params }: Context) {
         `);
       if (!empResult.recordset.length) throw new Error('الموظف غير موجود');
       const employee = empResult.recordset[0];
+      if (body.mode === 'global' && employee.PayrollScope !== 'branch_monthly') {
+        throw new Error('الموظف بالفعل على نظام المرتب العام؛ لا توجد اتفاقية VIP لإيقافها');
+      }
 
       if (body.mode === 'branch_monthly' &&
           (employee.EmploymentType === 'freelance' || !Boolean(employee.IsPayrollEnabled) ||
