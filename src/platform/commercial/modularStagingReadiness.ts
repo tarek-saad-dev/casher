@@ -36,19 +36,22 @@ export type ModularStagingReport={
 const CHECK_MIGRATIONS=[15,16,17,18,19,20,21,22] as const;
 type Check=(id:string,ok:boolean,detail:string)=>void;
 
-export async function inspectModularCommercialStaging(pool:ConnectionPool):Promise<ModularStagingReport>{
+export async function inspectModularCommercialStaging(pool:ConnectionPool, expectedServerName:string):Promise<ModularStagingReport>{
+  if(!expectedServerName || expectedServerName.trim()!==expectedServerName || expectedServerName.length>256)
+    throw new Error('STAGING_SERVER_PIN_MISSING: a separately verified SQL Server identity is required');
   const checks:ModularStagingReport['checks']=[];
   const record:Check=(id,ok,detail)=>checks.push({id,ok,detail});
   assertDrvoMigrationManifestValid();
   const proof=await pool.request().query(
-    'SELECT DB_NAME() AS db, ORIGINAL_LOGIN() AS originalLogin, SUSER_SNAME() AS effectiveLogin;');
-  const identity=proof.recordset[0] as {db?:string;originalLogin?:string;effectiveLogin?:string}|undefined;
+    "SELECT DB_NAME() AS db, ORIGINAL_LOGIN() AS originalLogin, SUSER_SNAME() AS effectiveLogin, CONVERT(nvarchar(256), SERVERPROPERTY('ServerName')) AS serverName;");
+  const identity=proof.recordset[0] as {db?:string;originalLogin?:string;effectiveLogin?:string;serverName?:string}|undefined;
   const database=String(identity?.db??'');
   const login=String(identity?.originalLogin??'');
   if(database!==MODULAR_STAGING_DATABASE||login.toLowerCase()!==MODULAR_STAGING_LOGIN||
-     String(identity?.effectiveLogin??'').toLowerCase()!==MODULAR_STAGING_LOGIN)
+     String(identity?.effectiveLogin??'').toLowerCase()!==MODULAR_STAGING_LOGIN||
+     String(identity?.serverName??'')!==expectedServerName)
     throw new Error('STAGING_DB_IDENTITY_MISMATCH: refusing queries on unexpected database/login');
-  record('staging.identity',true,'Verified exact SQL database, original and effective SQL login');
+  record('staging.identity',true,'Verified pinned SQL Server identity, exact database, original and effective SQL login');
 
   const bootstrap=await pool.request().query(
     "SELECT COUNT_BIG(*) AS count FROM dbo.Tenant WHERE Code=N'CASHER_BOOT';");
