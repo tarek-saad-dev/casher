@@ -19,6 +19,7 @@ type Preview = {
   proratedDays: number;
   daysInMonth: number;
   blockers: string[];
+  fingerprint: string;
 };
 
 export type RetroReviewActionState = {
@@ -103,7 +104,7 @@ const RetroPayrollAgreementReview = forwardRef<RetroReviewHandle, Props>(
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(action === 'apply'
-            ? { ...requestBody(), requestKey: requestKey.current }
+            ? { ...requestBody(), requestKey: requestKey.current, expectedFingerprint: currentPreview?.fingerprint }
             : requestBody()),
         },
       );
