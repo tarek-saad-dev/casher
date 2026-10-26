@@ -124,36 +124,34 @@ async function fetchEligibleMonthlyEmployees(
     .input('MonthStart', sql.Date, `${month}-01`);
   if (empId != null && empId > 0) req.input('EmpID', sql.Int, empId);
 
-  // Resolve exactly one effective branch agreement per employee and payroll month.
-  const result = await req.query(`
-    WITH effectivePlan AS (
-      SELECT p.*, ROW_NUMBER() OVER (
-        PARTITION BY p.EmpID ORDER BY p.EffectiveFrom DESC, p.PlanID DESC
-      ) AS rn
-      FROM dbo.TblEmpBranchPayrollPlan p
-      WHERE p.BranchID = @BranchID AND p.IsActive = 1
-        AND p.EffectiveFrom <= @MonthStart
-        AND (p.EffectiveTo IS NULL OR p.EffectiveTo >= @MonthStart)
-    )
-    SELECT
-      e.EmpID AS empId,
-      e.EmpName AS empName,
-      CAST(p.MonthlySalary AS DECIMAL(12,2)) AS baseSalary,
-      p.PayType AS payrollMethod,
-      e.EmploymentType AS employmentType
-    FROM effectivePlan p
-    INNER JOIN dbo.TblEmp e ON e.EmpID = p.EmpID
-      AND e.TenantId IN (SELECT tloc.TenantId FROM dbo.Location tloc WHERE tloc.LegacyBranchId = @BranchID)
-    WHERE p.rn = 1
-      AND p.PayType = N'monthly'
-      AND ISNULL(p.MonthlySalary, 0) > 0
-      AND ISNULL(e.isActive, 1) = 1
-      AND ISNULL(e.IsPayrollEnabled, 1) = 1
-      AND ISNULL(e.EmploymentType, N'full_time') <> N'freelance'
-      ${empId != null && empId > 0 ? 'AND e.EmpID = @EmpID' : ''}
-    ORDER BY e.EmpName
-  `);
-
+  // Salary agreements may start mid-month; prorate each covered calendar-day segment.
+  // No attendance-day multiplier: monthly salary belongs to the branch agreement.
+  const result = await req.query([
+    'WITH monthlySegments AS (',
+    ' SELECT p.EmpID, p.BranchID,',
+    ' CAST(ROUND(CAST(p.MonthlySalary AS decimal(18,4)) *',
+    ' (DATEDIFF(day,',
+    ' CASE WHEN p.EffectiveFrom > @MonthStart THEN p.EffectiveFrom ELSE @MonthStart END,',
+    ' DATEADD(day,1,CASE WHEN p.EffectiveTo IS NOT NULL AND p.EffectiveTo < EOMONTH(@MonthStart)',
+    ' THEN p.EffectiveTo ELSE EOMONTH(@MonthStart) END)',
+    ' )) / DAY(EOMONTH(@MonthStart)), 2) AS decimal(12,2)) AS Portion',
+    ' FROM dbo.TblEmpBranchPayrollPlan p',
+    ' WHERE p.BranchID=@BranchID AND p.IsActive=1',
+    " AND p.PayType=N'monthly' AND ISNULL(p.MonthlySalary,0)>0",
+    ' AND p.EffectiveFrom<=EOMONTH(@MonthStart)',
+    ' AND (p.EffectiveTo IS NULL OR p.EffectiveTo>=@MonthStart)',
+    '), amounts AS (',
+    ' SELECT EmpID, SUM(Portion) AS MonthlyDue FROM monthlySegments GROUP BY EmpID',
+    ') SELECT e.EmpID AS empId, e.EmpName AS empName,',
+    ' CAST(a.MonthlyDue AS decimal(12,2)) AS baseSalary,',
+    " N'monthly' AS payrollMethod, e.EmploymentType AS employmentType",
+    ' FROM amounts a INNER JOIN dbo.TblEmp e ON e.EmpID=a.EmpID',
+    ' AND e.TenantId IN (SELECT l.TenantId FROM dbo.Location l WHERE l.LegacyBranchId=@BranchID)',
+    ' WHERE a.MonthlyDue>0 AND ISNULL(e.isActive,1)=1 AND ISNULL(e.IsPayrollEnabled,1)=1',
+    " AND ISNULL(e.EmploymentType,N'full_time')<>N'freelance'",
+    empId != null && empId > 0 ? ' AND e.EmpID=@EmpID' : '',
+    ' ORDER BY e.EmpName'
+  ].join(' '));
   return result.recordset.map((row: Record<string, unknown>) => ({
     empId: Number(row.empId),
     empName: String(row.empName),

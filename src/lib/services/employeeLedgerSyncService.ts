@@ -314,6 +314,7 @@ async function fetchPayrollRows(
     WHERE p.WorkDate >= @monthStart
       AND p.WorkDate <= @monthEnd
       AND p.Status = N'Generated'
+      AND p.SupersededByPayrollRevisionID IS NULL
       ${whereEmp}
   `);
   return result.recordset.map((r: Record<string, unknown>) => ({

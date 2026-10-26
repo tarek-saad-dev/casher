@@ -181,6 +181,7 @@ async function fetchDailyPayrollAudit(
       FROM dbo.TblEmpDailyPayroll p
       WHERE p.WorkDate >= @monthStart
         AND p.WorkDate <= @monthEnd
+        AND p.SupersededByPayrollRevisionID IS NULL
         ${empClause}
       GROUP BY p.Status
       ORDER BY p.Status
@@ -197,6 +198,7 @@ async function fetchDailyPayrollAudit(
       INNER JOIN dbo.TblEmp e ON e.EmpID = p.EmpID AND e.TenantId = @tenantId
       WHERE p.WorkDate >= @monthStart
         AND p.WorkDate <= @monthEnd
+        AND p.SupersededByPayrollRevisionID IS NULL
         ${empClause}
       GROUP BY p.EmpID, e.EmpName
       ORDER BY dailyWageTotal DESC, e.EmpName
@@ -210,6 +212,7 @@ async function fetchDailyPayrollAudit(
       FROM dbo.TblEmpDailyPayroll p
       WHERE p.WorkDate >= @monthStart
         AND p.WorkDate <= @monthEnd
+        AND p.SupersededByPayrollRevisionID IS NULL
         AND p.Status IN (N'Generated', N'Earned', N'PostedToCashMove')
         ${empClause}
     `);

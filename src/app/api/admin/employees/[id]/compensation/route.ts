@@ -162,10 +162,11 @@ export async function PUT(request: NextRequest, { params }: Context) {
       }
 
       if (body.mode === 'branch_monthly' &&
-          (employee.EmploymentType === 'freelance' || !Boolean(employee.IsPayrollEnabled) ||
-            employee.PayrollMethod !== 'monthly')) {
-        throw new Error('الخاصية متاحة للموظف غير الفري لانس بنظام الراتب الشهري المفعّل فقط');
+          (employee.EmploymentType === 'freelance' || !Boolean(employee.IsPayrollEnabled))) {
+        throw new Error('اتفاقية VIP الشهرية تتطلب موظفًا غير فري لانس مع تفعيل الرواتب');
       }
+      // For future agreements, keep today's hourly/daily method intact.
+      // The effective-dated branch plan becomes monthly on the selected date.
 
       const available = await new sql.Request(tx)
         .input('tenantId', sql.UniqueIdentifier, tenantId)
