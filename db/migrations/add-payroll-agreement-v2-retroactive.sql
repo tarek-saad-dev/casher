@@ -5,8 +5,8 @@ SET XACT_ABORT ON;
 SET ANSI_NULLS ON;
 SET QUOTED_IDENTIFIER ON;
 GO
-IF DB_NAME() <> N'last132'
-    THROW 51001, 'Payroll Agreements V2 requires last132', 1;
+IF DB_NAME() NOT IN (N'last132', N'last132_agent')
+    THROW 51001, 'Payroll Agreements V2 requires explicitly named staging or production database', 1;
 GO
 IF OBJECT_ID(N'dbo.TblEmpBranchPayrollPlan', N'U') IS NULL
     OR OBJECT_ID(N'dbo.TblEmpDailyPayroll', N'U') IS NULL
