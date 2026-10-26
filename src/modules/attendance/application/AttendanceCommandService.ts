@@ -776,6 +776,7 @@ export async function saveAdminAttendanceBulk(
     previousCheckOut?: unknown;
     checkInTime?: string | null;
     checkOutTime?: string | null;
+    branchId?: number;
   }> = [];
 
   try {
