@@ -1,0 +1,59 @@
+name: Clinics PR Quality Gate
+
+on:
+  pull_request:
+    branches:
+      - feature/drvo-clinics-mvp
+    paths:
+      - 'src/apps/medical-records/**'
+      - 'src/app/clinic/**'
+      - 'src/app/api/clinic/**'
+      - 'src/apps/pos/**'
+      - 'src/app/api/sales/**'
+      - 'src/app/income/pos/**'
+      - 'src/lib/sales/**'
+      - 'db/drvo-migrations/014-clinic-core/**'
+      - 'db/drvo-migrations/015-clinic-billing-link/**'
+      - 'db/drvo-migrations/016-clinic-treatment-plans/**'
+      - '.github/workflows/clinics-pr-quality-gate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: clinics-pr-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  clinics-validation:
+    name: Medical Records / Booking / POS / Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout isolated PR
+        uses: actions/checkout@v4
+      - name: Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts
+      - name: Medical Records regression suite
+        run: npx vitest run src/apps/medical-records/__tests__ --reporter=default
+      - name: Shared Booking / POS contract regression
+        run: >-
+          npx vitest run
+          src/apps/booking/__tests__/bookingPathRegression.test.ts
+          src/apps/booking/__tests__/schedulingPortWiring.test.ts
+          src/apps/pos/__tests__
+          --reporter=default
+      - name: Production compilation (no deployment)
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
+          DRVO_STAGING_MODE: 'true'
+          DRVO_STAGING_OUTBOUND_DISABLED: 'true'
+          DRVO_STAGING_WORKERS_DISABLED: 'true'
+          DRVO_STAGING_CRON_DISABLED: 'true'
+        run: npm run build
