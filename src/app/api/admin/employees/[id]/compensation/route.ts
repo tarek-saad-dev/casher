@@ -99,6 +99,36 @@ export async function GET(_request: NextRequest, { params }: Context) {
       .split(',').map(id => id.trim()).filter(id => /^[1-9][0-9]*$/.test(id)).map(Number);
     const retroEnabledForEmployee = process.env.PAYROLL_RETROACTIVE_ENABLED === 'true' &&
       (process.env.NODE_ENV !== 'production' || allowedIds.includes(empId));
+    let latestRevision: null | {
+      id: number; effectiveFrom: string; createdAt: string; reversedDailyCount: number;
+      reversedDailyAmount: number; newEntitlement: number;
+    } = null;
+    if (retroSchemaReady) {
+      const revision = await db.request()
+        .input('empId', sql.Int, empId)
+        .query(`
+          SELECT TOP 1 RevisionID, EffectiveFrom, CreatedAt,
+                 ReversedDailyCount, ReversedDailyAmount, ImpactJson
+          FROM dbo.TblEmpPayrollAgreementRevision
+          WHERE EmpID = @empId ORDER BY RevisionID DESC
+        `);
+      if (revision.recordset.length) {
+        const value = revision.recordset[0];
+        let impact: Record<string, unknown> = {};
+        try { impact = JSON.parse(String(value.ImpactJson ?? '{}')) as Record<string, unknown>; } catch {}
+        latestRevision = {
+          id: Number(value.RevisionID),
+          effectiveFrom: value.EffectiveFrom instanceof Date
+            ? value.EffectiveFrom.toISOString().slice(0, 10)
+            : String(value.EffectiveFrom).slice(0, 10),
+          createdAt: value.CreatedAt instanceof Date
+            ? value.CreatedAt.toISOString() : String(value.CreatedAt),
+          reversedDailyCount: Number(value.ReversedDailyCount),
+          reversedDailyAmount: Number(value.ReversedDailyAmount),
+          newEntitlement: Number(impact.proposedMonthlyAmount || 0),
+        };
+      }
+    }
     return NextResponse.json({
       employee: {
         empId: Number(e.EmpID),
@@ -111,6 +141,7 @@ export async function GET(_request: NextRequest, { params }: Context) {
       },
       effectiveFrom,
       retroactive: { schemaReady: retroSchemaReady, enabledForEmployee: retroEnabledForEmployee },
+      latestRevision,
       branches: branches.recordset.map((b: Record<string, unknown>) => ({
         branchId: Number(b.branchId),
         branchCode: String(b.branchCode),
