@@ -17,6 +17,8 @@ async function main() {
   loadEnvConfig(process.env.PAYROLL_E2E_ENV_DIR || process.cwd(), false);
   // Must be set before dynamically importing @/lib/db (config is module-scoped).
   process.env.LOCAL_DB_NAME = expectedDatabase;
+  process.env.LOCAL_DB_SERVER = '127.0.0.1';
+  process.env.LOCAL_DB_PORT = '1433';
   process.env.HAWAI_DB_CLASS = 'local';
   process.env.BOOKING_V2_FORCE_LOCAL_DB = 'true';
 
