@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import ClinicBillingHandoff from '@/app/clinic/ClinicBillingHandoff';
+import TreatmentPlanPanel from '@/app/clinic/TreatmentPlanPanel';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Activity,
@@ -671,6 +672,9 @@ export default function EncounterWorkspace({ encounterId }: { encounterId: strin
             </section>
           </div>
         </section>
+        {canClinicalAct && activeTab === 'follow_up' && (
+          <TreatmentPlanPanel encounterId={encounterId} canCreate={encounter.Status === 'completed'} />
+        )}
         <ClinicBillingHandoff encounterId={encounterId} completed={encounter.Status === 'completed'} />
         {canEdit && (
           <footer className="sticky bottom-2 z-10 mt-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-lg backdrop-blur sm:px-5">
