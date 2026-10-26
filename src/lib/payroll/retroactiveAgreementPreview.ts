@@ -1,17 +1,22 @@
 import 'server-only';
+import { createHash } from 'node:crypto';
 import { getPool, sql } from '@/lib/db';
 import { getCairoBusinessDate } from '@/lib/businessDate';
 
 import { validateRetroInput, prorateSalary, type RetroInput } from './payrollAgreementMath';
 export type { RetroBranch, RetroInput } from './payrollAgreementMath';
 
-export type RetroDailyRow = { id:number; branchId:number; date:string; amount:number; status:string; superseded:boolean };
+export type RetroDailyRow = {
+  id:number; branchId:number; date:string; amount:number; status:string;
+  superseded:boolean; ledgerCount:number; ledgerAmount:number; ledgerBranchId:number|null;
+  ledgerDirection:string|null; ledgerMonth:string|null; ledgerCashMoveId:number|null;
+};
 export type RetroPreview = {
   month:string; effectiveFrom:string; previousDailyAmount:number;
   previousLedgerCredits:number; proposedMonthlyAmount:number;
   difference:number; dailyCount:number; paidOut:number;
   advances:number; deductions:number; proratedDays:number;
-  daysInMonth:number; blockers:string[]; dailyRows:RetroDailyRow[];
+  daysInMonth:number; blockers:string[]; dailyRows:RetroDailyRow[]; fingerprint:string;
 };
 const money=(n:number)=>Math.round(n*100)/100;
 const formatDate=(v:Date|string)=>v instanceof Date?v.toISOString().slice(0,10):String(v).slice(0,10);
@@ -64,21 +69,48 @@ export async function previewRetroVip(params: {
   const active = new Set(assigned.recordset.filter((x: {Assigned:number}) => Boolean(x.Assigned))
     .map((x: {BranchID:number}) => Number(x.BranchID)));
   if (enabled.some(b=>!active.has(b.branchId))) blocker.push('يجب تعيين الموظف في كل فرع له مرتب');
+  // Always reconcile each original payroll source to its own active ledger credit.
+  // The review cannot approve orphan, misclassified or cross-branch wages.
   const source = await rq().input('emp',sql.Int,params.empId).input('start',sql.Date,start).input('today',sql.Date,today)
     .query([
-      'SELECT ID, BranchID, WorkDate, DailyWage, Status, SupersededByPayrollRevisionID',
-      'FROM dbo.TblEmpDailyPayroll WHERE EmpID=@emp AND WorkDate BETWEEN @start AND @today'
+      'SELECT p.ID, p.BranchID, p.WorkDate, p.DailyWage, p.Status,',
+      'p.SupersededByPayrollRevisionID,',
+      'w.LedgerCount, w.LedgerAmount, w.LedgerBranchId,',
+      'w.LedgerDirection, w.LedgerMonth, w.LedgerCashMoveId',
+      'FROM dbo.TblEmpDailyPayroll p WITH (UPDLOCK,HOLDLOCK)',
+      'OUTER APPLY (',
+      'SELECT COUNT_BIG(*) AS LedgerCount, SUM(le.Amount) AS LedgerAmount,',
+      'MIN(le.BranchID) AS LedgerBranchId,',
+      'MIN(le.EntryDirection) AS LedgerDirection,',
+      'MIN(le.PayrollMonth) AS LedgerMonth,',
+      'MAX(le.CashMoveID) AS LedgerCashMoveId',
+      'FROM dbo.TblEmpLedgerEntry le WITH (UPDLOCK,HOLDLOCK)',
+      "WHERE le.RefType=N'TblEmpDailyPayroll' AND le.RefID=p.ID",
+      "AND le.EmpID=p.EmpID AND le.EntryReason=N'hourly_wage' AND le.IsVoided=0",
+      ') w',
+      'WHERE p.EmpID=@emp AND p.WorkDate BETWEEN @start AND @today',
+      'ORDER BY p.WorkDate,p.BranchID,p.ID'
     ].join(' '));
   const dailyRows: RetroDailyRow[] = source.recordset.map((x: Record<string,unknown>)=>({
     id:Number(x.ID), branchId:Number(x.BranchID), date:formatDate(x.WorkDate as Date),
     amount:money(Number(x.DailyWage||0)), status:String(x.Status||''),
-    superseded:x.SupersededByPayrollRevisionID!=null
+    superseded:x.SupersededByPayrollRevisionID!=null,
+    ledgerCount:Number(x.LedgerCount||0), ledgerAmount:money(Number(x.LedgerAmount||0)),
+    ledgerBranchId:x.LedgerBranchId==null?null:Number(x.LedgerBranchId),
+    ledgerDirection:x.LedgerDirection==null?null:String(x.LedgerDirection),
+    ledgerMonth:x.LedgerMonth==null?null:String(x.LedgerMonth),
+    ledgerCashMoveId:x.LedgerCashMoveId==null?null:Number(x.LedgerCashMoveId),
   }));
   if (dailyRows.some(x=>!expectedBranches.has(x.branchId))) blocker.push('يوجد أجر سابق في فرع غير موجود بالاتفاقية الجديدة');
   if (dailyRows.some(x=>x.status!=='Generated')) blocker.push('يوجد أجر يومي بحالة مرحّلة أو مقفولة؛ يلزم تسوية مالية معتمدة');
   if (dailyRows.some(x=>x.superseded)) blocker.push('تم إلغاء بعض اليوميات بالفعل عبر تسوية سابقة');
-
   const month = start.slice(0,7);
+  if (dailyRows.some(x=>x.ledgerCount!==1 || x.ledgerBranchId!==x.branchId ||
+      x.ledgerDirection!=='credit' || x.ledgerMonth!==month ||
+      x.ledgerCashMoveId!=null || x.ledgerAmount!==x.amount)) {
+    blocker.push('يوجد اختلاف في قيد أجر يومية واحد أو أكثر: العدد أو المبلغ أو الفرع أو الشهر؛ يجب مراجعة دفتر الموظف قبل التسوية');
+  }
+
   const ledger = await rq().input('emp',sql.Int,params.empId).input('month',sql.NVarChar(7),month)
     .input('start',sql.Date,start)
     .query([
@@ -104,8 +136,25 @@ export async function previewRetroVip(params: {
     ].join(' '));
   if(Number(orphan.recordset[0].Cnt)>0) blocker.push('هناك أجور في الدفتر بلا مصادر يومية مطابقة');
   const oldAmount=money(dailyRows.reduce((sum,x)=>sum+x.amount,0));
+  const oldLedgerFromSources=money(dailyRows.reduce((sum,x)=>sum+x.ledgerAmount,0));
+  if (oldLedgerFromSources !== money(Number(l.DailyCredits||0))) {
+    blocker.push('إجمالي أجور اليوميات لا يطابق قيود الأجور النشطة في الدفتر؛ يجب المراجعة قبل التسوية');
+  }
   const portion=prorateSalary(start,1);
   const newAmount=money(enabled.reduce((sum,b)=>sum+prorateSalary(start,b.monthlySalary).amount,0));
+  const snapshot = {
+    empId:params.empId,tenantId:params.tenantId,month,effectiveFrom:start,
+    branches:[...params.input.branches].sort((a,b)=>a.branchId-b.branchId),
+    dailyRows, ledgerTotals:{
+      dailyCredits:money(Number(l.DailyCredits||0)),monthlyCount:Number(l.MonthlyCount||0),
+      payouts:money(Number(l.Payouts||0)),advances:money(Number(l.Advances||0)),
+      deductions:money(Number(l.Deductions||0)),
+    }, pendingCount:Number(pending.recordset[0].Cnt||0),
+    orphanCount:Number(orphan.recordset[0].Cnt||0),
+    effectiveScope:employee.recordset[0].PayrollScope,
+    activeAssignments:[...active].sort((a,b)=>a-b),
+  };
+  const fingerprint=createHash('sha256').update(JSON.stringify(snapshot)).digest('hex');
   return {
     month,effectiveFrom:start,previousDailyAmount:oldAmount,
     previousLedgerCredits:money(Number(l.DailyCredits||0)),
@@ -113,6 +162,6 @@ export async function previewRetroVip(params: {
     dailyCount:dailyRows.length,paidOut:money(Number(l.Payouts||0)),
     advances:money(Number(l.Advances||0)),deductions:money(Number(l.Deductions||0)),
     proratedDays:portion.days,daysInMonth:portion.monthDays,
-    blockers:blocker,dailyRows,
+    blockers:blocker,dailyRows,fingerprint,
   };
 }
