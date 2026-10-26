@@ -1,5 +1,5 @@
 export type RetroBranch = { branchId: number; enabled: boolean; monthlySalary: number };
-export type RetroInput = { effectiveFrom: string; branches: RetroBranch[]; reason: string; requestKey?: string };
+export type RetroInput = { effectiveFrom: string; branches: RetroBranch[]; reason: string; requestKey?: string; expectedFingerprint?: string };
 
 const money=(n:number)=>Math.round(n*100)/100;
 const dateRegex=/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
