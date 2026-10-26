@@ -6,7 +6,7 @@
 ## What was implemented
 
 - Migration **020**: additive `ModularCommercialReleaseCandidate` with unique FK to reviewed tariff research (`ModularTariffResearchProposal`), SHA-256 source digest, immutable `pending_policy` state and actor/timestamp. No prices seeded, no existing tenant/catalog/subscription/finance rows mutated.
-- Operator-only `GET/POST /api/admin/platform/commercial-release-candidates`: request can contain **only `sourceProposalId`**. The server loads independently reviewed research, constructs an immutable release dossier, re-checks the source digest on every list/detail serialization, and rejects changed sources or unsupported industries. Idempotent repeat returns the same candidate.
+- Operator-only `GET/POST /api/admin/platform/commercial-release-candidates`: request can contain **only `sourceProposalId`**. The server loads independently reviewed research, constructs an immutable release dossier, revalidates complete research app prices and monetary bounds, then re-checks the source digest on every list/detail serialization, and rejects changed sources or unsupported industries. Idempotent repeat returns the same candidate.
 - Operator UX `/platform/commercial-release`: select a reviewed Salon research version and view 10 explicit blockers. No button to publish, pay, activate, or issue a customer quote.
 - Future **pure, disconnected contract checks**: quote must match tenant, be issued and unexpired before potential acceptance; a payment intent or unverified/corrupt/duplicate settlement cannot qualify for activation. Passing checks **does not create an order, charge money, or activate**.
 

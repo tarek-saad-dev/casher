@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { validateTariffResearchInput, ResearchTariffError } from './tariffResearchPolicy';
 
 /**
  * Commercial policy checklist is a release gate, NOT a publication API.
@@ -64,6 +65,28 @@ export function prepareCatalogReleaseCandidate(source:ResearchSource):CatalogRel
      !Number.isSafeInteger(source.includedBranches)||source.includedBranches<1||
      !Number.isSafeInteger(source.annualMonthsCharged)||source.annualMonthsCharged<1)
     throw new CommercialReleaseError('SOURCE_INVALID','نسخة البحث غير سليمة');
+  // A digest is not enough: independently validate source prices and app coverage.
+  try {
+    const parsed:unknown=JSON.parse(source.appPricesJson);
+    if(!parsed||typeof parsed!=='object'||Array.isArray(parsed))
+      throw new CommercialReleaseError('SOURCE_INVALID','بيانات أسعار المصدر غير مكتملة');
+    const validated=validateTariffResearchInput({
+      industry:'salon',
+      pricingModel:source.pricingModel as 'per_app'|'base_plus_apps',
+      appPricesMinor:parsed as Record<string,number>,
+      baseMonthlyMinor:Number(source.baseMonthlyMinor),
+      extraBranchMonthlyMinor:Number(source.extraBranchMonthlyMinor),
+      includedBranches:source.includedBranches,
+      annualMonthsCharged:source.annualMonthsCharged,
+    });
+    if(Object.keys(validated.appPricesMinor).length===0)
+      throw new CommercialReleaseError('SOURCE_INVALID','تطبيقات المصدر غير مكتملة');
+  }catch(error){
+    if(error instanceof CommercialReleaseError)throw error;
+    if(error instanceof ResearchTariffError||error instanceof SyntaxError)
+      throw new CommercialReleaseError('SOURCE_INVALID','الأرقام البحثية غير سليمة أو ناقصة');
+    throw error;
+  }
   const canonical=JSON.stringify([
     source.proposalId.toLowerCase(),source.industryCode,source.version,
     source.pricingModel,source.currencyCode,source.appPricesJson,

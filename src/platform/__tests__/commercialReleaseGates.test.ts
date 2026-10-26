@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {describe,expect,it} from 'vitest';
+import {RESEARCH_SALON_APPS} from '@/platform/commercial/tariffResearchPolicy';
 import {DRVO_MIGRATIONS} from '../../../scripts/drvo/migrations/index';
 import {checksumFile} from '../../../scripts/drvo/checksum';
 import {readSqlBatches} from '../../../scripts/drvo/sqlBatch';
@@ -20,7 +21,7 @@ const executable=file(pathSql).replace(/\/\*[\s\S]*?\*\//g,'').replace(/--.*$/gm
 const source:ResearchSource={
   proposalId:'11111111-1111-4111-8111-111111111111',industryCode:'salon',version:5,
   pricingModel:'per_app',currencyCode:'EGP',
-  appPricesJson:'{"booking":1000,"pos":2000}',
+  appPricesJson:JSON.stringify(Object.fromEntries(RESEARCH_SALON_APPS.map(code=>[code,2000]))),
   baseMonthlyMinor:'0',extraBranchMonthlyMinor:'5000',
   includedBranches:1,annualMonthsCharged:12,
   status:'reviewed_research',createdByUserId:13,
@@ -71,7 +72,9 @@ describe('commercial release preparation never approves a sale',()=>{
   });
   it('digest changes when saved source pricing changes and cannot be tampered with',()=>{
     const original=prepareCatalogReleaseCandidate(source);
-    const modified=prepareCatalogReleaseCandidate({...source,appPricesJson:'{"booking":1100,"pos":2000}'});
+    const modified=prepareCatalogReleaseCandidate({...source,appPricesJson:JSON.stringify({
+      ...JSON.parse(source.appPricesJson),booking:1100,
+    })});
     expect(original.sourceDigest).not.toEqual(modified.sourceDigest);
     expect(failure(()=>assertNoCommercialRelease({...original,sourceDigest:'fake'}))).toBe('INVALID_DIGEST');
   });
@@ -81,6 +84,8 @@ describe('commercial release preparation never approves a sale',()=>{
     expect(failure(()=>prepareCatalogReleaseCandidate({...source,reviewedByUserId:null}))).toBe('SOURCE_NOT_REVIEWED');
     expect(failure(()=>prepareCatalogReleaseCandidate({...source,industryCode:'supermarket'}))).toBe('SOURCE_UNSUPPORTED');
     expect(failure(()=>prepareCatalogReleaseCandidate({...source,baseMonthlyMinor:'-1'}))).toBe('SOURCE_INVALID');
+    expect(failure(()=>prepareCatalogReleaseCandidate({...source,appPricesJson:'{}'}))).toBe('SOURCE_INVALID');
+    expect(failure(()=>prepareCatalogReleaseCandidate({...source,appPricesJson:'not-json'}))).toBe('SOURCE_INVALID');
   });
   it('operator routes accept source ID only and UI never publishes prices',()=>{
     const api=file('src/app/api/admin/platform/commercial-release-candidates/route.ts');
