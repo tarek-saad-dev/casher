@@ -35,6 +35,12 @@ export default async function PlatformLayout({ children }: { children: React.Rea
           <Link href="/platform/modular-quote-lab" className="rounded-lg border border-border px-3 py-1.5 hover:bg-muted">
             معمل عروض الأسعار
           </Link>
+          <Link href="/platform/internal-quote-snapshots" className="rounded-lg border border-border px-3 py-1.5 hover:bg-muted">
+            أرشيف المحاكاة
+          </Link>
+          <Link href="/platform/commercial-release" className="rounded-lg border border-border px-3 py-1.5 hover:bg-muted">
+            تجهيز اعتماد الكتالوج
+          </Link>
           <Link href="/platform/tariff-research" className="rounded-lg border border-border px-3 py-1.5 hover:bg-muted">
             بحث أسعار التطبيقات
           </Link>

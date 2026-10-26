@@ -1,0 +1,112 @@
+name: DRVO Modular Commercial Staging Read-Only Gate
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: drvo-modular-staging-read-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  modular-staging-readiness:
+    # Only this first-party Draft branch can request private staging secrets.
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'agent/modular-commercial-release-gates-v1'
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    env:
+      DRVO_STAGING_SSH_HOST: ${{ secrets.DRVO_STAGING_SSH_HOST }}
+      DRVO_STAGING_SSH_KEY: ${{ secrets.DRVO_STAGING_SSH_KEY }}
+      DRVO_STAGING_SSH_KNOWN_HOSTS: ${{ secrets.DRVO_STAGING_SSH_KNOWN_HOSTS }}
+      DRVO_STAGING_DB_PASSWORD: ${{ secrets.DRVO_STAGING_DB_PASSWORD }}
+      DRVO_STAGING_SQL_SERVER_NAME: ${{ secrets.DRVO_STAGING_SQL_SERVER_NAME }}
+      CLOUD_DB_NAME: last132_agent
+      CLOUD_DB_USER: drvo_agent
+      CLOUD_DB_SERVER: 127.0.0.1
+      CLOUD_DB_PORT: '14330'
+      DRVO_MODULAR_STAGING_READ_ONLY: '1'
+    steps:
+      - name: Checkout exact untrusted PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - name: Validate strictly isolated staging configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          for f in .env .env.local .env.production .env.production.local; do
+            if [[ -f "$f" ]]; then echo "Refusing checked-in env: $f" >&2; exit 30; fi
+          done
+          for key in DRVO_STAGING_SSH_HOST DRVO_STAGING_SSH_KEY DRVO_STAGING_SSH_KNOWN_HOSTS DRVO_STAGING_DB_PASSWORD DRVO_STAGING_SQL_SERVER_NAME; do
+            if [[ -z "${!key:-}" ]]; then
+              echo "Missing required staging-only secret: $key" >&2; exit 31
+            fi
+          done
+          if [[ "$CLOUD_DB_NAME" != 'last132_agent' || "$CLOUD_DB_USER" != 'drvo_agent' ||
+                "$CLOUD_DB_SERVER" != '127.0.0.1' || "$CLOUD_DB_PORT" != '14330' ]]; then
+            echo "Unsafe staging SQL target" >&2; exit 32
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Configure pinned staging SSH host identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$DRVO_STAGING_SSH_KEY" > ~/.ssh/drvo_staging
+          printf '%s\n' "$DRVO_STAGING_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/drvo_staging ~/.ssh/known_hosts
+          ssh-keygen -F "$DRVO_STAGING_SSH_HOST" -f ~/.ssh/known_hosts >/dev/null ||
+            { echo "Pinned host key absent or not for staging host" >&2; exit 33; }
+
+      - name: Open staging-only SQL tunnel
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/drvo_staging -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 \
+            -L 14330:127.0.0.1:1433 \
+            "drvo-tunnel@$DRVO_STAGING_SSH_HOST" -N &
+          echo $! > /tmp/drvo-modular-staging-tunnel.pid
+          for i in {1..30}; do
+            if nc -z 127.0.0.1 14330; then exit 0; fi
+            sleep 1
+          done
+          echo "No verified staging SQL tunnel" >&2
+          exit 34
+
+      - name: Read-only preflight for DRVO 015–022
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx tsx scripts/drvo/check-modular-commercial-staging.ts
+
+      - name: Explain verification boundary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '## DRVO modular staging read-only preflight'
+            echo ''
+            echo '- Database: isolated last132_agent / drvo_agent (checked in script)'
+            echo '- DRVO migrations 15–22 ledger, checksum and schema verification'
+            echo '- Candidate digests, snapshot digests and non-sale statuses'
+            echo '- NO migrations applied, NO fixture writes, NO payment, NO customer acceptance'
+            echo '- This is NOT an end-to-end business journey test or production approval'
+          } >> "$GITHUB_STEP_SUMMARY"
