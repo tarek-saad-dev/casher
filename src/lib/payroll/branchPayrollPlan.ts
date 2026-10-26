@@ -149,9 +149,15 @@ export async function resolveBranchPayrollPlanForDate(params: {
       CAST(1 AS bit) AS InheritedFromPrimary
     FROM dbo.TblEmpBranchPayrollPlan p
     INNER JOIN dbo.TblEmp e ON e.EmpID = p.EmpID
-      AND (ISNULL(e.PayrollScope, N'global') <> N'branch_monthly'
-        OR e.PayrollScopeEffectiveFrom IS NULL
-        OR e.PayrollScopeEffectiveFrom > @workDate)
+      AND NOT EXISTS (
+        SELECT 1 FROM dbo.TblEmpBranchPayrollAudit a
+        WHERE a.EmpID = p.EmpID AND a.NewPayrollScope = N'branch_monthly'
+          AND a.AuditID = (
+            SELECT TOP 1 z.AuditID FROM dbo.TblEmpBranchPayrollAudit z
+            WHERE z.EmpID = p.EmpID AND z.EffectiveFrom <= @workDate
+            ORDER BY z.EffectiveFrom DESC, z.AuditID DESC
+          )
+      )
     LEFT JOIN dbo.TblEmpBranchAssignment ea
       ON ea.EmpID = p.EmpID
      AND ea.BranchID = p.BranchID
@@ -235,9 +241,15 @@ export async function loadBranchDayPayrollPlans(
           ) AS rn
         FROM dbo.TblEmpBranchPayrollPlan p
         INNER JOIN dbo.TblEmp e ON e.EmpID = p.EmpID
-          AND (ISNULL(e.PayrollScope, N'global') <> N'branch_monthly'
-            OR e.PayrollScopeEffectiveFrom IS NULL
-            OR e.PayrollScopeEffectiveFrom > @workDate)
+          AND NOT EXISTS (
+        SELECT 1 FROM dbo.TblEmpBranchPayrollAudit a
+        WHERE a.EmpID = p.EmpID AND a.NewPayrollScope = N'branch_monthly'
+          AND a.AuditID = (
+            SELECT TOP 1 z.AuditID FROM dbo.TblEmpBranchPayrollAudit z
+            WHERE z.EmpID = p.EmpID AND z.EffectiveFrom <= @workDate
+            ORDER BY z.EffectiveFrom DESC, z.AuditID DESC
+          )
+      )
         LEFT JOIN dbo.TblEmpBranchAssignment ea
           ON ea.EmpID = p.EmpID
          AND ea.BranchID = p.BranchID
