@@ -155,7 +155,7 @@ export const EMPLOYEE_LIST_SELECT = `
     CONVERT(VARCHAR(5), e.DefaultCheckOutTime, 108) AS DefaultCheckOutTime,
     e.HireDate,
     e.EmploymentType, e.PayrollMethod, e.DayOffPolicy, e.DailyRate, e.ManualHourlyRate,
-    e.IsPayrollEnabled,
+    e.IsPayrollEnabled, e.PayrollScope,
     e.IsAttendanceExempt,
     e.HourlyRate,
     CASE
