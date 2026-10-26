@@ -21,6 +21,7 @@ import {
   isActiveBranchContext,
 } from "@/lib/branch/context";
 import { detectQueueTicketsSchema } from "@/lib/queueSchema";
+import { resolveQueueHistoryActorColumn } from "@/lib/queue/queueTicketHistoryActor";
 import { isEmployeeEligibleForBranchBookings } from "@/lib/branch/bookingQueueOwnership";
 
 export const runtime = "nodejs";
@@ -676,8 +677,12 @@ export async function POST(req: NextRequest) {
       throw txErr;
     }
 
-    // Write history (outside transaction — non-critical)
-    await db
+    // Write history (outside transaction — non-critical).
+    // The original schema calls the actor column ActionByUserID; some legacy
+    // installations have UserID instead.
+    try {
+      const actorColumn = await resolveQueueHistoryActorColumn(db);
+      await db
       .request()
       .input("ticketId", sql.Int, newId)
       .input("action", sql.NVarChar, "created")
@@ -685,13 +690,13 @@ export async function POST(req: NextRequest) {
       .query(
         `
         INSERT INTO [dbo].[QueueTicketHistory]
-          (QueueTicketID, OldStatus, NewStatus, ActionType, UserID)
+          (QueueTicketID, OldStatus, NewStatus, ActionType, [${actorColumn}])
         VALUES (@ticketId, NULL, 'waiting', @action, @userID)
       `,
-      )
-      .catch((e: unknown) =>
-        console.error("[queue POST] history write failed", e),
       );
+    } catch (e) {
+      console.error("[queue POST] history write failed", e);
+    }
 
     // Save ticket services (non-critical — outside transaction)
     if (services.length > 0) {
