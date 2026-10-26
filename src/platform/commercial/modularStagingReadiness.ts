@@ -30,6 +30,7 @@ export type ModularStagingReport={
   mode:'read_only_staging_preflight';database:string;login:string;
   ok:boolean;checks:{id:string;ok:boolean;detail:string}[];
   candidateCount:number;snapshotCount:number;
+  sampleCandidateCoverage:boolean;sampleSnapshotCoverage:boolean;
   mutationsPerformed:false;customerCheckoutTested:false;productionTouched:false;
 };
 const CHECK_MIGRATIONS=[15,16,17,18,19,20,21,22] as const;
@@ -48,6 +49,13 @@ export async function inspectModularCommercialStaging(pool:ConnectionPool):Promi
      String(identity?.effectiveLogin??'').toLowerCase()!==MODULAR_STAGING_LOGIN)
     throw new Error('STAGING_DB_IDENTITY_MISMATCH: refusing queries on unexpected database/login');
   record('staging.identity',true,'Verified exact SQL database, original and effective SQL login');
+
+  const bootstrap=await pool.request().query(
+    "SELECT COUNT_BIG(*) AS count FROM dbo.Tenant WHERE Code=N'CASHER_BOOT';");
+  const bootstrapCount=Number(bootstrap.recordset[0]?.count??0);
+  record('bootstrap.tenant',bootstrapCount===1,
+    bootstrapCount===1?'Bootstrap tenant exists, read-only verified':
+      'Missing/duplicated bootstrap tenant; stop release');
 
   const applied=await listAppliedDrvoMigrations(pool);
   for(const id of CHECK_MIGRATIONS){
@@ -154,5 +162,6 @@ export async function inspectModularCommercialStaging(pool:ConnectionPool):Promi
   }
   return {mode:'read_only_staging_preflight',database,login,
     ok:checks.every(x=>x.ok),checks,candidateCount,snapshotCount,
+    sampleCandidateCoverage:candidateCount>0,sampleSnapshotCoverage:snapshotCount>0,
     mutationsPerformed:false,customerCheckoutTested:false,productionTouched:false};
 }

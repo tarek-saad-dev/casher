@@ -36,3 +36,5 @@ Security requirements:
 2. Capture failed readiness checks and apply pending migrations **only** through separately authorized isolated staging deployment.
 3. Re-run the preflight; then run actual operator/tenant API E2E using dedicated disposable stage fixtures and cross-tenant permissions.
 4. Only after PR #154 and PR #157 pass staged verification and commercial decisions are formally approved may future sale-catalog functionality be considered. Neither PR currently authorizes Merge or production deployment.
+
+**Coverage flags:** The JSON report explicitly emits `sampleCandidateCoverage` and `sampleSnapshotCoverage`. With zero records, the preflight may check database structure, but it **cannot** count as tested create/replay/customer journeys.

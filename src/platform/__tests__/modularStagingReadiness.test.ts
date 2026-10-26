@@ -46,6 +46,9 @@ describe('modular pricing staging preflight is isolated and read-only',()=>{
       'isAcceptedChecksum','ORIGINAL_LOGIN()','SUSER_SNAME()'])
       expect(verify).toContain(key);
     expect(verify).toContain('mutationsPerformed:false');
+    expect(verify).toContain('sampleCandidateCoverage:candidateCount>0');
+    expect(verify).toContain('sampleSnapshotCoverage:snapshotCount>0');
+    expect(verify).toContain("Code=N'CASHER_BOOT'");
     expect(verify).toContain('customerCheckoutTested:false');
     expect(verify).not.toMatch(/\bINSERT INTO\b|\bUPDATE dbo\.|\bDELETE FROM\b|\bDROP TABLE\b/i);
   });
