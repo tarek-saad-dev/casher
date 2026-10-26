@@ -770,7 +770,7 @@ export async function computeBarberEstimate(
   }
 
   // Check working hours at requestedAt (not at slot) — this is "is the barber working now?"
-  const availResult = await getBarberAvailabilityReason(empId, now);
+  const availResult = await getBarberAvailabilityReason(empId, now, { branchId });
   const isWorking = availResult.available;
 
   if (!isWorking) {
