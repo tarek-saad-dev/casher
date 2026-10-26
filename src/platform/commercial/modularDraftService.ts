@@ -27,7 +27,7 @@ export type TenantDraftState = {
   };
 };
 
-type DraftRow = { DraftId: string; BillingCycle: DraftCycle; BranchCount: number; Revision: number; UpdatedAt: Date | string };
+type DraftRow = { DraftId: string; CatalogId: string; BillingCycle: DraftCycle; BranchCount: number; Revision: number; UpdatedAt: Date | string };
 
 async function loadDraftApps(ex: SqlExecutor, tenantId: string, draftId: string): Promise<string[]> {
   const data = await ex.request()
@@ -41,10 +41,10 @@ async function loadDraftApps(ex: SqlExecutor, tenantId: string, draftId: string)
   return (data.recordset as Array<{AppCode:string}>).map(x=>String(x.AppCode));
 }
 
-async function findDraftCatalog(ex: SqlExecutor, catalogCode: string): Promise<string> {
-  const r = await ex.request().input('catalogCode',sql.NVarChar(64), catalogCode).query(`
+async function findDraftCatalog(ex: SqlExecutor, catalogCode: string, industry: string): Promise<string> {
+  const r = await ex.request().input('catalogCode',sql.NVarChar(64), catalogCode).input('industry',sql.NVarChar(32),industry).query(`
     SELECT TOP 1 CatalogId FROM dbo.ModularPriceCatalog
-    WHERE CatalogCode=@catalogCode AND Version=1 AND CurrencyCode='EGP' AND Status=N'draft';`);
+    WHERE CatalogCode=@catalogCode AND IndustryCode=@industry AND Version=1 AND CurrencyCode='EGP' AND Status=N'draft';`);
   if (!r.recordset[0]?.CatalogId) {
     throw new ModularDraftError('DRAFT_CATALOG_NOT_READY',
       'تجهيز المسودات مش متاح حاليًا. يلزم تفعيل تحديث قاعدة البيانات.', 503);
@@ -58,10 +58,10 @@ export async function getTenantModularDraft(tenantId: string): Promise<TenantDra
   const pack = packState ? findIndustryPack(packState.packCode) : null;
   if (!pack) throw new ModularDraftError('PACK_NOT_FOUND', 'مفيش نشاط مجهز لهذه المنشأة', 409);
   const catalogCode = catalogCodeForPack(pack);
-  const catalogId = await findDraftCatalog(pool, catalogCode);
+  const catalogId = await findDraftCatalog(pool, catalogCode, pack.packCode);
   const rows = await pool.request().input('tenantId',sql.UniqueIdentifier,tenantId)
     .input('catalogId',sql.UniqueIdentifier,catalogId).query(`
-      SELECT DraftId, BillingCycle, BranchCount, Revision, UpdatedAt
+      SELECT DraftId, CatalogId, BillingCycle, BranchCount, Revision, UpdatedAt
       FROM dbo.TenantModularDraft
       WHERE TenantId=@tenantId AND CatalogId=@catalogId AND Status=N'draft';`);
   const row = rows.recordset[0] as DraftRow | undefined;
@@ -97,12 +97,15 @@ export async function saveTenantModularDraft(args: {
     const pack = packState ? findIndustryPack(packState.packCode) : null;
     if (!pack) throw new ModularDraftError('PACK_NOT_FOUND','مفيش نشاط مجهز لهذه المنشأة',409);
     const selection = validateModularDraftSelection(pack, args);
-    const catalogId = await findDraftCatalog(tx, catalogCodeForPack(pack));
+    const catalogId = await findDraftCatalog(tx, catalogCodeForPack(pack), pack.packCode);
     const found = await new sql.Request(tx).input('tenantId',sql.UniqueIdentifier,args.tenantId)
       .query(`SELECT DraftId, BillingCycle, BranchCount, Revision, UpdatedAt
         FROM dbo.TenantModularDraft WITH (UPDLOCK,HOLDLOCK)
         WHERE TenantId=@tenantId AND Status=N'draft';`);
     const current = found.recordset[0] as DraftRow | undefined;
+    if (current && String(current.CatalogId).toLowerCase() !== catalogId.toLowerCase()) {
+      throw new ModularDraftError('CATALOG_MISMATCH','المسودة مرتبطة بإصدار أسعار مختلف، تحتاج مراجعة الإدارة.',409);
+    }
     if (!current && selection.expectedRevision !== null) {
       throw new ModularDraftError('REVISION_CONFLICT','المسودة اتغيرت. حدّث الصفحة الأول.',409);
     }
