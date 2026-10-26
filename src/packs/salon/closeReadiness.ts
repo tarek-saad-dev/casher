@@ -4,7 +4,7 @@ import { getOpenBusinessDay } from '@/lib/branch/businessDay';
 import type { ActiveBranchContext } from '@/lib/branch/types';
 
 export type CloseReadinessItem = {
-  code: 'NO_OPEN_DAY' | 'PENDING_QUEUE' | 'OPEN_SHIFTS' | 'TREASURY_UNRECONCILED';
+  code: 'NO_OPEN_DAY' | 'PENDING_QUEUE' | 'OPEN_SHIFTS' | 'TREASURY_UNRECONCILED' | 'TREASURY_VARIANCE';
   message: string;
   count?: number;
   blocking: boolean;
@@ -22,6 +22,8 @@ export type SalonCloseReadiness = {
     pendingClients: number;
     openShifts: number;
     treasuryReconciliations: number;
+    treasuryVarianceAbsolute: number;
+    treasuryVarianceNet: number;
   };
 };
 
@@ -45,7 +47,7 @@ export async function getSalonCloseReadiness(
       branchId: branch.branchId, businessDayId: null, workDate: null,
       canCloseOperations: false, treasuryReconciliationRecorded: false,
       operationalBlockersClear: false, items: [item],
-      metrics: { pendingClients: 0, openShifts: 0, treasuryReconciliations: 0 },
+      metrics: { pendingClients: 0, openShifts: 0, treasuryReconciliations: 0, treasuryVarianceAbsolute: 0, treasuryVarianceNet: 0 },
     };
   }
 
@@ -67,14 +69,19 @@ export async function getSalonCloseReadiness(
       WHERE BranchID = @branchId AND BusinessDayID = @dayId AND Status = 1
     `),
     req().query(`
-      SELECT COUNT_BIG(*) AS Total
+      SELECT COUNT_BIG(*) AS Total,
+        COALESCE(SUM(ABS(CAST(CountedAmount AS decimal(19,2)) - CAST(SystemAmount AS decimal(19,2)))), 0) AS AbsoluteVariance,
+        COALESCE(SUM(CAST(CountedAmount AS decimal(19,2)) - CAST(SystemAmount AS decimal(19,2))), 0) AS NetVariance
       FROM dbo.TblTreasuryCloseRecon
-      WHERE BranchID = @branchId AND NewDay = @dayId AND IsActive = 1
+      WHERE BranchID = @branchId AND NewDay = @dayId
+        AND ShiftMoveID IS NULL AND IsActive = 1
     `),
   ]);
   const pendingClients = Number(queue.recordset[0]?.Total ?? 0);
   const openShifts = Number(shifts.recordset[0]?.Total ?? 0);
   const treasuryReconciliations = Number(treasury.recordset[0]?.Total ?? 0);
+  const treasuryVarianceAbsolute = Number(treasury.recordset[0]?.AbsoluteVariance ?? 0);
+  const treasuryVarianceNet = Number(treasury.recordset[0]?.NetVariance ?? 0);
   const items: CloseReadinessItem[] = [];
   if (pendingClients > 0) items.push({
     code: 'PENDING_QUEUE', message: `يوجد ${pendingClients} عميل لم تكتمل خدمته`,
@@ -89,12 +96,17 @@ export async function getSalonCloseReadiness(
     count: 0, blocking: false, link: '/admin/treasury',
   });
 
+  if (treasuryReconciliations > 0 && treasuryVarianceAbsolute > 0.009) items.push({
+    code: 'TREASURY_VARIANCE',
+    message: `تم تسجيل فروقات في مطابقة الخزينة بقيمة إجمالية ${treasuryVarianceAbsolute.toFixed(2)} (الصافي ${treasuryVarianceNet.toFixed(2)}) — تحتاج مراجعة`,
+    blocking: false, link: '/admin/treasury',
+  });
   const canCloseOperations = !items.some((item) => item.blocking);
   const treasuryReconciliationRecorded = treasuryReconciliations > 0;
   return {
     branchId: branch.branchId, businessDayId: day.id, workDate: day.newDay,
     canCloseOperations, treasuryReconciliationRecorded,
     operationalBlockersClear: canCloseOperations,
-    items, metrics: { pendingClients, openShifts, treasuryReconciliations },
+    items, metrics: { pendingClients, openShifts, treasuryReconciliations, treasuryVarianceAbsolute, treasuryVarianceNet },
   };
 }
