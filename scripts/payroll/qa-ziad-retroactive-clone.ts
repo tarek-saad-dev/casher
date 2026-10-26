@@ -14,7 +14,7 @@ async function main() {
     throw new Error('STOP: explicitly set PAYROLL_E2E_ALLOW_WRITE=isolated-clone');
   }
 
-  loadEnvConfig(process.cwd(), false);
+  loadEnvConfig(process.env.PAYROLL_E2E_ENV_DIR || process.cwd(), false);
   // Must be set before dynamically importing @/lib/db (config is module-scoped).
   process.env.LOCAL_DB_NAME = expectedDatabase;
   process.env.HAWAI_DB_CLASS = 'local';
