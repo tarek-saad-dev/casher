@@ -12,6 +12,7 @@
 import 'server-only';
 
 import { getPool, sql } from '@/lib/db';
+import { getCairoBusinessDate } from '@/lib/businessDate';
 
 export type BranchPayrollPayType = 'hourly' | 'daily' | 'monthly';
 
@@ -384,7 +385,7 @@ export async function loadActiveBranchPayrollRatesByEmpIds(
   if (!ids.length) return out;
 
   const db = await getPool();
-  const req = db.request();
+  const req = db.request().input('asOfDate', sql.Date, getCairoBusinessDate());
   const placeholders = ids.map((id, i) => {
     const name = `e${i}`;
     req.input(name, sql.Int, id);
@@ -410,7 +411,8 @@ export async function loadActiveBranchPayrollRatesByEmpIds(
        AND (ea.EffectiveTo IS NULL OR ea.EffectiveTo >= CAST(SYSUTCDATETIME() AS date))
       WHERE p.EmpID IN (${placeholders.join(',')})
         AND p.IsActive = 1
-        AND p.EffectiveTo IS NULL
+        AND p.EffectiveFrom <= @asOfDate
+        AND (p.EffectiveTo IS NULL OR p.EffectiveTo >= @asOfDate)
     )
     SELECT PlanID, EmpID, BranchID, PayType, HourlyRate, DailyRate, MonthlySalary
     FROM ranked
