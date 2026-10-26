@@ -94,7 +94,7 @@ describe('encounter workspace', () => {
       }), { status: 200 }),
     );
     render(<EncounterWorkspace encounterId="visit-a" />);
-    await screen.findByText('Patient A');
+    await screen.findByRole('heading', { name: 'زيارة Patient A' });
     expect((screen.getByRole('button', { name: 'طباعة الروشتة' }) as HTMLButtonElement).disabled).toBe(false);
     const print = screen.getByLabelText('نسخة طباعة الروشتة');
     expect(print.textContent).toContain('Medicine Signed');
