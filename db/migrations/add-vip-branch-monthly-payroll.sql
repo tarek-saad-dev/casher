@@ -9,6 +9,9 @@ BEGIN
     CONSTRAINT DF_TblEmp_PayrollScope DEFAULT (N'global') WITH VALUES;
 END;
 
+IF COL_LENGTH(N'dbo.TblEmp', N'PayrollScopeEffectiveFrom') IS NULL
+  ALTER TABLE dbo.TblEmp ADD PayrollScopeEffectiveFrom DATE NULL;
+
 IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = N'CK_TblEmp_PayrollScope')
 BEGIN
   ALTER TABLE dbo.TblEmp WITH CHECK ADD CONSTRAINT CK_TblEmp_PayrollScope
