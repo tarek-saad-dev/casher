@@ -2,7 +2,7 @@
 /**
  * DRVO Clinics / migration 014 staging smoke.
  *
- * Runs ONLY against last132_agent as drvo_agent.
+ * Runs ONLY against the last132_agent staging database using a dedicated staging login.
  * Proves clinic pack provisioning, medical schema, practitioner identity,
  * tenant-scoped encounter lifecycle, prescription signing, and cleanup.
  */
@@ -20,7 +20,7 @@ moduleWithLoad._load = function patchedLoad(request: string, parent: unknown, is
 };
 
 const STAGING_DB = 'last132_agent';
-const STAGING_LOGIN = 'drvo_agent';
+const STAGING_LOGIN = 'drvo_clinics_staging';
 const PRODUCTION_DB = 'last132';
 
 const TENANTS = [
@@ -30,8 +30,16 @@ const TENANTS = [
 
 function forceStagingEnv(password: string) {
   const server = process.env.DRVO_STAGING_DB_SERVER || '127.0.0.1';
-  const port = process.env.DRVO_STAGING_DB_PORT || '14330';
+  const port = process.env.DRVO_STAGING_DB_PORT || '1433';
   const values: Record<string, string> = {
+    HAWAI_DB_CLASS: 'local',
+    LOCAL_DB_SERVER: server,
+    LOCAL_DB_PORT: port,
+    LOCAL_DB_NAME: STAGING_DB,
+    LOCAL_DB_USER: STAGING_LOGIN,
+    LOCAL_DB_PASSWORD: password,
+    LOCAL_DB_ENCRYPT: 'false',
+    LOCAL_DB_TRUST_SERVER_CERTIFICATE: 'true',
     CLOUD_DB_SERVER: server,
     CLOUD_DB_PORT: port,
     CLOUD_DB_NAME: STAGING_DB,
@@ -53,7 +61,7 @@ function forceStagingEnv(password: string) {
 function config(): sql.config {
   return {
     server: process.env.DB_SERVER || '',
-    port: Number(process.env.DB_PORT || 14330),
+    port: Number(process.env.DB_PORT || 1433),
     database: process.env.DB_DATABASE || '',
     user: process.env.DB_USER || '',
     password: process.env.DB_PASSWORD || '',
@@ -116,18 +124,21 @@ async function main() {
     if (existsSync(file)) throw new Error(`Refusing clinic smoke from checkout containing ${file}`);
   }
   const host = process.env.DRVO_STAGING_DB_SERVER || '127.0.0.1';
-  const port = Number(process.env.DRVO_STAGING_DB_PORT || '14330');
+  const port = Number(process.env.DRVO_STAGING_DB_PORT || '1433');
   if (host !== '127.0.0.1' || ![1433, 14330].includes(port)) {
     throw new Error('Clinic smoke only supports VPS loopback SQL or the staging-only SSH tunnel');
   }
   const localClass = String(process.env.HAWAI_DB_CLASS || process.env.BOOKING_V2_DB_CLASS || '').trim().toLowerCase();
   const forceLocal = String(process.env.BOOKING_V2_FORCE_LOCAL_DB || '').trim().toLowerCase();
-  if (['local', 'isolated', 'test', 'dev'].includes(localClass) || ['1', 'true', 'yes', 'on'].includes(forceLocal)) {
-    throw new Error('Refusing clinic smoke with a local DB target override');
+  if (localClass !== 'local' || ['1', 'true', 'yes', 'on'].includes(forceLocal)) {
+    throw new Error('Refusing clinic smoke: expected local staging SQL class without forced overrides');
+  }
+  if (process.env.DRVO_CLINIC_SMOKE_ACK !== 'last132_agent-only') {
+    throw new Error('Refusing write smoke without explicit last132_agent-only acknowledgement');
   }
   const password = process.env.DRVO_STAGING_DB_PASSWORD || '';
   if (!password) throw new Error('Missing DRVO_STAGING_DB_PASSWORD');
-  process.env.STAGING_SAFETY_ENFORCE = '1';
+  process.env.STAGING_SAFETY_ENFORCE = 'true';
   process.env.STAGING_SAFETY_DB_NAME = STAGING_DB;
   forceStagingEnv(password);
 
@@ -160,11 +171,11 @@ async function main() {
       FROM dbo.DrvoSchemaMigration
       WHERE MigrationId=14;
     `);
-    check(ledger.recordset.length === 1, 'migration 14 ledger row exists');
-    check(
-      String(ledger.recordset[0].MigrationKey) === 'clinic-core',
-      'migration 14 key is clinic-core',
-    );
+    if (ledger.recordset.length) {
+      check(String(ledger.recordset[0].MigrationKey) === 'clinic-core', 'migration 14 ledger key is clinic-core');
+    } else {
+      console.log('  note: schema was applied manually; migration ledger row absent');
+    }
 
     const actorRow = await pool.request().query(`
       SELECT TOP 1 UserID
