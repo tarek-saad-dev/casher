@@ -30,6 +30,20 @@ describe('Salon Queue authenticated staging acceptance', () => {
     expect(script).toContain("SALON_QUEUE_WALKIN_E2E_STAGING_PASS");
   });
 
+  it('uses HR branch-weekly roster for salon walk-in creation and queue ETA', () => {
+    const availability = source('src/lib/barberAvailability.ts');
+    const queue = source('src/app/api/queue/route.ts');
+    const engine = source('src/lib/queueEstimateEngine.ts');
+    const eta = source('src/app/api/queue/estimate/route.ts');
+    expect(availability).toContain("source: 'operations'");
+    expect(availability).toContain("day.weeklyWindows?.source === 'BRANCH_WEEKLY'");
+    expect(availability).toContain('day.effectiveWindows.some(');
+    expect(availability).toContain('day.effSched?.blockedIntervals');
+    expect(queue).toContain('getBarberAvailabilityReason(empId, guardNow, { branchId: branch.branchId })');
+    expect(engine).toContain('getBarberAvailabilityReason(empId, now, { branchId })');
+    expect(eta).toContain('getAvailableBarbers(now, { branchId })');
+  });
+
   it('runs only on designated staging PR and has no deploy step', () => {
     const workflow = source('.github/workflows/salon-queue-staging-e2e.yml');
     expect(workflow).toContain("head.ref == 'agent/salon-queue-e2e'");
