@@ -75,7 +75,7 @@ jobs:
           --reporter=default
 
       - name: Retroactive payroll agreement math regression
-        run: npx vitest run src/lib/payroll/__tests__/payrollAgreementMath.test.ts
+        run: npx vitest run src/lib/payroll/__tests__/payrollAgreementMath.test.ts src/lib/payroll/__tests__/retroPayrollRolloutGate.test.ts
 
       - name: Payroll agreement date UX regression
         run: npx vitest run src/components/hr/__tests__/payrollAgreementDate.test.ts
