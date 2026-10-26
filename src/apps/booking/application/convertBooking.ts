@@ -1,4 +1,5 @@
 import 'server-only';
+import { sql } from '@/lib/db';
 import type { BookingSchedulingPorts } from '../public/ports';
 import {
   loadBookingForConversion,
@@ -34,6 +35,21 @@ export async function convertBooking(
     const { booking, services } = loaded;
 
     if (booking.branchId !== input.locationId) {
+      return { ok: false as const, status: 404, error: 'حجز غير موجود' };
+    }
+
+    // The booking's legacy branch integer is not a tenant authorization proof.
+    // Resolve ownership inside the same transaction before any invoice or replay
+    // is returned, so a guessed booking ID cannot reveal another tenant's sale.
+    const owned = await new sql.Request(transaction)
+      .input('tenantId', sql.UniqueIdentifier, deps.tenantId)
+      .input('branchId', sql.Int, input.locationId)
+      .query(`
+        SELECT TOP 1 1 AS Owned
+        FROM dbo.Location
+        WHERE TenantId = @tenantId AND LegacyBranchId = @branchId
+      `);
+    if (!owned.recordset.length || deps.actor.tenantId?.toLowerCase() !== deps.tenantId.toLowerCase()) {
       return { ok: false as const, status: 404, error: 'حجز غير موجود' };
     }
 
