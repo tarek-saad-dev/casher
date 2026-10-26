@@ -16,6 +16,21 @@ export async function POST(request:NextRequest, {params}:Context) {
     const {id}=await params;
     const empId=Number(id);
     if(!Number.isSafeInteger(empId)||empId<1) return NextResponse.json({error:'موظف غير صالح'},{status:400});
+    // Financial rollout safety: a production flag alone must never expose
+    // retroactive settlement for every employee. Explicitly allowlist IDs.
+    if (process.env.NODE_ENV === 'production') {
+      const allowlist = String(process.env.PAYROLL_RETROACTIVE_EMPLOYEE_IDS || '')
+        .split(',')
+        .map(value => value.trim())
+        .filter(value => /^[1-9][0-9]*$/.test(value))
+        .map(Number);
+      if (!allowlist.includes(empId)) {
+        return NextResponse.json(
+          { error: 'التسوية بأثر رجعي غير مفعلة لهذا الموظف' },
+          { status: 403 },
+        );
+      }
+    }
     const tenantId=requireMasterDataTenantId(auth.tenantId,'retroactive payroll apply');
     const input=(await request.json()) as RetroInput;
     const result=await applyRetroVip({empId,tenantId,userId:auth.userId,input});
