@@ -84,6 +84,7 @@ jobs:
         run: |
           bash -n scripts/payroll/run-ziad-payroll-rehearsal.sh
           bash -n scripts/payroll/resume-ziad-payroll-rehearsal.sh
+          bash -n scripts/payroll/apply-v2-schema-production.sh
 
       - name: Payroll rehearsal TypeScript path resolution
         run: npx tsx --tsconfig tsconfig.json -e "import('@/lib/businessDate').then(m => { if (typeof m.getCairoBusinessDate !== 'function') process.exit(1) })"
