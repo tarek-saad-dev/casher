@@ -41,6 +41,7 @@ import {
 } from '@/lib/hr/employee-hr-model';
 import { JobType } from '@/lib/types';
 import { BARBER_IMAGE_PRESETS } from '@/lib/barberImages';
+import { firstDayOfNextMonth } from '@/components/hr/payrollAgreementDate';
 import RetroPayrollAgreementReview, {
   type RetroReviewActionState,
   type RetroReviewHandle,
@@ -305,8 +306,7 @@ export default function EmployeeHrFormModal({
   const onCompScopeChange = (scope: CompensationMode) => {
     if (scope === 'branch_monthly' && compDetails?.employee.scope === 'global') {
       // Never default a new financial agreement to a date in the past.
-      const [year, month] = cairoToday.split('-').map(Number);
-      setCompDate(new Date(Date.UTC(year, month, 1)).toISOString().slice(0, 10));
+      setCompDate(firstDayOfNextMonth(cairoToday));
     } else if (scope === 'global' && compDetails) {
       setCompDate(compDetails.effectiveFrom);
     }
