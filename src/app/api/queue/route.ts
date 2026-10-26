@@ -290,7 +290,7 @@ export async function POST(req: NextRequest) {
     // Must be done BEFORE the interval math so a day_off barber is rejected outright.
     if (empId) {
       const guardNow = new Date();
-      const avail = await getBarberAvailabilityReason(empId, guardNow);
+      const avail = await getBarberAvailabilityReason(empId, guardNow, { branchId: branch.branchId });
       if (!avail.available) {
         return NextResponse.json(
           { error: avail.reason ?? "الحلاق غير متاح", reason: "barber_unavailable" },
