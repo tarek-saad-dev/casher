@@ -1072,7 +1072,7 @@ export default function EmployeeHrFormModal({
             </div>
           )}
 
-          <div className="flex gap-2 justify-end pt-2 border-t border-border" dir="ltr">
+          <div className="sticky bottom-0 z-20 -mx-2 flex justify-end gap-2 border-t border-border bg-background/95 px-3 py-3 backdrop-blur-md" dir="ltr">
             <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving || Boolean(retroAction?.busy && isRetroVip)}>
               إلغاء
             </Button>
