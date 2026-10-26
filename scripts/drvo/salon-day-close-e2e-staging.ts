@@ -257,7 +257,7 @@ async function main() {
     const queueBusinessDate = (await pool.request().input('id', sql.Int, queueTicketId)
       .query("SELECT CONVERT(varchar(10), QueueDate, 120) AS QueueDate FROM dbo.QueueTickets WHERE QueueTicketID=@id"))
       .recordset[0]?.QueueDate as string;
-    check(/^\\d{4}-\\d{2}-\\d{2}$/.test(queueBusinessDate), 'Walk-in has explicit business date');
+    check(/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(queueBusinessDate), 'Walk-in has explicit business date');
     const owner = await pool.request().input('tenantId', sql.UniqueIdentifier, tenantId)
       .query(`SELECT TOP 1 m.LegacyUserId AS userId
         FROM dbo.TenantMembership m JOIN dbo.TblUser u ON u.UserID = m.LegacyUserId
