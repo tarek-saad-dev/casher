@@ -25,6 +25,9 @@ describe('Salon payroll ledger isolation staging contract',()=>{
   expect(script).toContain('enqueueTargetRecalcFromInvoiceSnapshots({');
   expect(script).toContain('header: { invDate: WORK_DATE, branchId: t.branchId }');
   expect(script).toContain('dbo.TblEmpTargetRecalcRequest');
+  expect(script).toContain('processEmployeeTargetRecalcRequests({');
+  expect(script).toContain("Status === 'completed'");
+  expect(script).toContain('RequestedVersion) ===');
   expect(script).toContain('await cleanupAll(pool)');
   expect(workflow).toContain('environment: drvo-staging');
   expect(workflow).toContain("head.ref == 'agent/salon-payroll-report-isolation'");
