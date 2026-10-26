@@ -57,7 +57,7 @@ export default function ModularDraftClient() {
   };
   useEffect(()=>{void loadInquiries().catch(()=>{});},[]);
   const requestPricing=async()=>{
-    if(!data?.draft||data.protectedTenant||requesting)return;
+    if(!data?.draft||data.protectedTenant||requesting||hasUnsavedEdits)return;
     setRequesting(true);setError(null);setNote(null);
     try{
       const result=await platformFetch<{paid:false;canCheckout:false;orderCreated:false}>(
@@ -71,6 +71,10 @@ export default function ModularDraftClient() {
     }catch(e){setError(e instanceof Error?e.message:'تعذر إرسال الطلب');}
     finally{setRequesting(false);}
   };
+  const hasUnsavedEdits=!!data?.draft && (
+    JSON.stringify([...apps].sort())!==JSON.stringify([...data.draft.apps].sort()) ||
+    branches!==data.draft.branches || cycle!==data.draft.billingCycle
+  );
   const save=async()=>{
     if (!data||data.protectedTenant||saving) return;
     setSaving(true);setError(null);setNote(null);
@@ -159,9 +163,9 @@ export default function ModularDraftClient() {
           بعد حفظ المسودة تقدر تطلب من الفريق مراجعة التكلفة. مفيش أسعار معتمدة أو دفع أو تأكيد شراء حاليًا.
         </p>
         <button type="button" onClick={()=>void requestPricing()}
-          disabled={!data.draft||data.protectedTenant||saving||requesting}
+          disabled={!data.draft||data.protectedTenant||saving||requesting||hasUnsavedEdits}
           className="min-h-10 rounded-lg border border-border px-4 py-2 text-sm font-semibold disabled:opacity-50">
-          {requesting?'جاري تسجيل الطلب…':'طلب مراجعة السعر'}
+          {requesting?'جاري تسجيل الطلب…':hasUnsavedEdits?'احفظ التعديلات الأول':'طلب مراجعة السعر'}
         </button>
         {inquiries.length>0&&<div className="space-y-1 text-xs text-muted-foreground">
           {inquiries.slice(0,5).map(r=><p key={r.requestId}>
