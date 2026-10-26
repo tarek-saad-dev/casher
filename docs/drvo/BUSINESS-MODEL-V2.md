@@ -124,7 +124,7 @@ Track activation (first real booking/sale), trial-to-verified-paid, MRR/ARPA, fr
 
 ## Current commercial transition implementation (2026-10-26)
 
-The active work-in-progress **modular-pricing research prototype** is described in [Modular Pricing Research V1](./MODULAR-PRICING-RESEARCH-V1.md). Its scenario rates are **unapproved assumptions**, and the old customer-facing plan selection is closed while preserving historical subscriptions. This is not checkout and does not activate commercial entitlements.
+The active work-in-progress **modular-pricing research prototype** is described in [Modular Pricing Research V1](./MODULAR-PRICING-RESEARCH-V1.md). Its versioned per-app and base-plus-app scenarios are **unapproved assumptions**, and the old customer-facing plan selection is closed while preserving historical subscriptions. This is not checkout and does not activate commercial entitlements.
 
 ## 8. Implementation roadmap — after commercial approval
 

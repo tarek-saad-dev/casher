@@ -14,7 +14,22 @@
 - **`/platform/modular-pricing`** is a platform-operator-only internal sandbox. Its `POST /api/admin/platform/modular-pricing-preview` calculates server-side **research scenario math only**, never a customer quote or stored order.
 - No DB migration, payments, new feature gates, or changes to current existing tenant subscription records. `CASHER_BOOT` stays protected.
 
-## 2. Research hypotheses and price assumptions (NOT APPROVED)
+## 2. Versioned pure quote engine (second phase)
+
+**[Implemented in this stacked PR]** The generic `src/platform/commercial/modularQuoteEngine.ts` now underpins the research tool instead of doing amounts in scattered UI or route code:
+
+- A server-owned catalog identifies **catalogId + version + research_only state + EGP**; only the operator preview selects it.
+- Prices are in **integer piasters** (not floating-point EGP), with overflow rejection, an explicit research-only currency, deterministic app ordering and exact line-item totals.
+- **Required apps / dependencies** must be present, and unsupported or HOLD apps are rejected rather than silently priced at zero.
+- Supports one included branch plus separately itemized extra branches; a candidate **base platform fee** is a separate line, never hidden in another app price.
+- Annual scenarios use a catalog-defined number of paid months; tax, payment gateway fees and usage-based services are explicitly excluded (not assumed zero).
+- A pure **before/after comparison** reports difference and app additions/removals, but **does not prorate, change entitlements, collect payment, or guarantee a refund**.
+- The existing operator-only preview continues to return `canCheckout:false`, `canActivate:false` and does not expose a customer-payable quote.
+- Two unapproved strategy hypotheses are internally selectable: **per-app (0 base)** vs **base 149 EGP + app unit rates reduced by 20%**. These are for founder/customer research, not executable offers.
+
+Engineering scope: **no database tables or migrations**, no commercial entitlement enforcement, no payment/refund/checkout code, and no changed tenant subscriptions or app installation. Existing legacy pricing stays for compatibility; it is *not* a V2 tariff.
+
+## 3. Research hypotheses and price assumptions (NOT APPROVED)
 
 **Candidate pricing logic to validate:** no separate platform base fee, one app charge per tenant, first branch included, modest additional branch charge, metered third-party services as separate add-ons. No promised Free Forever at launch; 14-day no-card trial remains the decided launch entry.
 
@@ -36,7 +51,7 @@
 
 **Research comparison required:** alternative (A) no base fee, per-app pricing; (B) small base fee + cheaper app rates; (C) pricing by operational value capability. Check each against direct cost and customer comprehension, then choose a model with written approval.
 
-## 3. Rules before real customer pricing
+## 4. Rules before real customer pricing
 
 - Decide first genuinely *free* app only after Free Forever economics are confirmed; today free means **14-day trial**, not unlimited free subscription.
 - Essential tenant identity, data, access security, financial correctness, shift closing and read/export are not paid app add-ons even if Treasury is not installed.
@@ -47,12 +62,14 @@
 - Plan request history and subscription status are distinct from provider-verified paid activation.
 - Internal scenarios use a fixed checked-in experiment version and only allow Salon-ready **research-priceable** apps; unsafe/hold modules are rejected, not assigned a false zero price.
 
-## 4. Validation and launch checklist
+## 5. Validation and launch checklist
 
 - [x] Clear old public marketing tier cards and prevent new legacy-plan request submissions.
 - [x] Preserve tenant billing history and manual operator review of old pending requests.
 - [x] Add protected read-only scenario engine/API/UI with scenario only (no checkout).
 - [x] Document current scenario rates as **research assumptions**, not approved tariffs.
+- [x] Move pricing math into a separately versioned pure integer-minor-unit engine with explicit internal-only state and tests.
+- [x] Compare no-base versus base-plus-app research alternatives in the operator-only interface.
 - [ ] Verify PR CI + staging acceptance, and smoke current expired-trial, admin, non-admin and CASHER_BOOT paths.
 - [ ] Interview 15–20 owners with actual pay-now pricing exercises and app combinations.
 - [ ] Measure hosting/support and payment/AI/WhatsApp direct unit costs.
@@ -62,7 +79,7 @@
 - [ ] E2E staging tests: independent tenants, booking, POS, invoice/shift close, expired trial, chargebacks, disabled app and refund.
 - [ ] Launch customer-facing final pricing and checkout only after all gates pass.
 
-## 5. Known transition limits
+## 6. Known transition limits
 
 - Current signup/onboarding and existing `TenantSubscription` still use legacy plan identifiers and capacity rules internally. Not yet a tierless commercial subscription engine.
 - Operator legacy plan editing remains possible for managed existing subscriptions; not a new customer tariff.
@@ -76,3 +93,4 @@
 | Date | Version | Decision |
 | --- | --- | --- |
 | 2026-10-26 | 1.0 | First modular research scenario, internal simulator and customer-facing legacy tier sales freeze; exact rates still unapproved. |
+| 2026-10-26 | 1.1 | Versioned minor-unit quote engine; option to compare no-base vs base-plus-app pricing; safe before/after calculation. Research-only; no sale. |

@@ -57,7 +57,7 @@ export default function ModularResearchClient() {
                   onChange={(e) => { setResult(null); setSelected((old) => e.target.checked ? [...old, app.code] : old.filter((x) => x !== app.code)); }} />
                 {NAMES[app.code]} {app.required ? '(أساسي للصالون)' : ''}
               </span>
-              <span className="text-xs text-muted-foreground">{money(app.monthlyEgp)} / شهر افتراضيًا</span>
+              <span className="text-xs text-muted-foreground">{money(model === 'per_app' ? app.monthlyEgp : app.monthlyEgp * 0.8)} / شهر افتراضيًا</span>
             </label>
           ))}
         </div>
@@ -74,6 +74,7 @@ export default function ModularResearchClient() {
             </button>
           ))}
         </div>
+        {model === 'base_plus_apps' && <p className="text-xs text-muted-foreground">الفرضية دي فيها 149 ج.م رسوم منصة شهرية بالإضافة لتطبيقات أقل بـ20%. دي مقارنة داخلية فقط.</p>}
         <div className="flex flex-wrap gap-5">
           <label className="flex items-center gap-2 text-sm">عدد الفروع
             <select className="rounded-lg border border-border bg-background p-2" value={branches}
