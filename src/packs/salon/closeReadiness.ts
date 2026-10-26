@@ -15,8 +15,8 @@ export type SalonCloseReadiness = {
   businessDayId: number | null;
   workDate: string | null;
   canCloseOperations: boolean;
-  financialReviewComplete: boolean;
-  readyForFinalClose: boolean;
+  treasuryReconciliationRecorded: boolean;
+  operationalBlockersClear: boolean;
   items: CloseReadinessItem[];
   metrics: {
     pendingClients: number;
@@ -90,11 +90,11 @@ export async function getSalonCloseReadiness(
   });
 
   const canCloseOperations = !items.some((item) => item.blocking);
-  const financialReviewComplete = treasuryReconciliations > 0;
+  const treasuryReconciliationRecorded = treasuryReconciliations > 0;
   return {
     branchId: branch.branchId, businessDayId: day.id, workDate: day.newDay,
-    canCloseOperations, financialReviewComplete,
-    readyForFinalClose: canCloseOperations && financialReviewComplete,
+    canCloseOperations, treasuryReconciliationRecorded,
+    operationalBlockersClear: canCloseOperations,
     items, metrics: { pendingClients, openShifts, treasuryReconciliations },
   };
 }
