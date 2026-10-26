@@ -331,6 +331,12 @@ export async function executeLegacySaleCreateTransaction(
       sourceType: 'TblinvServHead',
       sourceRef: String(newInvID),
     });
+    // Employee-target recalculation is an accounting side effect of the sale.
+    // Never silently commit a sale that has employees but no branch-scoped
+    // recalculation: this used to happen when BranchID was omitted.
+    if (items.some((item) => item.empId > 0) && targetRecalcScopes.length === 0) {
+      throw new Error('POS_TARGET_RECALC_SCOPE_MISSING: sale employee targets were not enqueued');
+    }
   } catch (enqueueErr) {
     console.error(
       '[pos-api] target recalc enqueue failed — rolling back sale:',
