@@ -98,7 +98,12 @@ async function run() {
       check(loc.recordset.length === 1 && Number(loc.recordset[0].LegacyBranchId) > 0, testCase.name + ' branch provisioned');
       // Verify setup replay does not create a second tenant, branch, or employee.
       const retry = await retryOnboardingSetup(tenantId, req, actor, deps);
-      check(retry.complete && retry.core.tenantId === tenantId, testCase.name + ' setup retry is idempotent');
+      check(
+        retry.complete && retry.core.tenantId === tenantId,
+        testCase.name + ' setup retry is idempotent: ' +
+          JSON.stringify(retry.stages.filter((stage) => stage.status === 'failed' || stage.status === 'blocked')
+            .map((stage) => ({ stage: stage.stage, status: stage.status, code: stage.errorCode, message: stage.message }))),
+      );
       const locAfter = await pool.request().input('tenantId',sql.UniqueIdentifier,tenantId)
         .query('SELECT COUNT_BIG(*) AS Cnt FROM dbo.Location WHERE TenantId=@tenantId');
       check(Number(locAfter.recordset[0].Cnt) === 1, testCase.name + ' setup retry did not duplicate branch');
