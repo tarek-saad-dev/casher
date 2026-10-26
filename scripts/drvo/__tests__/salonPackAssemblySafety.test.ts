@@ -29,7 +29,8 @@ describe('Salon Pack FULL and MINIMAL assembly',()=>{
     expect(test).toContain("tenants.push(req.business.tenantCode)");
     expect(test).toContain("await retryOnboardingSetup(tenantId, req, actor, deps)");
     expect(test).toContain("await purgeSmokeTenant(pool, tenantCode)");
-    expect(test).toContain("SALON_ASSEMBLY_FULL_STAGING_PASS");
+    expect(test).toContain("name: 'FULL'");
+    expect(test).toContain("name: 'MINIMAL'");
     expect(test).toContain("SALON_ASSEMBLY_E2E_STAGING_PASS");
     expect(workflow).toContain("head.ref == 'agent/salon-pack-assembly'");
     expect(workflow).toContain("environment: drvo-staging");
