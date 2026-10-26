@@ -56,10 +56,11 @@ export async function POST(req: NextRequest) {
   }
   const encounterId = parseTreatmentUuid(body.encounterId);
   const valid = validateTreatmentPlan(body);
-  if (!encounterId || !valid.ok) {
-    return NextResponse.json({
-      error: !encounterId ? 'رقم الزيارة غير صحيح' : valid.error,
-    }, { status: 400, headers: NO_STORE });
+  if (!encounterId) {
+    return NextResponse.json({ error: 'رقم الزيارة غير صحيح' }, { status: 400, headers: NO_STORE });
+  }
+  if (!valid.ok) {
+    return NextResponse.json({ error: valid.error }, { status: 400, headers: NO_STORE });
   }
   try {
     const planId = await createTreatmentPlan({ ...auth, encounterId, ...valid });
