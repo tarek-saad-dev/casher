@@ -22,7 +22,7 @@ describe('Salon Queue authenticated staging acceptance', () => {
     expect(script).toContain("'/api/auth/login'");
     expect(script).toContain("'/api/queue'");
     expect(script).toContain("'/api/queue/' + queueTicketId");
-    expect(script).toContain('ticket.ticket?.durationMinutes === 45');
+    expect(script).toContain('await getDefaultDuration(pool, branchId) === 45');
     expect(script).toContain("['called', 'called']");
     expect(script).toContain("['arrived', 'arrived']");
     expect(script).toContain("['in_service', 'in_service']");
