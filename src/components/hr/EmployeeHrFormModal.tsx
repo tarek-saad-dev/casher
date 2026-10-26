@@ -41,6 +41,7 @@ import {
 } from '@/lib/hr/employee-hr-model';
 import { JobType } from '@/lib/types';
 import { BARBER_IMAGE_PRESETS } from '@/lib/barberImages';
+import RetroPayrollAgreementReview from '@/components/hr/RetroPayrollAgreementReview';
 import EmployeeBranchPayrollFields, {
   type CompensationBranch,
   type CompensationDetails,
@@ -231,6 +232,13 @@ export default function EmployeeHrFormModal({
     }
   }, [form.employmentType, form.payrollMethod, form.dayOffPolicy, payrollOptions, patchForm]);
 
+  const cairoToday = useMemo(() => {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Africa/Cairo', year: 'numeric', month: '2-digit', day: '2-digit',
+    }).formatToParts(new Date());
+    const find = (type: string) => parts.find((p) => p.type === type)?.value ?? '';
+    return `${find('year')}-${find('month')}-${find('day')}`;
+  }, []);
   const isVipScope = compScope === 'branch_monthly';
   const isPersistedVip = mode === 'edit' && compDetails?.employee.scope === 'branch_monthly';
   const vipEligible = Boolean(
@@ -250,12 +258,15 @@ export default function EmployeeHrFormModal({
       ))
     ),
   );
+  const isRetroVip = mode === 'edit' && isVipScope &&
+    compDetails?.employee.scope === 'global' &&
+    compDate.slice(0, 7) === cairoToday.slice(0, 7) && compDate <= cairoToday;
   const compensationError = (() => {
     if (mode !== 'edit' || !compDetails) return null;
     if (form.employmentType === 'freelance' && (isVipScope || isPersistedVip)) {
       return 'يجب إيقاف نظام VIP أولًا قبل تحويل الموظف إلى فري لانس';
     }
-    if (isVipScope && compensationChanged) {
+    if (isVipScope && compensationChanged && !isRetroVip) {
       if (!vipEligible) return 'نظام الفروع متاح للموظف الشهري المفعّل فقط. اضبط النظام الشهري واحفظ أولًا.';
       const active = compBranches.filter((b) => b.enabled);
       if (!active.length) return 'فعّل مرتب فرع واحد على الأقل';
@@ -264,7 +275,7 @@ export default function EmployeeHrFormModal({
         return 'راجع تعيين الفروع وقيم المرتبات الشهرية';
       }
     }
-    if (compensationChanged) {
+    if (compensationChanged && !isRetroVip) {
       if (!/^\d{4}-(0[1-9]|1[0-2])-01$/.test(compDate) ||
         compDate < compDetails.effectiveFrom) {
         return 'تاريخ سريان المرتب لازم يكون أول يوم من شهر قادم';
@@ -281,8 +292,17 @@ export default function EmployeeHrFormModal({
   const validation = validateEmployeeHrForm(
     isVipScope || isPersistedVip ? { ...form, isPayrollEnabled: false } : form,
   );
-  const canSubmit = validation.ok && !compensationError && !saving && !loadingProfile &&
+  const canSubmit = validation.ok && !compensationError && !isRetroVip && !saving && !loadingProfile &&
     (mode === 'create' || compDetails !== null);
+
+  const onCompScopeChange = (scope: CompensationMode) => {
+    if (scope === 'branch_monthly' && compDetails?.employee.scope === 'global') {
+      setCompDate(cairoToday.slice(0, 7) + '-01');
+    } else if (scope === 'global' && compDetails) {
+      setCompDate(compDetails.effectiveFrom);
+    }
+    setCompScope(scope);
+  };
 
   const patchCompBranch = (id: number, partial: Partial<CompensationBranch>) => {
     setCompBranches((rows) => rows.map((b) => b.branchId === id ? { ...b, ...partial } : b));
@@ -705,7 +725,7 @@ export default function EmployeeHrFormModal({
               <EmployeeBranchPayrollFields
                 createMode={mode === 'create'}
                 scope={compScope}
-                onScopeChange={setCompScope}
+                onScopeChange={onCompScopeChange}
                 details={compDetails}
                 branches={compBranches}
                 onBranchChange={patchCompBranch}
@@ -715,6 +735,17 @@ export default function EmployeeHrFormModal({
                 onGlobalSalaryChange={setCompGlobalSalary}
                 vipEligible={vipEligible}
               />
+              {isRetroVip && employee && (
+                <RetroPayrollAgreementReview
+                  empId={employee.EmpID}
+                  effectiveFrom={compDate}
+                  branches={compBranches}
+                  onApplied={(message) => {
+                    onSaved(message);
+                    onOpenChange(false);
+                  }}
+                />
+              )}
               {compScope === 'global' && !isPersistedVip && (
                 <div className="space-y-4">
             <div className="space-y-2">
@@ -1041,7 +1072,7 @@ export default function EmployeeHrFormModal({
               ) : (
                 <>
                   <CheckCircle2 className="w-4 h-4" />
-                  حفظ التعديلات
+                  {isRetroVip ? 'اعتمد التسوية من المعاينة أعلاه' : 'حفظ التعديلات'}
                 </>
               )}
             </Button>
