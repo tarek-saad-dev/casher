@@ -48,13 +48,22 @@ async function main() {
       await import('../../src/apps/pos/internal/posSaleTreasuryFlag');
     const extracted = isPosSaleTreasuryPostingEnabled();
     if (extracted && enabled) {
-      throw new Error('DUAL_PRIMARY_CASH_WRITERS: extracted Treasury posting and legacy sale trigger both enabled');
+      // DRVO-009 intentionally keeps the legacy trigger enabled. Migration 008
+      // adds a coexistence guard that skips sales Treasury already posted.
+      // Verify the actual trigger BODY on staging, not merely is_disabled.
+      const { verifyInsCashMoveSalesGuard } =
+        await import('./migrations/008-ins-cash-move-sales-guard');
+      const guard = await verifyInsCashMoveSalesGuard(pool);
+      if (!guard.ok) {
+        throw new Error('UNSAFE_SALE_WRITER_COEXISTENCE: ' + guard.failures.join('; '));
+      }
+      console.log('PASS: Active legacy trigger has DRVO-009 Treasury coexistence guard');
     }
     if (!extracted && !enabled) {
       throw new Error('NO_PRIMARY_CASH_WRITER: legacy Treasury mode without sale trigger');
     }
     console.log('PASS: Staging primary CashMove writer configuration coherent: ' +
-      (extracted ? 'extracted Treasury adapter' : 'legacy sale trigger'));
+      (extracted ? 'extracted Treasury adapter + guarded trigger' : 'legacy sale trigger'));
     console.log('SALON_POS_TREASURY_WRITER_PREFLIGHT_PASS');
   } finally {
     await pool.close();
