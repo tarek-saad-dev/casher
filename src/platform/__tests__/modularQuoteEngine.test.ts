@@ -103,6 +103,20 @@ describe('versioned pure modular research quote engine', () => {
     expect(errorCode(()=>compareModularResearchQuotes(before,calc({cycle:'annual'})))).toBe('COMPARISON_INCOMPATIBLE');
     expect(errorCode(()=>compareModularResearchQuotes(before,calc({},{version:2})))).toBe('COMPARISON_INCOMPATIBLE');
   });
+  it('compares two hypotheses through the server-selected catalog, not client supplied unit prices', () => {
+    const basic=calculateSalonResearchScenario({
+      industry:'salon',apps:['booking','pos','queue'],branches:1,cycle:'monthly',model:'per_app',
+    });
+    const alternative=calculateSalonResearchScenario({
+      industry:'salon',apps:['booking','pos','queue'],branches:1,cycle:'monthly',model:'base_plus_apps',
+    });
+    expect(basic.monthlyEgp).toBe(597);
+    // 149 EGP base + 80% of (199 + 299 + 99) EGP = 626.60 EGP
+    expect(alternative.monthlyEgp).toBe(626.6);
+    expect(alternative.model).toBe('base_plus_apps');
+    expect(alternative.lines.some(x=>x.code==='platform-base')).toBe(true);
+    expect(alternative.canCheckout).toBe(false);
+  });
   it('preserves the existing operator research scenario output shape and arithmetic', () => {
     expect(calculateSalonResearchScenario({
       industry:'salon',apps:['booking','pos','queue'],branches:3,cycle:'annual',

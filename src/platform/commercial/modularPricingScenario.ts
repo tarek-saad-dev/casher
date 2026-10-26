@@ -28,7 +28,7 @@ const LABELS: Record<keyof typeof RESEARCH_RATES, string> = {
   treasury: 'الخزنة', reports: 'التقارير',
 };
 const appCodes = Object.keys(RESEARCH_RATES);
-const catalog: ModularResearchCatalog = {
+const perAppCatalog: ModularResearchCatalog = {
   catalogId: 'salon-modular-research',
   version: 1,
   state: 'research_only',
@@ -40,6 +40,21 @@ const catalog: ModularResearchCatalog = {
   extraBranchMonthlyMinor: EXPERIMENTAL_BRANCH_FEE * 100,
   maxBranches: MAX_BRANCHES_SCENARIO,
   annualMonthsCharged: MONTHS_PER_YEAR,
+};
+
+const basePlusAppsCatalog: ModularResearchCatalog = {
+  ...perAppCatalog,
+  catalogId: 'salon-base-plus-apps-research',
+  baseMonthlyMinor: 14900,
+  monthlyPerAppMinor: Object.fromEntries(Object.entries(RESEARCH_RATES).map(([code, egp]) => [
+    code, egp * 80, // All research rate figures stay integer piasters
+  ])),
+};
+
+export type ScenarioModel = 'per_app' | 'base_plus_apps';
+const CATALOGS: Record<ScenarioModel, ModularResearchCatalog> = {
+  per_app: perAppCatalog,
+  base_plus_apps: basePlusAppsCatalog,
 };
 
 const rules: ModularResearchRules = {
@@ -57,12 +72,14 @@ export type ScenarioInput = {
   apps: readonly string[];
   branches: number;
   cycle: ScenarioCycle;
+  model?: ScenarioModel;
 };
 export type ScenarioLine = { code: string; label: string; quantity: number; monthlyEgp: number };
 export type ResearchScenario = {
   mode: 'research_only';
   version: typeof RESEARCH_SCENARIO_VERSION;
   catalogVersion: number;
+  model: ScenarioModel;
   canCheckout: false;
   canActivate: false;
   currency: 'EGP';
@@ -89,11 +106,16 @@ export class ResearchScenarioError extends Error {
  */
 export function calculateSalonResearchScenario(input: ScenarioInput): ResearchScenario {
   try {
-    const quote = calculateModularResearchQuote(input, catalog, rules);
+    const model: ScenarioModel = input.model ?? 'per_app';
+    if (!Object.prototype.hasOwnProperty.call(CATALOGS, model)) {
+      throw new ResearchScenarioError('MODEL_INVALID', 'النموذج البحثي غير متاح');
+    }
+    const quote = calculateModularResearchQuote(input, CATALOGS[model], rules);
     return {
       mode: 'research_only',
       version: RESEARCH_SCENARIO_VERSION,
       catalogVersion: quote.catalogVersion,
+      model,
       canCheckout: false,
       canActivate: false,
       currency: 'EGP',
@@ -103,7 +125,9 @@ export function calculateSalonResearchScenario(input: ScenarioInput): ResearchSc
       branches: quote.branches,
       lines: quote.lines.map((line) => ({
         code: line.code,
-        label: line.code === 'extra-branch' ? 'فروع إضافية (فرضية بحثية)' : line.label,
+        label: line.code === 'extra-branch' ? 'فروع إضافية (فرضية بحثية)'
+          : line.code === 'platform-base' ? 'رسوم أساسية للمنصة (فرضية بحثية)'
+          : line.label,
         quantity: line.quantity,
         monthlyEgp: minorToEgp(line.totalMonthlyMinor),
       })),

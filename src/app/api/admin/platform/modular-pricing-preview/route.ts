@@ -3,6 +3,7 @@ import { isAuthResult, requirePlatformOperator } from '@/lib/api-auth';
 import {
   calculateSalonResearchScenario,
   ResearchScenarioError,
+  type ScenarioModel,
 } from '@/platform/commercial/modularPricingScenario';
 
 export const runtime = 'nodejs';
@@ -15,17 +16,18 @@ export async function POST(req: Request) {
   const auth = await requirePlatformOperator();
   if (!isAuthResult(auth)) return auth;
 
-  let input: { industry: string; apps: string[]; branches: number; cycle: 'monthly' | 'annual' };
+  let input: { industry: string; apps: string[]; branches: number; cycle: 'monthly' | 'annual'; model?: ScenarioModel };
   try {
     const data: unknown = await req.json();
     if (!data || typeof data !== 'object' || Array.isArray(data)) throw Error('body');
     const body = data as Record<string, unknown>;
-    if (Object.keys(body).some((key) => !['industry', 'apps', 'branches', 'cycle'].includes(key)) ||
+    if (Object.keys(body).some((key) => !['industry', 'apps', 'branches', 'cycle', 'model'].includes(key)) ||
         body.industry !== 'salon' || !Array.isArray(body.apps) ||
         body.apps.length > 12 || body.apps.some((x) => typeof x !== 'string') ||
         !Number.isSafeInteger(body.branches) ||
-        (body.cycle !== 'monthly' && body.cycle !== 'annual')) throw Error('invalid');
-    input = { industry: body.industry, apps: body.apps as string[], branches: Number(body.branches), cycle: body.cycle };
+        (body.cycle !== 'monthly' && body.cycle !== 'annual') ||
+        (body.model !== undefined && body.model !== 'per_app' && body.model !== 'base_plus_apps')) throw Error('invalid');
+    input = { industry: body.industry, apps: body.apps as string[], branches: Number(body.branches), cycle: body.cycle, model: body.model as ScenarioModel | undefined };
   } catch {
     return NextResponse.json({ error: 'بيانات المقارنة غير صحيحة', code: 'INVALID_REQUEST' }, { status: 400, headers: NO_STORE });
   }

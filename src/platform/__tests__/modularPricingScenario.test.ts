@@ -61,6 +61,12 @@ describe('DRVO tierless modular pricing research-only safety', () => {
     expect(calc).toContain("canCheckout: false");
     expect(calc).toContain("canActivate: false");
   });
+  it('only allows explicit research model keys at the operator API boundary', () => {
+    const route=read('src/app/api/admin/platform/modular-pricing-preview/route.ts');
+    expect(route).toContain("body.model !== 'per_app'");
+    expect(route).toContain("body.model !== 'base_plus_apps'");
+    expect(route).not.toContain('body.price');
+  });
   it('stops selling obsolete tiers to tenants and on the public landing', () => {
     const route=read('src/app/api/tenant/billing/route.ts');
     const ui=read('src/components/tenant/TenantBillingClient.tsx');
