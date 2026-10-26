@@ -34,7 +34,12 @@ function assertInternalQuote(q:QuoteLabSimulation['researchQuote']):void {
      !Array.isArray(q.lines)||!Array.isArray(q.apps)||
      !Number.isSafeInteger(q.totalMonthlyMinor)||q.totalMonthlyMinor<0||
      !Number.isSafeInteger(q.totalPeriodMinor)||q.totalPeriodMinor<0||
-     !Number.isSafeInteger(q.chargedMonths)||q.chargedMonths<1)
+     !Number.isSafeInteger(q.chargedMonths)||q.chargedMonths<1||
+     !Array.isArray(q.excludedFromEstimate)||
+     q.excludedFromEstimate.length!==3||
+     q.excludedFromEstimate[0]!=='taxes'||
+     q.excludedFromEstimate[1]!=='gateway_fees'||
+     q.excludedFromEstimate[2]!=='usage_based_services')
     throw new InternalQuoteSnapshotError('QUOTE_NOT_INTERNAL','النتيجة مش محاكاة داخلية صالحة');
   let total=0;
   for(const line of q.lines){
