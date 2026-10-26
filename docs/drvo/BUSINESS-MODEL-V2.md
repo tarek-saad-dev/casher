@@ -128,6 +128,8 @@ The active work-in-progress **modular-pricing research prototype** is described 
 
 **Commercial schema foundation (shadow-only):** see [Modular Commercial Draft Foundation](./MODULAR-COMMERCIAL-DRAFT-FOUNDATION.md) for migration 015 and its explicitly non-paying/non-authorizing tables. It must not be treated as subscription activation.
 
+**Editable app-selection drafts (non-paying):** [Tenant Draft Self-service](./MODULAR-DRAFT-SELF-SERVICE-V1.md) describes Migration 016 plus tenant-owner editor. Draft selections cannot grant paid entitlements or change installed apps.
+
 ## 8. Implementation roadmap — after commercial approval
 
 1. **Confirm V2 charging unit and candidate pricing** with customer research, cost model and founder signoff.
