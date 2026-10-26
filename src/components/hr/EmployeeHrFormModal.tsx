@@ -265,7 +265,7 @@ export default function EmployeeHrFormModal({
       }
     }
     if (compensationChanged) {
-      if (!/^\\d{4}-(0[1-9]|1[0-2])-01$/.test(compDate) ||
+      if (!/^\d{4}-(0[1-9]|1[0-2])-01$/.test(compDate) ||
         compDate < compDetails.effectiveFrom) {
         return 'تاريخ سريان المرتب لازم يكون أول يوم من شهر قادم';
       }
@@ -746,7 +746,6 @@ export default function EmployeeHrFormModal({
               </div>
               <Switch
                 checked={form.isPayrollEnabled}
-                
                 onCheckedChange={(v) => patchForm({ isPayrollEnabled: v })}
               />
             </div>
