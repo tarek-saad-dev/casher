@@ -86,6 +86,8 @@ export async function transitionClinicAppointment(input: {
   locationId: string;
   bookingId: number;
   actorUserId: number;
+  /** For doctor-owned operations, lock only an appointment assigned to this doctor. */
+  expectedPractitionerEmpId?: number;
   action: 'arrive' | 'start';
   visitType?: ClinicVisitType;
 }): Promise<ClinicAppointmentTransition> {
@@ -97,6 +99,7 @@ export async function transitionClinicAppointment(input: {
       .input('tenantId', sql.UniqueIdentifier, input.tenantId)
       .input('branchId', sql.Int, input.branchId)
       .input('bookingId', sql.Int, input.bookingId)
+      .input('expectedDoctor', sql.Int, input.expectedPractitionerEmpId ?? null)
       .query(`
         SELECT TOP 1 b.BookingID, b.ClientID, b.AssignedEmpID, b.Status,
                b.BookingDate
@@ -109,7 +112,8 @@ export async function transitionClinicAppointment(input: {
           AND p.Job IN (N'طبيب', N'Doctor', N'doctor')
         INNER JOIN dbo.ClinicPractitioner cp
           ON cp.TenantId=@tenantId AND cp.EmpID=p.EmpID AND cp.IsActive=1
-        WHERE b.BookingID=@bookingId AND b.BranchID=@branchId;
+        WHERE b.BookingID=@bookingId AND b.BranchID=@branchId
+          AND (@expectedDoctor IS NULL OR b.AssignedEmpID=@expectedDoctor);
       `);
     const booking = bookingRes.recordset[0] as {
       BookingID: number;
@@ -150,12 +154,19 @@ export async function transitionClinicAppointment(input: {
       .input('tenantId', sql.UniqueIdentifier, input.tenantId)
       .input('bookingRef', sql.NVarChar(128), bookingRef)
       .query(`
-        SELECT TOP 1 EncounterId
+        SELECT TOP 1 EncounterId, PractitionerEmpID
         FROM dbo.ClinicEncounter
         WHERE TenantId=@tenantId AND BookingRef=@bookingRef
         ORDER BY CreatedAt, EncounterId;
       `);
     if (linked.recordset[0]) {
+      if (input.expectedPractitionerEmpId != null &&
+          Number(linked.recordset[0].PractitionerEmpID) !== input.expectedPractitionerEmpId) {
+        throw new ClinicAppointmentConflict(
+          'DOCTOR_UNAVAILABLE',
+          'الحجز مرتبط بكشف لطبيب مختلف ويحتاج مراجعة من الاستقبال.',
+        );
+      }
       await tx.commit();
       return {
         bookingId: input.bookingId,
@@ -176,6 +187,7 @@ export async function transitionClinicAppointment(input: {
       .input('locationId', sql.UniqueIdentifier, input.locationId)
       .input('visitType', sql.NVarChar(20), input.visitType ?? 'new')
       .input('actorUserId', sql.Int, input.actorUserId)
+      .input('expectedDoctor', sql.Int, input.expectedPractitionerEmpId ?? null)
       .query(`
         INSERT INTO dbo.ClinicEncounter (
           TenantId, ClientID, PractitionerEmpID, LocationId, BookingRef,
@@ -187,6 +199,7 @@ export async function transitionClinicAppointment(input: {
           @visitType, N'in_progress', SYSUTCDATETIME(), @actorUserId
         FROM dbo.Bookings b
         WHERE b.BookingID=@bookingId AND b.BranchID=@branchId
+          AND (@expectedDoctor IS NULL OR b.AssignedEmpID=@expectedDoctor)
           AND b.Status IN (N'arrived', N'queued')
           AND EXISTS (
             SELECT 1 FROM dbo.TblEmpBranchAssignment a
