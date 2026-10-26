@@ -18,6 +18,17 @@ describe('Salon payroll ledger isolation staging contract',()=>{
   expect(w).toContain('environment: drvo-staging');
   expect(w).not.toContain('deploy-vps');
  });
+ it('checks actual invoice-shaped target request persistence for two unique staging tenants',()=>{
+  const script=read('scripts/drvo/salon-pos-target-payroll-staging.ts');
+  const workflow=read('.github/workflows/salon-pos-target-payroll-staging-e2e.yml');
+  expect(script).toContain('randomBytes(4)');
+  expect(script).toContain('enqueueTargetRecalcFromInvoiceSnapshots({');
+  expect(script).toContain('header: { invDate: WORK_DATE, branchId: t.branchId }');
+  expect(script).toContain('dbo.TblEmpTargetRecalcRequest');
+  expect(script).toContain('await cleanupAll(pool)');
+  expect(workflow).toContain('environment: drvo-staging');
+  expect(workflow).toContain("head.ref == 'agent/salon-payroll-report-isolation'");
+ });
  it('does not conflate payroll summaries with revenue reporting or sale commission',()=>{
   const d=read('docs/drvo/SALON-PACK-PAYROLL-REPORTS-ACCEPTANCE.md');
   expect(d).toContain('Invoice → commission integration');
