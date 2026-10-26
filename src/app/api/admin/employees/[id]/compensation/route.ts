@@ -3,6 +3,7 @@ import { getPool, sql } from '@/lib/db';
 import { requirePageAccess, isAuthResult } from '@/lib/api-auth';
 import { requireMasterDataTenantId } from '@/platform/masterData/tenantScope';
 import { getCairoBusinessDate } from '@/lib/businessDate';
+import { retroPayrollEnabledForEmployee } from '@/lib/payroll/retroPayrollRolloutGate';
 
 type Context = { params: Promise<{ id: string }> };
 type PayrollScope = 'global' | 'branch_monthly';
@@ -95,10 +96,12 @@ export async function GET(_request: NextRequest, { params }: Context) {
     const schemaStatus = schema.recordset[0];
     const retroSchemaReady = schemaStatus?.DailyRevisionColumn != null &&
       schemaStatus?.RevisionTable != null && schemaStatus?.AuditTable != null;
-    const allowedIds = String(process.env.PAYROLL_RETROACTIVE_EMPLOYEE_IDS || '')
-      .split(',').map(id => id.trim()).filter(id => /^[1-9][0-9]*$/.test(id)).map(Number);
-    const retroEnabledForEmployee = process.env.PAYROLL_RETROACTIVE_ENABLED === 'true' &&
-      (process.env.NODE_ENV !== 'production' || allowedIds.includes(empId));
+    const retroEnabledForEmployee = retroPayrollEnabledForEmployee({
+      empId,
+      enabled: process.env.PAYROLL_RETROACTIVE_ENABLED,
+      employeeIds: process.env.PAYROLL_RETROACTIVE_EMPLOYEE_IDS,
+      nodeEnv: process.env.NODE_ENV,
+    });
     let latestRevision: null | {
       id: number; effectiveFrom: string; createdAt: string; reversedDailyCount: number;
       reversedDailyAmount: number; newEntitlement: number;
