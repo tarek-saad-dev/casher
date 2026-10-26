@@ -715,6 +715,7 @@ function EmployeesPanel() {
                       </div>
                       <div>
                         <span className="font-medium text-foreground">{emp.EmpName}</span>
+                        {emp.PayrollScope === "branch_monthly" && <span className="mr-2 rounded-md border border-primary/25 bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary">VIP · مرتبات الفروع</span>}
                         {(emp.EmpNameEn || emp.Job) && (
                           <p className="text-xs text-muted-foreground/70">
                             {[emp.EmpNameEn, emp.Job].filter(Boolean).join(' · ')}
