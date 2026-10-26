@@ -147,6 +147,10 @@ export async function resolveBranchPayrollPlanForDate(params: {
       p.EffectiveFrom, p.EffectiveTo, p.IsActive,
       CAST(1 AS bit) AS InheritedFromPrimary
     FROM dbo.TblEmpBranchPayrollPlan p
+    INNER JOIN dbo.TblEmp e ON e.EmpID = p.EmpID
+      AND (ISNULL(e.PayrollScope, N'global') <> N'branch_monthly'
+        OR e.PayrollScopeEffectiveFrom IS NULL
+        OR e.PayrollScopeEffectiveFrom > @workDate)
     LEFT JOIN dbo.TblEmpBranchAssignment ea
       ON ea.EmpID = p.EmpID
      AND ea.BranchID = p.BranchID
@@ -229,6 +233,10 @@ export async function loadBranchDayPayrollPlans(
               p.PlanID DESC
           ) AS rn
         FROM dbo.TblEmpBranchPayrollPlan p
+        INNER JOIN dbo.TblEmp e ON e.EmpID = p.EmpID
+          AND (ISNULL(e.PayrollScope, N'global') <> N'branch_monthly'
+            OR e.PayrollScopeEffectiveFrom IS NULL
+            OR e.PayrollScopeEffectiveFrom > @workDate)
         LEFT JOIN dbo.TblEmpBranchAssignment ea
           ON ea.EmpID = p.EmpID
          AND ea.BranchID = p.BranchID
@@ -438,6 +446,11 @@ export async function syncHrRatesToActiveBranchPlans(args: {
   sourceNotes?: string;
 }): Promise<{ updatedPlanIds: number[]; createdPlanId: number | null }> {
   const db = await getPool();
+  const scope = await db.request().input('empId', sql.Int, args.empId)
+    .query(`SELECT PayrollScope FROM dbo.TblEmp WHERE EmpID = @empId`);
+  if (scope.recordset[0]?.PayrollScope === 'branch_monthly') {
+    throw new Error('الراتب مستقل حسب الفرع: استخدم إعدادات مرتبات الفروع بدلاً من تعديل الراتب العام');
+  }
   const existing = await db
     .request()
     .input('empId', sql.Int, args.empId)
