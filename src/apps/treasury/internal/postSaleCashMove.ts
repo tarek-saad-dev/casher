@@ -105,6 +105,23 @@ export async function insertSaleCashMoveResolvingConflict(
       DECLARE @outcome NVARCHAR(16) = N'inserted';
       DECLARE @inserted TABLE (ID INT);
 
+      -- The direct insert helper must also support idempotent replay.
+      -- Lock the registry key BEFORE touching TblCashMove, so a competing
+      -- transaction cannot create a duplicate and doom this SQL transaction.
+      SELECT
+        @existingCashMoveId = CashMoveId,
+        @existingFingerprint = Fingerprint
+      FROM dbo.TreasuryMovementRegistry WITH (UPDLOCK, HOLDLOCK)
+      WHERE TenantId = @tenantId AND IdempotencyKey = @key;
+
+      IF @existingCashMoveId IS NOT NULL
+      BEGIN
+        SELECT N'replay' AS Outcome,
+               @existingCashMoveId AS CashMoveId,
+               @existingFingerprint AS ExistingFingerprint;
+        RETURN;
+      END
+
       SAVE TRANSACTION ${SALE_POST_SAVEPOINT};
 
       BEGIN TRY
