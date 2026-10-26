@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import DayControlCard from '@/components/operations/DayControlCard';
+import SalonCloseReadinessCard from '@/components/operations/SalonCloseReadinessCard';
 import ShiftControlCard from '@/components/operations/ShiftControlCard';
 import TreasurySnapshotCard from '@/components/operations/TreasurySnapshotCard';
 import AlertsCard from '@/components/operations/AlertsCard';
@@ -219,6 +220,8 @@ export default function OperationsCenterPage() {
           ) : null}
         </div>
       )}
+
+      {isAdmin && hasActiveDay ? <SalonCloseReadinessCard refreshKey={lastRefresh?.getTime() ?? 0} /> : null}
 
       {/* ── Main 4-Card Grid ────────────────────────────────── */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
