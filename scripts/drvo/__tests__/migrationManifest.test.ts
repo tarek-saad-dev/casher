@@ -17,7 +17,7 @@ import { assertDrvoDeployManifestConsistent } from '../readiness';
 describe('DRVO migration manifest', () => {
   it('has valid ordering, unique ids/keys, and resolvable dependencies', () => {
     expect(() => assertDrvoMigrationManifestValid()).not.toThrow();
-    expect(DRVO_MIGRATIONS.map((m) => m.migrationId)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
+    expect(DRVO_MIGRATIONS.map((m) => m.migrationId)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]);
     expect(DRVO_MIGRATIONS.map((m) => m.migrationKey)).toContain('tenant-brand-profile');
     expect(DRVO_MIGRATIONS.map((m) => m.migrationKey)).toContain(
       'commercial-subscription-tenant-apps',
@@ -27,6 +27,7 @@ describe('DRVO migration manifest', () => {
     expect(DRVO_MIGRATIONS.map((m) => m.migrationKey)).toContain('tenant-plan-requests');
     expect(DRVO_MIGRATIONS.map((m) => m.migrationKey)).toContain('modular-commercial-drafts');
     expect(DRVO_MIGRATIONS.map((m) => m.migrationKey)).toContain('modular-draft-selection-catalog');
+    expect(DRVO_MIGRATIONS.map((m) => m.migrationKey)).toContain('modular-quote-requests');
     expect(DRVO_MIGRATIONS.map((m) => m.migrationKey)).toContain('booking-hold-key');
     expect(DRVO_MIGRATIONS.map((m) => m.migrationKey)).toContain('ins-cash-move-sales-guard');
     expect(DRVO_MIGRATIONS.map((m) => m.migrationKey)).not.toContain('pos-prerequisites');
