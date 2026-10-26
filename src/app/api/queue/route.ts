@@ -763,15 +763,8 @@ export async function POST(req: NextRequest) {
           qt.ClientID,      qt.EmpID,
           qt.QueueDate,     qt.CreatedTime,
           qt.Status,        qt.Notes,
-          qt.EstimatedStartTime,
-          qt.EstimatedWaitMinutes,
-          qt.WaitingCountAtCreation,
-          CASE WHEN COL_LENGTH('dbo.QueueTickets','ExpectedStartAt') IS NOT NULL
-               THEN qt.ExpectedStartAt ELSE NULL END AS ExpectedStartAt,
-          CASE WHEN COL_LENGTH('dbo.QueueTickets','ExpectedEndAt') IS NOT NULL
-               THEN qt.ExpectedEndAt ELSE NULL END AS ExpectedEndAt,
-          CASE WHEN COL_LENGTH('dbo.QueueTickets','DurationMinutes') IS NOT NULL
-               THEN qt.DurationMinutes ELSE NULL END AS DurationMinutes,
+          ${await getEstimateColsSelect(db)},
+          ${await getLifecycleColsSelect(db)},
           c.[Name]   AS ClientName,
           c.Mobile   AS ClientMobile,
           e.EmpName  AS EmpName
