@@ -122,6 +122,10 @@ Track activation (first real booking/sale), trial-to-verified-paid, MRR/ARPA, fr
 
 **No final charging formula or free entitlement list until there is a written evidence review and owner approval.**
 
+## Current commercial transition implementation (2026-10-26)
+
+The active work-in-progress **modular-pricing research prototype** is described in [Modular Pricing Research V1](./MODULAR-PRICING-RESEARCH-V1.md). Its scenario rates are **unapproved assumptions**, and the old customer-facing plan selection is closed while preserving historical subscriptions. This is not checkout and does not activate commercial entitlements.
+
 ## 8. Implementation roadmap — after commercial approval
 
 1. **Confirm V2 charging unit and candidate pricing** with customer research, cost model and founder signoff.
