@@ -110,7 +110,7 @@ describe('operator-only immutable evidence API and UI',()=>{
   const index=read('src/components/platform/CommercialReleaseCandidatesClient.tsx');
   expect(page).toContain('requirePlatformOperator()');
   expect(ui).toContain('مراجعة أدلة إطلاق الكتالوج');
-  expect(ui).toContain('مراجعة داخلية');
+  expect(ui).toContain('تمت المراجعة الداخلية');
   expect(ui).toContain('/api/admin/platform/commercial-policy-evidence');
   expect(index).toContain('فتح ملف الأدلة والمراجعات');
   expect(ui).not.toContain('تأكيد الدفع');
