@@ -7,6 +7,7 @@ import { redistributeFromClearing } from '@/lib/splitPaymentService';
 import type { InvoiceItemsTotals } from '@/lib/sales/service-line-totals';
 import { getCairoInvTimeDotStr, getCairoPayTimeStr } from '@/lib/businessDate';
 import { lockOperationalWrite } from '@/lib/branch/operationalGates';
+import { linkClinicSaleWithinTransaction } from '@/apps/medical-records/public/billing';
 import type { TargetRecalcScope } from '@/lib/payroll/employee-target/employee-target-recalc-scope';
 import type { SaleCashMovePoster } from '../public/saleCashMovePoster';
 import type { InvoicePaymentAllocationInput } from './legacySaleRepository';
@@ -27,6 +28,7 @@ export type LegacySaleCreateTransactionInput = {
   clientId: number | null;
   notes: string;
   notes2?: string;
+  clinicBilling?: { tenantId: string; encounterId: string };
   payCash: number;
   payVisa: number;
   paymentAllocations: InvoicePaymentAllocationInput[];
@@ -165,6 +167,19 @@ export async function executeLegacySaleCreateTransaction(
       @BranchID, @BusinessDayID
     )
   `);
+  if (input.clinicBilling) {
+    await linkClinicSaleWithinTransaction(transaction, {
+      tenantId: input.clinicBilling.tenantId,
+      encounterId: input.clinicBilling.encounterId,
+      branchId,
+      invId: newInvID,
+      clientId,
+      userId: userID,
+      items: items.map(item => ({
+        proId: Number(item.proId), empId: Number(item.empId), sPrice: Number(item.sPrice),
+      })),
+    });
+  }
   console.log(
     `[pos-api]   ✅ TblinvServHead inserted: invID=${newInvID}, ClientID=${clientId || 'NULL'}, GrandTotal=${grandTotal}, PaymentMethodID=${headerPaymentMethodId} (${isSplitPayment ? 'CLEARING' : 'DIRECT'}), UserID=${userID}`,
   );

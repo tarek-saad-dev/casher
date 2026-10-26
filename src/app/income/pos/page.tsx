@@ -130,6 +130,11 @@ export default function PosPage() {
   );
 
   // Booking → POS package hydration (?bookingId=)
+  // Clinic encounter → Shared POS: prefill a canonical booking's billable lines.
+  // No financial write happens on hydration; server enforces single-use on save.
+  const [clinicEncounterId, setClinicEncounterId] = useState<string | null>(null);
+  const [clinicBillingLabel, setClinicBillingLabel] = useState<string | null>(null);
+  const clinicHydratedRef = useRef(false);
   const [hydratePackageId, setHydratePackageId] = useState<number | null>(null);
   const [hydrateAddonProIds, setHydrateAddonProIds] = useState<number[]>([]);
   const bookingHydrateDoneRef = useRef(false);
@@ -270,6 +275,80 @@ export default function PosPage() {
       }
     })();
   }, [addToast, barbers, setBarber, setNotes]);
+
+  // ───────────────── Clinic → POS handoff hydration ─────────────────
+  useEffect(() => {
+    if (clinicHydratedRef.current || sessionLoading || viewBranch?.branchId == null ||
+        !services.length || !paymentMethods.length || otherEmployeesLoading) return;
+    const encounterId = new URLSearchParams(window.location.search).get('clinicEncounterId');
+    if (!encounterId) return;
+    clinicHydratedRef.current = true;
+    (async () => {
+      try {
+        const response = await fetch(
+          `/api/clinic/encounters/${encodeURIComponent(encounterId)}/billing`,
+          { cache: 'no-store' },
+        );
+        const preview = (await response.json()) as {
+          error?: string; billingState?: string; invoiceId?: number | null;
+          clientId?: number; patientName?: string; patientMobile?: string | null;
+          practitionerEmpId?: number; practitionerName?: string;
+          services?: Array<{ ProID: number; SPrice1: number; Bonus: number; ProName: string; ProNameAr?: string | null }>;
+        };
+        if (!response.ok) throw new Error(preview.error || 'تعذر تحميل بيانات كشف العيادة');
+        if (preview.billingState === 'already_billed') {
+          throw new Error(`الكشف عليه فاتورة رقم #${preview.invoiceId}. لا يمكن تكرارها.`);
+        }
+        if (preview.billingState !== 'ready' || !preview.clientId ||
+            !preview.practitionerEmpId || !preview.services?.length) {
+          throw new Error('الكشف مش جاهز للمحاسبة الآلية. راجع اكتمال الزيارة وخدمات الحجز.');
+        }
+        const chosen = preview.services.map(item => {
+          const catalog = services.find(s => s.ProID === item.ProID);
+          if (!catalog || !Number.isFinite(item.SPrice1) || item.SPrice1 <= 0) {
+            throw new Error('في خدمة من الكشف مش متاحة حاليًا في كتالوج POS. راجع إعدادات الخدمات.');
+          }
+          return {
+            id: `clinic-${encounterId}-${item.ProID}`,
+            ProID: item.ProID,
+            ProName: item.ProNameAr || item.ProName,
+            EmpID: preview.practitionerEmpId!,
+            EmpName: preview.practitionerName || 'الطبيب',
+            SPrice: Number(catalog.SPrice1),
+            Bonus: Number(catalog.Bonus) || 0,
+            Qty: 1,
+            Dis: 0,
+            DisVal: 0,
+            SPriceAfterDis: Number(catalog.SPrice1),
+          };
+        });
+        const doctor = [...barbers, ...otherEmployees].find(b =>
+          b.EmpID === preview.practitionerEmpId) ?? {
+            EmpID: preview.practitionerEmpId, EmpName: preview.practitionerName || 'الطبيب',
+          };
+        reset();
+        setEditingSaleId(null);
+        setCustomer({
+          ClientID: preview.clientId,
+          Name: preview.patientName || 'مريض العيادة',
+          Mobile: preview.patientMobile ?? null,
+          BirthDate: null, Address: null, RegisterDate: null, Notes: null,
+          CameFrom: null, CameFromDetails: null, ReferralCode: null,
+        });
+        setBarber(doctor);
+        addItems(chosen);
+        const cash = paymentMethods.find(m => m.Name?.toLowerCase().includes('كاش') ||
+          m.Name?.toLowerCase() === 'cash') ?? paymentMethods[0];
+        if (cash) setPaymentMethod(cash.ID);
+        setClinicEncounterId(encounterId);
+        setClinicBillingLabel(preview.patientName || 'مريض العيادة');
+        addToast('info', 'تم تحميل خدمات الكشف. راجع الفاتورة واختر وسيلة الدفع.');
+      } catch (err) {
+        addToast('error', err instanceof Error ? err.message : 'تعذر نقل الكشف للحسابات');
+      }
+    })();
+  }, [sessionLoading, viewBranch?.branchId, services, otherEmployeesLoading, barbers,
+      otherEmployees, paymentMethods, reset, setCustomer, setBarber, addItems, setPaymentMethod, addToast]);
 
   // ───────────────── Load branch-scoped lookup data when ViewBranch changes ─────────────────
   useEffect(() => {
@@ -416,6 +495,7 @@ export default function PosPage() {
         : 'مبيعات';
       const payload = {
         clientId: state.customer?.ClientID || null,
+        ...(clinicEncounterId ? { clinicEncounterId } : {}),
         items: state.items.map(i => ({
           proId: i.ProID,
           empId: i.EmpID,
@@ -466,6 +546,11 @@ export default function PosPage() {
       // Reset everything (customer, barber, items, discount, payment, edit mode)
       reset();
       setEditingSaleId(null);
+      setClinicEncounterId(null);
+      setClinicBillingLabel(null);
+      if (clinicEncounterId && new URLSearchParams(window.location.search).has('clinicEncounterId')) {
+        window.history.replaceState(null, '', window.location.pathname);
+      }
       setSplitPaymentActive(false);
       setSaveError('');
 
@@ -576,7 +661,7 @@ export default function PosPage() {
       setSaving(false);
       console.log('[POS SAVE] END', { requestId });
     }
-  }, [state, totals, reset, addToast, paymentMethods, editingSaleId, saveLockRef, ensureShiftWrite]);
+  }, [state, totals, reset, addToast, paymentMethods, editingSaleId, clinicEncounterId, saveLockRef, ensureShiftWrite]);
 
   // ───────────────── Keyboard shortcuts ─────────────────
   useEffect(() => {
@@ -604,7 +689,13 @@ export default function PosPage() {
 
   // ───────────────── New sale handler ─────────────────
   const handleNewSale = useCallback(() => {
-    // Reset everything including barber selection and edit mode
+    // Reset everything including clinic handoff, barber selection and edit mode
+    setClinicEncounterId(null);
+    setClinicBillingLabel(null);
+    clinicHydratedRef.current = true;
+    if (new URLSearchParams(window.location.search).has('clinicEncounterId')) {
+      window.history.replaceState(null, '', window.location.pathname);
+    }
     reset();
     setEditingSaleId(null);
     setSplitPaymentActive(false);
@@ -652,6 +743,9 @@ export default function PosPage() {
 
   // ───────────────── Edit sale functionality ─────────────────
   const handleEditSale = useCallback(async (saleId: number) => {
+    // Existing invoices are edited by the normal POS path, never re-linked as a new clinic invoice.
+    setClinicEncounterId(null);
+    setClinicBillingLabel(null);
     try {
       const response = await fetch(`/api/sales/${saleId}`);
       const data = await response.json();
@@ -857,6 +951,12 @@ export default function PosPage() {
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
+      {clinicEncounterId && (
+        <div role="status" className="flex flex-wrap items-center justify-between gap-2 border-b border-cyan-300 bg-cyan-50 px-4 py-2 text-xs font-semibold text-cyan-900">
+          <span>فاتورة كشف عيادة — {clinicBillingLabel || 'مريض'} · راجع الخدمات وطريقة الدفع قبل الحفظ.</span>
+          <button type="button" onClick={handleNewSale} className="rounded-lg border border-cyan-300 px-2 py-1">إلغاء ربط الكشف</button>
+        </div>
+      )}
       <TeamAttendanceWidget
         team={teamAttendance}
         date={attendanceDate}
