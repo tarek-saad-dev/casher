@@ -6,17 +6,19 @@ import {
   SALON_RESEARCH_APP_OPTIONS,
   type ResearchScenario,
   type ScenarioCycle,
+  type ScenarioModel,
 } from '@/platform/commercial/modularPricingScenario';
 
 const NAMES: Record<string, string> = {
   booking: 'الحجوزات', queue: 'الدور', pos: 'الكاشير',
-  attendance: 'الحضور', payroll: 'الرواتب', treasury: 'الخزنة', reports: 'التقارير',
+  attendance: 'الحضور', payroll: 'الرواتب', treasury: 'تقارير الخزنة المتقدمة', reports: 'التقارير المتقدمة',
 };
 const money = (v: number) => new Intl.NumberFormat('ar-EG').format(v) + ' ج.م';
 
 export default function ModularResearchClient() {
   const [selected, setSelected] = useState<string[]>(['booking', 'pos', 'queue']);
   const [branches, setBranches] = useState(1);
+  const [model, setModel] = useState<ScenarioModel>('per_app');
   const [cycle, setCycle] = useState<ScenarioCycle>('monthly');
   const [result, setResult] = useState<ResearchScenario | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -26,7 +28,7 @@ export default function ModularResearchClient() {
     setLoading(true); setError(null); setResult(null);
     try {
       const next = await platformFetch<ResearchScenario>('/api/admin/platform/modular-pricing-preview', {
-        method: 'POST', body: JSON.stringify({ industry: 'salon', apps: selected, branches, cycle }),
+        method: 'POST', body: JSON.stringify({ industry: 'salon', apps: selected, branches, cycle, model }),
       });
       if (next.mode !== 'research_only' || next.canCheckout !== false || next.canActivate !== false)
         throw Error('حالة المقارنة غير متوقعة');
@@ -55,10 +57,24 @@ export default function ModularResearchClient() {
                   onChange={(e) => { setResult(null); setSelected((old) => e.target.checked ? [...old, app.code] : old.filter((x) => x !== app.code)); }} />
                 {NAMES[app.code]} {app.required ? '(أساسي للصالون)' : ''}
               </span>
-              <span className="text-xs text-muted-foreground">{money(app.monthlyEgp)} / شهر افتراضيًا</span>
+              <span className="text-xs text-muted-foreground">{money(model === 'per_app' ? app.monthlyEgp : app.monthlyEgp * 0.8)} / شهر افتراضيًا</span>
             </label>
           ))}
         </div>
+        <div className="flex flex-wrap items-center gap-2" role="group" aria-label="نموذج الحساب البحثي">
+          {([
+            {code:'per_app',name:'بدون رسم أساسي'},
+            {code:'base_plus_apps',name:'رسم أساسي + تطبيقات بسعر أقل'},
+          ] as const).map((option) => (
+            <button key={option.code} type="button" aria-pressed={model === option.code}
+              onClick={() => { setModel(option.code); setResult(null); }}
+              className={'min-h-10 rounded-lg border px-3 py-2 text-xs ' +
+                (model === option.code ? 'border-primary bg-primary/10 font-semibold' : 'border-border')}>
+              {option.name}
+            </button>
+          ))}
+        </div>
+        {model === 'base_plus_apps' && <p className="text-xs text-muted-foreground">الفرضية دي فيها 149 ج.م رسوم منصة شهرية بالإضافة لتطبيقات أقل بـ20%. دي مقارنة داخلية فقط.</p>}
         <div className="flex flex-wrap gap-5">
           <label className="flex items-center gap-2 text-sm">عدد الفروع
             <select className="rounded-lg border border-border bg-background p-2" value={branches}
@@ -85,6 +101,7 @@ export default function ModularResearchClient() {
           <span>{l.label} {l.quantity > 1 ? '× ' + l.quantity : ''}</span><b>{money(l.monthlyEgp)} / شهر</b>
         </div>)}
         <div className="border-t border-border pt-3">
+          <p className="text-xs text-muted-foreground">النموذج: {result.model === 'per_app' ? 'كل تطبيق منفصل' : 'رسوم أساسية وتطبيقات'} · إصدار {result.catalogVersion}</p>
           <p className="text-xs text-muted-foreground">متوسط الفرضية شهريًا: {money(result.monthlyEgp)}</p>
           <p className="mt-1 text-xl font-bold">الإجمالي الافتراضي للمدة: {money(result.illustrativePeriodEgp)}</p>
         </div>
