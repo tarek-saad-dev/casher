@@ -72,6 +72,12 @@ export async function convertBooking(
       { locationId: input.locationId },
     );
 
+    // A staff member may have an open shift on a different branch.
+    // Never assign a booking invoice to that other branch's financial day.
+    if (financial.locationId !== input.locationId || financial.tenantId.toLowerCase() !== deps.tenantId.toLowerCase()) {
+      return { ok: false as const, status: 409, error: 'الوردية المفتوحة لا تخص فرع الحجز' };
+    }
+
     if (financial.scope !== 'SHIFT' || financial.shiftInstanceId == null) {
       return { ok: false as const, status: 400, error: 'لا يوجد وردية مفتوحة' };
     }
