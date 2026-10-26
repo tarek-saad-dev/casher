@@ -74,7 +74,7 @@ should_skip_git_sync() {
   local marker="$APP_DIR/.deploy/ci-sync-sha"
   if [[ -f "$marker" ]]; then
     local marked current
-    marked="$(tr -d '\\n\\r' < "$marker")"
+    marked="$(tr -d '\n\r' < "$marker")"
     current="$(runuser -u casher -- git -C "$APP_DIR" rev-parse HEAD 2>/dev/null || true)"
     echo "INFO: ignoring CI sync marker (${marked:-empty}); local HEAD=${current:-unknown}. Refreshing origin/$BRANCH."
     mv -f "$marker" "$marker.ignored.$(date -u +%Y%m%dT%H%M%SZ)"
