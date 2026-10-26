@@ -1,7 +1,7 @@
 # DRVOERP V1 — Commercial Pricing
 
 > **Implementation snapshot, not the finalized business model (2026-10-26).** 
-> See **[DRVO ERP — Business Model & Pricing Strategy](./BUSINESS-MODEL-V1.md)** for the approved commercial direction, trial/Free Forever policy, proposed feature-based packaging and open validation decisions. 
+> See **[DRVO ERP — Business Model & Pricing Strategy](./BUSINESS-MODEL-V1.md)** for the approved commercial direction and **[Salon Pricing & Feature Matrix](./SALON-PRICING-FEATURE-MATRIX-V1.md)** for the *proposed, unimplemented* feature packaging and validation gates. 
 > The prices/capacities below document the **existing V1 code/catalog** only. They are **not yet** the approved final market offer and do not imply the future feature matrix is implemented.
 
 Effective: 2026-10-11
