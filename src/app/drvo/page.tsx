@@ -27,10 +27,10 @@ const FEATURES = [
   { title: 'التشغيل', text: 'يوم تشغيل، ورديات، ومتابعة جاهزية الفرع خطوة بخطوة.', icon: Clock3 },
 ];
 
-const PLANS = [
-  { name: 'Starter', price: '499', note: 'فرع واحد / 5 مستخدمين' },
-  { name: 'Growth', price: '899', note: '3 فروع / 20 مستخدم', featured: true },
-  { name: 'Pro', price: '1,499', note: '10 فروع / 75 مستخدم' },
+const STEPS = [
+  { name: 'اختار نشاطك', detail: 'ابدأ بالصالون، واستخدم التطبيقات المناسبة لشغلك.' },
+  { name: 'اختار تطبيقاتك', detail: 'حجوزات، كاشير، دور، رواتب وغيرها حسب احتياجك.' },
+  { name: 'اتحكم في التكلفة', detail: 'التسعير حسب التطبيقات والتوسع. الأسعار النهائية قيد الإعداد وهتكون واضحة قبل أي دفع.' },
 ];
 
 export default function DrvoLandingPage() {
@@ -197,26 +197,15 @@ export default function DrvoLandingPage() {
 
         <section id="pricing" className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
           <div className="text-center">
-            <p className="text-xs font-bold tracking-[0.2em] text-cyan-300">PRICING</p>
-            <h2 className="mt-3 text-4xl font-black">ابدأ الأول. قرر بعدين.</h2>
-            <p className="mt-3 text-sm text-slate-400">14 يوم تجربة مجانية — بدون بطاقة بنكية.</p>
+            <p className="text-xs font-bold tracking-[0.2em] text-cyan-300">APPS THAT FIT YOUR BUSINESS</p>
+            <h2 className="mt-3 text-4xl font-black">اختار اللي محتاجه بس</h2>
+            <p className="mt-3 text-sm text-slate-400">14 يوم تجربة مجانية — بدون بطاقة بنكية. الأسعار النهائية حسب التطبيقات قيد الإعداد، ومفيش تحصيل قبل عرض التكلفة بوضوح.</p>
           </div>
           <div className="mx-auto mt-10 grid max-w-5xl gap-3 md:grid-cols-3">
-            {PLANS.map((plan) => (
-              <article
-                key={plan.name}
-                className={plan.featured
-                  ? 'relative rounded-3xl border border-cyan-300/40 bg-cyan-300/10 p-6'
-                  : 'rounded-3xl border border-white/10 bg-white/[0.03] p-6'}
-              >
-                {plan.featured && (
-                  <span className="absolute -top-3 right-5 rounded-full bg-cyan-300 px-3 py-1 text-[10px] font-black text-slate-950">
-                    الأكثر مناسبة
-                  </span>
-                )}
-                <div className="font-bold">{plan.name}</div>
-                <div className="mt-4 text-4xl font-black">{plan.price}<span className="mr-1 text-xs font-normal text-slate-500">ج.م / شهر</span></div>
-                <div className="mt-3 text-xs text-slate-400">{plan.note}</div>
+            {STEPS.map((step) => (
+              <article key={step.name} className="rounded-3xl border border-white/10 bg-white/[0.03] p-6">
+                <h3 className="text-lg font-bold">{step.name}</h3>
+                <p className="mt-3 text-sm leading-7 text-slate-400">{step.detail}</p>
               </article>
             ))}
           </div>
