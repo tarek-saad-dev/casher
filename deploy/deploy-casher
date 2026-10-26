@@ -72,7 +72,7 @@ should_skip_git_sync() {
   [[ -f "$marker" ]] || return 1
 
   local expected_sha actual_sha
-  expected_sha="$(tr -d '\\n\\r' < "$marker")"
+  expected_sha="$(tr -d '\n\r' < "$marker")"
   actual_sha="$(runuser -u casher -- git -C "$APP_DIR" rev-parse HEAD 2>/dev/null || true)"
 
   if [[ "$expected_sha" =~ ^[a-f0-9]{40}$ && "$actual_sha" == "$expected_sha" ]]; then
