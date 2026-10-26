@@ -103,11 +103,27 @@ export async function reviewCommercialPolicyEvidence(args:{
  evidenceId:string;actorUserId:number;action:PolicyReviewAction;note:string;
 }):Promise<CommercialPolicyEvidenceRow>{
  assertActor(args.actorUserId);
- const pool=await getPool(),tx=new sql.Transaction(pool);await tx.begin();
+ const pool=await getPool();
+ // Resolve the source without row locks, then check a verified digest before mutating.
+ const lookup=await pool.request().input('id',sql.UniqueIdentifier,args.evidenceId)
+   .query('SELECT CandidateId FROM dbo.ModularCommercialPolicyEvidence WHERE EvidenceId=@id;');
+ const candidateId=lookup.recordset[0]?.CandidateId
+   ?String(lookup.recordset[0].CandidateId):null;
+ if(!candidateId)throw new PolicyEvidenceError('NOT_FOUND','المستند غير موجود',404);
+ const verified=await getCommercialReleaseCandidate(candidateId);
+ const tx=new sql.Transaction(pool);await tx.begin();
  try{
+  // Always acquire candidate lock before evidence lock, matching append-only writers.
+  const parent=await new sql.Request(tx).input('id',sql.UniqueIdentifier,candidateId)
+   .query(`SELECT SourceDigest,Status FROM dbo.ModularCommercialReleaseCandidate WITH (UPDLOCK,HOLDLOCK)
+     WHERE CandidateId=@id;`);
+  if(parent.recordset[0]?.Status!=='pending_policy'||
+     String(parent.recordset[0]?.SourceDigest)!==verified.sourceDigest)
+   throw new PolicyEvidenceError('SOURCE_CHANGED','ملف الإصدار اتغير أثناء المراجعة',409);
   const found=await new sql.Request(tx).input('id',sql.UniqueIdentifier,args.evidenceId)
+   .input('candidateId',sql.UniqueIdentifier,candidateId)
    .query(`SELECT ${COLS} FROM dbo.ModularCommercialPolicyEvidence WITH (UPDLOCK,HOLDLOCK)
-      WHERE EvidenceId=@id;`);
+      WHERE EvidenceId=@id AND CandidateId=@candidateId;`);
   const row=found.recordset[0] as Record<string,unknown>|undefined;
   if(!row)throw new PolicyEvidenceError('NOT_FOUND','المستند غير موجود',404);
   const current=shape(row);
@@ -124,14 +140,6 @@ export async function reviewCommercialPolicyEvidence(args:{
   const note=validatePolicyReview({status:current.status,
    submittedByUserId:current.submittedByUserId,reviewedByUserId:args.actorUserId,
    action:args.action,note:args.note});
-  // Check authoritative candidate digest before writing review.
-  const verified=await getCommercialReleaseCandidate(current.candidateId);
-  const parent=await new sql.Request(tx).input('id',sql.UniqueIdentifier,current.candidateId)
-   .query(`SELECT SourceDigest,Status FROM dbo.ModularCommercialReleaseCandidate WITH (UPDLOCK,HOLDLOCK)
-     WHERE CandidateId=@id;`);
-  if(parent.recordset[0]?.Status!=='pending_policy'||
-     String(parent.recordset[0]?.SourceDigest)!==verified.sourceDigest)
-   throw new PolicyEvidenceError('SOURCE_CHANGED','ملف الإصدار اتغير أثناء المراجعة',409);
   const result=await new sql.Request(tx).input('id',sql.UniqueIdentifier,args.evidenceId)
    .input('actor',sql.Int,args.actorUserId)
    .input('status',sql.NVarChar(24),args.action)
