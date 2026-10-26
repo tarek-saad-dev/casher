@@ -32,8 +32,10 @@ describe('modular pricing staging preflight is isolated and read-only',()=>{
       calls++;
       return {recordset:[{db:'real_production',originalLogin:'sa',effectiveLogin:'sa'}]};
     }})} as unknown as ConnectionPool;
-    await expect(inspectModularCommercialStaging(pool))
+    await expect(inspectModularCommercialStaging(pool,'independently-pinned-staging-sql'))
       .rejects.toThrow('STAGING_DB_IDENTITY_MISMATCH');
+    expect(calls).toBe(1);
+    await expect(inspectModularCommercialStaging(pool,'')).rejects.toThrow('STAGING_SERVER_PIN_MISSING');
     expect(calls).toBe(1);
   });
   it('checks all migration keys 15–22 and tracks journal and trusted schema constraints',()=>{
@@ -43,7 +45,7 @@ describe('modular pricing staging preflight is isolated and read-only',()=>{
     for(const key of ['verifyTariffResearchSchema','verifyCommercialReleaseCandidates',
       'verifyCommercialPolicyEvidence','verifyInternalQuoteSnapshotSchema',
       'prepareCatalogReleaseCandidate','verifyInternalQuoteSnapshot',
-      'isAcceptedChecksum','ORIGINAL_LOGIN()','SUSER_SNAME()'])
+      'isAcceptedChecksum','ORIGINAL_LOGIN()','SUSER_SNAME()','SERVERPROPERTY(\'ServerName\')'])
       expect(verify).toContain(key);
     expect(verify).toContain('mutationsPerformed:false');
     expect(verify).toContain('sampleCandidateCoverage:candidateCount>0');
@@ -56,6 +58,7 @@ describe('modular pricing staging preflight is isolated and read-only',()=>{
     const w=read('.github/workflows/drvo-modular-staging-readonly.yml');
     expect(w).toContain("head.ref == 'agent/modular-commercial-release-gates-v1'");
     expect(w).toContain('DRVO_STAGING_SSH_KNOWN_HOSTS');
+    expect(w).toContain('DRVO_STAGING_SQL_SERVER_NAME');
     expect(w).toContain('StrictHostKeyChecking=yes');
     expect(w).toContain('persist-credentials: false');
     expect(w).toContain('scripts/drvo/check-modular-commercial-staging.ts');
@@ -69,8 +72,9 @@ describe('modular pricing staging preflight is isolated and read-only',()=>{
   it('standalone SQL script has explicit config and does not write to customer data',()=>{
     const script=read('scripts/drvo/check-modular-commercial-staging.ts');
     expect(script).toContain('DRVO_STAGING_DB_PASSWORD');
+    expect(script).toContain('DRVO_STAGING_SQL_SERVER_NAME');
     expect(script).toContain('DRVO_MODULAR_STAGING_READ_ONLY');
-    expect(script).toContain('inspectModularCommercialStaging(pool)');
+    expect(script).toContain('inspectModularCommercialStaging(pool,expectedServerName)');
     expect(script).toContain('pool.close()');
     expect(script).not.toContain('DATABASE=production');
     expect(script).not.toContain('run-migrations');
