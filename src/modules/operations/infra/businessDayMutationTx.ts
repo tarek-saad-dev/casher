@@ -10,6 +10,7 @@ import {
   tryLockCurrentOpenBusinessDay,
 } from './businessDayLock';
 import { AUTO_BUSINESS_DAY_ROLLOVER, BUSINESS_DAY_FORCE_CLOSE } from '../domain/invariants';
+import { assertNoPendingSalonQueueAtClose } from '@/packs/salon/closeDayReadiness';
 import { planBusinessDayReconciliation } from '../domain/businessDayReconciliation';
 import {
   isPastRolloverWindow,
@@ -219,6 +220,7 @@ export async function closeBusinessDayInTransaction(
   tx: sql.Transaction,
   args: {
     branchId: number;
+    branchCode?: string;
     forceCloseShifts?: boolean;
     closeReason?: string;
     at?: Date;
@@ -241,6 +243,7 @@ export async function closeBusinessDayInTransaction(
   return closeLockedOpenBusinessDay(tx, {
     branchId: args.branchId,
     day,
+    branchCode: args.branchCode,
     forceCloseShifts: args.forceCloseShifts,
     closeReason: args.closeReason,
     at: args.at,
@@ -252,11 +255,21 @@ async function closeLockedOpenBusinessDay(
   args: {
     branchId: number;
     day: BusinessDayRecord;
+    branchCode?: string;
     forceCloseShifts?: boolean;
     closeReason?: string;
     at?: Date;
   },
 ): Promise<CloseBusinessDayResult> {
+  // Manual close for new DRVO salons cannot strand unfinished walk-ins.
+  // Runs within the locked business-day close transaction.
+  if (args.branchCode) {
+    await assertNoPendingSalonQueueAtClose(tx, {
+      branchId: args.branchId,
+      businessDate: args.day.newDay,
+      branchCode: args.branchCode,
+    });
+  }
   const openShifts = await lockOpenShiftsForDay(tx, args.branchId, args.day.id);
   if (openShifts.length > 0 && !args.forceCloseShifts) {
     const err = new BranchDomainError(
@@ -320,6 +333,7 @@ export async function executeCloseBusinessDay(
     await lockBranchForDayMutation(tx, branchContext.branchId);
     return closeBusinessDayInTransaction(tx, {
       branchId: branchContext.branchId,
+      branchCode: branchContext.branchCode,
       forceCloseShifts: options?.forceCloseShifts,
     });
   });
@@ -333,6 +347,7 @@ export async function executeCloseAndOpenBusinessDay(
     await lockBranchForDayMutation(tx, branchContext.branchId);
     const closed = await closeBusinessDayInTransaction(tx, {
       branchId: branchContext.branchId,
+      branchCode: branchContext.branchCode,
       forceCloseShifts: options?.forceCloseShifts,
     });
     const businessDate = options?.openDate || resolveBusinessDate(branchContext);
