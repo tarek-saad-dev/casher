@@ -145,6 +145,18 @@ function identityFrom(input: PublicSignupInput) {
   };
 }
 
+/**
+ * TblBranch requires globally distinct names/short names even when tenants differ.
+ * Keep a readable main-branch label and append a stable part of the tenant digest.
+ * A shared literal 'الفرع الرئيسي' breaks the second public signup.
+ */
+export function publicSignupMainBranchName(businessName: string, branchCode: string): string {
+  const tenantSuffix = /^DRVO_([0-9A-F]{10})_MAIN$/i.exec(String(branchCode).trim())?.[1];
+  const name = String(businessName ?? '').trim().slice(0, 70);
+  if (!name || !tenantSuffix) throw new Error('Public signup branch identity is incomplete');
+  return `${name} - الرئيسي - ${tenantSuffix}`;
+}
+
 function appCustomizations(industry: PublicSignupIndustry, needs: PublicSignupNeed[]) {
   const add: string[] = [];
   if (industry === 'salon' && needs.includes('inventory')) {
@@ -182,9 +194,9 @@ export function buildOnboardingRequest(input: PublicSignupInput): OnboardingRequ
     },
     branches: [
       {
-        branchName: 'الفرع الرئيسي',
+        branchName: publicSignupMainBranchName(input.businessName, ids.branchCode),
         branchCode: ids.branchCode,
-        shortName: 'الرئيسي',
+        shortName: null,
         address: null,
         phone: `+${input.phone}`,
         timezone: 'Africa/Cairo',

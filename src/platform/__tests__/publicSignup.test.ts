@@ -24,6 +24,7 @@ import {
   buildOnboardingRequest,
   normalizeEgyptPhone,
   parsePublicSignupInput,
+  publicSignupMainBranchName,
   signupIpHash,
 } from '@/platform/publicSignup/service';
 import { buildSalonOnboardingPreset } from '@/packs/salon/onboardingPreset';
@@ -144,6 +145,38 @@ describe('public signup Salon Pack composition', () => {
     expect(alpha.employees.every((e) => e.primaryBranchCode === 'ALPHA_MAIN')).toBe(true);
     expect(beta.employees.every((e) => e.primaryBranchCode === 'BETA_MAIN')).toBe(true);
     expect(alpha.employees).not.toBe(beta.employees);
+  });
+});
+
+describe('independent public signup branch identities', () => {
+  it('does not reuse global branch names or short names for separate salons', () => {
+    const base = {
+      industry: 'salon',
+      needs: ['booking'],
+      contactName: 'Owner',
+      businessName: 'Nova Salon',
+      password: 'StrongPass1',
+      startMode: 'real',
+    };
+    const alpha = buildOnboardingRequest(parsePublicSignupInput({ ...base, phone: '01012345678' }));
+    const beta = buildOnboardingRequest(parsePublicSignupInput({ ...base, phone: '01112345678' }));
+    expect(alpha.branches[0].branchCode).not.toBe(beta.branches[0].branchCode);
+    expect(alpha.branches[0].branchName).not.toBe(beta.branches[0].branchName);
+    expect(alpha.branches[0].shortName).toBeNull();
+    expect(beta.branches[0].shortName).toBeNull();
+    expect(alpha.branches[0].branchName).toContain('Nova Salon');
+    expect(beta.branches[0].branchName).toContain('Nova Salon');
+    expect(alpha.branches[0].branchName.length).toBeLessThanOrEqual(100);
+  });
+
+  it('uses a stable, bounded branch name for retries and long business names', () => {
+    const name = 'صالون'.repeat(50);
+    const first = publicSignupMainBranchName(name, 'DRVO_0123456789_MAIN');
+    const retry = publicSignupMainBranchName(name, 'DRVO_0123456789_MAIN');
+    expect(retry).toBe(first);
+    expect(first).toContain('0123456789');
+    expect(first.length).toBeLessThanOrEqual(100);
+    expect(() => publicSignupMainBranchName('Salon', 'invalid')).toThrow();
   });
 });
 
