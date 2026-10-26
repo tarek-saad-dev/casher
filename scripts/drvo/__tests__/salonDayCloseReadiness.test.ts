@@ -27,6 +27,8 @@ describe('Salon Pack branch day-close readiness', () => {
     expect(check).toContain('WITH (UPDLOCK, HOLDLOCK)');
     expect(check).toContain('BranchID = @branchId');
     expect(check).toContain('QueueDate = @workDate');
+    expect(check).toContain("p.PackCode = N'salon'");
+    expect(check).toContain('l.LegacyBranchId = @branchId');
     expect(check).toContain("AND Status IN ('waiting', 'called', 'arrived', 'in_service')");
     expect(check).toContain("'PENDING_QUEUE_TICKETS'");
     expect(tx).toContain('businessDate: args.day.newDay');
