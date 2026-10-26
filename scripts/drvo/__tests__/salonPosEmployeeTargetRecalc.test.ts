@@ -20,5 +20,8 @@ describe('Salon POS sale → employee target integration',()=>{
    expect(src).toContain('header: { invDate: workDateStr, branchId }');
    expect(src).toContain('enqueueTargetRecalcFromInvoiceSnapshots({');
    expect(src).toContain('transaction,');
+   expect(src).toContain('POS_TARGET_RECALC_SCOPE_MISSING');
+   expect(src).toContain('targetRecalcScopes.length === 0');
+   expect(src.indexOf('POS_TARGET_RECALC_SCOPE_MISSING')).toBeLessThan(src.indexOf('return { invID: newInvID, invType, targetRecalcScopes }'));
  });
 });
