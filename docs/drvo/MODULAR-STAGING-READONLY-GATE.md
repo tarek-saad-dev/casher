@@ -38,3 +38,7 @@ Security requirements:
 4. Only after PR #154 and PR #157 pass staged verification and commercial decisions are formally approved may future sale-catalog functionality be considered. Neither PR currently authorizes Merge or production deployment.
 
 **Coverage flags:** The JSON report explicitly emits `sampleCandidateCoverage` and `sampleSnapshotCoverage`. With zero records, the preflight may check database structure, but it **cannot** count as tested create/replay/customer journeys.
+
+## Additional credential-free SQL integration evidence
+
+A second job, `DRVO Modular Disposable SQL Integration`, verifies actual SQL Server migration scripts 019–022 against a fresh throwaway database, with no GitHub staging/production secrets. See [MODULAR-EPHEMERAL-SQL-GATE.md](./MODULAR-EPHEMERAL-SQL-GATE.md). The isolated fixture supplements—but does not replace—the blocked read-only Staging Gate or real operator E2E.
