@@ -314,7 +314,7 @@ export async function POST(req: NextRequest) {
 
     // ── Re-calculate estimate server-side inside a SERIALIZABLE transaction ──
     // This prevents two concurrent requests from getting the same slot.
-    const defaultDur = await getDefaultDuration(db);
+    const defaultDur = await getDefaultDuration(db, branch.branchId);
     const serviceProIds = services
       .map((s) => s.proId)
       .filter((id): id is number => !!id);
