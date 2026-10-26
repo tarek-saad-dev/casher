@@ -72,7 +72,7 @@ export function simulateModularResearchInquiry(
   if(proposal.status!=='reviewed_research'||!proposal.reviewedAt||
      !proposal.reviewNote?.trim()||
      !Number.isSafeInteger(proposal.createdByUserId)||proposal.createdByUserId<=0||
-     !Number.isSafeInteger(proposal.reviewedByUserId)||proposal.reviewedByUserId!<=0||
+     !Number.isSafeInteger(proposal.reviewedByUserId)||proposal.reviewedByUserId===null||proposal.reviewedByUserId<=0||
      proposal.reviewedByUserId===proposal.createdByUserId)
     throw new ModularQuoteLabError('RESEARCH_NOT_INDEPENDENTLY_REVIEWED',
       'مطلوب مراجعة بحثية مستقلة قبل إجراء المحاكاة');
