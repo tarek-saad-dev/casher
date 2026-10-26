@@ -15,6 +15,13 @@ describe('Booking to POS conversion tenant isolation', () => {
     expect(conversion).toContain("deps.actor.tenantId?.toLowerCase() !== deps.tenantId.toLowerCase()");
     expect(conversion).toContain("status: 404, error: 'حجز غير موجود'");
   });
+  it('rejects shifts opened in a different branch before creating a financial invoice',()=>{
+    expect(conversion).toContain('financial.locationId !== input.locationId');
+    expect(conversion).toContain('financial.tenantId.toLowerCase() !== deps.tenantId.toLowerCase()');
+    expect(conversion.indexOf('financial.locationId !== input.locationId')).toBeLessThan(
+      conversion.indexOf('deps.conversion.createServiceInvoice('),
+    );
+  });
   it('preserves the atomic POS invoice, booking completion and event transaction',()=>{
     expect(conversion).toContain('return withUnitOfWork(async ({ transaction }) =>');
     expect(conversion).toContain('new sql.Request(transaction)');
