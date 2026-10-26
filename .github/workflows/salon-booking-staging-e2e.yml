@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   salon-booking-e2e:
-    if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'agent/salon-e2e-exit'
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'agent/salon-booking-lifecycle'
     runs-on: ubuntu-latest
     environment: drvo-staging
     timeout-minutes: 15
