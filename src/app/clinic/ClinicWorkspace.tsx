@@ -1,7 +1,6 @@
 'use client';
 
 import Link from 'next/link';
-import ClinicAppointmentsPanel from './ClinicAppointmentsPanel';
 import { useRouter } from 'next/navigation';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import {
@@ -220,12 +219,13 @@ export default function ClinicWorkspace() {
               <Stethoscope className="h-4 w-4" />
               DRVO Clinics
             </div>
-            <h1 className="mt-1 text-3xl font-black">تشغيل العيادة</h1>
+            <h1 className="mt-1 text-3xl font-black">المرضى والأطباء</h1>
             <p className="mt-1 text-sm text-slate-500">
-              المريض → الموعد → الزيارة → الروشتة → الحساب → المتابعة
+              إضافة المرضى وتجهيز الأطباء وبدء زيارة بدون حجز مسبق
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <Link href="/clinic" className="inline-flex items-center gap-2 rounded-xl border bg-white px-4 py-2 text-sm font-bold">العودة للاستقبال</Link>
             <Link
               href="/bookings"
               className="inline-flex items-center gap-2 rounded-xl border bg-white px-4 py-2 text-sm font-bold"
@@ -240,8 +240,6 @@ export default function ClinicWorkspace() {
             </Link>
           </div>
         </header>
-
-        <ClinicAppointmentsPanel />
 
         <section className="mt-6 grid gap-4 lg:grid-cols-[1.05fr_.95fr]">
           <div className="rounded-3xl border bg-white p-5 shadow-sm">
@@ -355,7 +353,7 @@ export default function ClinicWorkspace() {
           <div className="rounded-3xl border bg-white p-5 shadow-sm">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <h2 className="text-lg font-black">ابدأ زيارة</h2>
+                <h2 className="text-lg font-black">زيارة بدون حجز مسبق</h2>
                 <p className="text-xs text-slate-500">
                   اختار المريض والطبيب وسجّل سبب الزيارة.
                 </p>
