@@ -331,6 +331,12 @@ export async function PATCH(
         request.input("personalNotes", sql.NVarChar(500), PersonalNotes);
       }
       if (BaseSalary !== undefined) {
+      const salaryScope = await pool.request()
+        .input('empId', sql.Int, empId).input('tenantId', sql.UniqueIdentifier, tenantId)
+        .query(`SELECT PayrollScope FROM dbo.TblEmp WHERE EmpID = @empId AND TenantId = @tenantId`);
+      if (salaryScope.recordset[0]?.PayrollScope === 'branch_monthly') {
+        return NextResponse.json({ error: 'راتب الموظف مستقل حسب الفرع؛ استخدم مرتبات الفروع' }, { status: 409 });
+      }
         updateFields.push("BaseSalary = @baseSalary");
         request.input("baseSalary", sql.Decimal(18, 2), BaseSalary !== null && BaseSalary !== '' ? parseFloat(BaseSalary) : null);
       }
