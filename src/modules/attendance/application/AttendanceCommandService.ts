@@ -376,6 +376,7 @@ export async function saveAdminAttendance(
     previousCheckOut,
     checkInTime: CheckInTime || null,
     checkOutTime: CheckOutTime || null,
+    branchId,
   });
 
   if (CheckInTime && CheckOutTime) {
@@ -775,6 +776,7 @@ export async function saveAdminAttendanceBulk(
     previousCheckOut?: unknown;
     checkInTime?: string | null;
     checkOutTime?: string | null;
+    branchId?: number;
   }> = [];
 
   try {
@@ -949,6 +951,7 @@ export async function saveAdminAttendanceBulk(
         previousCheckOut,
         checkInTime: checkIn,
         checkOutTime: checkOut,
+        branchId,
       });
     }
 

@@ -229,6 +229,7 @@ export async function POST(req: NextRequest) {
       });
 
       const advanceWa = await maybeScheduleAdvanceWhatsAppFromExpenseCategory({
+        branchId: gated.branch.branchId,
         expINID: body.expINID,
         invID: created.invID,
         amount,
