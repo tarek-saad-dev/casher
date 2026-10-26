@@ -6,7 +6,7 @@ const db = vi.hoisted(() => {
   const request = { input, query };
   input.mockReturnValue(request);
   return {
-    input, query, request, begin: vi.fn(), commit: vi.fn(), rollback: vi.fn(),
+    input, query, request, begin: vi.fn().mockResolvedValue(undefined), commit: vi.fn().mockResolvedValue(undefined), rollback: vi.fn().mockResolvedValue(undefined),
     pool: vi.fn().mockResolvedValue({ request: () => request }),
   };
 });
