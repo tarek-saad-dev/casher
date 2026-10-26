@@ -53,7 +53,9 @@ export async function GET(_request: NextRequest, { params }: Context) {
         FROM dbo.TblEmp WHERE EmpID = @empId AND TenantId = @tenantId
       `);
     if (!employee.recordset.length) return error('الموظف غير موجود', 404);
-    const effectiveFrom = nextMonthStart();
+    const plannedDate = employee.recordset[0].PayrollScopeEffectiveFrom;
+    const savedDate = plannedDate instanceof Date ? plannedDate.toISOString().slice(0, 10) : String(plannedDate ?? '').slice(0, 10);
+    const effectiveFrom = savedDate > nextMonthStart() ? savedDate : nextMonthStart();
     const branches = await db.request()
       .input('empId', sql.Int, empId)
       .input('tenantId', sql.UniqueIdentifier, tenantId)
