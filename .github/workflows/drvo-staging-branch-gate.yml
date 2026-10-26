@@ -148,6 +148,17 @@ jobs:
           test "$(git rev-parse origin/feature/drvo-clinics-mvp)" = "$EXPECTED_SHA"
           git merge --ff-only "$EXPECTED_SHA"
           bash scripts/drvo/staging-config-preflight.sh
+          # Fail before npm mutates staging if dependencies are owned by another account.
+          # Never chown/delete automatically and never touch the production checkout.
+          if test -d node_modules; then
+            foreign_path="$(find node_modules -xdev ! -user "$(id -un)" -print -quit 2>/dev/null || true)"
+            if test -n "$foreign_path"; then
+              echo "STAGING_DEPLOY_BLOCKED: STAGING_DEPENDENCY_OWNERSHIP"
+              echo "Staging checkout contains dependencies not owned by the staging deploy user."
+              echo "Requires owner-reviewed, staging-only permissions repair; no automatic chown."
+              exit 1
+            fi
+          fi
           npm ci --ignore-scripts
           npm run build
           # Restart requires a tightly scoped service permission; never use unrestricted sudo.
