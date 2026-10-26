@@ -92,7 +92,7 @@ export async function createInternalQuoteSnapshot(args:{
        c.IndustryCode AS CandidateIndustry,p.ProposalId,p.IndustryCode,p.Version,
        p.PricingModel,p.CurrencyCode,p.AppPricesJson,p.BaseMonthlyMinor,p.ExtraBranchMonthlyMinor,
        p.IncludedBranches,p.AnnualMonthsCharged,p.Status,p.CreatedByUserId,p.ReviewedByUserId,
-       p.ReviewedAt
+       p.ReviewedAt,p.ReviewNote
        FROM dbo.ModularCommercialReleaseCandidate c WITH (UPDLOCK,HOLDLOCK)
        INNER JOIN dbo.ModularTariffResearchProposal p ON p.ProposalId=c.SourceProposalId
        WHERE c.CandidateId=@id;`);
@@ -135,7 +135,7 @@ export async function createInternalQuoteSnapshot(args:{
       createdByUserId:Number(src.CreatedByUserId),
       reviewedByUserId:src.ReviewedByUserId==null?null:Number(src.ReviewedByUserId),
       reviewedAt:src.ReviewedAt?new Date(src.ReviewedAt as Date|string).toISOString():null,
-      reviewNote:'Verified independent review',
+      reviewNote:src.ReviewNote==null?null:String(src.ReviewNote),
       pricingModel:String(src.PricingModel) as ReviewedTariffSnapshot['pricingModel'],
       appPricesMinor:JSON.parse(String(src.AppPricesJson)) as Record<string,number>,
       baseMonthlyMinor:Number(src.BaseMonthlyMinor),extraBranchMonthlyMinor:Number(src.ExtraBranchMonthlyMinor),
