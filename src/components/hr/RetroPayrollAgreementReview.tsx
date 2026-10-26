@@ -33,6 +33,9 @@ export type RetroReviewActionState = {
   hasPreview: boolean;
   blocked: boolean;
   applying: boolean;
+  schemaReady: boolean;
+  rolloutEnabled: boolean;
+  confirmationRequired: boolean;
 };
 
 export type RetroReviewHandle = {
@@ -78,8 +81,10 @@ const RetroPayrollAgreementReview = forwardRef<RetroReviewHandle, Props>(
     const currentPreview = previewSignature === signature ? preview : null;
     const schemaReady = readiness?.schemaReady === true;
     const rolloutEnabled = readiness?.enabledForEmployee === true;
-    const canReview = schemaReady && !busy && reason.trim().length >= 8 && validBranches;
     const blocked = Boolean(currentPreview?.blockers.length);
+    const canReview = schemaReady && !busy && reason.trim().length >= 8 && validBranches &&
+      (!currentPreview || blocked);
+    const confirmationRequired = Boolean(currentPreview && !blocked && rolloutEnabled && !confirmed);
     const canApprove = Boolean(currentPreview && !blocked && !busy && confirmed && rolloutEnabled);
 
     // A preview is only usable for the exact fields that the user reviewed.
@@ -87,8 +92,10 @@ const RetroPayrollAgreementReview = forwardRef<RetroReviewHandle, Props>(
       onActionStateChange({
         canReview, canApprove, busy, blocked,
         hasPreview: Boolean(currentPreview), applying,
+        schemaReady, rolloutEnabled, confirmationRequired,
       });
-    }, [onActionStateChange, canReview, canApprove, busy, blocked, currentPreview, applying]);
+    }, [onActionStateChange, canReview, canApprove, busy, blocked, currentPreview, applying,
+      schemaReady, rolloutEnabled, confirmationRequired]);
 
     useEffect(() => {
       requestKey.current = null;
