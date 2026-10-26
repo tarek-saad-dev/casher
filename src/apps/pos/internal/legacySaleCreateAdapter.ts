@@ -169,6 +169,31 @@ export async function executeLegacySaleCreateTransaction(
     `[pos-api]   ✅ TblinvServHead inserted: invID=${newInvID}, ClientID=${clientId || 'NULL'}, GrandTotal=${grandTotal}, PaymentMethodID=${headerPaymentMethodId} (${isSplitPayment ? 'CLEARING' : 'DIRECT'}), UserID=${userID}`,
   );
 
+  // During extracted Treasury rollout the explicit poster inserts the one
+  // primary sale CashMove before the invoice header. If the old SQL trigger
+  // also fires on header insertion, it would produce a second CashMove.
+  // Fail the shared SQL transaction rather than commit double revenue.
+  // This check intentionally runs BEFORE split-payment redistribution.
+  if (input.postSaleCashMove) {
+    const movements = await new sql.Request(transaction)
+      .input('saleInvID', sql.Int, newInvID)
+      .input('saleInvType', sql.NVarChar(20), invType)
+      .input('saleBranchID', sql.Int, branchId)
+      .query(`
+        SELECT COUNT_BIG(*) AS MovementCount
+        FROM dbo.TblCashMove WITH (UPDLOCK, HOLDLOCK)
+        WHERE invID = @saleInvID
+          AND invType = @saleInvType
+          AND BranchID = @saleBranchID
+      `);
+    const count = Number(movements.recordset[0]?.MovementCount ?? 0);
+    if (count !== 1) {
+      throw new Error(
+        `POS_TREASURY_POSTING_MISMATCH: expected one primary CashMove for invoice ${newInvID}, got ${count}`,
+      );
+    }
+  }
+
   let detailCount = 0;
   for (let i = 0; i < items.length; i++) {
     const item = items[i]!;
