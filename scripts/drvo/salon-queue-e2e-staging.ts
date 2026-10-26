@@ -87,6 +87,166 @@ async function closeSmokePool(pool: sql.ConnectionPool, maxWaitMs = 12_000): Pro
       err instanceof Error ? err.message : String(err),
     );
   } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+async function main() {
+  const config = forceStagingConfig();
+  const pool = await sql.connect(config);
+  let tenantCode: string | null = null;
+  let queueTicketId: number | null = null;
+  let app: ChildProcess | null = null;
+  try {
+    await assertStaging(pool);
+    // Dynamic imports happen after staging-only environment and DB identity checks.
+    const { parsePublicSignupInput, buildOnboardingRequest } = await import('../../src/platform/publicSignup/service');
+    const { findIndustryPack } = await import('../../src/packs');
+    const { onboardBusiness, defaultOnboardingDeps } = await import('../../src/platform/onboarding/wizard/coordinator');
+    const { saveEmployeeBranchWeeklySchedule } = await import('../../src/lib/hr/employeeBranchScheduleSave');
+
+    // Exercise the real authenticated HTTP queue routes, not synthetic SQL insertions.
+
+    const input = parsePublicSignupInput({
+      industry: 'salon', needs: ['booking'], contactName: 'Salon QA Owner',
+      businessName: 'DRVO Salon Queue Acceptance', phone: SMOKE_PHONE,
+      password: 'StagingOnlyPass123!', startMode: 'demo',
+    });
+    const req = buildOnboardingRequest(input);
+    tenantCode = req.business.tenantCode;
+    check(req.branches[0].branchName !== 'الفرع الرئيسي', 'Branch name is signup-specific');
+    check(req.services.length > 0 && req.employees.length > 0, 'Salon demo includes services and barbers');
+    req.subscription = { planCode: 'starter', status: 'active' };
+    const actors = await pool.request().query("SELECT TOP 1 UserID FROM dbo.TblUser WHERE ISNULL(isDeleted,0)=0 ORDER BY UserID");
+    check(actors.recordset.length === 1, 'Onboarding actor exists in staging');
+    const actor = { actorUserId: Number(actors.recordset[0].UserID), actorUserName: 'salon-queue-staging' };
+    const onboarding = await onboardBusiness(req, actor, defaultOnboardingDeps(findIndustryPack));
+    check(onboarding.complete, 'Tenant onboarding stages completed');
+    const tenantId = onboarding.core.tenantId;
+    const branchCode = onboarding.core.branchCode;
+    // Resolve the new branch through its tenant-owned Location.
+    const owned = await pool.request().input('tenantId', sql.UniqueIdentifier, tenantId)
+      .input('branchCode', sql.NVarChar(30), branchCode).query(`SELECT LegacyBranchId AS branchId FROM dbo.Location WHERE TenantId=@tenantId AND BranchCode=@branchCode`);
+    check(owned.recordset.length === 1, 'New branch is owned by the fresh tenant');
+    const branchId = Number(owned.recordset[0].branchId);
+    const staff = await pool.request().input('tenantId', sql.UniqueIdentifier, tenantId)
+      .input('name', sql.NVarChar(200), req.employees[0].name)
+      .query("SELECT EmpID FROM dbo.TblEmp WHERE TenantId=@tenantId AND EmpName=@name");
+    check(staff.recordset.length === 1, 'New barber belongs to the tenant');
+    const empId = Number(staff.recordset[0].EmpID);
+
+    // One controlled staging test roster. Payroll validation is outside booking scope.
+    await saveEmployeeBranchWeeklySchedule({
+      empId, branchId, effectiveFrom: futureDate(0), skipPayrollCheck: true,
+      cells: Array.from({ length: 7 }, (_, dayOfWeek) => ({
+        dayOfWeek, isWorking: true, startTime: '00:00', endTime: '23:59', canReceiveBookings: true,
+      })),
+    });
+
+    // Synthetic business open all day: smoke is independent of Cairo's current hour.
+    await pool.request().input('tenantId', sql.UniqueIdentifier, tenantId)
+      .input('branchId', sql.Int, branchId).query(`
+        UPDATE b SET DefaultOpenTime=CAST('00:00' AS TIME), DefaultCloseTime=CAST('23:59' AS TIME)
+        FROM dbo.TblBranch b
+        JOIN dbo.Location l ON l.LegacyBranchId=b.BranchID AND l.TenantId=@tenantId
+        WHERE b.BranchID=@branchId;
+        UPDATE dbo.QueueBookingSettings SET DefaultServiceMinutes=45, QueuePrefix=N'Q'
+        WHERE BranchID=@branchId;
+      `);
+    check((await pool.request().input('branchId', sql.Int, branchId)
+      .query('SELECT DefaultServiceMinutes FROM dbo.QueueBookingSettings WHERE BranchID=@branchId'))
+      .recordset[0]?.DefaultServiceMinutes === 45, 'Fresh branch has a distinct 45-minute queue default');
+
+    app = spawn(process.execPath, ['node_modules/next/dist/bin/next', 'dev', '--webpack',
+      '--hostname', '127.0.0.1', '--port', '5518'], {
+      env: { ...process.env, NEXT_TELEMETRY_DISABLED: '1' },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    // Bound diagnostic log output; never print session cookies, DB password, or login secrets.
+    let appError = '';
+    app.stderr?.on('data', (chunk: Buffer) => {
+      appError = (appError + chunk.toString('utf8')).slice(-1200);
+    });
+    app.stdout?.on('data', () => {});
+    const withTimeout = async (uri: string, options?: RequestInit) =>
+      fetch(BASE_URL + uri, { ...options, signal: AbortSignal.timeout(120_000) });
+    let serverReady = false;
+    for (let tryNo = 0; tryNo < 75; tryNo++) {
+      if (app.exitCode !== null) throw new Error('Local staging-only Next server exited before readiness');
+      try {
+        const ping = await fetch(BASE_URL + '/api/auth/login', { signal: AbortSignal.timeout(2_000) });
+        if (ping.ok) { serverReady = true; break; }
+      } catch { /* server still compiling */ }
+      await new Promise((resolve) => setTimeout(resolve, 1_000));
+    }
+    check(serverReady, 'Authenticated queue HTTP server started on staging runner');
+
+    const loginResponse = await withTimeout('/api/auth/login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ loginName: req.owner.loginName, password: req.owner.password }),
+    });
+    const setCookie = loginResponse.headers.get('set-cookie') || '';
+    const cookie = setCookie.split(';')[0];
+    check(loginResponse.ok && cookie.startsWith('pos_session='), 'New salon owner authenticated through real login');
+    const json = (method: string, data: Record<string, unknown>) => ({
+      method,
+      headers: { 'content-type': 'application/json', cookie },
+      body: JSON.stringify(data),
+    });
+    const createResponse = await withTimeout('/api/queue', json('POST', {
+      empId, clientId: null, notes: RUN_ID, services: [],
+    }));
+    const ticket = await createResponse.json() as {
+      ok?: boolean; error?: string; ticketId?: number; estimatedWaitMinutes?: number;
+      ticket?: { status?: string; durationMinutes?: number; estimatedWaitMinutes?: number };
+    };
+    check(createResponse.status === 201 && ticket.ok && Number(ticket.ticketId) > 0,
+      'Walk-in queue ticket created through authenticated API' + (ticket.error ? ': ' + ticket.error : ''));
+    queueTicketId = Number(ticket.ticketId);
+    check(ticket.ticket?.status === 'waiting', 'Fresh walk-in starts in waiting status');
+    check(ticket.ticket?.durationMinutes === 45, 'Walk-in ticket uses this salon 45-minute default');
+    check(Number.isFinite(Number(ticket.estimatedWaitMinutes)) ||
+      Number.isFinite(Number(ticket.ticket?.estimatedWaitMinutes)), 'Queue ETA calculated for walk-in');
+
+    const meta = await pool.request().input('ticketId', sql.Int, queueTicketId)
+      .query('SELECT BranchID, EmpID, Source, Status, DurationMinutes FROM dbo.QueueTickets WHERE QueueTicketID=@ticketId');
+    check(meta.recordset[0]?.BranchID === branchId && meta.recordset[0]?.EmpID === empId,
+      'Walk-in belongs to new salon and new barber');
+    check(meta.recordset[0]?.Source === 'walk_in', 'Walk-in uses queue source not booking source');
+    check(meta.recordset[0]?.DurationMinutes === 45, 'Persisted ticket duration matches salon policy');
+
+    const listResponse = await withTimeout('/api/queue', { headers: { cookie } });
+    const listing = await listResponse.json() as { tickets?: Array<{ QueueTicketID?: number }> };
+    check(listResponse.ok && Array.isArray(listing.tickets) &&
+      listing.tickets.some((q) => q.QueueTicketID === queueTicketId),
+      'Walk-in is visible on the authenticated branch queue list');
+    const ticketPath = '/api/queue/' + queueTicketId;
+    for (const [action, expected] of [
+      ['called', 'called'],
+      ['arrived', 'arrived'],
+      ['in_service', 'in_service'],
+      ['done', 'done'],
+    ] as const) {
+      const changed = await withTimeout(ticketPath, json('PATCH', { action }));
+      const body = await changed.json() as { ok?: boolean; newStatus?: string; error?: string };
+      check(changed.ok && body.ok && body.newStatus === expected,
+        'Queue ticket advanced to ' + expected + (body.error ? ': ' + body.error : ''));
+    }
+    const persisted = await pool.request().input('ticketId', sql.Int, queueTicketId)
+      .query('SELECT Status, ServiceStartedAt, ServiceEndedAt, BranchID FROM dbo.QueueTickets WHERE QueueTicketID=@ticketId');
+    check(persisted.recordset[0]?.Status === 'done' &&
+      persisted.recordset[0]?.ServiceStartedAt != null &&
+      persisted.recordset[0]?.ServiceEndedAt != null,
+      'Completed queue lifecycle persisted with service timestamps');
+    check(persisted.recordset[0]?.BranchID === branchId, 'Completed queue ticket stays in original branch');
+    const history = await pool.request().input('ticketId', sql.Int, queueTicketId)
+      .query('SELECT NewStatus FROM dbo.QueueTicketHistory WHERE QueueTicketID=@ticketId');
+    const statuses = history.recordset.map((row) => String(row.NewStatus));
+    check(['called', 'arrived', 'in_service', 'done'].every((status) => statuses.includes(status)),
+      'Queue history persisted the full staff workflow');
+    console.log('SALON_QUEUE_WALKIN_E2E_STAGING_PASS');
+  } finally {
     if (app && app.exitCode === null) {
       app.kill('SIGTERM');
       await new Promise((resolve) => setTimeout(resolve, 1_000));
