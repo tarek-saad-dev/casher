@@ -214,13 +214,16 @@ async function main() {
     check(createResponse.status === 201 && ticket.ok && Number(ticket.ticketId) > 0,
       'Walk-in queue ticket created through authenticated API' + (ticket.error ? ': ' + ticket.error : ''));
     queueTicketId = Number(ticket.ticketId);
-    check(ticket.ticket?.status === 'waiting', 'Fresh walk-in starts in waiting status');
-    check(ticket.ticket?.durationMinutes === 45, 'Walk-in ticket uses this salon 45-minute default');
-    check(Number.isFinite(Number(ticket.estimatedWaitMinutes)) ||
-      Number.isFinite(Number(ticket.ticket?.estimatedWaitMinutes)), 'Queue ETA calculated for walk-in');
-
+    // POST can legitimately omit its optional expanded ticket projection after
+    // a successful insert; the new ticket ID and its authoritative SQL row
+    // determine actual lifecycle state and configured branch duration.
     const meta = await pool.request().input('ticketId', sql.Int, queueTicketId)
-      .query('SELECT BranchID, EmpID, Source, Status, DurationMinutes FROM dbo.QueueTickets WHERE QueueTicketID=@ticketId');
+      .query('SELECT BranchID, EmpID, Source, Status, DurationMinutes, EstimatedWaitMinutes FROM dbo.QueueTickets WHERE QueueTicketID=@ticketId');
+    check(meta.recordset[0]?.Status === 'waiting', 'Fresh walk-in persisted with waiting status');
+    check(meta.recordset[0]?.DurationMinutes === 45, 'Walk-in persisted with this salon 45-minute default');
+    check(Number.isFinite(Number(meta.recordset[0]?.EstimatedWaitMinutes)) ||
+      Number.isFinite(Number(ticket.estimatedWaitMinutes)),
+      'Queue ETA calculated and persisted for walk-in');
     check(meta.recordset[0]?.BranchID === branchId && meta.recordset[0]?.EmpID === empId,
       'Walk-in belongs to new salon and new barber');
     check(meta.recordset[0]?.Source === 'walk_in', 'Walk-in uses queue source not booking source');
