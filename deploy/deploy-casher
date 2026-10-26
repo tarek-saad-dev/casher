@@ -68,24 +68,20 @@ ensure_casher_git_origin() {
 }
 
 should_skip_git_sync() {
+  # A marker that matches HEAD can STILL be stale relative to origin/main.
+  # Always fetch the remote target before deploying; markers are not an
+  # authority for the current desired production revision.
   local marker="$APP_DIR/.deploy/ci-sync-sha"
-  [[ -f "$marker" ]] || return 1
-
-  local expected_sha actual_sha
-  expected_sha="$(tr -d '\n\r' < "$marker")"
-  actual_sha="$(runuser -u casher -- git -C "$APP_DIR" rev-parse HEAD 2>/dev/null || true)"
-
-  if [[ "$expected_sha" =~ ^[a-f0-9]{40}$ && "$actual_sha" == "$expected_sha" ]] &&
-     runuser -u casher -- git -C "$APP_DIR" diff --quiet &&
-     runuser -u casher -- git -C "$APP_DIR" diff --cached --quiet; then
-    return 0
+  if [[ -f "$marker" ]]; then
+    local marked current
+    marked="$(tr -d '\\n\\r' < "$marker")"
+    current="$(runuser -u casher -- git -C "$APP_DIR" rev-parse HEAD 2>/dev/null || true)"
+    echo "INFO: ignoring CI sync marker (${marked:-empty}); local HEAD=${current:-unknown}. Refreshing origin/$BRANCH."
+    mv -f "$marker" "$marker.ignored.$(date -u +%Y%m%dT%H%M%SZ)"
   fi
-
-  echo "WARNING: CI sync marker is stale; marker=${expected_sha:-empty}, checkout=${actual_sha:-unknown}." >&2
-  echo "         Falling back to git fetch instead of deploying the wrong revision." >&2
-  mv -f "$marker" "$marker.stale.$(date -u +%Y%m%dT%H%M%SZ)"
   return 1
 }
+
 
 gemini_api_key_configured() {
   runuser -u casher -- bash -lc "
