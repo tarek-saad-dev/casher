@@ -19,6 +19,7 @@ import { modularQuoteRequestsMigration } from './017-modular-quote-requests';
 import { modularInquiryReviewsMigration } from './018-modular-inquiry-reviews';
 import { tariffResearchReviewMigration } from './019-tariff-research-review';
 import { commercialReleaseCandidatesMigration } from './020-commercial-release-candidates';
+import { commercialPolicyEvidenceMigration } from './021-commercial-policy-evidence';
 import { drvoModuleRequiredMigrationsFromManifest } from '../../../src/platform/drvo/moduleManifest';
 
 /** Ordered DRVO migration manifest — single source of truth for migration order. */
@@ -43,6 +44,7 @@ export const DRVO_MIGRATIONS: DrvoMigrationDefinition[] = [
   modularInquiryReviewsMigration,
   tariffResearchReviewMigration,
   commercialReleaseCandidatesMigration,
+  commercialPolicyEvidenceMigration,
 ];
 
 export function assertDrvoMigrationManifestValid(): void {
