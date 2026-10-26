@@ -244,7 +244,7 @@ async function createOwnerUserInTransaction(
       )
       VALUES (
         @userId, @branchId, 1, 1, 1, 1,
-        1, SYSUTCDATETIME(), NULL, @grantedBy, N'tenant-onboarding-owner'
+        1, DATEADD(SECOND, -1, SYSUTCDATETIME()), NULL, @grantedBy, N'tenant-onboarding-owner'
       )
     `);
 
