@@ -134,6 +134,7 @@ export default function PosPage() {
   // No financial write happens on hydration; server enforces single-use on save.
   const [clinicEncounterId, setClinicEncounterId] = useState<string | null>(null);
   const [clinicBillingLabel, setClinicBillingLabel] = useState<string | null>(null);
+  const [clinicHandoffError, setClinicHandoffError] = useState<string | null>(null);
   const clinicHydratedRef = useRef(false);
   const [hydratePackageId, setHydratePackageId] = useState<number | null>(null);
   const [hydrateAddonProIds, setHydrateAddonProIds] = useState<number[]>([]);
@@ -341,10 +342,13 @@ export default function PosPage() {
           m.Name?.toLowerCase() === 'cash') ?? paymentMethods[0];
         if (cash) setPaymentMethod(cash.ID);
         setClinicEncounterId(encounterId);
+        setClinicHandoffError(null);
         setClinicBillingLabel(preview.patientName || 'مريض العيادة');
         addToast('info', 'تم تحميل خدمات الكشف. راجع الفاتورة واختر وسيلة الدفع.');
       } catch (err) {
-        addToast('error', err instanceof Error ? err.message : 'تعذر نقل الكشف للحسابات');
+        const message = err instanceof Error ? err.message : 'تعذر نقل الكشف للحسابات';
+        setClinicHandoffError(message);
+        addToast('error', message);
       }
     })();
   }, [sessionLoading, viewBranch?.branchId, services, otherEmployeesLoading, barbers,
@@ -434,6 +438,11 @@ export default function PosPage() {
   const handleSave = useCallback(async (forcePrint = false, source = 'unknown') => {
     if (saveLockRef.current) {
       console.warn('[POS SAVE] Duplicate save blocked', { source });
+      return;
+    }
+    // A failed clinic handoff must never silently become a normal sale.
+    if (clinicHandoffError) {
+      setSaveError('تعذر تحميل الكشف: ' + clinicHandoffError + ' — راجع المشكلة أو ألغِ الربط أولًا.');
       return;
     }
 
@@ -548,6 +557,7 @@ export default function PosPage() {
       setEditingSaleId(null);
       setClinicEncounterId(null);
       setClinicBillingLabel(null);
+      setClinicHandoffError(null);
       if (clinicEncounterId && new URLSearchParams(window.location.search).has('clinicEncounterId')) {
         window.history.replaceState(null, '', window.location.pathname);
       }
@@ -661,7 +671,7 @@ export default function PosPage() {
       setSaving(false);
       console.log('[POS SAVE] END', { requestId });
     }
-  }, [state, totals, reset, addToast, paymentMethods, editingSaleId, clinicEncounterId, saveLockRef, ensureShiftWrite]);
+  }, [state, totals, reset, addToast, paymentMethods, editingSaleId, clinicEncounterId, clinicHandoffError, saveLockRef, ensureShiftWrite]);
 
   // ───────────────── Keyboard shortcuts ─────────────────
   useEffect(() => {
@@ -692,6 +702,7 @@ export default function PosPage() {
     // Reset everything including clinic handoff, barber selection and edit mode
     setClinicEncounterId(null);
     setClinicBillingLabel(null);
+    setClinicHandoffError(null);
     clinicHydratedRef.current = true;
     if (new URLSearchParams(window.location.search).has('clinicEncounterId')) {
       window.history.replaceState(null, '', window.location.pathname);
@@ -951,6 +962,12 @@ export default function PosPage() {
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
+      {clinicHandoffError && (
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-2 border-b border-rose-300 bg-rose-50 px-4 py-2 text-xs font-semibold text-rose-800">
+          <span>تعذر ربط الكشف: {clinicHandoffError}. حفظ الفاتورة متوقف لحين إلغاء الربط أو حل المشكلة.</span>
+          <button type="button" onClick={handleNewSale} className="rounded-lg border border-rose-300 px-2 py-1">إلغاء الربط</button>
+        </div>
+      )}
       {clinicEncounterId && (
         <div role="status" className="flex flex-wrap items-center justify-between gap-2 border-b border-cyan-300 bg-cyan-50 px-4 py-2 text-xs font-semibold text-cyan-900">
           <span>فاتورة كشف عيادة — {clinicBillingLabel || 'مريض'} · راجع الخدمات وطريقة الدفع قبل الحفظ.</span>

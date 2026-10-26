@@ -141,7 +141,7 @@ export async function linkClinicSaleWithinTransaction(
     .input('tenantId', sql.UniqueIdentifier, input.tenantId)
     .input('bookingId', sql.Int, row.BookingID)
     .query(`
-      SELECT DISTINCT p.ProID, p.SPrice1
+      SELECT DISTINCT p.ProID, p.SPrice1, ISNULL(p.Bonus,0) AS Bonus
       FROM dbo.BookingServices bs
       JOIN dbo.TblPro p ON p.ProID=bs.ProID AND p.TenantId=@tenantId
       WHERE bs.BookingID=@bookingId AND ISNULL(p.isDeleted,0)=0 AND p.SPrice1>0;

@@ -19,7 +19,7 @@ import { linkClinicSaleWithinTransaction } from '../internal/clinicBillingReposi
 const input = {
   tenantId: 'tenant-1', encounterId: 'f8e4b6ec-118e-42d5-9ae7-f1c6b4d59fd2',
   branchId: 3, invId: 8123, clientId: 22, userId: 17,
-  items: [{ proId: 9, empId: 6, sPrice: 300 }],
+  items: [{ proId: 9, empId: 6, sPrice: 300, bonus: 15, qty: 1 }],
 };
 
 describe('clinic billing link atomic POS adapter', () => {
@@ -32,7 +32,7 @@ describe('clinic billing link atomic POS adapter', () => {
   it('locks the encounter and inserts the unique invoice link in POS transaction', async () => {
     db.query
       .mockResolvedValueOnce({ recordset: [{ ClientID: 22, PractitionerEmpID: 6, Status: 'completed', BookingID: 11 }] })
-      .mockResolvedValueOnce({ recordset: [{ ProID: 9, SPrice1: 300 }] })
+      .mockResolvedValueOnce({ recordset: [{ ProID: 9, SPrice1: 300, Bonus: 15 }] })
       .mockResolvedValueOnce({ recordset: [] });
     const tx = {} as never;
     await linkClinicSaleWithinTransaction(tx, input);
@@ -54,7 +54,7 @@ describe('clinic billing link atomic POS adapter', () => {
   it('rejects unexpected price or wrong doctor before inserting a link', async () => {
     db.query
       .mockResolvedValueOnce({ recordset: [{ ClientID: 22, PractitionerEmpID: 6, Status: 'completed', BookingID: 11 }] })
-      .mockResolvedValueOnce({ recordset: [{ ProID: 9, SPrice1: 350 }] });
+      .mockResolvedValueOnce({ recordset: [{ ProID: 9, SPrice1: 350, Bonus: 15 }] });
     await expect(linkClinicSaleWithinTransaction({} as never, input))
       .rejects.toMatchObject({ code: 'INVALID_ITEMS' });
     expect(db.query).toHaveBeenCalledTimes(2);
@@ -63,7 +63,7 @@ describe('clinic billing link atomic POS adapter', () => {
   it('maps the database unique index violation into an already-billed conflict', async () => {
     db.query
       .mockResolvedValueOnce({ recordset: [{ ClientID: 22, PractitionerEmpID: 6, Status: 'completed', BookingID: 11 }] })
-      .mockResolvedValueOnce({ recordset: [{ ProID: 9, SPrice1: 300 }] })
+      .mockResolvedValueOnce({ recordset: [{ ProID: 9, SPrice1: 300, Bonus: 15 }] })
       .mockRejectedValueOnce({ number: 2627 });
     await expect(linkClinicSaleWithinTransaction({} as never, input))
       .rejects.toMatchObject({ code: 'ALREADY_BILLED' });

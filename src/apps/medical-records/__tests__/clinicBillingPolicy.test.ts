@@ -5,10 +5,10 @@ import {
   parseClinicEncounterId,
 } from '../application/clinicBillingPolicy';
 
-const booked = [{ ProID: 9, SPrice1: 300 }, { ProID: 20, SPrice1: 200 }];
+const booked = [{ ProID: 9, SPrice1: 300, Bonus: 20 }, { ProID: 20, SPrice1: 200, Bonus: 10 }];
 const items = [
-  { proId: 9, empId: 7, sPrice: 300 },
-  { proId: 20, empId: 7, sPrice: 200 },
+  { proId: 9, empId: 7, sPrice: 300, bonus: 20, qty: 1 },
+  { proId: 20, empId: 7, sPrice: 200, bonus: 10, qty: 1 },
 ];
 
 describe('Clinic → Shared POS billing contract', () => {
@@ -29,7 +29,9 @@ describe('Clinic → Shared POS billing contract', () => {
     expect(matchesClinicBookedServices([{ ...items[0], empId: 11 }, items[1]], booked, 7)).toBe(false);
     expect(matchesClinicBookedServices([{ ...items[0], proId: 8 }, items[1]], booked, 7)).toBe(false);
     expect(matchesClinicBookedServices([{ ...items[0], sPrice: 1 }, items[1]], booked, 7)).toBe(false);
-    expect(matchesClinicBookedServices(items, [{ ProID: 9, SPrice1: 300 }, { ProID: 9, SPrice1: 300 }], 7)).toBe(false);
+    expect(matchesClinicBookedServices([{ ...items[0], qty: 2 }, items[1]], booked, 7)).toBe(false);
+    expect(matchesClinicBookedServices([{ ...items[0], bonus: 999 }, items[1]], booked, 7)).toBe(false);
+    expect(matchesClinicBookedServices(items, [{ ProID: 9, SPrice1: 300, Bonus: 20 }, { ProID: 9, SPrice1: 300, Bonus: 20 }], 7)).toBe(false);
   });
 
   it('makes duplicate billing an explicit conflict', () => {

@@ -177,6 +177,7 @@ export async function executeLegacySaleCreateTransaction(
       userId: userID,
       items: items.map(item => ({
         proId: Number(item.proId), empId: Number(item.empId), sPrice: Number(item.sPrice),
+        bonus: Number(item.bonus), qty: Number(item.qty),
       })),
     });
   }

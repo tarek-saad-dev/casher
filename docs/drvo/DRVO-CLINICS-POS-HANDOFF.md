@@ -15,7 +15,7 @@
 ## API
 - `GET /api/clinic/encounters/:uuid/billing` (medical-records entitlement): administrative billing metadata only. Returns `billingState` (`ready` / `not_ready` / `already_billed`), patient / doctor IDs, booked service IDs, names, prices, bonus, existing `invoiceId`; **no** diagnosis, clinical history or Rx data. Branch/tenant restricted on SQL joins. Cache disabled.
 - `POST /api/sales` optionally accepts `clinicEncounterId` as part of the existing sale payload. The route checks medical-records entitlement, authenticated tenant and active branch. It never trusts a supplied doctor, tenant or branch.
-- Both POS transaction paths lock the scoped completed encounter and ensure the same patient, booking, branch, doctor, and the exact set of booked services at their current catalog price. Extra/removed/substituted lines reject with `INVALID_ITEMS`.
+- Both POS transaction paths lock the scoped completed encounter and ensure the same patient, booking, branch, doctor, and the exact set of booked services at their current catalog price and commission (Bonus), quantity one per service. Extra/removed/substituted lines reject with `INVALID_ITEMS`.
 - Inserting a second link violates `PK_ClinicEncounterBillingLink(TenantId,EncounterId)`. Error maps to HTTP 409 `ALREADY_BILLED` and the **entire POS transaction rolls back**. Migration missing gives a protected failure, not a new invoice in normal rollout.
 
 ## Migration and rollout safety
