@@ -39,17 +39,19 @@ describe('tenant billing quote security', () => {
     expect(rows[0]).toMatchObject({ maxBranches:1, maxUsers:5 });
   });
 
-  it('mutating endpoint rejects tenantId/status/paid fields, uses session tenant, and cannot activate', () => {
+  it('disables legacy tier sales in the active tenant API while preserving historical reads', () => {
     const read = (p: string) => fs.readFileSync(path.join(process.cwd(),p),'utf8');
     const route = read('src/app/api/tenant/billing/route.ts');
     const service = read('src/platform/commercial/planRequestService.ts');
     const admin = read('src/app/api/admin/platform/billing-requests/route.ts');
     expect(route.match(/requireTenantBillingAdmin\(\)/g)).toHaveLength(2);
-    expect(route).toContain('tenantId: auth.tenantId');
-    expect(route).toContain('expectedRevision');
-    expect(route).not.toContain('body.tenantId');
-    expect(route).toContain("'planCode','billingCycle','expectedRevision'");
+    expect(route).toContain('getTenantSubscription(pool, auth.tenantId)');
+    expect(route).toContain('getTenantPlanRequests(pool, auth.tenantId)');
+    expect(route).not.toContain('submitTenantPlanRequest');
+    expect(route).not.toContain('availablePlanOffers');
+    expect(route).toContain('LEGACY_PLAN_REQUESTS_CLOSED');
     expect(route).toContain("subscriptionChanged: false");
+    expect(route).toContain("newPaidRequestsEnabled: false");
     expect(service).not.toMatch(/UPDATE\s+dbo\.TenantSubscription/i);
     expect(service).toContain('acquireTenantApplock');
     expect(service).toContain('assertNotBootstrapTenant');
@@ -57,6 +59,9 @@ describe('tenant billing quote security', () => {
     expect(admin.match(/await requirePlatformOperator\(\)/g)).toHaveLength(2);
     expect(admin).not.toContain('changeTenantPlan');
     expect(admin).not.toContain('transitionTenantSubscription');
+    const ui = read('src/components/tenant/TenantBillingClient.tsx');
+    expect(ui).not.toContain('data.plans.map');
+    expect(ui).not.toContain('إرسال طلب الاشتراك');
   });
 
   it('billing stays accessible to expired trials while core app routes remain blocked', () => {

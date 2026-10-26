@@ -86,7 +86,7 @@ export function TenantShellGate({ children }: { children: React.ReactNode }) {
         detail={notice?.detail ?? ''}
         action={
           <div className="flex justify-center gap-2">
-            <Link href="/admin/billing" className="rounded-lg border border-border px-4 py-2 text-sm">الباقات والاشتراك</Link>
+            <Link href="/admin/billing" className="rounded-lg border border-border px-4 py-2 text-sm">الاشتراك والتكلفة</Link>
             {snapshot.isPlatformOperator && (
               <Link href="/platform" className="rounded-lg border border-border px-4 py-2 text-sm">
                 لوحة المنصة
