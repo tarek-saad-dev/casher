@@ -752,6 +752,7 @@ export default function EmployeeHrFormModal({
                   empId={employee.EmpID}
                   effectiveFrom={compDate}
                   branches={compBranches}
+                  readiness={compDetails?.retroactive}
                   onApplied={(message) => {
                     onSaved(message);
                     onOpenChange(false);
@@ -1094,6 +1095,9 @@ export default function EmployeeHrFormModal({
                 <>
                   <CheckCircle2 className="w-4 h-4" />
                   {retroAction?.canApprove ? 'اعتماد التسوية المالية' :
+                    !retroAction?.schemaReady ? 'التسوية غير جاهزة' :
+                    retroAction?.hasPreview && !retroAction.rolloutEnabled ? 'الاعتماد غير مفعّل' :
+                    retroAction?.confirmationRequired ? 'أكّد مراجعة الأرقام أولًا' :
                     retroAction?.hasPreview && retroAction.blocked ? 'إعادة معاينة الأثر' : 'معاينة أثر التغيير'}
                 </>
               ) : mode === 'create' ? (
