@@ -344,34 +344,36 @@ export async function getEmployeeMonthlyPayrollReport(
   if (!employee) return null;
 
   const db = await getPool();
-  // VIP salary is a fixed branch commitment, not generated from attendance days.
-  // Resolve the historical mode and branch plans as of the requested month.
+  // VIP salary is effective-dated. For mid-month changes, prorate by covered
+  // calendar days; do not count superseded hourly wages again.
   const monthlyDueResult = await db.request()
     .input('empId', sql.Int, employeeId)
     .input('branchId', sql.Int, branchId != null && branchId > 0 ? branchId : null)
-    .input('workDate', sql.Date, startDate)
-    .query(`
-      WITH ranked AS (
-        SELECT p.BranchID, p.PayType, p.MonthlySalary,
-          ROW_NUMBER() OVER (PARTITION BY p.BranchID ORDER BY p.EffectiveFrom DESC, p.PlanID DESC) AS rn
-        FROM dbo.TblEmpBranchPayrollPlan p
-        WHERE p.EmpID = @empId AND p.IsActive = 1
-          AND p.EffectiveFrom <= @workDate AND (p.EffectiveTo IS NULL OR p.EffectiveTo >= @workDate)
-          AND (@branchId IS NULL OR p.BranchID = @branchId)
-      )
-      SELECT ISNULL(SUM(CASE WHEN p.PayType = N'monthly' AND p.rn = 1
-        THEN ISNULL(p.MonthlySalary, 0) ELSE 0 END), 0) AS Amount
-      FROM ranked p
-      WHERE EXISTS (
-        SELECT 1 FROM dbo.TblEmpBranchPayrollAudit a
-        WHERE a.EmpID = @empId AND a.NewPayrollScope = N'branch_monthly'
-          AND a.AuditID = (
-            SELECT TOP 1 z.AuditID FROM dbo.TblEmpBranchPayrollAudit z
-            WHERE z.EmpID = @empId AND z.EffectiveFrom <= @workDate
-            ORDER BY z.EffectiveFrom DESC, z.AuditID DESC
-          )
-      )
-    `);
+    .input('monthStart', sql.Date, startDate)
+    .query([
+      'WITH segments AS (',
+      'SELECT p.BranchID, p.PayType, p.MonthlySalary,',
+      'CASE WHEN p.EffectiveFrom>@monthStart THEN p.EffectiveFrom ELSE @monthStart END AS SegmentStart,',
+      'CASE WHEN p.EffectiveTo IS NOT NULL AND p.EffectiveTo<EOMONTH(@monthStart)',
+      'THEN p.EffectiveTo ELSE EOMONTH(@monthStart) END AS SegmentEnd',
+      'FROM dbo.TblEmpBranchPayrollPlan p',
+      'WHERE p.EmpID=@empId AND p.IsActive=1',
+      'AND (@branchId IS NULL OR p.BranchID=@branchId)',
+      'AND p.EffectiveFrom<=EOMONTH(@monthStart)',
+      'AND (p.EffectiveTo IS NULL OR p.EffectiveTo>=@monthStart)',
+      '), activeSegments AS (',
+      'SELECT s.*, a.NewPayrollScope FROM segments s',
+      'OUTER APPLY (SELECT TOP 1 NewPayrollScope',
+      'FROM dbo.TblEmpBranchPayrollAudit WHERE EmpID=@empId',
+      'AND EffectiveFrom<=s.SegmentStart',
+      'ORDER BY EffectiveFrom DESC,AuditID DESC) a',
+      ") SELECT ISNULL(SUM(CASE WHEN PayType=N'monthly'",
+      "AND NewPayrollScope=N'branch_monthly'",
+      'THEN ROUND(CAST(MonthlySalary AS decimal(18,4)) *',
+      'DATEDIFF(day,SegmentStart,DATEADD(day,1,SegmentEnd))',
+      '/DAY(EOMONTH(@monthStart)),2) ELSE 0 END),0) AS Amount',
+      'FROM activeSegments'
+    ].join(' ').replaceAll("N''monthly''","N'monthly'").replaceAll("N''branch_monthly''","N'branch_monthly'"));
   const vipMonthlySalaryDue = roundMoney(Number(monthlyDueResult.recordset[0]?.Amount ?? 0));
   await ensureOverridesTable(db);
   try {
