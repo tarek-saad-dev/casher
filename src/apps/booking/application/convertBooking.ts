@@ -1,4 +1,5 @@
 import 'server-only';
+import { sql } from '@/lib/db';
 import type { BookingSchedulingPorts } from '../public/ports';
 import {
   loadBookingForConversion,
@@ -37,6 +38,21 @@ export async function convertBooking(
       return { ok: false as const, status: 404, error: 'حجز غير موجود' };
     }
 
+    // The booking's legacy branch integer is not a tenant authorization proof.
+    // Resolve ownership inside the same transaction before any invoice or replay
+    // is returned, so a guessed booking ID cannot reveal another tenant's sale.
+    const owned = await new sql.Request(transaction)
+      .input('tenantId', sql.UniqueIdentifier, deps.tenantId)
+      .input('branchId', sql.Int, input.locationId)
+      .query(`
+        SELECT TOP 1 1 AS Owned
+        FROM dbo.Location
+        WHERE TenantId = @tenantId AND LegacyBranchId = @branchId
+      `);
+    if (!owned.recordset.length || deps.actor.tenantId?.toLowerCase() !== deps.tenantId.toLowerCase()) {
+      return { ok: false as const, status: 404, error: 'حجز غير موجود' };
+    }
+
     if (booking.convertedInvId) {
       return {
         ok: true as const,
@@ -55,6 +71,12 @@ export async function convertBooking(
       deps.actor,
       { locationId: input.locationId },
     );
+
+    // A staff member may have an open shift on a different branch.
+    // Never assign a booking invoice to that other branch's financial day.
+    if (financial.locationId !== input.locationId || financial.tenantId.toLowerCase() !== deps.tenantId.toLowerCase()) {
+      return { ok: false as const, status: 409, error: 'الوردية المفتوحة لا تخص فرع الحجز' };
+    }
 
     if (financial.scope !== 'SHIFT' || financial.shiftInstanceId == null) {
       return { ok: false as const, status: 400, error: 'لا يوجد وردية مفتوحة' };
