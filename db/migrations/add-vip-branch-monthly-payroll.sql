@@ -31,7 +31,7 @@ BEGIN
     ChangedByUserID INT NOT NULL REFERENCES dbo.TblUser(UserID),
     ChangedAt DATETIME2(0) NOT NULL DEFAULT (SYSUTCDATETIME())
   );
-  CREATE INDEX IX_TblEmpBranchPayrollAudit_Emp ON dbo.TblEmpBranchPayrollAudit(EmpID, ChangedAt DESC);
+  CREATE INDEX IX_TblEmpBranchPayrollAudit_EmpEffective ON dbo.TblEmpBranchPayrollAudit(EmpID, EffectiveFrom DESC, AuditID DESC) INCLUDE (NewPayrollScope);
 END;
 
 -- The former uniqueness by (RefType,RefID,EntryReason) incorrectly prevents
