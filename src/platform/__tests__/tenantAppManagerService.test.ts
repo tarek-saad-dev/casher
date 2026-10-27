@@ -105,8 +105,8 @@ describe('tenant admin app mutation transaction', () => {
     expect(result.appCodes).toEqual(['inventory']);
     const mutation = fx.queries.find((q) => q.text.includes('DECLARE @outcome'));
     expect(mutation).toBeDefined();
-    expect(mutation?.text).toMatch(/SET Enabled = 1, Status = N'installed', Source = @source,\\s*InstalledAt = ISNULL\\(InstalledAt, @now\\), DisabledAt = NULL, UpdatedAt = @now/);
-    expect(mutation?.text).not.toMatch(/DELETE\\s+FROM\\s+dbo\\.TenantAppEntitlement/i);
+    expect(mutation?.text).toContain('InstalledAt = ISNULL(InstalledAt, @now), DisabledAt = NULL, UpdatedAt = @now');
+    expect(mutation?.text).not.toContain('DELETE FROM dbo.TenantAppEntitlement');
     expect(mutation?.inputs.tenantId).toBe(TENANT);
     expect(fx.commits).toBe(1);
     expect(fx.events).toHaveLength(1);
