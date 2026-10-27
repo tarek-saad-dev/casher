@@ -77,6 +77,9 @@ jobs:
       - name: Retroactive payroll agreement math regression
         run: npx vitest run src/lib/payroll/__tests__/payrollAgreementMath.test.ts
 
+      - name: CUT Pulse automation validation
+        run: npx vitest run src/modules/messaging/automation/draftRules.test.ts --reporter=default
+
       - name: Production build
         run: npm run build
 
