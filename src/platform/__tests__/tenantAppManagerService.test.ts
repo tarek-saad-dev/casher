@@ -98,6 +98,20 @@ describe('tenant admin app mutation transaction', () => {
     });
   });
 
+  it('reinstall clears stale disabled timestamp without deleting historical records', async () => {
+    const result = await changeSelfServiceTenantApps(TENANT, {
+      action: 'install', appCode: 'inventory',
+    }, { actor: ACTOR, resolvePack: findIndustryPack });
+    expect(result.appCodes).toEqual(['inventory']);
+    const mutation = fx.queries.find((q) => q.text.includes('DECLARE @outcome'));
+    expect(mutation).toBeDefined();
+    expect(mutation?.text).toMatch(/SET Enabled = 1, Status = N'installed', Source = @source,\\s*InstalledAt = ISNULL\\(InstalledAt, @now\\), DisabledAt = NULL, UpdatedAt = @now/);
+    expect(mutation?.text).not.toMatch(/DELETE\\s+FROM\\s+dbo\\.TenantAppEntitlement/i);
+    expect(mutation?.inputs.tenantId).toBe(TENANT);
+    expect(fx.commits).toBe(1);
+    expect(fx.events).toHaveLength(1);
+  });
+
   it('rejects unconfirmed dependencies before any DB writes, rolls back and publishes nothing', async () => {
     await expect(changeSelfServiceTenantApps(TENANT, {
       action: 'install', appCode: 'purchasing',
