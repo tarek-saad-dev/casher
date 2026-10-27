@@ -45,6 +45,7 @@
     "drvo-011:smoke": "tsx scripts/drvo/drvo-011-tenant-onboarding-smoke.ts",
     "drvo-012:smoke": "tsx scripts/drvo/drvo-012-commercial-smoke.ts",
     "drvo-013:smoke": "tsx scripts/drvo/drvo-013-tenant-isolation-smoke.ts",
+    "drvo-117:smoke": "tsx scripts/drvo/drvo-117-core-workspace-qa-smoke.ts",
     "drvo-012:reconcile-subscriptions": "tsx scripts/drvo/drvo-012-reconcile-subscriptions.ts",
     "drvo-015:smoke": "tsx scripts/drvo/drvo-015-master-data-smoke.ts",
     "drvo-016:smoke": "tsx scripts/drvo/drvo-016-hr-payroll-smoke.ts",
