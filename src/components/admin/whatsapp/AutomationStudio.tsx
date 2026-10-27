@@ -54,7 +54,7 @@ export default function AutomationStudio() {
   const [saved,setSaved]=useState(false);
   const [serverError,setServerError]=useState<string|null>(null);
   const [serverBusy,setServerBusy]=useState(false);
-  const [serverDrafts,setServerDrafts]=useState<Array<{id:string;name:string;definition:Omit<Draft,'id'|'updatedAt'>}>>([]);
+  const [serverDrafts,setServerDrafts]=useState<Array<{id:string;name:string;definition:Omit<Draft,'id'|'updatedAt'|'branch'>}>>([]);
   useEffect(()=>{
     try {
       const raw=window.localStorage.getItem(STORAGE_KEY);
@@ -90,7 +90,7 @@ export default function AutomationStudio() {
   const eligible = draft.conditions.length>0 && (draft.logic==='and'?draft.conditions.every(c=>passes(c,context)):draft.conditions.some(c=>passes(c,context)));
   const sample=interpolated(draft.message,{employeeName:'عمر',customerName:'أحمد',streakDays:days,lateCount:late,visits});
   const persist=(next:Draft[])=>{window.localStorage.setItem(STORAGE_KEY,JSON.stringify(next));setStored(next);};
-  const save=()=>{if(!draft.name.trim()||!draft.message.trim()||!loaded)return;const next={...draft,name:draft.name.trim(),updatedAt:new Date().toISOString()};persist([next,...stored.filter(x=>x.id!==next.id)]);setDraft(next);setSaved(true);};
+
   const addCondition=()=>{update({conditions:[...draft.conditions,{id:'c-'+Date.now(),field:'streakDays',operator:'gte',value:'5'}]});setAdvanced(true);};
   const currentEvent=events.find(x=>x.value===draft.event)?.label??'حدث';
   return <div dir="rtl" className="mx-auto max-w-7xl pb-16 text-zinc-100">
