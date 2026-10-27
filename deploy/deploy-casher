@@ -83,6 +83,30 @@ should_skip_git_sync() {
 }
 
 
+ensure_casher_git_write_access() {
+  # Some earlier root-owned deploy operations left object directories owned
+  # by root, causing git fetch as casher to fail before build/restart.
+  local git_dir="$APP_DIR/.git"
+  if [[ ! -d "$git_dir" || -L "$git_dir" ]]; then
+    echo "ERROR: Expected a non-symlink Git directory at $git_dir" >&2
+    exit 1
+  fi
+  for p in "$git_dir" "$git_dir/objects" "$git_dir/refs" "$git_dir/logs"; do
+    if [[ -L "$p" ]]; then
+      echo "ERROR: Refusing to change ownership through symlink: $p" >&2
+      exit 1
+    fi
+  done
+  echo "[0/8] Repairing local Git metadata write permissions for casher..."
+  chown -R casher:casher "$git_dir"
+  find "$git_dir" -type d -exec chmod u+rwx {} +
+  find "$git_dir" -type f -exec chmod u+rw {} +
+  if ! runuser -u casher -- test -w "$git_dir/objects"; then
+    echo "ERROR: casher cannot write to Git object storage after repair" >&2
+    exit 1
+  fi
+}
+
 gemini_api_key_configured() {
   runuser -u casher -- bash -lc "
     cd '$APP_DIR'
@@ -100,6 +124,7 @@ echo "  CASher Production Deploy"
 echo "======================================"
 
 cd "$APP_DIR"
+ensure_casher_git_write_access
 
 REPO_DEPLOY_SCRIPT="$APP_DIR/deploy/deploy-casher"
 if [[ -f "$REPO_DEPLOY_SCRIPT" ]]; then

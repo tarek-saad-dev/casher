@@ -77,6 +77,9 @@ jobs:
       - name: Retroactive payroll agreement math regression
         run: npx vitest run src/lib/payroll/__tests__/payrollAgreementMath.test.ts
 
+      - name: Deploy script shell syntax
+        run: bash -n deploy/deploy-casher
+
       - name: Production build
         run: npm run build
 
