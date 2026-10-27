@@ -128,7 +128,7 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
     const followUpAt = parseFollowUp(body.followUpAt);
 
     const profile =
-      body.patientProfile && typeof body.patientProfile === 'object'
+      body.patientProfile && typeof body.patientProfile === 'object' && !Array.isArray(body.patientProfile)
         ? (body.patientProfile as Record<string, unknown>)
         : null;
     const patientProfile = profile
@@ -157,7 +157,7 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
     await saveEncounterWithProfile({ ...mutation, action });
 
     const updated = await getEncounterWorkspace(auth.tenantId, encounterId);
-    return NextResponse.json({ ok: true, ...updated });
+    return NextResponse.json({ ok: true, ...updated }, { headers: { 'Cache-Control': 'private, no-store' } });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'تعذر حفظ الزيارة';
     console.error('[api/clinic/encounters/[encounterId]] PATCH error:', message);
