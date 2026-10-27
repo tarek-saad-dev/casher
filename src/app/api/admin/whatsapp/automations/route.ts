@@ -8,8 +8,8 @@ export async function GET(){
  try{
  const db=await getPool();
  const r=await db.request().input('tenant',sql.NVarChar(100),auth.tenantId).input('branch',sql.Int,auth.branchId).input('user',sql.Int,auth.userId)
- .query("SELECT ID, Name, DefinitionJson, Version, UpdatedAt FROM dbo.TblCutPulseAutomationDraft WHERE TenantId=@tenant AND BranchID=@branch AND CreatedByUserID=@user AND Status=N'draft' ORDER BY UpdatedAt DESC");
- return NextResponse.json({drafts:r.recordset.map(x=>({id:String(x.ID),name:x.Name,definition:JSON.parse(x.DefinitionJson),version:x.Version,updatedAt:x.UpdatedAt}))});
+ .query("SELECT ID, Name, DefinitionJson, Version, Status, UpdatedAt FROM dbo.TblCutPulseAutomationDraft WHERE TenantId=@tenant AND BranchID=@branch AND CreatedByUserID=@user AND Status IN (N'draft',N'active',N'paused') ORDER BY UpdatedAt DESC");
+ return NextResponse.json({drafts:r.recordset.map(x=>({id:String(x.ID),name:x.Name,definition:JSON.parse(x.DefinitionJson),version:x.Version,status:x.Status,updatedAt:x.UpdatedAt}))});
  }catch(e){console.error('[cut-pulse GET]',e);return NextResponse.json({error:'تعذر تحميل المسودات؛ تحقق من تشغيل Migration'}, {status:503});}
 }
 export async function POST(req:NextRequest){
