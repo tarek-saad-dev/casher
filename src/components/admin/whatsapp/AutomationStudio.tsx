@@ -39,7 +39,7 @@ function passes(c:Condition, data:Record<string,number|boolean>) {
   if(c.operator==='eq')return String(x)===c.value;
   const n=Number(c.value);return Number.isFinite(n) && Number(x)>=n;
 }
-function interpolated(source:string,data:Record<string,string|number>) { return source.replace(/\\{\\{(\\w+)\\}\\}/g,(_,k:string)=>String(data[k]??'{{'+k+'}}')); }
+function interpolated(source:string,data:Record<string,string|number>) { return source.replace(/\{\{(\w+)\}\}/g,(_,k:string)=>String(data[k]??'{{'+k+'}}')); }
 export default function AutomationStudio() {
   const [draft,setDraft]=useState<Draft>(()=>seed());
   const [stored,setStored]=useState<Draft[]>([]);
