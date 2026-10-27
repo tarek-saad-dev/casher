@@ -11,12 +11,21 @@ APPROVED_LOCAL_BACKUP=/var/opt/mssql/backup/last132_pre_payroll_v2_20261026T0853
 [[ -s "$APPROVED_LOCAL_BACKUP" ]] || { echo "STOP: previously verified backup not found" >&2; exit 1; }
 
 LOCAL_HASH="$(sha256sum "$APPROVED_LOCAL_BACKUP" | awk '{print $1}')"
+KNOWN_GOOD_SHA="afb22acf016bd20e7e06d77d2890c0dda16915bbfb7527d35a617252179afb65"
+[[ "$LOCAL_HASH" == "$KNOWN_GOOD_SHA" ]] ||
+ { echo "STOP: existing previously verified backup no longer matches. Production unchanged." >&2; exit 1; }
 echo "Previously verified backup SHA-256: $LOCAL_HASH"
-echo "Input the SHA-256 measured ON THE OFF-HOST COPY (not this server):"
-read -r OFF_HOST_SHA < /dev/tty
-OFF_HOST_SHA="$(printf %s "$OFF_HOST_SHA" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
-[[ "$OFF_HOST_SHA" =~ ^[a-f0-9]{64}$ && "$OFF_HOST_SHA" == "$LOCAL_HASH" ]] ||
- { echo "STOP: verified off-host copy required. Production unchanged." >&2; exit 1; }
+if [[ "${PAYROLL_V2_BACKUP_POLICY:-}" == "VPS_ONLY_EXPLICIT" ]]; then
+  echo "WARNING: Proceeding without off-host backup verification at operator request."
+  echo "         A complete VPS/disk loss could also destroy ALL local backups."
+  echo "         New COPY_ONLY CHECKSUM backup and RESTORE VERIFYONLY remain mandatory."
+else
+  echo "Input SHA-256 measured ON THE OFF-HOST COPY (not this server):"
+  read -r OFF_HOST_SHA < /dev/tty
+  OFF_HOST_SHA="$(printf %s "$OFF_HOST_SHA" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
+  [[ "$OFF_HOST_SHA" =~ ^[a-f0-9]{64}$ && "$OFF_HOST_SHA" == "$LOCAL_HASH" ]] ||
+   { echo "STOP: verified off-host copy required (or use explicit VPS_ONLY_EXPLICIT policy). Production unchanged." >&2; exit 1; }
+fi
 echo "Enter production DB name to approve schema-only deployment:"
 read -r DB_CONFIRM < /dev/tty
 [[ "$DB_CONFIRM" == "last132" ]] ||
