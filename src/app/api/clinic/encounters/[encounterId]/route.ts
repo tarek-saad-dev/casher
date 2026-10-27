@@ -36,15 +36,23 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
       actor?.kind === 'human' &&
       Number(encounter.PractitionerEmpID) === Number(actor.empId);
 
+    const privateHeaders = { 'Cache-Control': 'private, no-store' };
     if (!assigned) {
+      // Explicit administrative allowlist. A future medical field must never
+      // become visible to reception simply because it was added to the query.
+      const administrativeFields = [
+        'EncounterId', 'ClientID', 'PatientName', 'PatientMobile',
+        'PractitionerEmpID', 'PractitionerName', 'VisitType', 'Status',
+        'StartedAt', 'CompletedAt', 'CreatedAt',
+      ] as const;
+      const administrativeEncounter: Record<string, unknown> = {};
+      for (const key of administrativeFields) {
+        if (Object.prototype.hasOwnProperty.call(encounter, key)) {
+          administrativeEncounter[key] = encounter[key];
+        }
+      }
       return NextResponse.json({
-        encounter: {
-          ...encounter,
-          ClinicalNotes: null,
-          DiagnosisSummary: null,
-          VitalsJson: null,
-          FollowUpAt: null,
-        },
+        encounter: administrativeEncounter,
         patientProfile: null,
         history: [],
         prescriptions: [],
@@ -53,7 +61,7 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
           practitionerEmpId: actor?.kind === 'human' ? actor.empId : null,
           assigned: false,
         },
-      });
+      }, { headers: privateHeaders });
     }
 
     return NextResponse.json({
@@ -63,7 +71,7 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
         practitionerEmpId: actor.empId,
         assigned: true,
       },
-    });
+    }, { headers: privateHeaders });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'تعذر تحميل الزيارة';
     console.error('[api/clinic/encounters/[encounterId]] GET error:', message);
