@@ -1,5 +1,5 @@
 export type RetroBranch = { branchId: number; enabled: boolean; monthlySalary: number };
-export type RetroInput = { effectiveFrom: string; branches: RetroBranch[]; reason: string; requestKey?: string };
+export type RetroInput = { effectiveFrom: string; branches: RetroBranch[]; reason: string; requestKey?: string; expectedFingerprint?: string };
 
 const money=(n:number)=>Math.round(n*100)/100;
 const dateRegex=/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
@@ -31,4 +31,35 @@ export function prorateSalary(effectiveFrom:string, salary:number) {
   )).getUTCDate();
   const days=monthDays-day+1;
   return {days,monthDays,amount:money(salary*days/monthDays)};
+}
+
+
+/** Readable, branch-scoped financial impact. Does not calculate cash owed. */
+export type RetroWageSource = { branchId: number; amount: number; ledgerAmount: number };
+export type RetroBranchImpact = {
+  branchId: number;
+  dailyCount: number;
+  oldWages: number;
+  oldLedgerCredits: number;
+  monthlySalary: number;
+  newEntitlement: number;
+  difference: number;
+};
+export function calculateRetroBranchImpacts(
+  effectiveFrom: string,
+  enabledBranches: RetroBranch[],
+  dailyRows: RetroWageSource[],
+): RetroBranchImpact[] {
+  return enabledBranches.filter(b => b.enabled).map(b => {
+    const source = dailyRows.filter(x => x.branchId === b.branchId);
+    const oldWages = money(source.reduce((total, row) => total + row.amount, 0));
+    const oldLedgerCredits = money(source.reduce((total, row) => total + row.ledgerAmount, 0));
+    const newEntitlement = prorateSalary(effectiveFrom, b.monthlySalary).amount;
+    return {
+      branchId: b.branchId, dailyCount: source.length,
+      oldWages, oldLedgerCredits,
+      monthlySalary: b.monthlySalary, newEntitlement,
+      difference: money(newEntitlement - oldLedgerCredits),
+    };
+  });
 }

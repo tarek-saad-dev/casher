@@ -3,6 +3,7 @@
 import { Crown, CalendarDays } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { formatPayrollEffectiveDate } from '@/components/hr/payrollAgreementDate';
 
 export type CompensationMode = 'global' | 'branch_monthly';
 export type CompensationBranch = {
@@ -20,6 +21,11 @@ export type CompensationDetails = {
     payrollEnabled: boolean;
   };
   effectiveFrom: string;
+  retroactive?: { schemaReady: boolean; enabledForEmployee: boolean };
+  latestRevision?: null | {
+    id: number; effectiveFrom: string; createdAt: string; reversedDailyCount: number;
+    reversedDailyAmount: number; newEntitlement: number;
+  };
   branches: CompensationBranch[];
 };
 
@@ -35,15 +41,19 @@ type Props = {
   globalSalary: string;
   onGlobalSalaryChange: (amount: string) => void;
   vipEligible: boolean;
+  today: string;
 };
 
 export default function EmployeeBranchPayrollFields({
   createMode, scope, onScopeChange, details, branches, onBranchChange,
-  effectiveFrom, onEffectiveFromChange, globalSalary, onGlobalSalaryChange, vipEligible,
+  effectiveFrom, onEffectiveFromChange, globalSalary, onGlobalSalaryChange, vipEligible, today,
 }: Props) {
   const isVip = scope === 'branch_monthly';
   const returningToGlobal = !isVip && details?.employee.scope === 'branch_monthly';
   const showEffectiveDate = isVip || returningToGlobal;
+  const isRetro = isVip && details?.employee.scope === 'global' &&
+    effectiveFrom.slice(0, 7) === today.slice(0, 7) && effectiveFrom <= today;
+  const displayDate = formatPayrollEffectiveDate(effectiveFrom);
   const total = branches.reduce(
     (sum, branch) => sum + (branch.enabled && branch.isAssigned ? Number(branch.monthlySalary) || 0 : 0),
     0,
@@ -85,7 +95,7 @@ export default function EmployeeBranchPayrollFields({
       </div>
 
       {isVip && !createMode && (
-        <div className="space-y-3 rounded-xl border border-primary/25 bg-primary/5 p-3">
+        <div className="space-y-3 rounded-xl border border-border bg-surface-muted/10 p-3">
           {!vipEligible && <p className="text-xs text-muted-foreground">
             لو الموظف حاليًا بالساعة أو اليومية، اختار تاريخًا من الشهر الجاري لمعاينة تحويل اتفاقه مباشرة.
             الحساب هيتحول لشهري عند اعتماد التسوية، بدون حفظه مرتين.
@@ -149,17 +159,55 @@ export default function EmployeeBranchPayrollFields({
 
       {showEffectiveDate && details && (
         <div className="space-y-2">
-          <Label className="flex items-center gap-2"><CalendarDays className="h-4 w-4" /> بداية سريان الاتفاقية *</Label>
+          <Label className="flex items-center gap-2">
+            <CalendarDays className="h-4 w-4" />
+            الاتفاقية الجديدة تبدأ من *
+          </Label>
           <Input
             aria-label="تاريخ سريان اتفاقية القبض"
             type="date"
+            lang="en-GB"
             dir="ltr"
-            min={isVip ? undefined : details.effectiveFrom}
+            min={isVip && details.employee.scope === 'global'
+              ? today.slice(0, 7) + '-01'
+              : details.effectiveFrom}
             value={effectiveFrom}
             onChange={(event) => onEffectiveFromChange(event.target.value)}
           />
-          <p className="text-xs text-muted-foreground">تقدر تختار يومًا من الشهر الجاري للتسوية بأثر رجعي، أو أول يوم في شهر قادم لجدولة الاتفاقية. الفترات المقفولة تحتاج مسار تسوية خاص.</p>
+          {displayDate && (
+            <p className="text-xs font-medium text-foreground" aria-live="polite">
+              التاريخ المحدد: {displayDate}
+            </p>
+          )}
+          {isRetro ? (
+            <p className="text-xs leading-relaxed text-amber-500">
+              تعديل بأثر رجعي داخل الشهر الجاري: هتظهر معاينة الأثر المالي قبل اعتماد الاتفاقية.
+            </p>
+          ) : isVip ? (
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              الاتفاقية المستقبلية هتبدأ في التاريخ ده، من غير إعادة حساب رواتب الأيام اللي قبلها.
+              التواريخ السابقة لشهرنا الجاري محتاجة تسوية محاسبية منفصلة.
+            </p>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              الرجوع للقبض العام هيسري في التاريخ المحدد، بدون تغيير استحقاقات الفترات السابقة.
+            </p>
+          )}
         </div>
+      )}
+      {!createMode && details?.latestRevision && (
+        <details className="rounded-xl border border-border bg-surface-muted/15 p-3">
+          <summary className="cursor-pointer text-xs font-medium">
+            آخر تسوية معتمدة — مراجعة #{details.latestRevision.id}
+          </summary>
+          <div className="mt-3 space-y-1.5 text-xs leading-relaxed text-muted-foreground">
+            <p>بداية الاتفاقية: {formatPayrollEffectiveDate(details.latestRevision.effectiveFrom)}</p>
+            <p>اليوميات التي تمت تسويتها: {details.latestRevision.reversedDailyCount}</p>
+            <p>أجور مستبدلة: {details.latestRevision.reversedDailyAmount.toLocaleString('en-US')} ج.م</p>
+            <p>الاستحقاق الشهري المسجل: {details.latestRevision.newEntitlement.toLocaleString('en-US')} ج.م</p>
+            <p>التسوية لا تعني صرف مبلغ من الخزنة. تفاصيل القيود محفوظة في سجل المراجعة المحاسبي.</p>
+          </div>
+        </details>
       )}
     </div>
   );

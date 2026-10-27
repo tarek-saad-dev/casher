@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
   Briefcase,
@@ -41,7 +41,11 @@ import {
 } from '@/lib/hr/employee-hr-model';
 import { JobType } from '@/lib/types';
 import { BARBER_IMAGE_PRESETS } from '@/lib/barberImages';
-import RetroPayrollAgreementReview from '@/components/hr/RetroPayrollAgreementReview';
+import { firstDayOfNextMonth } from '@/components/hr/payrollAgreementDate';
+import RetroPayrollAgreementReview, {
+  type RetroReviewActionState,
+  type RetroReviewHandle,
+} from '@/components/hr/RetroPayrollAgreementReview';
 import EmployeeBranchPayrollFields, {
   type CompensationBranch,
   type CompensationDetails,
@@ -123,6 +127,8 @@ export default function EmployeeHrFormModal({
   const [compBranches, setCompBranches] = useState<CompensationBranch[]>([]);
   const [compDate, setCompDate] = useState('');
   const [compGlobalSalary, setCompGlobalSalary] = useState('');
+  const retroReviewRef = useRef<RetroReviewHandle | null>(null);
+  const [retroAction, setRetroAction] = useState<RetroReviewActionState | null>(null);
 
   const patchForm = useCallback((partial: Partial<EmployeeHrFormState>) => {
     setForm((prev) => ({ ...prev, ...partial }));
@@ -290,12 +296,17 @@ export default function EmployeeHrFormModal({
   const validation = validateEmployeeHrForm(
     isVipScope || isPersistedVip ? { ...form, isPayrollEnabled: false } : form,
   );
+  const hasOtherUnsavedChanges = mode === 'edit' && initialForm !== null &&
+    JSON.stringify(form) !== JSON.stringify(initialForm);
   const canSubmit = validation.ok && !compensationError && !isRetroVip && !saving && !loadingProfile &&
     (mode === 'create' || compDetails !== null);
+  const canSubmitRetro = isRetroVip && !saving && !loadingProfile && !hasOtherUnsavedChanges &&
+    Boolean(retroAction?.canApprove || retroAction?.canReview) && !retroAction?.busy;
 
   const onCompScopeChange = (scope: CompensationMode) => {
     if (scope === 'branch_monthly' && compDetails?.employee.scope === 'global') {
-      setCompDate(cairoToday.slice(0, 7) + '-01');
+      // Never default a new financial agreement to a date in the past.
+      setCompDate(firstDayOfNextMonth(cairoToday));
     } else if (scope === 'global' && compDetails) {
       setCompDate(compDetails.effectiveFrom);
     }
@@ -732,17 +743,27 @@ export default function EmployeeHrFormModal({
                 globalSalary={compGlobalSalary}
                 onGlobalSalaryChange={setCompGlobalSalary}
                 vipEligible={vipEligible}
+                today={cairoToday}
               />
               {isRetroVip && employee && (
                 <RetroPayrollAgreementReview
+                  ref={retroReviewRef}
+                  onActionStateChange={setRetroAction}
                   empId={employee.EmpID}
                   effectiveFrom={compDate}
                   branches={compBranches}
+                  readiness={compDetails?.retroactive}
                   onApplied={(message) => {
                     onSaved(message);
                     onOpenChange(false);
                   }}
                 />
+              )}
+              {isRetroVip && hasOtherUnsavedChanges && (
+                <p role="alert" className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-amber-500">
+                  فيه تعديلات أخرى على بيانات الموظف غير محفوظة. احفظها أو ارجعها قبل اعتماد تسوية مالية،
+                  عشان ما يحصلش فقدان صامت لأي تعديل.
+                </p>
               )}
               {compScope === 'global' && !isPersistedVip && (
                 <div className="space-y-4">
@@ -1052,15 +1073,32 @@ export default function EmployeeHrFormModal({
             </div>
           )}
 
-          <div className="flex gap-2 justify-end pt-2 border-t border-border" dir="ltr">
-            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
+          <div className="sticky bottom-0 z-20 -mx-2 flex justify-end gap-2 border-t border-border bg-background/95 px-3 py-3 backdrop-blur-md" dir="ltr">
+            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving || Boolean(retroAction?.busy && isRetroVip)}>
               إلغاء
             </Button>
-            <Button onClick={() => void handleSubmit()} disabled={!canSubmit} className="gap-2">
-              {saving ? (
+            <Button
+              onClick={() => isRetroVip
+                ? void retroReviewRef.current?.submit()
+                : void handleSubmit()}
+              disabled={isRetroVip ? !canSubmitRetro : !canSubmit}
+              className="gap-2"
+            >
+              {saving || (isRetroVip && retroAction?.busy) ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  جاري الحفظ...
+                  {isRetroVip
+                    ? retroAction?.applying ? 'جاري اعتماد التسوية...' : 'جاري حساب الأثر...'
+                    : 'جاري الحفظ...'}
+                </>
+              ) : isRetroVip ? (
+                <>
+                  <CheckCircle2 className="w-4 h-4" />
+                  {retroAction?.canApprove ? 'اعتماد التسوية المالية' :
+                    !retroAction?.schemaReady ? 'التسوية غير جاهزة' :
+                    retroAction?.hasPreview && !retroAction.rolloutEnabled ? 'الاعتماد غير مفعّل' :
+                    retroAction?.confirmationRequired ? 'أكّد مراجعة الأرقام أولًا' :
+                    retroAction?.hasPreview && retroAction.blocked ? 'إعادة معاينة الأثر' : 'معاينة أثر التغيير'}
                 </>
               ) : mode === 'create' ? (
                 <>
@@ -1070,7 +1108,7 @@ export default function EmployeeHrFormModal({
               ) : (
                 <>
                   <CheckCircle2 className="w-4 h-4" />
-                  {isRetroVip ? 'اعتمد التسوية من المعاينة أعلاه' : 'حفظ التعديلات'}
+                  حفظ التعديلات
                 </>
               )}
             </Button>

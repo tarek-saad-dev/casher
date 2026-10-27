@@ -3,6 +3,7 @@ import { getPool, sql } from '@/lib/db';
 import { requirePageAccess, isAuthResult } from '@/lib/api-auth';
 import { requireMasterDataTenantId } from '@/platform/masterData/tenantScope';
 import { getCairoBusinessDate } from '@/lib/businessDate';
+import { retroPayrollEnabledForEmployee } from '@/lib/payroll/retroPayrollRolloutGate';
 
 type Context = { params: Promise<{ id: string }> };
 type PayrollScope = 'global' | 'branch_monthly';
@@ -86,6 +87,51 @@ export async function GET(_request: NextRequest, { params }: Context) {
         ORDER BY b.BranchName
       `);
     const e = employee.recordset[0];
+    const schema = await db.request().query(`
+      SELECT
+        COL_LENGTH(N'dbo.TblEmpDailyPayroll', N'SupersededByPayrollRevisionID') AS DailyRevisionColumn,
+        OBJECT_ID(N'dbo.TblEmpPayrollAgreementRevision', N'U') AS RevisionTable,
+        OBJECT_ID(N'dbo.TblEmpBranchPayrollAudit', N'U') AS AuditTable
+    `);
+    const schemaStatus = schema.recordset[0];
+    const retroSchemaReady = schemaStatus?.DailyRevisionColumn != null &&
+      schemaStatus?.RevisionTable != null && schemaStatus?.AuditTable != null;
+    const retroEnabledForEmployee = retroPayrollEnabledForEmployee({
+      empId,
+      enabled: process.env.PAYROLL_RETROACTIVE_ENABLED,
+      employeeIds: process.env.PAYROLL_RETROACTIVE_EMPLOYEE_IDS,
+      nodeEnv: process.env.NODE_ENV,
+    });
+    let latestRevision: null | {
+      id: number; effectiveFrom: string; createdAt: string; reversedDailyCount: number;
+      reversedDailyAmount: number; newEntitlement: number;
+    } = null;
+    if (retroSchemaReady) {
+      const revision = await db.request()
+        .input('empId', sql.Int, empId)
+        .query(`
+          SELECT TOP 1 RevisionID, EffectiveFrom, CreatedAt,
+                 ReversedDailyCount, ReversedDailyAmount, ImpactJson
+          FROM dbo.TblEmpPayrollAgreementRevision
+          WHERE EmpID = @empId ORDER BY RevisionID DESC
+        `);
+      if (revision.recordset.length) {
+        const value = revision.recordset[0];
+        let impact: Record<string, unknown> = {};
+        try { impact = JSON.parse(String(value.ImpactJson ?? '{}')) as Record<string, unknown>; } catch {}
+        latestRevision = {
+          id: Number(value.RevisionID),
+          effectiveFrom: value.EffectiveFrom instanceof Date
+            ? value.EffectiveFrom.toISOString().slice(0, 10)
+            : String(value.EffectiveFrom).slice(0, 10),
+          createdAt: value.CreatedAt instanceof Date
+            ? value.CreatedAt.toISOString() : String(value.CreatedAt),
+          reversedDailyCount: Number(value.ReversedDailyCount),
+          reversedDailyAmount: Number(value.ReversedDailyAmount),
+          newEntitlement: Number(impact.proposedMonthlyAmount || 0),
+        };
+      }
+    }
     return NextResponse.json({
       employee: {
         empId: Number(e.EmpID),
@@ -97,6 +143,8 @@ export async function GET(_request: NextRequest, { params }: Context) {
         scopeEffectiveFrom: e.PayrollScopeEffectiveFrom,
       },
       effectiveFrom,
+      retroactive: { schemaReady: retroSchemaReady, enabledForEmployee: retroEnabledForEmployee },
+      latestRevision,
       branches: branches.recordset.map((b: Record<string, unknown>) => ({
         branchId: Number(b.branchId),
         branchCode: String(b.branchCode),

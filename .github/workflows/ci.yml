@@ -75,7 +75,19 @@ jobs:
           --reporter=default
 
       - name: Retroactive payroll agreement math regression
-        run: npx vitest run src/lib/payroll/__tests__/payrollAgreementMath.test.ts
+        run: npx vitest run src/lib/payroll/__tests__/payrollAgreementMath.test.ts src/lib/payroll/__tests__/retroPayrollRolloutGate.test.ts
+
+      - name: Payroll agreement date UX regression
+        run: npx vitest run src/components/hr/__tests__/payrollAgreementDate.test.ts
+
+      - name: Payroll rehearsal script syntax
+        run: |
+          bash -n scripts/payroll/run-ziad-payroll-rehearsal.sh
+          bash -n scripts/payroll/resume-ziad-payroll-rehearsal.sh
+          bash -n scripts/payroll/apply-v2-schema-production.sh
+
+      - name: Payroll rehearsal TypeScript path resolution
+        run: npx tsx --tsconfig tsconfig.json -e "import('@/lib/businessDate').then(m => { if (typeof m.getCairoBusinessDate !== 'function') process.exit(1) })"
 
       - name: Deploy script shell syntax
         run: bash -n deploy/deploy-casher

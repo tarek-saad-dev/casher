@@ -26,6 +26,9 @@ export async function applyRetroVip(params: {
 }): Promise<ApplyRetroResult> {
   validateRetroInput(params.input);
   const key = params.input.requestKey;
+  if (!/^[a-f0-9]{64}$/.test(params.input.expectedFingerprint ?? '')) {
+    throw new Error('يجب إجراء معاينة مالية جديدة قبل اعتماد اتفاقية القبض');
+  }
   if (typeof key !== 'string' || !/^[a-zA-Z0-9_-]{16,80}$/.test(key)) {
     throw new Error('مفتاح تنفيذ فريد مطلوب لمنع الترحيل المكرر');
   }
@@ -63,6 +66,9 @@ export async function applyRetroVip(params: {
       empId:params.empId,tenantId:params.tenantId,input:params.input,transaction:tx,
     });
     if (preview.blockers.length) throw new Error(preview.blockers.join(' | '));
+    if (preview.fingerprint !== params.input.expectedFingerprint) {
+      throw new Error('تغيرت اليوميات أو أرصدة الدفتر بعد المعاينة؛ أعد معاينة الأثر المالي قبل الاعتماد');
+    }
 
     const oldPlans = await req().input('emp',sql.Int,params.empId)
       .query('SELECT PlanID, BranchID, PayType, EffectiveFrom, EffectiveTo, HourlyRate, DailyRate, MonthlySalary FROM dbo.TblEmpBranchPayrollPlan WITH (UPDLOCK, HOLDLOCK) WHERE EmpID=@emp AND IsActive=1');
@@ -110,6 +116,9 @@ export async function applyRetroVip(params: {
         'AND le.IsVoided=0 AND le.EmpID=@emp AND p.SupersededByPayrollRevisionID=@revision'
       ].join(' '));
     const voidedCount=Number(voided.rowsAffected[0]||0);
+    if (voidedCount !== preview.dailyCount) {
+      throw new Error('عدد قيود الأجر الملغاة لا يساوي عدد اليوميات المتأثرة؛ تم إلغاء التسوية كاملة');
+    }
 
     // Keep every prior version in the payroll plan table; never delete its amounts.
     await req().input('emp',sql.Int,params.empId)

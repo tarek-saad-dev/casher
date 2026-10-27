@@ -3,6 +3,7 @@ import { requirePageAccess, isAuthResult } from '@/lib/api-auth';
 import { requireMasterDataTenantId } from '@/platform/masterData/tenantScope';
 import { applyRetroVip } from '@/lib/payroll/retroactiveAgreementApply';
 import type { RetroInput } from '@/lib/payroll/retroactiveAgreementPreview';
+import { retroPayrollEnabledForEmployee } from '@/lib/payroll/retroPayrollRolloutGate';
 
 type Context = { params: Promise<{id:string}> };
 
@@ -16,6 +17,17 @@ export async function POST(request:NextRequest, {params}:Context) {
     const {id}=await params;
     const empId=Number(id);
     if(!Number.isSafeInteger(empId)||empId<1) return NextResponse.json({error:'موظف غير صالح'},{status:400});
+    if (!retroPayrollEnabledForEmployee({
+      empId,
+      enabled: process.env.PAYROLL_RETROACTIVE_ENABLED,
+      employeeIds: process.env.PAYROLL_RETROACTIVE_EMPLOYEE_IDS,
+      nodeEnv: process.env.NODE_ENV,
+    })) {
+      return NextResponse.json(
+        { error: 'التسوية بأثر رجعي غير مفعلة لهذا الموظف' },
+        { status: 403 },
+      );
+    }
     const tenantId=requireMasterDataTenantId(auth.tenantId,'retroactive payroll apply');
     const input=(await request.json()) as RetroInput;
     const result=await applyRetroVip({empId,tenantId,userId:auth.userId,input});
