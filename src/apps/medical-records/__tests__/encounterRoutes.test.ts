@@ -53,14 +53,47 @@ describe('clinic encounter routes', () => {
   it.each([null, { kind: 'human', userId: 8, empId: 99 }, { kind: 'ai', agentId: 'bot' }])('redacts medical data for unassigned actor %j', async (actor) => {
     mocks.actor.mockResolvedValue(actor);
     const payload = await (await GET(request({}), ctx)).json();
-    expect(payload.encounter.ClinicalNotes).toBeNull();
-    expect(payload.encounter.DiagnosisSummary).toBeNull();
-    expect(payload.encounter.VitalsJson).toBeNull();
-    expect(payload.encounter.FollowUpAt).toBeNull();
+    expect(payload.encounter.ClinicalNotes).toBeUndefined();
+    expect(payload.encounter.DiagnosisSummary).toBeUndefined();
+    expect(payload.encounter.VitalsJson).toBeUndefined();
+    expect(payload.encounter.FollowUpAt).toBeUndefined();
+    expect(payload.encounter.Status).toBe('in_progress');
     expect(payload.patientProfile).toBeNull();
     expect(payload.history).toEqual([]);
     expect(payload.prescriptions).toEqual([]);
     expect(payload.clinicalAccess.assigned).toBe(false);
+  });
+
+  it('does not leak unexpected future medical fields through the reception view', async () => {
+    mocks.actor.mockResolvedValue(null);
+    mocks.workspace.mockResolvedValue({
+      encounter: {
+        EncounterId: 'visit-a',
+        ClientID: 5,
+        PatientName: 'Synthetic Patient',
+        Status: 'in_progress',
+        ClinicalNotes: 'synthetic secret',
+        InternalClinicalFlags: 'synthetic private',
+        NewMedicalFieldAddedLater: { private: true },
+      },
+      patientProfile: { Allergies: 'synthetic allergy' },
+      history: [{ DiagnosisSummary: 'synthetic history' }],
+      prescriptions: [{ Notes: 'synthetic prescription' }],
+    });
+    const response = await GET(request({}), ctx);
+    const payload = await response.json();
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store');
+    expect(payload.encounter).toEqual({
+      EncounterId: 'visit-a',
+      ClientID: 5,
+      PatientName: 'Synthetic Patient',
+      Status: 'in_progress',
+    });
+    expect(payload.patientProfile).toBeNull();
+    expect(payload.history).toEqual([]);
+    expect(payload.prescriptions).toEqual([]);
+    expect(JSON.stringify(payload)).not.toContain('synthetic secret');
+    expect(JSON.stringify(payload)).not.toContain('synthetic private');
   });
 
   it('does not mutate a completed encounter', async () => {
