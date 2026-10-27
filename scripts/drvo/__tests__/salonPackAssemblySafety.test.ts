@@ -35,5 +35,11 @@ describe('Salon Pack FULL and MINIMAL assembly',()=>{
     expect(workflow).toContain("head.ref == 'agent/salon-pack-assembly'");
     expect(workflow).toContain("environment: drvo-staging");
     expect(workflow).not.toContain('deploy-vps');
+    expect(workflow).toContain('secrets.DRVO_STAGING_SSH_HOST');
+    expect(workflow).toContain('secrets.DRVO_STAGING_SSH_KNOWN_HOSTS');
+    expect(workflow).toContain('StrictHostKeyChecking=yes');
+    expect(workflow).not.toContain('secrets.VPS_HOST');
+    expect(workflow).not.toContain('ssh-keyscan');
+
   });
 });
