@@ -76,6 +76,7 @@ export const SYSTEM_PAGES: PageDefinition[] = [
   { key: 'admin.whatsapp',          name: 'إعدادات واتساب',          path: '/admin/whatsapp',                  section: 'واتساب',            accessMode: 'roles', sort: 1095, defaultRoles: ['super_admin','admin'] },
   { key: 'admin.queue_settings',    name: 'إعدادات الطابور',         path: '/admin/queue-booking-settings',    section: 'الإدارة',           accessMode: 'roles', sort: 110, defaultRoles: ['super_admin','admin'] },
   // ── Special ──────────────────────────────────────────────────────────────────
+  { key: 'workspace.main',          name: 'مساحة العمل',             path: '/workspace',                       section: 'لوحة التشغيل',      accessMode: 'roles', sort: 4, defaultRoles: ['super_admin','admin','manager'] },
   { key: 'operations.main',         name: 'لوحة التشغيل',            path: '/operations',                      section: 'لوحة التشغيل',      accessMode: 'all',   sort: 5 },
   { key: 'cut_club.main',           name: 'CUT CLUB',                path: '/admin/cut-club',                  section: 'CUT CLUB',          accessMode: 'roles', sort: 6,   defaultRoles: ['super_admin','admin'] },
   // ── Audit ────────────────────────────────────────────────────────────────────

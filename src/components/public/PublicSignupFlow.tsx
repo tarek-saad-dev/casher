@@ -20,6 +20,7 @@ import type {
   PublicSignupIndustry,
   PublicSignupStartMode,
 } from '@/platform/publicSignup/types';
+import { PUBLIC_SIGNUP_NEXT_PATH } from '@/platform/publicSignup/constants';
 import {
   getPublicSignupAppChoices,
   resolvePublicSignupAppSelection,
@@ -137,7 +138,7 @@ export default function PublicSignupFlow() {
         nextPath?: string;
       };
       if (!res.ok) throw new Error(data.error || 'تعذر إنشاء الحساب.');
-      const nextPath = data.nextPath || '/operations';
+      const nextPath = data.nextPath || PUBLIC_SIGNUP_NEXT_PATH;
       setDone({ tenantCode: data.tenantCode || '', nextPath });
       setTimeout(() => window.location.assign(nextPath), 1600);
     } catch (err) {
@@ -153,9 +154,9 @@ export default function PublicSignupFlow() {
         <div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-emerald-400 text-slate-950">
           <Check className="h-8 w-8" />
         </div>
-        <h2 className="mt-5 text-3xl font-black">جاهز 🎉</h2>
+        <h2 className="mt-5 text-3xl font-black">الحساب اتعمل</h2>
         <p className="mt-2 text-sm text-slate-300">
-          DRVO جهّز بيزنسك وبدأت الـ14 يوم التجريبية. بندخلك على النظام دلوقتي.
+          بدأت الـ14 يوم التجريبية. هنفتح مساحة العمل عشان تشوف إيه المثبت وإيه اللي محتاج إعداد قبل التشغيل.
         </p>
         <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 font-mono text-xs text-slate-300">
           {done.tenantCode}
@@ -165,7 +166,7 @@ export default function PublicSignupFlow() {
           onClick={() => window.location.assign(done.nextPath)}
           className="mt-5 inline-flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-sm font-bold text-slate-950"
         >
-          افتح DRVO
+          افتح مساحة العمل
           <ArrowLeft className="h-4 w-4" />
         </button>
       </div>

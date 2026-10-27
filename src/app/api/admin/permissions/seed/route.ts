@@ -79,6 +79,7 @@ const PAGES = [
   { key: 'admin.queue_settings',   name: 'إعدادات الطابور',        path: '/admin/queue-booking-settings',    section: 'الإدارة',            access: 'roles', sort: 108 },
   { key: 'admin.tenant',           name: 'هوية المنشأة',           path: '/admin/tenant',                    section: 'الإدارة',            access: 'roles', sort: 109 },
   // Operations
+  { key: 'workspace.main',         name: 'مساحة العمل',            path: '/workspace',                       section: 'لوحة التشغيل',       access: 'roles', sort: 4 },
   { key: 'operations.main',        name: 'لوحة التشغيل',           path: '/operations',                      section: 'لوحة التشغيل',       access: 'all',   sort: 5 },
   { key: 'cut_club.main',          name: 'CUT CLUB',               path: '/admin/cut-club',                  section: 'CUT CLUB',           access: 'roles', sort: 6 },
   // Audit
@@ -117,7 +118,7 @@ const ROLE_ACCESS: { role: string; pages: string[]; canEdit?: boolean; canDelete
       'hr.employees','hr.attendance','hr.payroll','hr.workforce_availability','hr.advances','hr.salaries',
       'admin.operations','admin.booking_operations','admin.branches','admin.users','admin.services','admin.packages','admin.payment_methods',
       'admin.categories','admin.loyalty','admin.shift','admin.settings','admin.queue_settings','admin.tenant',
-      'operations.main','cut_club.main',
+      'workspace.main','operations.main','cut_club.main',
       'audit.payment_methods',
       'audit.cash_move_classification',
       'accounting.classification_lab',
@@ -134,7 +135,7 @@ const ROLE_ACCESS: { role: string; pages: string[]; canEdit?: boolean; canDelete
       'queue.live','queue.new',
       'bookings.list','bookings.new','bookings.calendar',
       'hr.attendance','hr.payroll','hr.workforce_availability',
-      'admin.operations','operations.main',
+      'admin.operations','workspace.main','operations.main',
     ],
     canEdit: true, canDelete: false,
   },

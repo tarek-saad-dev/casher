@@ -35,6 +35,9 @@ export default function TenantSettingsPage() {
         <p className="text-xs text-muted-foreground">
           الاسم والشعار وبيانات الإيصالات تظهر في القائمة والإيصالات والتقارير المطبوعة.
         </p>
+        <Link href="/workspace" className="mt-2 inline-block text-xs font-semibold text-primary hover:underline">
+          الرجوع لمساحة العمل وحالة التطبيقات
+        </Link>
       </div>
 
       <WorkspaceReadinessPanel />

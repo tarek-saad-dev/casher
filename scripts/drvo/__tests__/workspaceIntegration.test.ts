@@ -17,8 +17,14 @@ vi.mock('@/platform/onboarding/goLiveReadiness', () => ({
 import { requireAdmin } from '@/lib/api-auth';
 import { getTenantInstalledAppsForGate } from '@/platform/commercial/tenantAccessGate';
 import { evaluateTenantGoLive } from '@/platform/onboarding/goLiveReadiness';
-import { buildTenantWorkspace } from '@/platform/tenant/workspaceReadiness';
+import {
+  buildTenantWorkspace,
+  pickPrimaryWorkspaceNextAction,
+} from '@/platform/tenant/workspaceReadiness';
+import { PUBLIC_SIGNUP_NEXT_PATH } from '@/platform/publicSignup/constants';
 import { GET } from '@/app/api/tenant/workspace/route';
+import fs from 'node:fs';
+import path from 'node:path';
 
 const TENANT_A = '11111111-1111-4111-8111-111111111111';
 const TENANT_B = '22222222-2222-4222-8222-222222222222';
@@ -106,6 +112,43 @@ describe('Core Workspace readiness projection', () => {
     expect(JSON.stringify(result)).not.toContain('private-owner');
     expect(JSON.stringify(result)).not.toContain(TENANT_B);
     expect(JSON.stringify(result)).not.toContain(TENANT_A);
+  });
+
+  it('picks needs_setup as the single primary next action before basics_present', () => {
+    const snapshot = buildTenantWorkspace(
+      report({ pending: ['catalog', 'first_booking', 'first_sale'] }),
+      ['booking', 'pos', 'payroll'],
+    );
+    const primary = pickPrimaryWorkspaceNextAction(snapshot);
+    expect(primary?.status).toBe('needs_setup');
+    expect(primary?.appCode).toBe('booking');
+    expect(primary?.href).toBe('/admin/services');
+  });
+
+  it('does not promote installed_unverified apps as the primary next action', () => {
+    const snapshot = buildTenantWorkspace(
+      report({ pending: ['first_booking', 'first_sale'] }),
+      ['payroll', 'messaging'],
+    );
+    expect(pickPrimaryWorkspaceNextAction(snapshot)).toBeNull();
+  });
+});
+
+describe('public signup → Workspace landing', () => {
+  it('sends new tenants to /workspace, not floor operations', () => {
+    expect(PUBLIC_SIGNUP_NEXT_PATH).toBe('/workspace');
+    const service = fs.readFileSync(
+      path.join(process.cwd(), 'src/platform/publicSignup/service.ts'),
+      'utf8',
+    );
+    const flow = fs.readFileSync(
+      path.join(process.cwd(), 'src/components/public/PublicSignupFlow.tsx'),
+      'utf8',
+    );
+    expect(service).toContain('PUBLIC_SIGNUP_NEXT_PATH');
+    expect(service).not.toMatch(/nextPath:\s*'\/operations'/);
+    expect(flow).toContain('PUBLIC_SIGNUP_NEXT_PATH');
+    expect(fs.existsSync(path.join(process.cwd(), 'src/app/workspace/page.tsx'))).toBe(true);
   });
 });
 

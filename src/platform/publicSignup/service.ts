@@ -7,6 +7,7 @@ import { onboardBusiness, defaultOnboardingDeps } from '@/platform/onboarding/wi
 import type { OnboardingRequest } from '@/platform/onboarding/wizard/types';
 import { TenantOnboardingError } from '@/platform/onboarding/errors';
 import { PublicSignupAppSelectionError, resolvePublicSignupAppSelection } from './appSelection';
+import { PUBLIC_SIGNUP_NEXT_PATH } from './constants';
 import {
   PUBLIC_SIGNUP_INDUSTRIES,
   PUBLIC_SIGNUP_NEEDS,
@@ -361,7 +362,7 @@ export async function provisionPublicSignup(
       ownerLoginName: result.core.ownerLoginName,
       branchCode: result.core.branchCode,
       trialEndsAt: result.core.trialEndsAt,
-      nextPath: '/operations',
+      nextPath: PUBLIC_SIGNUP_NEXT_PATH,
     };
   } catch (err) {
     const code =

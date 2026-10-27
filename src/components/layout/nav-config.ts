@@ -237,6 +237,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { href: '/admin/loyalty',                   label: 'إدارة النقاط',          icon: Star       },
       { href: '/admin/shift',                     label: 'الورديات',               icon: Clock      },
       { href: '/admin/settings',                  label: 'الإعدادات',              icon: Settings   },
+      { href: '/workspace',                       label: 'مساحة العمل',           icon: LayoutGrid },
       { href: '/admin/billing',                   label: 'الاشتراك والتكلفة',     icon: CreditCard },
       { href: '/admin/apps',                      label: 'التطبيقات',             icon: LayoutGrid },
       { href: '/admin/tenant',                    label: 'هوية المنشأة',           icon: Building2  },

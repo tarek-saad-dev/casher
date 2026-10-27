@@ -159,3 +159,45 @@ export function buildTenantWorkspace(
     apps,
   };
 }
+
+export type WorkspacePrimaryNextAction = {
+  appCode: AppRegistryCode;
+  appLabel: string;
+  status: Exclude<WorkspaceAppStatus, 'not_installed'>;
+  message: string;
+  href: string | null;
+};
+
+/**
+ * Single most useful next step for Workspace home.
+ * Prefers needs_setup, then basics_present with a first-action hint.
+ * Never invents readiness: installed_unverified apps are not promoted as "ready".
+ */
+export function pickPrimaryWorkspaceNextAction(
+  snapshot: TenantWorkspaceSnapshot,
+): WorkspacePrimaryNextAction | null {
+  const installed = snapshot.apps.filter((a) => a.status !== 'not_installed');
+  const needsSetup = installed.find((a) => a.status === 'needs_setup');
+  if (needsSetup) {
+    return {
+      appCode: needsSetup.code,
+      appLabel: needsSetup.label,
+      status: 'needs_setup',
+      message: needsSetup.nextAction ?? needsSetup.description,
+      href: needsSetup.actionHref,
+    };
+  }
+  const basics = installed.find(
+    (a) => a.status === 'basics_present' && (a.nextAction || a.actionHref),
+  );
+  if (basics) {
+    return {
+      appCode: basics.code,
+      appLabel: basics.label,
+      status: 'basics_present',
+      message: basics.nextAction ?? basics.description,
+      href: basics.actionHref,
+    };
+  }
+  return null;
+}
