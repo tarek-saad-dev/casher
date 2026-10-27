@@ -114,6 +114,18 @@ describe('clinic encounter routes', () => {
     expect(mocks.save).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 'tenant-a', encounterId: 'visit-a', clinicalNotes: 'Exam', actor: { kind: 'human', userId: 7, empId: 12 } }));
   });
 
+  it('does not cache saved medical content or accept array-shaped patient profiles', async () => {
+    const response = await PATCH(request({
+      clinicalNotes: 'Synthetic examination',
+      patientProfile: [{ notes: 'Should not persist' }],
+    }), ctx);
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store');
+    expect(mocks.save).toHaveBeenCalledWith(expect.objectContaining({
+      patientProfile: null,
+    }));
+  });
+
   it('returns 404 for a visit outside the authenticated tenant', async () => {
     mocks.workspace.mockResolvedValue(null);
     expect((await GET(request({}), ctx)).status).toBe(404);
