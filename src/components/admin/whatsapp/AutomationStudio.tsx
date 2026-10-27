@@ -25,8 +25,8 @@ const fields = [
   { value: 'hasUpcomingBooking', label: 'عنده حجز قادم' },
 ];
 const examples: Omit<Draft,'id'|'updatedAt'>[] = [
-  { name: 'تهنئة الانتظام',event:'attendance.check_in',branch:'all',conditions:[{id:'streak',field:'streakDays',operator:'gte',value:'10'}],logic:'and',delay:'immediate',action:'whatsapp',message:'عاش يا {{employeeName}}! 🏆\\nوصلت لـ {{streakDays}} أيام انتظام متتالية. شغلك محل تقديرنا 💈' },
-  { name: 'متابعة ما بعد الزيارة',event:'visit.completed',branch:'all',conditions:[{id:'complaint',field:'hasOpenComplaint',operator:'false',value:''}],logic:'and',delay:'1d',action:'whatsapp',message:'أهلاً {{customerName}} 👋\\nنورت CUT SALON. يهمنا نعرف رأيك في زيارتك الأخيرة 💈' },
+  { name: 'تهنئة الانتظام',event:'attendance.check_in',branch:'all',conditions:[{id:'streak',field:'streakDays',operator:'gte',value:'10'}],logic:'and',delay:'immediate',action:'whatsapp',message:'عاش يا {{employeeName}}! 🏆\nوصلت لـ {{streakDays}} أيام انتظام متتالية. شغلك محل تقديرنا 💈' },
+  { name: 'متابعة ما بعد الزيارة',event:'visit.completed',branch:'all',conditions:[{id:'complaint',field:'hasOpenComplaint',operator:'false',value:''}],logic:'and',delay:'1d',action:'whatsapp',message:'أهلاً {{customerName}} 👋\nنورت CUT SALON. يهمنا نعرف رأيك في زيارتك الأخيرة 💈' },
   { name: 'تنبيه التأخير المتكرر',event:'attendance.check_in',branch:'all',conditions:[{id:'late',field:'lateCount',operator:'gte',value:'3'}],logic:'and',delay:'immediate',action:'manager',message:'الزميل {{employeeName}} وصل لـ {{lateCount}} مرات تأخير؛ يُرجى مراجعة الظروف معاه.' },
 ];
 const seed = (index=0):Draft => ({...examples[index],id:'draft-'+Date.now(),updatedAt:new Date().toISOString(),conditions:examples[index].conditions.map(x=>({...x}))});
