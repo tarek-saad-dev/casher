@@ -13,6 +13,12 @@ vi.mock('@/platform/commercial/tenantAccessGate', () => ({
 vi.mock('@/platform/onboarding/goLiveReadiness', () => ({
   evaluateTenantGoLive: vi.fn(),
 }));
+vi.mock('@/platform/tenant/workspaceSignalCollector', () => ({
+  enrichTenantWorkspaceWithProviders: vi.fn(async (baseline: unknown) => baseline),
+}));
+vi.mock('@/app/api/tenant/workspace/composeProviders', () => ({
+  composeWorkspaceReadinessProviders: vi.fn(() => []),
+}));
 
 import { requireAdmin } from '@/lib/api-auth';
 import { getTenantInstalledAppsForGate } from '@/platform/commercial/tenantAccessGate';

@@ -1,11 +1,14 @@
 ﻿name: Deploy Casher to VPS
 
+# Production deploy is explicitly gated. Merging to main no longer deploys.
+# Operators must run this workflow manually (workflow_dispatch) after release review.
 on:
-  push:
-    branches:
-      - main
-
   workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type deploy-production to confirm'
+        required: true
+        type: string
 
 concurrency:
   group: casher-production
@@ -19,8 +22,17 @@ jobs:
     name: Deploy Production
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    environment: production
 
     steps:
+      - name: Require explicit deploy confirmation
+        run: |
+          set -euo pipefail
+          if [[ "${{ inputs.confirm }}" != "deploy-production" ]]; then
+            echo "Refusing deploy: confirmation input must be exactly deploy-production" >&2
+            exit 20
+          fi
+
       - name: Checkout repository
         uses: actions/checkout@v4
 

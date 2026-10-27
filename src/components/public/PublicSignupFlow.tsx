@@ -26,23 +26,33 @@ import {
   resolvePublicSignupAppSelection,
 } from '@/platform/publicSignup/appSelection';
 
-const APP_INFO: Record<string, { label: string; icon: React.ComponentType<{ className?: string }> }> = {
-  booking: { label: 'الحجوزات', icon: CalendarDays },
-  queue: { label: 'طابور العملاء', icon: Users },
-  pos: { label: 'الكاشير والمبيعات', icon: ReceiptText },
-  attendance: { label: 'الحضور', icon: Users },
-  payroll: { label: 'المرتبات', icon: CircleDollarSign },
-  treasury: { label: 'الخزنة', icon: ShieldCheck },
-  reports: { label: 'التقارير', icon: ClipboardList },
-  inventory: { label: 'المخزون', icon: Package },
-  purchasing: { label: 'المشتريات', icon: Store },
+const APP_INFO: Record<
+  string,
+  { label: string; blurb: string; icon: React.ComponentType<{ className?: string }> }
+> = {
+  booking: { label: 'الحجوزات', blurb: 'مواعيد العملاء وتوافر الفريق', icon: CalendarDays },
+  queue: { label: 'طابور العملاء', blurb: 'استقبال walk-in وترتيب الدور', icon: Users },
+  pos: { label: 'الكاشير والمبيعات', blurb: 'فواتير، طرق دفع، وربط بالخزنة', icon: ReceiptText },
+  attendance: { label: 'الحضور', blurb: 'تسجيل حضور وانصراف الفريق', icon: Users },
+  payroll: { label: 'المرتبات', blurb: 'أجور وعمولات مرتبطة بالتشغيل', icon: CircleDollarSign },
+  treasury: { label: 'الخزنة', blurb: 'حركة النقد وإقفال الورديات', icon: ShieldCheck },
+  reports: { label: 'التقارير', blurb: 'أداء اليوم والموظفين والفروع', icon: ClipboardList },
+  inventory: { label: 'المخزون', blurb: 'أرصدة المنتجات داخل الفرع', icon: Package },
+  purchasing: { label: 'المشتريات', blurb: 'أوامر شراء وترحيل للمخزون', icon: Store },
 };
+
+const GROUP_LABEL = {
+  required: 'أساسي — لا يمكن إزالته',
+  recommended: 'موصى به',
+  optional: 'اختياري',
+} as const;
 
 type FormState = {
   industry: PublicSignupIndustry | null;
   selectedApps: string[];
   contactName: string;
   businessName: string;
+  locationName: string;
   phone: string;
   email: string;
   password: string;
@@ -54,6 +64,7 @@ const initial: FormState = {
   selectedApps: [],
   contactName: '',
   businessName: '',
+  locationName: '',
   phone: '',
   email: '',
   password: '',
@@ -82,9 +93,12 @@ export default function PublicSignupFlow() {
     if (step === 0) return !!form.industry;
     if (step === 1) return form.selectedApps.length > 0 && !selectionError;
     if (step === 2) {
+      const locationOk =
+        form.locationName.trim().length === 0 || form.locationName.trim().length >= 2;
       return (
         form.contactName.trim().length >= 2 &&
         form.businessName.trim().length >= 2 &&
+        locationOk &&
         /^01\d{9}$/.test(form.phone.replace(/\D/g, ''))
       );
     }
@@ -126,6 +140,7 @@ export default function PublicSignupFlow() {
           selectedApps: form.selectedApps,
           contactName: form.contactName,
           businessName: form.businessName,
+          locationName: form.locationName.trim() || null,
           phone: form.phone,
           email: form.email || null,
           password: form.password,
@@ -236,12 +251,15 @@ export default function PublicSignupFlow() {
             <p className="mt-2 text-sm text-slate-400">
               بدأنا بتطبيقات نشاطك الموصى بها. الأساسي ثابت، والباقي تقدر تضيفه أو تشيله قبل إنشاء الحساب.
             </p>
-            <div className="mt-6 grid gap-2 sm:grid-cols-2">
+            <div className="mt-6 grid gap-3 sm:grid-cols-2">
               {choices?.apps.map((item) => {
                 const info = APP_INFO[item.code];
                 const Icon = info?.icon ?? Package;
                 const active = form.selectedApps.includes(item.code);
                 const required = item.group === 'required';
+                const depLabels = item.requires
+                  .map((dep) => APP_INFO[dep]?.label ?? dep)
+                  .filter(Boolean);
                 return (
                   <button
                     key={item.code}
@@ -249,31 +267,54 @@ export default function PublicSignupFlow() {
                     disabled={required}
                     aria-pressed={active}
                     onClick={() => toggleApp(item.code)}
-                    className={`flex items-center gap-3 rounded-2xl border px-4 py-3 text-right transition disabled:cursor-default ${
-                      active ? 'border-cyan-300/60 bg-cyan-300/10' : 'border-white/10 bg-black/10 hover:bg-white/5'
+                    className={`rounded-3xl border p-4 text-right transition disabled:cursor-default ${
+                      active
+                        ? 'border-cyan-300/70 bg-cyan-300/10'
+                        : 'border-white/10 bg-black/10 hover:border-white/20 hover:bg-white/5'
                     }`}
                   >
-                    <span className={`grid h-9 w-9 place-items-center rounded-xl ${active ? 'bg-cyan-300 text-slate-950' : 'bg-white/5 text-slate-400'}`}>
-                      <Icon className="h-4 w-4" />
-                    </span>
-                    <span className="flex-1">
-                      <span className="block text-sm font-bold">{info?.label ?? item.code}</span>
-                      <span className="block text-[11px] text-slate-400">
-                        {required ? 'أساسي للنشاط' : item.group === 'recommended' ? 'موصى به · اختياري' : 'إضافة اختيارية'}
-                        {item.requires.length ? ` · يحتاج ${item.requires.map((dep) => APP_INFO[dep]?.label ?? dep).join(' و')}` : ''}
+                    <div className="flex items-start gap-3">
+                      <span
+                        className={`grid h-10 w-10 shrink-0 place-items-center rounded-2xl ${
+                          active ? 'bg-cyan-300 text-slate-950' : 'bg-white/5 text-slate-400'
+                        }`}
+                      >
+                        <Icon className="h-4 w-4" />
                       </span>
-                    </span>
-                    {active && <Check className="h-4 w-4 text-cyan-300" />}
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-center justify-between gap-2">
+                          <span className="text-sm font-bold">{info?.label ?? item.code}</span>
+                          {active && <Check className="h-4 w-4 shrink-0 text-cyan-300" />}
+                        </span>
+                        <span className="mt-1 block text-[11px] leading-5 text-slate-400">
+                          {info?.blurb ?? item.code}
+                        </span>
+                        <span className="mt-2 inline-flex flex-wrap gap-1.5">
+                          <span className="rounded-full border border-white/10 px-2 py-0.5 text-[10px] text-slate-300">
+                            {GROUP_LABEL[item.group]}
+                          </span>
+                          {depLabels.length > 0 && (
+                            <span className="rounded-full border border-amber-300/20 px-2 py-0.5 text-[10px] text-amber-100/80">
+                              يحتاج: {depLabels.join(' · ')}
+                            </span>
+                          )}
+                        </span>
+                      </span>
+                    </div>
                   </button>
                 );
               })}
             </div>
-            {selectionError && <p role="alert" className="mt-3 rounded-xl border border-amber-400/30 px-4 py-2 text-xs text-amber-200">{selectionError}</p>}
+            {selectionError && (
+              <p role="alert" className="mt-3 rounded-xl border border-amber-400/30 px-4 py-2 text-xs text-amber-200">
+                {selectionError}
+              </p>
+            )}
             <p className="mt-3 text-xs text-slate-400">
-              المختار: {form.selectedApps.length} تطبيقات · الخطة التجارية منفصلة عن التطبيقات، والتجربة تبدأ على Starter.
+              المختار: {form.selectedApps.length} · التثبيت ≠ الدفع. التجربة 14 يوم بدون بطاقة.
             </p>
-            <div className="mt-3 rounded-2xl border border-amber-300/10 bg-amber-300/5 px-4 py-3 text-xs text-amber-100/70">
-              WhatsApp + AI Receptionist مش متاحين للتسجيل الذاتي لحد ما ربط رقم مستقل لكل منشأة يبقى جاهز تجاريًا.
+            <div className="mt-3 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-xs leading-6 text-slate-400">
+              واتساب والمساعد الذكي مش متاحين في التسجيل الذاتي حاليًا — يحتاجان ربط قناة لكل منشأة.
             </div>
           </div>
         )}
@@ -281,7 +322,7 @@ export default function PublicSignupFlow() {
         {step === 2 && (
           <div>
             <p className="text-xs font-bold tracking-[0.2em] text-cyan-300">03 — عنك وعن البيزنس</p>
-            <h2 className="mt-2 text-3xl font-black sm:text-4xl">3 بيانات ونبدأ.</h2>
+            <h2 className="mt-2 text-3xl font-black sm:text-4xl">بيانات أساسية فقط.</h2>
             <p className="mt-2 text-sm text-slate-400">مفيش بطاقة بنكية. التجربة 14 يوم.</p>
             <div className="mt-6 grid gap-3">
               <label className="grid gap-1.5">
@@ -300,6 +341,15 @@ export default function PublicSignupFlow() {
                   onChange={(e) => setForm((f) => ({ ...f, businessName: e.target.value }))}
                   className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 outline-none transition focus:border-cyan-300/60"
                   placeholder="مثال: Nova Men Salon"
+                />
+              </label>
+              <label className="grid gap-1.5">
+                <span className="text-xs text-slate-400">اسم أول فرع / موقع — اختياري</span>
+                <input
+                  value={form.locationName}
+                  onChange={(e) => setForm((f) => ({ ...f, locationName: e.target.value }))}
+                  className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 outline-none transition focus:border-cyan-300/60"
+                  placeholder="مثال: فرع سموحة"
                 />
               </label>
               <div className="grid gap-3 sm:grid-cols-2">

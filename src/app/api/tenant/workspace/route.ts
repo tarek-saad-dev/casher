@@ -3,6 +3,8 @@ import { isAuthResult, requireAdmin } from '@/lib/api-auth';
 import { getTenantInstalledAppsForGate } from '@/platform/commercial/tenantAccessGate';
 import { evaluateTenantGoLive } from '@/platform/onboarding/goLiveReadiness';
 import { buildTenantWorkspace } from '@/platform/tenant/workspaceReadiness';
+import { enrichTenantWorkspaceWithProviders } from '@/platform/tenant/workspaceSignalCollector';
+import { composeWorkspaceReadinessProviders } from './composeProviders';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -28,7 +30,14 @@ export async function GET() {
       );
     }
 
-    return NextResponse.json(buildTenantWorkspace(report, installedApps), {
+    const baseline = buildTenantWorkspace(report, installedApps);
+    const enriched = await enrichTenantWorkspaceWithProviders(
+      baseline,
+      auth.tenantId,
+      composeWorkspaceReadinessProviders(),
+    );
+
+    return NextResponse.json(enriched, {
       headers: { 'Cache-Control': 'no-store' },
     });
   } catch (err) {

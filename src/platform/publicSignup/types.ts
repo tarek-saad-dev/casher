@@ -21,6 +21,8 @@ export type PublicSignupInput = {
   selectedApps?: string[];
   contactName: string;
   businessName: string;
+  /** Optional first-location label; falls back to a main-branch name derived from the business. */
+  locationName?: string | null;
   phone: string;
   email?: string | null;
   password: string;

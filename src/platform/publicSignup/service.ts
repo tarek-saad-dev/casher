@@ -88,12 +88,17 @@ export function parsePublicSignupInput(body: unknown): PublicSignupInput {
   const industry = normalizeIndustry(x.industry);
   const contactName = cleanText(x.contactName, 100);
   const businessName = cleanText(x.businessName, 200);
+  const locationNameRaw = cleanText(x.locationName, 120);
+  const locationName = locationNameRaw.length >= 2 ? locationNameRaw : null;
   const password = String(x.password ?? '');
   if (contactName.length < 2) {
     throw new PublicSignupError('CONTACT_NAME_INVALID', 'اكتب اسمك.', 400);
   }
   if (businessName.length < 2) {
     throw new PublicSignupError('BUSINESS_NAME_INVALID', 'اكتب اسم النشاط.', 400);
+  }
+  if (locationNameRaw && !locationName) {
+    throw new PublicSignupError('LOCATION_NAME_INVALID', 'اكتب اسم الفرع بشكل صحيح (حرفين على الأقل).', 400);
   }
   if (password.length < MIN_PASSWORD_LENGTH) {
     throw new PublicSignupError(
@@ -119,6 +124,7 @@ export function parsePublicSignupInput(body: unknown): PublicSignupInput {
     ...(selectedApps === undefined ? {} : { selectedApps }),
     contactName,
     businessName,
+    locationName,
     phone: normalizeEgyptPhone(x.phone),
     email: normalizeEmail(x.email),
     password,
@@ -151,11 +157,18 @@ function identityFrom(input: PublicSignupInput) {
  * Keep a readable main-branch label and append a stable part of the tenant digest.
  * A shared literal 'الفرع الرئيسي' breaks the second public signup.
  */
-export function publicSignupMainBranchName(businessName: string, branchCode: string): string {
+export function publicSignupMainBranchName(
+  businessName: string,
+  branchCode: string,
+  locationName?: string | null,
+): string {
   const tenantSuffix = /^DRVO_([0-9A-F]{10})_MAIN$/i.exec(String(branchCode).trim())?.[1];
-  const name = String(businessName ?? '').trim().slice(0, 70);
+  const location = String(locationName ?? '').trim().slice(0, 70);
+  const name = (location || String(businessName ?? '').trim()).slice(0, 70);
   if (!name || !tenantSuffix) throw new Error('Public signup branch identity is incomplete');
-  return `${name} - الرئيسي - ${tenantSuffix}`;
+  return location
+    ? `${name} - ${tenantSuffix}`
+    : `${name} - الرئيسي - ${tenantSuffix}`;
 }
 
 function appCustomizations(industry: PublicSignupIndustry, needs: PublicSignupNeed[]) {
@@ -195,7 +208,7 @@ export function buildOnboardingRequest(input: PublicSignupInput): OnboardingRequ
     },
     branches: [
       {
-        branchName: publicSignupMainBranchName(input.businessName, ids.branchCode),
+        branchName: publicSignupMainBranchName(input.businessName, ids.branchCode, input.locationName),
         branchCode: ids.branchCode,
         shortName: null,
         address: null,

@@ -55,7 +55,7 @@ export default function DrvoLandingPage() {
             href="/start"
             className="inline-flex items-center gap-2 rounded-full bg-cyan-300 px-4 py-2 text-xs font-black text-slate-950"
           >
-            ابدأ مجانًا
+            ابدأ إنشاء شركتك
             <ArrowLeft className="h-4 w-4" />
           </Link>
         </header>
@@ -80,7 +80,7 @@ export default function DrvoLandingPage() {
                 href="/start"
                 className="inline-flex items-center gap-2 rounded-full bg-white px-6 py-3 text-sm font-black text-slate-950"
               >
-                ابدأ تجربتك 14 يوم
+                ابدأ إنشاء شركتك
                 <ArrowLeft className="h-4 w-4" />
               </Link>
               <a
