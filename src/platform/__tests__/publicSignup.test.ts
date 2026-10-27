@@ -110,6 +110,7 @@ describe('public signup input', () => {
   });
 
   it('rejects client-forged commercial activation and tenant context before provisioning', () => {
+    vi.mocked(findIndustryPack).mockReturnValue(SALON_PACK);
     const base = {
       industry: 'salon', selectedApps: ['booking'],
       contactName: 'Owner', businessName: 'Synthetic Salon',
