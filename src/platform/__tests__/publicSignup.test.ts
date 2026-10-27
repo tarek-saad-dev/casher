@@ -109,6 +109,30 @@ describe('public signup input', () => {
     expect(onboarding.ai).toBeNull();
   });
 
+  it('rejects client-forged commercial activation and tenant context before provisioning', () => {
+    const base = {
+      industry: 'salon', selectedApps: ['booking'],
+      contactName: 'Owner', businessName: 'Synthetic Salon',
+      phone: '01012345678', password: 'StrongPass1', startMode: 'real',
+    };
+    for (const field of [
+      'tenantId', 'tenantCode', 'actorUserId', 'ownerUserId',
+      'planCode', 'subscriptionStatus', 'subscription', 'trialEndsAt',
+      'isPaid', 'paymentStatus', 'appEntitlements',
+    ]) {
+      expect(() => parsePublicSignupInput({ ...base, [field]: 'paid' }))
+        .toThrowError(expect.objectContaining({ code: 'SYSTEM_FIELDS_FORBIDDEN', status: 400 }));
+    }
+    const valid = buildOnboardingRequest(parsePublicSignupInput(base));
+    expect(valid.subscription).toEqual({ planCode: 'starter', status: 'trial' });
+    expect(valid.apps).toEqual({
+      add: [], remove: ['queue', 'pos', 'attendance', 'payroll', 'treasury', 'reports'],
+    });
+    expect(valid.branches).toHaveLength(1);
+    expect(valid.owner.loginName).toBe('u201012345678');
+    expect(valid.business.industryPackCode).toBe('salon');
+  });
+
   it('keeps old signup payloads on the legacy needs compatibility path', () => {
     const signup = parsePublicSignupInput({
       industry: 'salon',
