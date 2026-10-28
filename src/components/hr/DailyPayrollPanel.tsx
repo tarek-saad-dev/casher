@@ -2865,7 +2865,7 @@ export default function DailyPayrollPanel() {
                             size="sm"
                             variant="outline"
                             className="h-7 text-[10px] border-rose-500/40 text-rose-300 gap-1"
-                            disabled={busy || generating || regeneratingTarget || rowBusy || switchingBranch || rowClosed || row?.Status === 'PostedToCashMove' || merged.attendanceStatus === 'Absent'}
+                            disabled={busy || generating || regeneratingTarget || rowBusy || switchingBranch || rowClosed || row?.Status === 'PostedToCashMove' || row?.AttendanceStatus === 'Absent'}
                             onClick={() => void markEmployeeAbsent(merged.empId, merged.empName, rowBranchId)}
                           >
                             غياب اليوم
