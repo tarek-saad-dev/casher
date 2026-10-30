@@ -68,12 +68,12 @@ function applySignal(
   const seen = new Set<string>();
   for (const check of signal.checks) {
     if (!check || typeof check.key !== 'string' || !check.key.trim() ||
-      seen.has(check.key) ||
+      seen.has(check.key.trim()) ||
       !['pass', 'fail', 'unknown'].includes(check.state) ||
       typeof check.detail !== 'string' || !check.detail.trim()) {
       return unavailable(item);
     }
-    seen.add(check.key);
+    seen.add(check.key.trim());
   }
 
   const failed = signal.checks.find((check) => check.state === 'fail');
@@ -86,7 +86,7 @@ function applySignal(
       actionHref: safeInternalHref(failed.actionHref),
     };
   }
-  if (signal.checks.some((check) => check.state === 'unknown')) {
+  if (signal.checks.some((check) => check.state === 'unknown') || signal.usage === 'unknown') {
     return unavailable(item);
   }
 
