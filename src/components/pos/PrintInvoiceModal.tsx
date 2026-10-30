@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import { Printer, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { createPrintRequestId, printHtmlViaLocalService, openBrowserPrintFallback } from '@/lib/localPrintClient';
 import { getPrintBrandHtml, usePrintBrand } from '@/lib/tenant/tenantBrandClient';
 import {
   Dialog,
@@ -148,7 +149,7 @@ interface PrintInvoiceModalProps {
 // ──── Premium Receipt CSS (80mm) — Elegant vintage barber style ────
 const THERMAL_CSS = `
   @page {
-    size: 72mm auto;
+    size: 80mm 200mm;
     margin: 0mm;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -492,6 +493,9 @@ export default function PrintInvoiceModal({ open, invID, onClose }: PrintInvoice
   const [data, setData] = useState<PrintData | null>(null);
   const [loading, setLoading] = useState(false);
   const [printing, setPrinting] = useState(false);
+  const [printError, setPrintError] = useState<string | null>(null);
+  const [printSuccess, setPrintSuccess] = useState(false);
+  const printLockRef = useRef(false);
   const printWindowRef = useRef<Window | null>(null);
   const receiptModel = useMemo(() => (data ? buildReceiptModel(data) : null), [data]);
 
@@ -500,6 +504,8 @@ export default function PrintInvoiceModal({ open, invID, onClose }: PrintInvoice
     if (!open || !invID) { setData(null); return; }
     setLoading(true);
     setPrinting(false);
+    setPrintError(null);
+    setPrintSuccess(false);
     fetch(`/api/sales/${invID}`)
       .then(r => r.json())
       .then(d => setData(d))
@@ -701,51 +707,35 @@ export default function PrintInvoiceModal({ open, invID, onClose }: PrintInvoice
 </html>`;
   }, [data]);
 
-  // Single guarded print handler
-  const handlePrint = useCallback(() => {
-    if (printing || !data) return;
+  // Primary receipt path: direct local agent, no Chrome preview.
+  // Never invoke browser fallback automatically: the spooler may already have the job.
+  const handlePrint = useCallback(async () => {
+    if (printLockRef.current || !data) return;
+    printLockRef.current = true;
     setPrinting(true);
-
-    // Close any leftover window
-    if (printWindowRef.current && !printWindowRef.current.closed) {
-      printWindowRef.current.close();
-    }
-
-    const win = window.open('', '_blank', 'width=350,height=500');
-    if (!win) {
+    setPrintError(null);
+    setPrintSuccess(false);
+    try {
+      const result = await printHtmlViaLocalService({
+        html: buildReceiptHTML(),
+        width: '72mm',
+        printer: 'default',
+        requestId: createPrintRequestId(`invoice-${data.invID}`),
+      });
+      if (result.ok) setPrintSuccess(true);
+      else setPrintError(result.userMessage);
+    } catch {
+      setPrintError('تعذر إرسال الفاتورة للطابعة المحلية.');
+    } finally {
+      printLockRef.current = false;
       setPrinting(false);
-      return;
     }
-    printWindowRef.current = win;
+  }, [data, buildReceiptHTML]);
 
-    const html = buildReceiptHTML();
-    win.document.write(html);
-    win.document.close();
-
-    // Wait for content to render, then print ONCE
-    win.onload = () => {
-      // Guard: only close after print finishes (or is cancelled)
-      win.onafterprint = () => {
-        win.close();
-        printWindowRef.current = null;
-        setPrinting(false);
-      };
-
-      // Trigger print exactly once
-      setTimeout(() => {
-        win.print();
-      }, 100); // Small delay to ensure content is fully rendered
-
-      // Fallback: if onafterprint never fires (some browsers), close after 10s
-      setTimeout(() => {
-        if (printWindowRef.current && !printWindowRef.current.closed) {
-          printWindowRef.current.close();
-          printWindowRef.current = null;
-        }
-        setPrinting(false);
-      }, 10000);
-    };
-  }, [printing, data, buildReceiptHTML]);
+  const handleBrowserFallback = useCallback(() => {
+    const result = openBrowserPrintFallback(buildReceiptHTML(), createPrintRequestId('invoice-browser'));
+    if (result.ok === false) setPrintError(result.userMessage);
+  }, [buildReceiptHTML]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -987,12 +977,23 @@ export default function PrintInvoiceModal({ open, invID, onClose }: PrintInvoice
               </div>
             </div>
 
+            {printError && (
+              <p role="alert" className="text-sm text-destructive mt-2">{printError}</p>
+            )}
+            {printSuccess && (
+              <p role="status" className="text-sm text-green-700 mt-2">تم إرسال الفاتورة إلى قائمة انتظار الطابعة.</p>
+            )}
             {/* Action buttons */}
             <div className="flex gap-2 justify-end mt-3">
               <Button variant="outline" onClick={onClose}>
                 <X className="w-4 h-4 ml-2" />
                 إغلاق
               </Button>
+              {printError && (
+                <Button variant="secondary" onClick={handleBrowserFallback} disabled={printing} data-testid="invoice-browser-fallback">
+                  طباعة من المتصفح
+                </Button>
+              )}
               <Button onClick={handlePrint} disabled={printing} data-testid="print-button">
                 <Printer className="w-4 h-4 ml-2" />
                 {printing ? 'جاري الطباعة...' : 'طباعة'}
