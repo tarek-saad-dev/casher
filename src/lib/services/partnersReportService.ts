@@ -37,6 +37,9 @@ import { getEffectiveBranchPartnerShares, toPartnerPercentageList } from '@/lib/
 export type PartnersEmployeeControlLive = {
   shopRevenue: number | null;
   salaryAndTarget: number;
+  advanceDebits: number;
+  settlementCredits: number;
+  settlementDebits: number;
   advanceExcess: number;
   ledgerSalary: number;
   ledgerTarget: number;
@@ -314,7 +317,9 @@ function mapPartnersEmployeeRows(input: {
         row.salaryCredits > 0 ||
         row.targetCredits > 0 ||
         row.advanceDebits > 0 ||
-        row.payoutDebits > 0
+        row.payoutDebits > 0 ||
+        row.settlementCredits > 0 ||
+        row.settlementDebits > 0
     )
     .map((row) => row.empId);
   const employeeIds = new Set<number>([
@@ -342,17 +347,23 @@ function mapPartnersEmployeeRows(input: {
     const ledgerTarget = roundMoney(ledger?.targetCredits ?? 0);
     const liveSalaryAndTarget = roundMoney(ledgerSalary + ledgerTarget);
     const fundingCredits = roundMoney(ledger?.fundingCredits ?? 0);
+    const advanceDebits = roundMoney(ledger?.advanceDebits ?? 0);
+    const payoutDebits = roundMoney(ledger?.payoutDebits ?? 0);
+    const settlementCredits = roundMoney(ledger?.settlementCredits ?? 0);
+    const settlementDebits = roundMoney(ledger?.settlementDebits ?? 0);
     const { moneyTaken } = computeEmployeeWithdrawalBuckets({
-      advanceDebits: ledger?.advanceDebits ?? 0,
-      payoutDebits: ledger?.payoutDebits ?? 0,
+      advanceDebits,
+      payoutDebits,
       salaryAndTarget: liveSalaryAndTarget,
       revenue: fundingCredits,
     });
     const liveAdvanceExcess = computePartnersAdvanceExcess({
-      advanceDebits: ledger?.advanceDebits ?? 0,
-      payoutDebits: ledger?.payoutDebits ?? 0,
+      advanceDebits,
+      payoutDebits,
       salaryAndTarget: liveSalaryAndTarget,
       fundingCredits,
+      settlementCredits,
+      settlementDebits,
     });
 
     const override = getEmployeePartnerOverrideFromMap(
@@ -389,6 +400,9 @@ function mapPartnersEmployeeRows(input: {
         ledgerTarget,
         salaryAndTarget: overridden.salaryAndTarget,
         moneyTaken,
+        advanceDebits,
+        settlementCredits,
+        settlementDebits,
         advanceExcess: overridden.advanceExcess,
       },
       control: {
@@ -398,6 +412,9 @@ function mapPartnersEmployeeRows(input: {
         live: {
           shopRevenue: baseShopRevenue,
           salaryAndTarget: liveSalaryAndTarget,
+          advanceDebits,
+          settlementCredits,
+          settlementDebits,
           advanceExcess: liveAdvanceExcess,
           ledgerSalary,
           ledgerTarget,

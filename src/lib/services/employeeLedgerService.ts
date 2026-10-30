@@ -561,6 +561,8 @@ function sumBranchBreakdowns(
   | 'advanceDebits'
   | 'payoutDebits'
   | 'deductionDebits'
+  | 'settlementCredits'
+  | 'settlementDebits'
   | 'balance'
   | 'revenue'
   | 'payoutWithinDues'
@@ -573,6 +575,8 @@ function sumBranchBreakdowns(
   const advanceDebits = roundMoney(parts.reduce((s, p) => s + p.advanceDebits, 0));
   const payoutDebits = roundMoney(parts.reduce((s, p) => s + p.payoutDebits, 0));
   const deductionDebits = roundMoney(parts.reduce((s, p) => s + p.deductionDebits, 0));
+  const settlementCredits = roundMoney(parts.reduce((s, p) => s + p.settlementCredits, 0));
+  const settlementDebits = roundMoney(parts.reduce((s, p) => s + p.settlementDebits, 0));
   const payoutWithinDues = roundMoney(parts.reduce((s, p) => s + p.payout, 0));
   const revenueWithdrawal = roundMoney(parts.reduce((s, p) => s + p.revenueWithdrawal, 0));
   const advanceExcess = roundMoney(parts.reduce((s, p) => s + p.advance, 0));
@@ -584,6 +588,8 @@ function sumBranchBreakdowns(
     advanceDebits,
     payoutDebits,
     deductionDebits,
+    settlementCredits,
+    settlementDebits,
     balance,
     revenue: fundingCredits,
     payoutWithinDues,

@@ -80,6 +80,13 @@ export interface PartnersMonthlyReportCore {
     ledgerTarget: number;
     salaryAndTarget: number;
     moneyTaken: number;
+    /** Gross advance cash debits this month (unchanged by settlements). */
+    advanceDebits: number;
+    /** Incoming inter-branch settlement credits. */
+    settlementCredits: number;
+    /** Outgoing inter-branch settlement debits. */
+    settlementDebits: number;
+    /** Remaining uncovered debt after dues, funding, and settlements. */
     advanceExcess: number;
   }>;
 

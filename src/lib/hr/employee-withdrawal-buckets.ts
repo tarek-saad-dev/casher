@@ -49,19 +49,33 @@ export function computeEmployeeWithdrawalBuckets(params: {
 }
 
 /**
- * Partners-report «سلف»: cash the shop already paid out beyond
- * accrued salary+target+funding. Using ledger advanceExcess as-is would
- * double-count informal salary draws (recorded as سلفة) after daily payroll exists.
+ * Partners-report «سلف» / remaining employee debt at a branch:
+ * cash taken (advances + payouts) beyond accrued salary+target+funding,
+ * after *net* inter-branch settlement (credits − debits) reduces the uncovered
+ * portion when positive (incoming settlement).
+ *
+ * Outgoing settlement debits reallocate dues — they must not inflate سلف.
+ * Voided settlements (#1 + reverse #2) net to ~0 so they do not double-count.
  */
 export function computePartnersAdvanceExcess(params: {
   advanceDebits: number;
   payoutDebits: number;
   salaryAndTarget: number;
   fundingCredits: number;
+  /** Incoming inter-branch settlement credits for this branch/month. */
+  settlementCredits?: number;
+  /** Outgoing inter-branch settlement debits for this branch/month. */
+  settlementDebits?: number;
 }): number {
   const taken =
     Math.max(0, params.advanceDebits) + Math.max(0, params.payoutDebits);
+  const settlementNet = round2(
+    Math.max(0, params.settlementCredits ?? 0) -
+      Math.max(0, params.settlementDebits ?? 0),
+  );
   const covered =
-    Math.max(0, params.fundingCredits) + Math.max(0, params.salaryAndTarget);
+    Math.max(0, params.fundingCredits) +
+    Math.max(0, params.salaryAndTarget) +
+    Math.max(0, settlementNet);
   return round2(Math.max(0, taken - covered));
 }

@@ -112,4 +112,70 @@ describe('computePartnersAdvanceExcess', () => {
       }),
     ).toBe(0);
   });
+
+  it('Omar Gleem: settlement credit clears 265 advance debt', () => {
+    expect(
+      computePartnersAdvanceExcess({
+        advanceDebits: 265,
+        payoutDebits: 0,
+        salaryAndTarget: 0,
+        fundingCredits: 0,
+        settlementCredits: 265,
+        settlementDebits: 0,
+      }),
+    ).toBe(0);
+  });
+
+  it('Huda Camp: settlement credit clears 1285 advance debt', () => {
+    expect(
+      computePartnersAdvanceExcess({
+        advanceDebits: 1285,
+        payoutDebits: 0,
+        salaryAndTarget: 0,
+        fundingCredits: 0,
+        settlementCredits: 1285,
+      }),
+    ).toBe(0);
+  });
+
+  it('voided lifetime settlement nets out (#1 credit + #2 reverse debit) then #3 credit remains', () => {
+    // Camp: #1 credit 1876.17 + #2 debit 1876.17 + #3 credit 1285 → net +1285
+    expect(
+      computePartnersAdvanceExcess({
+        advanceDebits: 1285,
+        payoutDebits: 0,
+        salaryAndTarget: 0,
+        fundingCredits: 0,
+        settlementCredits: 1876.17 + 1285,
+        settlementDebits: 1876.17,
+      }),
+    ).toBe(0);
+  });
+
+  it('Gleem after void+#3: net settlement negative does not fake-cover advances', () => {
+    // Gleem: #1 debit 1876.17 + #2 credit 1876.17 + #3 debit 1285 → net -1285
+    expect(
+      computePartnersAdvanceExcess({
+        advanceDebits: 200,
+        payoutDebits: 0,
+        salaryAndTarget: 0,
+        fundingCredits: 0,
+        settlementCredits: 1876.17,
+        settlementDebits: 1876.17 + 1285,
+      }),
+    ).toBe(200);
+  });
+
+  it('settlement debit alone does not inflate remaining سلف when dues cover advances', () => {
+    expect(
+      computePartnersAdvanceExcess({
+        advanceDebits: 100,
+        payoutDebits: 0,
+        salaryAndTarget: 500,
+        fundingCredits: 0,
+        settlementCredits: 0,
+        settlementDebits: 200,
+      }),
+    ).toBe(0);
+  });
 });

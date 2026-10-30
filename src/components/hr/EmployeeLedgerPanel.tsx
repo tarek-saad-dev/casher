@@ -613,13 +613,16 @@ export default function EmployeeLedgerPanel() {
                     revenueWithdrawal: 0,
                     advance: 0,
                     deductions: 0,
+                    settlementNet: 0,
                     balance: 0,
                     salaryCredits: 0,
                     targetCredits: 0,
                     fundingCredits: 0,
+                    settlementCredits: 0,
                     advanceDebits: 0,
                     payoutDebits: 0,
                     deductionDebits: 0,
+                    settlementDebits: 0,
                   };
                   return (
                     <tr
