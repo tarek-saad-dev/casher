@@ -120,6 +120,10 @@ export interface EmpLedgerEmployeeSummaryRow {
   advanceDebits: number;
   payoutDebits: number;
   deductionDebits: number;
+  /** Inter-branch settlement credits (incoming) in the scoped branch set. */
+  settlementCredits: number;
+  /** Inter-branch settlement debits (outgoing) in the scoped branch set. */
+  settlementDebits: number;
   balance: number;
   /** Sum of per-branch balances over every tenant table branch. */
   overallBalance: number;
