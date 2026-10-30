@@ -11,7 +11,7 @@ const http = require('node:http');
 
 process.env.PRINT_ADAPTER = 'mock';
 
-const { app, validateReceiptData, createRequestId } = require('./server');
+const { app, validateReceiptData, createRequestId, closeEscposBrowser } = require('./server');
 
 function request(server, { method, path, body, headers = {} }) {
   return new Promise((resolve, reject) => {
@@ -53,6 +53,7 @@ describe('print-service', () => {
 
   after(async () => {
     await new Promise((resolve) => server.close(resolve));
+    await closeEscposBrowser();
   });
 
   it('health endpoint returns ok', async () => {
