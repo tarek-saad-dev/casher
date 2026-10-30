@@ -249,12 +249,26 @@ export interface EmpLedgerFundingResponse {
   ledgerDualWrite: true;
 }
 
+export interface EmpLedgerAdditionalTargetResponse {
+  success: true;
+  ledgerEntryId: number;
+  empId: number;
+  empName: string;
+  branchId: number;
+  branchCode: string;
+  entryDate: string;
+  amountAdded: number;
+  previousDayTargetTotal: number;
+  newDayTargetTotal: number;
+  monthTargetTotalAfter: number;
+}
+
 export const EMP_LEDGER_REASON_LABELS: Record<EmpLedgerEntryReason, string> = {
   hourly_wage: 'أجر ساعات',
   monthly_salary: 'راتب شهري',
   target: 'تارجت يومي',
   commission: 'عمولة',
-  bonus: 'مكافأة',
+  bonus: 'تارجت إضافي',
   advance: 'سلفة',
   payout: 'صرف',
   deduction: 'خصم',

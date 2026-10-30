@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  BookOpen, Loader2, AlertCircle, RefreshCw, TrendingUp, TrendingDown, Scale, Wallet, HandCoins, CalendarDays,
+  BookOpen, Loader2, AlertCircle, RefreshCw, TrendingUp, TrendingDown, Scale, Wallet, HandCoins, CalendarDays, Gift,
 } from 'lucide-react';
 import KpiCard from '@/components/shared/KpiCard';
 import { Button } from '@/components/ui/button';
@@ -23,6 +23,7 @@ import { EMP_LEDGER_REASON_LABELS } from '@/lib/types/employee-ledger';
 import { hrBranchLabel } from '@/lib/hr/legacyHrBranchPolicy';
 import EmployeePayoutModal, { type EmployeePayoutTarget } from '@/components/hr/EmployeePayoutModal';
 import EmployeeFundingModal from '@/components/hr/EmployeeFundingModal';
+import EmployeeAdditionalTargetModal from '@/components/hr/EmployeeAdditionalTargetModal';
 import MonthlySalaryPostModal from '@/components/hr/MonthlySalaryPostModal';
 import EmployeeDailyTargetLedgerDetailsDialog from '@/components/hr/EmployeeDailyTargetLedgerDetailsDialog';
 import Link from 'next/link';
@@ -170,6 +171,7 @@ export default function EmployeeLedgerPanel() {
   const [payoutTarget, setPayoutTarget] = useState<EmployeePayoutTarget | null>(null);
   const [payoutOpen, setPayoutOpen] = useState(false);
   const [fundingOpen, setFundingOpen] = useState(false);
+  const [additionalTargetOpen, setAdditionalTargetOpen] = useState(false);
   const [monthlySalaryOpen, setMonthlySalaryOpen] = useState(false);
   const [targetDetailsId, setTargetDetailsId] = useState<number | null>(null);
 
@@ -356,10 +358,22 @@ export default function EmployeeLedgerPanel() {
     void refresh();
   };
 
+  const handleAdditionalTargetSuccess = (message: string) => {
+    setSuccessMsg(message);
+    void refresh();
+  };
+
   const handleMonthlySalarySuccess = (message: string) => {
     setSuccessMsg(message);
     void refresh();
   };
+
+  const additionalTargetDefaultEmpId =
+    empId !== 'all' && Number.isFinite(Number(empId)) ? Number(empId) : null;
+  const additionalTargetDefaultBranchId =
+    branchFilter !== 'all' && Number.isFinite(Number(branchFilter))
+      ? Number(branchFilter)
+      : null;
 
   const loading = loadingSummary || loadingEntries;
   const entryColSpan = (showRunningBalance ? 9 : 8) + (showBranchColumn ? 1 : 0);
@@ -454,6 +468,20 @@ export default function EmployeeLedgerPanel() {
           >
             <HandCoins className="w-4 h-4" />
             تمويل من موظف
+          </Button>
+          <Button
+            onClick={() => setAdditionalTargetOpen(true)}
+            disabled={!dualWriteEnabled}
+            variant="outline"
+            className="h-9 gap-2 border-border"
+            title={
+              !dualWriteEnabled
+                ? 'يتطلب تفعيل EMP_LEDGER_DUAL_WRITE_ENABLED'
+                : 'إضافة تارجت إضافي (بونص) لموظف في فرع معيّن'
+            }
+          >
+            <Gift className="w-4 h-4" />
+            تارجت إضافي
           </Button>
         </div>
       </div>
@@ -788,6 +816,17 @@ export default function EmployeeLedgerPanel() {
         onSuccess={handleFundingSuccess}
       />
 
+      <EmployeeAdditionalTargetModal
+        open={additionalTargetOpen}
+        onClose={() => setAdditionalTargetOpen(false)}
+        employees={employees}
+        branches={accessibleBranches}
+        dualWriteEnabled={dualWriteEnabled}
+        defaultEmpId={additionalTargetDefaultEmpId}
+        defaultBranchId={additionalTargetDefaultBranchId}
+        onSuccess={handleAdditionalTargetSuccess}
+      />
+
       <MonthlySalaryPostModal
         open={monthlySalaryOpen}
         onClose={() => setMonthlySalaryOpen(false)}
@@ -804,7 +843,7 @@ export default function EmployeeLedgerPanel() {
 
       {!dualWriteEnabled && (
         <p className="text-xs text-amber-500/80 px-1">
-          صرف المستحقات وتمويل الموظف معطّل — فعّل <code className="text-amber-400">EMP_LEDGER_DUAL_WRITE_ENABLED=true</code> لتسجيل الحركات في الدفتر والخزنة.
+          صرف المستحقات وتمويل الموظف والتارجت الإضافي معطّل — فعّل <code className="text-amber-400">EMP_LEDGER_DUAL_WRITE_ENABLED=true</code> لتسجيل الحركات في الدفتر.
         </p>
       )}
 
