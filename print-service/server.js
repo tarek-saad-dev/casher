@@ -355,12 +355,17 @@ app.post('/print/test', async (req, res) => {
   const requestId = createRequestId(req.body?.requestId || req.get('X-Request-Id'));
   console.log(`[print-service][${requestId}] request received`, { endpoint: '/print/test' });
 
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/><style>
-    body{font-family:sans-serif;font-size:14px;padding:8px;width:72mm}
+  const html = `<!DOCTYPE html><html lang="ar"><head><meta charset="utf-8"/><style>
+    *{box-sizing:border-box}
+    body{margin:0;padding:3mm;width:72mm;font-family:Tahoma,Arial,sans-serif;font-size:19px;line-height:1.45;color:#000;background:#fff}
+    .brand{font-size:24px;font-weight:900;text-align:center}
+    .arabic{font-size:19px;font-weight:700;text-align:center;direction:rtl;margin:2mm 0}
+    .diagnostic{font-size:12px;line-height:1.25;overflow-wrap:anywhere;margin-top:2mm}
   </style></head><body>
-    <strong>CUT SALON TEST PRINT</strong><br/>
-    ${new Date().toISOString()}<br/>
-    requestId: ${requestId}
+    <div class="brand">CUT SALON</div>
+    <div class="arabic">اختبار الطباعة - كات صالون</div>
+    <div>XP-80 TEXT TEST 123</div>
+    <div class="diagnostic">requestId: ${requestId}<br/>${new Date().toISOString()}</div>
   </body></html>`;
 
   try {
