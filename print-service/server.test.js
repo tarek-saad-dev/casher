@@ -139,6 +139,67 @@ describe('print-service', () => {
     assert.equal(res.body.status, 'accepted');
   });
 
+  it('settings page can pause and resume all printing without stopping the agent', async () => {
+    const initial = await request(server, { method: 'GET', path: '/settings' });
+    assert.equal(initial.status, 200);
+    assert.equal(initial.body.ok, true);
+    assert.equal(initial.body.engine, process.env.PRINT_ENGINE === 'escpos' ? 'escpos' : 'pdf');
+    assert.equal(initial.body.physicalPrinterStatus, 'unknown');
+    const paused = await request(server, {
+      method: 'PATCH', path: '/settings', body: { enabled: false },
+    });
+    assert.equal(paused.status, 200);
+    assert.equal(paused.body.enabled, false);
+    const stopped = await request(server, {
+      method: 'POST', path: '/print/test',
+      body: { requestId: 'paused-test-1' },
+    });
+    assert.equal(stopped.status, 409);
+    assert.equal(stopped.body.code, 'PRINT_DISABLED');
+    const health = await request(server, { method: 'GET', path: '/health' });
+    assert.equal(health.status, 200);
+    assert.equal(health.body.printingEnabled, false);
+    const resumed = await request(server, { method: 'PATCH', path: '/settings', body: { enabled: true } });
+    assert.equal(resumed.body.enabled, true);
+  });
+
+  it('disabling expenses does not disable invoices or other receipts', async () => {
+    const switched = await request(server, {
+      method: 'PATCH', path: '/settings', body: { types: { expense: false } },
+    });
+    assert.equal(switched.status, 200);
+    assert.equal(switched.body.types.expense, false);
+    const receipt = await request(server, {
+      method: 'POST', path: '/print/html',
+      body: { requestId: 'disabled-exp-01', receiptType: 'expense', html: '<html>Expense</html>' },
+    });
+    assert.equal(receipt.status, 409);
+    assert.equal(receipt.body.code, 'PRINT_TYPE_DISABLED');
+    const invoice = await request(server, {
+      method: 'POST', path: '/print/receipt',
+      body: { ...require('./demo-receipt.json'), requestId: 'invoice-allowed-01' },
+    });
+    assert.equal(invoice.status, 200);
+    const reset = await request(server, {
+      method: 'PATCH', path: '/settings', body: { types: { expense: true } },
+    });
+    assert.equal(reset.body.types.expense, true);
+  });
+
+  it('settings reject unexpected properties and untrusted origins', async () => {
+    const invalid = await request(server, { method: 'PATCH', path: '/settings', body: { engine: 'dangerous' } });
+    assert.equal(invalid.status, 400);
+    assert.equal(invalid.body.code, 'INVALID_PAYLOAD');
+    const origin = await request(server, {
+      method: 'PATCH', path: '/settings',
+      body: { enabled: false },
+      headers: { Origin: 'https://untrusted.invalid' },
+    });
+    assert.equal(origin.status, 403);
+    const current = await request(server, { method: 'GET', path: '/settings' });
+    assert.equal(current.body.enabled, true);
+  });
+
   it('print/test mock mode succeeds', async () => {
     const res = await request(server, {
       method: 'POST',
