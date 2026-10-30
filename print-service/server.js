@@ -9,13 +9,15 @@ const { buildReceiptHTML } = require('./receipt-template');
 const { printPdf, getAdapterMode } = require('./printerAdapter');
 const { buildEscPosFromPng } = require('./escpos');
 const { printRawEscPos } = require('./rawPrinterAdapter');
+const { createSettingsStore, assertAllowed, TYPES } = require('./printSettings');
+const printSettings = createSettingsStore();
 
 const app = express();
 const PORT = Number(process.env.PRINTER_SERVICE_PORT || 7788);
 const PRINTER_NAME = process.env.PRINTER_NAME || 'XP-80';
 // Opt-in per workstation. Keep tested PDF path until XP-80 RAW support is verified.
 const PRINT_ENGINE = process.env.PRINT_ENGINE === 'escpos' ? 'escpos' : 'pdf';
-const AUTO_CUT = process.env.PRINTER_AUTO_CUT === '1';
+// Cutter is configured in persistent local settings; startup env is only the first-run default.
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS ||
   'http://localhost:5500,http://127.0.0.1:5500,https://ops.cutsaloon.com'
 ).split(',').map((s) => s.trim()).filter(Boolean);
@@ -28,14 +30,18 @@ app.use(cors({
     if (ALLOWED_ORIGINS.includes(origin)) return callback(null, true);
     return callback(null, false);
   },
-  methods: ['GET', 'POST', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'X-Request-Id'],
 }));
 
-// Spool jobs are serialized; a receipt is not allowed to interleave with another.
+// Serialized jobs; changes to settings affect pending jobs before they reach Windows.
 let printTail = Promise.resolve();
 const recentRequests = new Map();
-function scheduleOnce(requestId, task) {
+let pendingJobs = 0;
+let activeJobs = 0;
+let lastAcceptedAt = null;
+function scheduleOnce(requestId, task, receiptType = 'other') {
+  assertAllowed(printSettings.get(), receiptType);
   const now = Date.now();
   for (const [key, entry] of recentRequests) {
     if (now - entry.at > 10 * 60 * 1000) recentRequests.delete(key);
@@ -43,7 +49,19 @@ function scheduleOnce(requestId, task) {
   if (recentRequests.has(requestId)) {
     return recentRequests.get(requestId).promise.then((result) => ({ ...result, duplicate: true }));
   }
-  const promise = printTail.then(task);
+  pendingJobs += 1;
+  const promise = printTail.then(async () => {
+    pendingJobs -= 1;
+    assertAllowed(printSettings.get(), receiptType);
+    activeJobs += 1;
+    try {
+      const result = await task();
+      lastAcceptedAt = new Date().toISOString();
+      return result;
+    } finally {
+      activeJobs -= 1;
+    }
+  }, (err) => { pendingJobs -= 1; throw err; });
   printTail = promise.catch(() => {});
   recentRequests.set(requestId, { at: now, promise });
   if (recentRequests.size > 1000) recentRequests.delete(recentRequests.keys().next().value);
@@ -174,7 +192,7 @@ async function printHtmlDocument(html, {
       const element = await page.$('body');
       if (!element) throw new Error('Receipt body not found');
       const png = await element.screenshot({ type: 'png' });
-      const commands = buildEscPosFromPng(Buffer.from(png), { cut: AUTO_CUT });
+      const commands = buildEscPosFromPng(Buffer.from(png), { cut: printSettings.get().autoCut });
       const spool = await printRawEscPos(commands, { printer, requestId });
       return { printer, width, jobId: spool.jobId, status: spool.status };
     } finally {
@@ -254,9 +272,47 @@ app.get('/health', (req, res) => {
     printer: PRINTER_NAME,
     adapter: getAdapterMode(),
     engine: PRINT_ENGINE,
+    printingEnabled: printSettings.get().enabled,
     note: 'ok means agent is running; not physical printer readiness',
     timestamp: new Date().toISOString(),
   });
+});
+
+// This page controls the LOCAL Windows PC, not other branches or the VPS.
+// Reject unsupported browser origins even when CORS would only hide the response.
+app.use('/settings', (req, res, next) => {
+  const origin = req.get('Origin');
+  if (origin && !ALLOWED_ORIGINS.includes(origin)) {
+    return res.status(403).json({ ok: false, code: 'FORBIDDEN_ORIGIN' });
+  }
+  return next();
+});
+
+app.get('/settings', (req, res) => res.json({
+  ok: true,
+  ...printSettings.get(),
+  printer: PRINTER_NAME,
+  engine: PRINT_ENGINE,
+  adapter: getAdapterMode(),
+  pendingJobs,
+  activeJobs,
+  lastAcceptedAt,
+  scope: 'this-computer',
+  physicalPrinterStatus: 'unknown', // RAW accepted !== printed / no Windows hardware probe
+}));
+
+app.patch('/settings', (req, res) => {
+  try {
+    const next = printSettings.update(req.body);
+    console.log('[print-service] local settings updated', next);
+    return res.json({ ok: true, ...next });
+  } catch (err) {
+    if (err instanceof TypeError) {
+      return res.status(400).json({ ok: false, code: 'INVALID_PAYLOAD', message: err.message });
+    }
+    console.error('[print-service] save settings failed', err);
+    return res.status(500).json({ ok: false, code: 'SETTINGS_SAVE_FAILED' });
+  }
 });
 
 // Sales receipt (structured JSON → shared template)
@@ -282,7 +338,7 @@ app.post('/print/receipt', async (req, res) => {
       width: '80mm',
       printer: PRINTER_NAME,
       filePrefix: `receipt_${receiptData.invID}`,
-    }));
+    }), 'invoice');
 
     return res.json({
       ok: true,
@@ -296,7 +352,7 @@ app.post('/print/receipt', async (req, res) => {
     });
   } catch (error) {
     logErrorDetails(requestId, error, { endpoint: '/print/receipt' });
-    return errorResponse(res, 500, {
+    return errorResponse(res, error.stage === 'settings' ? 409 : 500, {
       requestId,
       stage: error.stage || 'command',
       code: error.code || 'PRINT_COMMAND_FAILED',
@@ -317,6 +373,10 @@ app.post('/print/html', async (req, res) => {
   try {
     const html = req.body?.html;
     const width = typeof req.body?.width === 'string' && req.body.width ? req.body.width : '80mm';
+    const receiptType = req.body?.receiptType || 'other';
+    if (!TYPES.includes(receiptType)) {
+      return errorResponse(res, 400, { requestId, stage: 'validation', code: 'INVALID_PAYLOAD', message: 'Unknown receiptType' });
+    }
     const printer = (typeof req.body?.printer === 'string' && req.body.printer && req.body.printer !== 'default')
       ? req.body.printer
       : PRINTER_NAME;
@@ -326,7 +386,7 @@ app.post('/print/html', async (req, res) => {
       width,
       printer,
       filePrefix: 'html',
-    }));
+    }), receiptType);
 
     return res.json({
       ok: true,
@@ -339,7 +399,7 @@ app.post('/print/html', async (req, res) => {
     });
   } catch (error) {
     logErrorDetails(requestId, error, { endpoint: '/print/html' });
-    const status = error.code === 'INVALID_PAYLOAD' ? 400 : 500;
+    const status = error.code === 'INVALID_PAYLOAD' ? 400 : (String(error.code).startsWith('PRINT_') && error.stage === 'settings' ? 409 : 500);
     return errorResponse(res, status, {
       requestId,
       stage: error.stage || 'command',
@@ -374,7 +434,7 @@ app.post('/print/test', async (req, res) => {
       width: '80mm',
       printer: PRINTER_NAME,
       filePrefix: 'test',
-    }));
+    }), 'other');
     return res.json({
       ok: true,
       success: true,
@@ -387,7 +447,7 @@ app.post('/print/test', async (req, res) => {
     });
   } catch (error) {
     logErrorDetails(requestId, error, { endpoint: '/print/test' });
-    return errorResponse(res, 500, {
+    return errorResponse(res, error.stage === 'settings' ? 409 : 500, {
       requestId,
       stage: error.stage || 'command',
       code: error.code || 'PRINT_COMMAND_FAILED',
