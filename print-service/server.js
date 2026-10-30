@@ -7,12 +7,17 @@ const path = require('path');
 const puppeteer = require('puppeteer');
 const { buildReceiptHTML } = require('./receipt-template');
 const { printPdf, getAdapterMode } = require('./printerAdapter');
+const { buildEscPosFromPng } = require('./escpos');
+const { printRawEscPos } = require('./rawPrinterAdapter');
 
 const app = express();
 const PORT = Number(process.env.PRINTER_SERVICE_PORT || 7788);
 const PRINTER_NAME = process.env.PRINTER_NAME || 'XP-80';
+// Opt-in per workstation. Keep tested PDF path until XP-80 RAW support is verified.
+const PRINT_ENGINE = process.env.PRINT_ENGINE === 'escpos' ? 'escpos' : 'pdf';
+const AUTO_CUT = process.env.PRINTER_AUTO_CUT === '1';
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS ||
-  'http://localhost:5500,http://127.0.0.1:5500'
+  'http://localhost:5500,http://127.0.0.1:5500,https://ops.cutsaloon.com'
 ).split(',').map((s) => s.trim()).filter(Boolean);
 
 app.use(express.json({ limit: '10mb' }));
@@ -26,6 +31,44 @@ app.use(cors({
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'X-Request-Id'],
 }));
+
+// Spool jobs are serialized; a receipt is not allowed to interleave with another.
+let printTail = Promise.resolve();
+const recentRequests = new Map();
+function scheduleOnce(requestId, task) {
+  const now = Date.now();
+  for (const [key, entry] of recentRequests) {
+    if (now - entry.at > 10 * 60 * 1000) recentRequests.delete(key);
+  }
+  if (recentRequests.has(requestId)) {
+    return recentRequests.get(requestId).promise.then((result) => ({ ...result, duplicate: true }));
+  }
+  const promise = printTail.then(task);
+  printTail = promise.catch(() => {});
+  recentRequests.set(requestId, { at: now, promise });
+  if (recentRequests.size > 1000) recentRequests.delete(recentRequests.keys().next().value);
+  return promise;
+}
+
+let escposBrowserPromise;
+async function getEscposBrowser() {
+  if (!escposBrowserPromise) {
+    escposBrowserPromise = puppeteer.launch({
+      headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    }).catch((err) => { escposBrowserPromise = null; throw err; });
+  }
+  const browser = await escposBrowserPromise;
+  if (!browser.isConnected()) { escposBrowserPromise = null; return getEscposBrowser(); }
+  return browser;
+}
+
+async function closeEscposBrowser() {
+  const pending = escposBrowserPromise;
+  escposBrowserPromise = null;
+  if (!pending) return;
+  const browser = await pending.catch(() => null);
+  if (browser?.isConnected()) await browser.close();
+}
 
 function createRequestId(incoming) {
   if (typeof incoming === 'string' && incoming.trim()) return incoming.trim().slice(0, 64);
@@ -103,6 +146,42 @@ async function printHtmlDocument(html, {
   });
   console.log(`[print-service][${requestId}] printer resolved`, { printer });
 
+  // Native ESC/POS raster mode: screenshot => monochrome dots => RAW spooler.
+  // No temporary PDF, printer graphics driver pagination, or Chrome print dialog.
+  if (PRINT_ENGINE === 'escpos') {
+    if (!['58mm', '72mm', '80mm'].includes(width)) {
+      const err = new Error('Unsupported receipt width');
+      err.code = 'INVALID_PAYLOAD';
+      err.stage = 'validation';
+      throw err;
+    }
+    const warmBrowser = await getEscposBrowser();
+    const page = await warmBrowser.newPage();
+    try {
+      await page.setViewport({ width: 600, height: 600, deviceScaleFactor: 2 });
+      await page.setContent(html, { waitUntil: 'domcontentloaded' });
+      // 80mm rolls have ~72mm printable width (576 dots). Keep capture within
+      // the printable raster even for generic HTML without receipt-specific CSS.
+      const captureWidth = width === '58mm' ? '58mm' : '72mm';
+      await page.evaluate(async (fixedWidth) => {
+        document.documentElement.style.width = fixedWidth;
+        document.body.style.width = fixedWidth;
+        document.body.style.maxWidth = fixedWidth;
+        document.body.style.boxSizing = 'border-box';
+        await document.fonts.ready;
+        await Promise.all(Array.from(document.images, (image) => image.decode().catch(() => {})));
+      }, captureWidth);
+      const element = await page.$('body');
+      if (!element) throw new Error('Receipt body not found');
+      const png = await element.screenshot({ type: 'png' });
+      const commands = buildEscPosFromPng(Buffer.from(png), { cut: AUTO_CUT });
+      const spool = await printRawEscPos(commands, { printer, requestId });
+      return { printer, width, jobId: spool.jobId, status: spool.status };
+    } finally {
+      await page.close().catch(() => {});
+    }
+  }
+
   let browser;
   try {
     browser = await puppeteer.launch({
@@ -174,6 +253,8 @@ app.get('/health', (req, res) => {
     version: '1.1.0',
     printer: PRINTER_NAME,
     adapter: getAdapterMode(),
+    engine: PRINT_ENGINE,
+    note: 'ok means agent is running; not physical printer readiness',
     timestamp: new Date().toISOString(),
   });
 });
@@ -196,12 +277,12 @@ app.post('/print/receipt', async (req, res) => {
 
     const receiptData = req.body;
     const html = buildReceiptHTML(receiptData);
-    const result = await printHtmlDocument(html, {
+    const result = await scheduleOnce(requestId, () => printHtmlDocument(html, {
       requestId,
       width: '80mm',
       printer: PRINTER_NAME,
       filePrefix: `receipt_${receiptData.invID}`,
-    });
+    }));
 
     return res.json({
       ok: true,
@@ -210,6 +291,8 @@ app.post('/print/receipt', async (req, res) => {
       invoiceId: receiptData.invID,
       printer: result.printer,
       requestId,
+      status: result.status || 'accepted',
+      duplicate: Boolean(result.duplicate),
     });
   } catch (error) {
     logErrorDetails(requestId, error, { endpoint: '/print/receipt' });
@@ -238,12 +321,12 @@ app.post('/print/html', async (req, res) => {
       ? req.body.printer
       : PRINTER_NAME;
 
-    const result = await printHtmlDocument(html, {
+    const result = await scheduleOnce(requestId, () => printHtmlDocument(html, {
       requestId,
       width,
       printer,
       filePrefix: 'html',
-    });
+    }));
 
     return res.json({
       ok: true,
@@ -251,6 +334,8 @@ app.post('/print/html', async (req, res) => {
       message: 'HTML printed successfully',
       printer: result.printer,
       requestId,
+      status: result.status || 'accepted',
+      duplicate: Boolean(result.duplicate),
     });
   } catch (error) {
     logErrorDetails(requestId, error, { endpoint: '/print/html' });
@@ -270,21 +355,26 @@ app.post('/print/test', async (req, res) => {
   const requestId = createRequestId(req.body?.requestId || req.get('X-Request-Id'));
   console.log(`[print-service][${requestId}] request received`, { endpoint: '/print/test' });
 
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/><style>
-    body{font-family:sans-serif;font-size:14px;padding:8px;width:72mm}
+  const html = `<!DOCTYPE html><html lang="ar"><head><meta charset="utf-8"/><style>
+    *{box-sizing:border-box}
+    body{margin:0;padding:3mm;width:72mm;font-family:Tahoma,Arial,sans-serif;font-size:19px;line-height:1.45;color:#000;background:#fff}
+    .brand{font-size:24px;font-weight:900;text-align:center}
+    .arabic{font-size:19px;font-weight:700;text-align:center;direction:rtl;margin:2mm 0}
+    .diagnostic{font-size:12px;line-height:1.25;overflow-wrap:anywhere;margin-top:2mm}
   </style></head><body>
-    <strong>CUT SALON TEST PRINT</strong><br/>
-    ${new Date().toISOString()}<br/>
-    requestId: ${requestId}
+    <div class="brand">CUT SALON</div>
+    <div class="arabic">اختبار الطباعة - كات صالون</div>
+    <div>XP-80 TEXT TEST 123</div>
+    <div class="diagnostic">requestId: ${requestId}<br/>${new Date().toISOString()}</div>
   </body></html>`;
 
   try {
-    const result = await printHtmlDocument(html, {
+    const result = await scheduleOnce(requestId, () => printHtmlDocument(html, {
       requestId,
       width: '80mm',
       printer: PRINTER_NAME,
       filePrefix: 'test',
-    });
+    }));
     return res.json({
       ok: true,
       success: true,
@@ -292,6 +382,8 @@ app.post('/print/test', async (req, res) => {
       printer: result.printer,
       requestId,
       mode: req.body?.mode || 'diagnostic',
+      status: result.status || 'accepted',
+      duplicate: Boolean(result.duplicate),
     });
   } catch (error) {
     logErrorDetails(requestId, error, { endpoint: '/print/test' });
@@ -308,7 +400,7 @@ function startServer(listenPort = PORT) {
   return app.listen(listenPort, '127.0.0.1', () => {
     console.log(`🖨️  POS Print Service running on http://127.0.0.1:${listenPort}`);
     console.log(`📋 Health: http://127.0.0.1:${listenPort}/health`);
-    console.log(`🖨️  Printer: ${PRINTER_NAME} (adapter=${getAdapterMode()})`);
+    console.log(`🖨️  Printer: ${PRINTER_NAME} (engine=${PRINT_ENGINE}, adapter=${getAdapterMode()})`);
   });
 }
 
@@ -328,4 +420,5 @@ module.exports = {
   printHtmlDocument,
   createRequestId,
   PRINTER_NAME,
+  closeEscposBrowser,
 };

@@ -1,4 +1,98 @@
-# POS Print Service
+# CUT Salon Local Print Agent
+
+## Deployment status
+
+The POS invoice, expense and deduction buttons use the **local agent first** and show a **manual** Chrome fallback when the agent is unreachable. The agent has two engines:
+
+- `PRINT_ENGINE=pdf` (default): existing Puppeteer → PDF → Windows printer route. Keep this until each branch printer is verified.
+- `PRINT_ENGINE=escpos` (opt-in): Chromium renders the existing Arabic receipt to a PNG, the agent converts it to **bounded monochrome ESC/POS raster commands**, then sends a RAW job through the Windows spooler. No PDF, no Windows graphical pagination, no browser print preview. Rendering still uses Chromium to preserve RTL, branding and logos.
+
+**A RAW job is not compatible with every Windows printer driver. Verify that this particular XP-80 is ESC/POS-capable and that its driver accepts datatype RAW before enabling.** The `/health` response proves only that the local process is alive; a successful print response proves that Windows accepted the job, not that the physical receipt came out.
+
+### Safe first-time test (Windows, on the cashier PC)
+
+1. Clear any stuck XP-80 jobs in Windows, verify the printer is Online and the thermal self-test prints a short receipt. Disconnect the printer or keep it off until the queue is cleared if it previously fed blank paper continuously.
+2. Install Node.js 22 and run `npm ci` **inside `print-service`**. Check `Get-Printer | Select Name` and confirm the exact printer name.
+3. In a **PowerShell** window in `print-service`, configure only this session:
+
+   ```powershell
+   $env:PRINTER_NAME = 'XP-80'
+   $env:PRINT_ENGINE = 'escpos'
+   $env:PRINTER_AUTO_CUT = '0'
+   $env:ALLOWED_ORIGINS = 'https://ops.cutsaloon.com,http://localhost:5500,http://127.0.0.1:5500'
+   npm start
+   ```
+
+4. Open `http://127.0.0.1:7788/health` on **the same PC**, confirm `"engine":"escpos"`. Keep a finger on the power switch for the first controlled test.
+5. **One short test only** (do not repeatedly press Print):
+
+   ```powershell
+   Invoke-RestMethod -Uri 'http://127.0.0.1:7788/print/test' -Method Post -ContentType 'application/json' -Body '{"requestId":"first-hardware-test-1"}'
+   ```
+
+6. Confirm: a single short receipt, readable black text and Arabic, correct direction, no blank feed, and correct paper cut (if supported; it is disabled by default). Then test an actual invoice, expense, and deduction, plus a two-job back-to-back test. If RAW prints blank paper or code symbols, **turn off the printer, cancel all jobs**, set `PRINT_ENGINE=pdf` and use the documented browser fallback until the driver/firmware is fixed.
+7. Measure first-print and warm-print latency using the browser developer console timestamps and the service logs. Do not claim a speed improvement until the hardware measurements are captured.
+
+The local agent must run **on each branch's cashier Windows PC**, not on the VPS. `127.0.0.1` always means the browser's own machine. For auto-start, install the app as an appropriately permissioned Windows service or create a Windows Task Scheduler task to run `npm start` in the service directory at user sign-in (set the working directory and printer access correctly). Do not expose port 7788 beyond loopback.
+
+### Readable text / complete demo invoice (Windows CMD)
+
+The thermal layouts now use larger labels, service names, prices and totals. The short diagnostic now prints a **large** English and Arabic test line.
+
+After stopping the previous print agent with Ctrl+C and clearing any stalled XP-80 queue:
+
+```bat
+cd /d C:\CUT-Print-Agent
+git pull --ff-only
+cd print-service
+set PRINT_ENGINE=escpos
+set PRINTER_NAME=XP-80
+set PRINTER_AUTO_CUT=0
+npm start
+```
+
+Keep this terminal open. On the **same computer**, in a second CMD window, send **one** demo invoice, *not* a real sale:
+
+```bat
+cd /d C:\CUT-Print-Agent\print-service
+curl.exe -X POST http://127.0.0.1:7788/print/receipt -H "Content-Type: application/json; charset=utf-8" --data-binary "@demo-receipt.json"
+```
+
+The demo has invoice ID **0** and "TEST" in the customer/line, and does not save any invoice in the Cashier database. A success response means Windows accepted the spool job; verify the **physical paper** for Arabic direction, readable text, width, no unnecessary blank feed and no clipping. The request ID in the fixture is intentionally fixed, so repeating the same command within 10 minutes will **not reprint** it unless you deliberately change that ID. Do not use the test payload for a live invoice.
+
+### Permanent Windows auto-start (after a successful physical test)
+
+This branch includes a **per-user Windows Task Scheduler installer** so the cashier PC runs the service silently at Windows sign-in. The installed task is called `CUT Salon Print Agent`, uses **ESC/POS + auto-cut**, listens only on `127.0.0.1:7788`, and logs to `print-service/logs/print-agent.log`. No VPS process can replace this local service.
+
+1. In the CMD window running `npm start`, press **Ctrl+C** to stop the manually started service. Do **not** kill all `node.exe` instances.
+2. Open PowerShell as the **same Windows account used for cashier sign-in** and run:
+
+   ```powershell
+   cd C:\CUT-Print-Agent
+   git pull --ff-only
+   cd .\print-service
+   npm ci
+   powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\windows\install-autostart.ps1"
+   ```
+
+3. If it reports port 7788 still occupied, stop the existing service and manually start the registered task: `Start-ScheduledTask -TaskName 'CUT Salon Print Agent'`.
+4. Verify `http://127.0.0.1:7788/health` has `"engine":"escpos"`, `"printer":"XP-80"`. A healthy service is **not proof of printer hardware readiness**.
+5. Verify `Get-ScheduledTask -TaskName 'CUT Salon Print Agent'` shows Running. Log off and sign in to test autostart, then print one short physical receipt.
+6. If it fails, inspect `Get-Content .\logs\print-agent.log -Tail 50` and Windows printer queue. Uninstall only our task with `powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\windows\uninstall-autostart.ps1"`.
+
+The installer refuses to run if the `XP-80` Windows printer or `node_modules` is missing, and it never silently terminates another process already using port 7788. A `Ctrl+C` on the old foreground service is necessary before starting the task.
+
+### Troubleshooting and safeguards
+
+- `ERR_CONNECTION_REFUSED`: local agent isn't running or port 7788 is blocked.
+- `CORS` / local network permission: check `ALLOWED_ORIGINS` contains the **exact** POS origin including scheme, and grant the trusted Cashier site Chrome's local network/device permission when prompted.
+- `SPOOLER_ERROR`: check Windows printer status/queue, installed printer name, and local PowerShell stdout/stderr. PDF and RAW modes need different driver support.
+- Requests are serialized and request IDs are de-duplicated for 10 minutes while the agent runs; retries with the same ID do **not** queue a second paper receipt. Explicitly create a new ID for an intentional reprint.
+- Receipts taller than 4800 dots or wider than 576 dots are **rejected before sending data**. No unbounded feed; partial cut is disabled unless `PRINTER_AUTO_CUT=1`.
+- Browser fallback is **manual**. Never automatically retry on another printing channel after a timeout because the spooler may already have accepted the first job.
+- If using an environment file, load it explicitly with your service manager; this project currently reads `process.env` and does not automatically load `.env`.
+
+## Previous setup reference
 
 A local Node.js print service for the POS system that prints receipts directly to thermal printer without using Chrome print preview.
 

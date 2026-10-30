@@ -11,7 +11,7 @@ const http = require('node:http');
 
 process.env.PRINT_ADAPTER = 'mock';
 
-const { app, validateReceiptData, createRequestId } = require('./server');
+const { app, validateReceiptData, createRequestId, closeEscposBrowser } = require('./server');
 
 function request(server, { method, path, body, headers = {} }) {
   return new Promise((resolve, reject) => {
@@ -53,6 +53,7 @@ describe('print-service', () => {
 
   after(async () => {
     await new Promise((resolve) => server.close(resolve));
+    await closeEscposBrowser();
   });
 
   it('health endpoint returns ok', async () => {
@@ -105,6 +106,37 @@ describe('print-service', () => {
     assert.equal(res.body.requestId, 'html-ok-1');
     assert.ok(res.body.printer);
     assert.equal(res.body.stack, undefined);
+  });
+
+  it('coalesces duplicate receipt requests to a single queued job', async () => {
+    const body = {
+      requestId: 'duplicate-expense-42',
+      html: '<html><body><strong>One receipt only</strong></body></html>',
+      width: '58mm',
+    };
+    const [a, b] = await Promise.all([
+      request(server, { method: 'POST', path: '/print/html', body }),
+      request(server, { method: 'POST', path: '/print/html', body }),
+    ]);
+    assert.equal(a.status, 200);
+    assert.equal(b.status, 200);
+    assert.equal(a.body.duplicate, false);
+    assert.equal(b.body.duplicate, true);
+    assert.equal(a.body.requestId, b.body.requestId);
+  });
+
+  it('demo Arabic invoice is accepted without touching physical hardware', async () => {
+    const fixture = require('./demo-receipt.json');
+    const res = await request(server, {
+      method: 'POST',
+      path: '/print/receipt',
+      body: fixture,
+    });
+    assert.equal(res.status, 200);
+    assert.equal(res.body.ok, true);
+    assert.equal(res.body.requestId, fixture.requestId);
+    assert.equal(res.body.invoiceId, 0);
+    assert.equal(res.body.status, 'accepted');
   });
 
   it('print/test mock mode succeeds', async () => {
