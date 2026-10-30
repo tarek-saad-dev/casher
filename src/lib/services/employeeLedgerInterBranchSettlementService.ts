@@ -4,7 +4,11 @@ import { getPool, sql, allocateInvID } from '@/lib/db';
 import { isEmployeeLedgerDualWriteEnabled } from '@/lib/employeeLedgerConfig';
 import { getCairoInvTimeDotStr } from '@/lib/businessDate';
 import { roundMoney } from '@/lib/reportMonthUtils';
-import { getEmployeeBranchBalance } from '@/lib/services/employeeLedgerService';
+import {
+  getEmployeeBranchBalance,
+  getEmployeeMonthlyBranchBalance,
+  validateLedgerMonth,
+} from '@/lib/services/employeeLedgerService';
 import { payrollMonthFromWorkDate } from '@/lib/services/employeeLedgerDualWrite';
 import {
   assertValidSettlementAmount,
@@ -99,10 +103,20 @@ async function ensureSettlementCashCategories(
   return { expenseExpInId, incomeExpInId };
 }
 
+/**
+ * Branch nets for settlement MUST match employee-ledger month scope
+ * (PayrollMonth / EntryDate month), not lifetime all-time balances.
+ */
 export async function loadEmployeeBranchBalanceSnapshots(
   empId: number,
+  payrollMonth: string,
   transaction?: LedgerTransaction,
 ): Promise<BranchBalanceSnapshot[]> {
+  const monthError = validateLedgerMonth(payrollMonth);
+  if (monthError) {
+    throw new EmployeeLedgerInterBranchSettlementError(monthError);
+  }
+
   const branches = await listActiveBranches();
   const preferred = branches.filter(
     (b) => b.branchCode === 'GLEEM' || b.branchCode === 'CAMP_CAESAR',
@@ -114,7 +128,12 @@ export async function loadEmployeeBranchBalanceSnapshots(
 
   const out: BranchBalanceSnapshot[] = [];
   for (const b of list) {
-    const balance = await getEmployeeBranchBalance(empId, b.branchId, transaction);
+    const balance = await getEmployeeMonthlyBranchBalance(
+      empId,
+      b.branchId,
+      payrollMonth,
+      transaction,
+    );
     out.push({
       branchId: b.branchId,
       branchCode: b.branchCode,
@@ -127,11 +146,13 @@ export async function loadEmployeeBranchBalanceSnapshots(
 
 export async function previewInterBranchSettlement(params: {
   empId: number;
+  payrollMonth: string;
   sourceBranchId?: number | null;
   destBranchId?: number | null;
 }): Promise<{
   empId: number;
   empName: string;
+  payrollMonth: string;
   branches: BranchBalanceSnapshot[];
   pairs: SettlementPair[];
   selected: null | {
@@ -144,6 +165,10 @@ export async function previewInterBranchSettlement(params: {
 }> {
   if (!params.empId || params.empId <= 0) {
     throw new EmployeeLedgerInterBranchSettlementError('يجب اختيار الموظف');
+  }
+  const monthError = validateLedgerMonth(params.payrollMonth);
+  if (monthError) {
+    throw new EmployeeLedgerInterBranchSettlementError(monthError);
   }
 
   const db = await getPool();
@@ -158,7 +183,10 @@ export async function previewInterBranchSettlement(params: {
     throw new EmployeeLedgerInterBranchSettlementError('الموظف غير موجود أو غير نشط');
   }
 
-  const branches = await loadEmployeeBranchBalanceSnapshots(params.empId);
+  const branches = await loadEmployeeBranchBalanceSnapshots(
+    params.empId,
+    params.payrollMonth,
+  );
   const pairs = findSettleablePairs(branches);
 
   let selected: null | {
@@ -205,6 +233,7 @@ export async function previewInterBranchSettlement(params: {
   return {
     empId: params.empId,
     empName: String(emp.recordset[0].EmpName),
+    payrollMonth: params.payrollMonth,
     branches,
     pairs,
     selected,
@@ -217,6 +246,8 @@ export async function executeInterBranchSettlement(params: {
   destBranchId: number;
   amount: number;
   settlementDate: string;
+  /** Same payroll month as employee-ledger UI (YYYY-MM). */
+  payrollMonth: string;
   settlementType: SettlementType;
   paymentMethodId?: number | null;
   sourceBusinessDayId: number;
@@ -229,6 +260,7 @@ export async function executeInterBranchSettlement(params: {
   settlementId: number;
   amount: number;
   settlementType: SettlementType;
+  payrollMonth: string;
   sourceBranchId: number;
   destBranchId: number;
   sourceCashMoveId: number | null;
@@ -248,6 +280,10 @@ export async function executeInterBranchSettlement(params: {
   }
   if (!DATE_RE.test(params.settlementDate)) {
     throw new EmployeeLedgerInterBranchSettlementError('تاريخ التسوية غير صالح');
+  }
+  const monthError = validateLedgerMonth(params.payrollMonth);
+  if (monthError) {
+    throw new EmployeeLedgerInterBranchSettlementError(monthError);
   }
   if (params.sourceBranchId === params.destBranchId) {
     throw new EmployeeLedgerInterBranchSettlementError('لا يمكن التسوية مع نفس الفرع');
@@ -294,13 +330,22 @@ export async function executeInterBranchSettlement(params: {
         }
       | undefined;
     if (row && !row.IsVoided) {
-      const sourceAfter = await getEmployeeBranchBalance(params.empId, row.SourceBranchID);
-      const destAfter = await getEmployeeBranchBalance(params.empId, row.DestBranchID);
+      const sourceAfter = await getEmployeeMonthlyBranchBalance(
+        params.empId,
+        row.SourceBranchID,
+        params.payrollMonth,
+      );
+      const destAfter = await getEmployeeMonthlyBranchBalance(
+        params.empId,
+        row.DestBranchID,
+        params.payrollMonth,
+      );
       return {
         success: true,
         settlementId: Number(row.SettlementID),
         amount: roundMoney(Number(row.Amount)),
         settlementType: row.SettlementType,
+        payrollMonth: params.payrollMonth,
         sourceBranchId: Number(row.SourceBranchID),
         destBranchId: Number(row.DestBranchID),
         sourceCashMoveId: row.SourceCashMoveID != null ? Number(row.SourceCashMoveID) : null,
@@ -320,14 +365,16 @@ export async function executeInterBranchSettlement(params: {
   await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
 
   try {
-    const sourceBal = await getEmployeeBranchBalance(
+    const sourceBal = await getEmployeeMonthlyBranchBalance(
       params.empId,
       params.sourceBranchId,
+      params.payrollMonth,
       transaction,
     );
-    const destBal = await getEmployeeBranchBalance(
+    const destBal = await getEmployeeMonthlyBranchBalance(
       params.empId,
       params.destBranchId,
+      params.payrollMonth,
       transaction,
     );
     const maxAmount = computeMaxSettlementAmount(sourceBal, destBal);
@@ -450,7 +497,7 @@ export async function executeInterBranchSettlement(params: {
       destCashMoveId = Number(inIns.recordset[0].ID);
     }
 
-    const payrollMonth = payrollMonthFromWorkDate(params.settlementDate);
+    const payrollMonth = params.payrollMonth;
 
     const sourceLedger = await new sql.Request(transaction)
       .input('BranchID', sql.Int, params.sourceBranchId)
@@ -537,15 +584,17 @@ export async function executeInterBranchSettlement(params: {
         WHERE SettlementID = @id
       `);
 
-    // Post-condition: total unchanged
-    const sourceAfter = await getEmployeeBranchBalance(
+    // Post-condition: month total across the two branches unchanged
+    const sourceAfter = await getEmployeeMonthlyBranchBalance(
       params.empId,
       params.sourceBranchId,
+      params.payrollMonth,
       transaction,
     );
-    const destAfter = await getEmployeeBranchBalance(
+    const destAfter = await getEmployeeMonthlyBranchBalance(
       params.empId,
       params.destBranchId,
+      params.payrollMonth,
       transaction,
     );
     if (roundMoney(sourceAfter + destAfter) !== projection.totalBefore) {
@@ -561,6 +610,7 @@ export async function executeInterBranchSettlement(params: {
       settlementId,
       amount,
       settlementType: params.settlementType,
+      payrollMonth: params.payrollMonth,
       sourceBranchId: params.sourceBranchId,
       destBranchId: params.destBranchId,
       sourceCashMoveId,
@@ -611,13 +661,22 @@ export async function executeInterBranchSettlement(params: {
         `);
       const row = existing.recordset[0];
       if (row && !row.IsVoided) {
-        const sourceAfter = await getEmployeeBranchBalance(params.empId, Number(row.SourceBranchID));
-        const destAfter = await getEmployeeBranchBalance(params.empId, Number(row.DestBranchID));
+        const sourceAfter = await getEmployeeMonthlyBranchBalance(
+          params.empId,
+          Number(row.SourceBranchID),
+          params.payrollMonth,
+        );
+        const destAfter = await getEmployeeMonthlyBranchBalance(
+          params.empId,
+          Number(row.DestBranchID),
+          params.payrollMonth,
+        );
         return {
           success: true,
           settlementId: Number(row.SettlementID),
           amount: roundMoney(Number(row.Amount)),
           settlementType: row.SettlementType as SettlementType,
+          payrollMonth: params.payrollMonth,
           sourceBranchId: Number(row.SourceBranchID),
           destBranchId: Number(row.DestBranchID),
           sourceCashMoveId: row.SourceCashMoveID != null ? Number(row.SourceCashMoveID) : null,
@@ -756,6 +815,20 @@ export async function voidInterBranchSettlement(params: {
   const originalSourceId = Number(row.SourceBranchID);
   const originalDestId = Number(row.DestBranchID);
   const idemKey = `void:${params.settlementId}`;
+
+  const monthFromLedger = await db
+    .request()
+    .input('refType', sql.NVarChar(80), EMP_LEDGER_REF_TYPE_BRANCH_SETTLEMENT)
+    .input('refId', sql.Int, params.settlementId)
+    .query(`
+      SELECT TOP 1 PayrollMonth
+      FROM dbo.TblEmpLedgerEntry
+      WHERE RefType = @refType AND RefID = @refId AND IsVoided = 0
+      ORDER BY ID
+    `);
+  const payrollMonth =
+    String(monthFromLedger.recordset[0]?.PayrollMonth ?? '').trim() ||
+    payrollMonthFromWorkDate(settlementDate);
 
   const existingRev = await db
     .request()
@@ -902,9 +975,7 @@ export async function voidInterBranchSettlement(params: {
       revDestCashMoveId = Number(inIns.recordset[0].ID);
     }
 
-    const payrollMonth = payrollMonthFromWorkDate(settlementDate);
-
-    // Reverse ledger: credit original source, debit original dest
+    // Reverse ledger: credit original source, debit original dest (same payroll month)
     const creditOriginalSource = await new sql.Request(transaction)
       .input('BranchID', sql.Int, originalSourceId)
       .input('EmpID', sql.Int, empId)

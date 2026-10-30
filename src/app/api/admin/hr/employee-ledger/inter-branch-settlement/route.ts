@@ -38,8 +38,8 @@ function parsePositiveInt(raw: unknown, label: string): number {
 }
 
 /**
- * GET ?empId=&sourceBranchId=&destBranchId=
- * Preview settleable pairs / selected pair.
+ * GET ?empId=&month=YYYY-MM&sourceBranchId=&destBranchId=
+ * Preview settleable pairs / selected pair (month-scoped, same as employee-ledger).
  * GET ?empId=&list=1 — settlement history
  */
 export async function GET(request: NextRequest) {
@@ -58,10 +58,16 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ empId, settlements: rows });
     }
 
+    const payrollMonth = String(searchParams.get('month') ?? '').trim();
+    if (!payrollMonth) {
+      throw new EmployeeLedgerInterBranchSettlementError('شهر التسوية مطلوب');
+    }
+
     const sourceRaw = searchParams.get('sourceBranchId');
     const destRaw = searchParams.get('destBranchId');
     const preview = await previewInterBranchSettlement({
       empId,
+      payrollMonth,
       sourceBranchId: sourceRaw ? parsePositiveInt(sourceRaw, 'فرع المصدر') : null,
       destBranchId: destRaw ? parsePositiveInt(destRaw, 'فرع الوجهة') : null,
     });
@@ -97,6 +103,10 @@ export async function POST(request: NextRequest) {
     const destBranchId = parsePositiveInt(body.destBranchId, 'فرع الوجهة');
     const amount = Number(body.amount);
     const settlementDate = String(body.date ?? body.settlementDate ?? '').trim();
+    const payrollMonth = String(body.month ?? body.payrollMonth ?? '').trim();
+    if (!payrollMonth) {
+      throw new EmployeeLedgerInterBranchSettlementError('شهر التسوية مطلوب');
+    }
     const settlementType = String(body.settlementType ?? 'ledger_only') as SettlementType;
     if (settlementType !== 'cash_transfer' && settlementType !== 'ledger_only') {
       throw new EmployeeLedgerInterBranchSettlementError('نوع التسوية غير صالح');
@@ -121,6 +131,7 @@ export async function POST(request: NextRequest) {
       destBranchId,
       amount,
       settlementDate,
+      payrollMonth,
       settlementType,
       paymentMethodId:
         body.paymentMethodId != null ? Number(body.paymentMethodId) : null,

@@ -876,6 +876,7 @@ export default function EmployeeLedgerPanel() {
           setSettlementTarget(null);
         }}
         employee={settlementTarget}
+        payrollMonth={month}
         dualWriteEnabled={dualWriteEnabled}
         onSuccess={handleSettlementSuccess}
       />
