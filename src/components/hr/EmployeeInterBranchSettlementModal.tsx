@@ -48,6 +48,8 @@ interface Props {
   open: boolean;
   onClose: () => void;
   employee: InterBranchSettlementTarget | null;
+  /** Same YYYY-MM as employee-ledger panel (authoritative settlement period). */
+  payrollMonth: string;
   dualWriteEnabled: boolean;
   onSuccess: (message: string) => void;
 }
@@ -66,6 +68,7 @@ export default function EmployeeInterBranchSettlementModal({
   open,
   onClose,
   employee,
+  payrollMonth,
   dualWriteEnabled,
   onSuccess,
 }: Props) {
@@ -108,7 +111,7 @@ export default function EmployeeInterBranchSettlementModal({
     setLoading(true);
     setError('');
     try {
-      const params = new URLSearchParams({ empId: String(empId) });
+      const params = new URLSearchParams({ empId: String(empId), month: payrollMonth });
       if (src) params.set('sourceBranchId', String(src));
       if (dst) params.set('destBranchId', String(dst));
       const res = await fetch(`/api/admin/hr/employee-ledger/inter-branch-settlement?${params}`);
@@ -149,10 +152,10 @@ export default function EmployeeInterBranchSettlementModal({
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [payrollMonth]);
 
   useEffect(() => {
-    if (!open || !employee) return;
+    if (!open || !employee || !payrollMonth) return;
     reset();
     void loadPreview(employee.empId);
     void (async () => {
@@ -164,12 +167,12 @@ export default function EmployeeInterBranchSettlementModal({
         /* optional */
       }
     })();
-  }, [open, employee, reset, loadPreview]);
+  }, [open, employee, payrollMonth, reset, loadPreview]);
 
   useEffect(() => {
-    if (!open || !employee || !sourceBranchId || !destBranchId) return;
+    if (!open || !employee || !payrollMonth || !sourceBranchId || !destBranchId) return;
     void loadPreview(employee.empId, Number(sourceBranchId), Number(destBranchId));
-  }, [sourceBranchId, destBranchId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sourceBranchId, destBranchId, payrollMonth]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const parsedAmount = amount.trim() === '' ? null : Number(amount);
   const amountValid =
@@ -205,10 +208,11 @@ export default function EmployeeInterBranchSettlementModal({
           destBranchId: Number(destBranchId),
           amount: parsedAmount,
           date: settlementDate,
+          month: payrollMonth,
           settlementType,
           paymentMethodId: settlementType === 'cash_transfer' ? Number(paymentMethodId) : undefined,
           notes: notes.trim() || undefined,
-          idempotencyKey: `${idemBase}:${employee.empId}:${sourceBranchId}:${destBranchId}:${parsedAmount}:${settlementDate}:${Date.now()}`,
+          idempotencyKey: `${idemBase}:${employee.empId}:${sourceBranchId}:${destBranchId}:${parsedAmount}:${payrollMonth}:${settlementDate}:${Date.now()}`,
         }),
       });
       const data = await res.json();
@@ -246,9 +250,12 @@ export default function EmployeeInterBranchSettlementModal({
 
         {employee ? (
           <div className="space-y-4">
-            <p className="text-sm text-foreground font-medium">{employee.empName}</p>
+            <p className="text-sm text-foreground font-medium">
+              {employee.empName}
+              <span className="text-muted-foreground font-normal"> · شهر {payrollMonth}</span>
+            </p>
             <p className="text-xs text-muted-foreground">
-              نقل جزء من المستحقات من فرع دائن إلى فرع مدين دون تغيير الإجمالي. التحويل النقدي اختياري فقط إذا انتقلت النقدية فعليًا.
+              الأرصدة حسب نفس شهر دفتر الموظف. نقل جزء من مستحقات الفرع الدائن لتسديد مديونية الفرع المدين دون تغيير الإجمالي. التحويل النقدي فقط إذا انتقلت النقدية فعليًا.
             </p>
 
             {loading ? (

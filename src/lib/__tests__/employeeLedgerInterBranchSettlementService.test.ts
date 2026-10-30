@@ -83,6 +83,10 @@ vi.mock('@/lib/branch/repository', () => ({
 
 vi.mock('@/lib/services/employeeLedgerService', () => ({
   getEmployeeBranchBalance: vi.fn(),
+  getEmployeeMonthlyBranchBalance: vi.fn(),
+  validateLedgerMonth: vi.fn((m: string) =>
+    /^\d{4}-\d{2}$/.test(m) ? null : 'month غير صالح',
+  ),
 }));
 
 afterEach(() => {
@@ -103,8 +107,10 @@ describe('executeInterBranchSettlement', () => {
   });
 
   it('rolls back when amount exceeds available settlement', async () => {
-    const { getEmployeeBranchBalance } = await import('@/lib/services/employeeLedgerService');
-    vi.mocked(getEmployeeBranchBalance)
+    const { getEmployeeMonthlyBranchBalance } = await import(
+      '@/lib/services/employeeLedgerService'
+    );
+    vi.mocked(getEmployeeMonthlyBranchBalance)
       .mockResolvedValueOnce(100) // source
       .mockResolvedValueOnce(-50); // dest → max 50
 
@@ -118,6 +124,7 @@ describe('executeInterBranchSettlement', () => {
         destBranchId: 2,
         amount: 80,
         settlementDate: '2026-10-15',
+        payrollMonth: '2026-10',
         settlementType: 'ledger_only',
         sourceBusinessDayId: 101,
         destBusinessDayId: 202,
@@ -130,8 +137,10 @@ describe('executeInterBranchSettlement', () => {
   });
 
   it('commits ledger_only settlement and keeps company total unchanged', async () => {
-    const { getEmployeeBranchBalance } = await import('@/lib/services/employeeLedgerService');
-    vi.mocked(getEmployeeBranchBalance)
+    const { getEmployeeMonthlyBranchBalance } = await import(
+      '@/lib/services/employeeLedgerService'
+    );
+    vi.mocked(getEmployeeMonthlyBranchBalance)
       .mockResolvedValueOnce(500) // pre source
       .mockResolvedValueOnce(-200) // pre dest
       .mockResolvedValueOnce(300) // post source
@@ -158,6 +167,7 @@ describe('executeInterBranchSettlement', () => {
       destBranchId: 2,
       amount: 200,
       settlementDate: '2026-10-15',
+      payrollMonth: '2026-10',
       settlementType: 'ledger_only',
       sourceBusinessDayId: 101,
       destBusinessDayId: 202,
@@ -194,8 +204,12 @@ describe('executeInterBranchSettlement', () => {
       },
     ];
 
-    const { getEmployeeBranchBalance } = await import('@/lib/services/employeeLedgerService');
-    vi.mocked(getEmployeeBranchBalance).mockResolvedValueOnce(450).mockResolvedValueOnce(-150);
+    const { getEmployeeMonthlyBranchBalance } = await import(
+      '@/lib/services/employeeLedgerService'
+    );
+    vi.mocked(getEmployeeMonthlyBranchBalance)
+      .mockResolvedValueOnce(450)
+      .mockResolvedValueOnce(-150);
 
     const { executeInterBranchSettlement } = await import(
       '@/lib/services/employeeLedgerInterBranchSettlementService'
@@ -207,6 +221,7 @@ describe('executeInterBranchSettlement', () => {
       destBranchId: 2,
       amount: 50,
       settlementDate: '2026-10-15',
+      payrollMonth: '2026-10',
       settlementType: 'ledger_only',
       sourceBusinessDayId: 101,
       destBusinessDayId: 202,
@@ -220,8 +235,9 @@ describe('executeInterBranchSettlement', () => {
   });
 
   it('rejects same-branch settlement', async () => {
-    const { executeInterBranchSettlement, EmployeeLedgerInterBranchSettlementError } =
-      await import('@/lib/services/employeeLedgerInterBranchSettlementService');
+    const { executeInterBranchSettlement } = await import(
+      '@/lib/services/employeeLedgerInterBranchSettlementService'
+    );
 
     await expect(
       executeInterBranchSettlement({
@@ -230,11 +246,29 @@ describe('executeInterBranchSettlement', () => {
         destBranchId: 1,
         amount: 10,
         settlementDate: '2026-10-15',
+        payrollMonth: '2026-10',
         settlementType: 'ledger_only',
         sourceBusinessDayId: 101,
         destBusinessDayId: 101,
         createdByUserId: 1,
       }),
     ).rejects.toThrow(/نفس الفرع/);
+  });
+
+  it('Huda-style: month max is min(gleemPos, abs(campNeg)) not lifetime leak', async () => {
+    const { computeMaxSettlementAmount, projectBalancesAfterSettlement } = await import(
+      '@/lib/hr/interBranchSettlementMath'
+    );
+    // October: Camp advances 1285 only; Gleem positive after wages/funding
+    expect(computeMaxSettlementAmount(1563.68, -1285)).toBe(1285);
+    const p = projectBalancesAfterSettlement({
+      sourceBalance: 1563.68,
+      destBalance: -1285,
+      amount: 1285,
+    });
+    expect(p.destAfter).toBe(0);
+    expect(p.totalBefore).toBe(p.totalAfter);
+    // Lifetime-style 1876.17 must not be used when month debt is only 1285
+    expect(computeMaxSettlementAmount(1876.17, -1285)).toBe(1285);
   });
 });
