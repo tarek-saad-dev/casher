@@ -107,6 +107,23 @@ describe('print-service', () => {
     assert.equal(res.body.stack, undefined);
   });
 
+  it('coalesces duplicate receipt requests to a single queued job', async () => {
+    const body = {
+      requestId: 'duplicate-expense-42',
+      html: '<html><body><strong>One receipt only</strong></body></html>',
+      width: '58mm',
+    };
+    const [a, b] = await Promise.all([
+      request(server, { method: 'POST', path: '/print/html', body }),
+      request(server, { method: 'POST', path: '/print/html', body }),
+    ]);
+    assert.equal(a.status, 200);
+    assert.equal(b.status, 200);
+    assert.equal(a.body.duplicate, false);
+    assert.equal(b.body.duplicate, true);
+    assert.equal(a.body.requestId, b.body.requestId);
+  });
+
   it('print/test mock mode succeeds', async () => {
     const res = await request(server, {
       method: 'POST',
