@@ -35,6 +35,31 @@ The POS invoice, expense and deduction buttons use the **local agent first** and
 
 The local agent must run **on each branch's cashier Windows PC**, not on the VPS. `127.0.0.1` always means the browser's own machine. For auto-start, install the app as an appropriately permissioned Windows service or create a Windows Task Scheduler task to run `npm start` in the service directory at user sign-in (set the working directory and printer access correctly). Do not expose port 7788 beyond loopback.
 
+### Readable text / complete demo invoice (Windows CMD)
+
+The thermal layouts now use larger labels, service names, prices and totals. The short diagnostic now prints a **large** English and Arabic test line.
+
+After stopping the previous print agent with Ctrl+C and clearing any stalled XP-80 queue:
+
+```bat
+cd /d C:\CUT-Print-Agent
+git pull --ff-only
+cd print-service
+set PRINT_ENGINE=escpos
+set PRINTER_NAME=XP-80
+set PRINTER_AUTO_CUT=0
+npm start
+```
+
+Keep this terminal open. On the **same computer**, in a second CMD window, send **one** demo invoice, *not* a real sale:
+
+```bat
+cd /d C:\CUT-Print-Agent\print-service
+curl.exe -X POST http://127.0.0.1:7788/print/receipt -H "Content-Type: application/json; charset=utf-8" --data-binary "@demo-receipt.json"
+```
+
+The demo has invoice ID **0** and "TEST" in the customer/line, and does not save any invoice in the Cashier database. A success response means Windows accepted the spool job; verify the **physical paper** for Arabic direction, readable text, width, no unnecessary blank feed and no clipping. The request ID in the fixture is intentionally fixed, so repeating the same command within 10 minutes will **not reprint** it unless you deliberately change that ID. Do not use the test payload for a live invoice.
+
 ### Troubleshooting and safeguards
 
 - `ERR_CONNECTION_REFUSED`: local agent isn't running or port 7788 is blocked.
