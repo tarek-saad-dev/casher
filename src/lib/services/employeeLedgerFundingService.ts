@@ -3,6 +3,7 @@ import 'server-only';
 import { getPool, sql, allocateInvID } from '@/lib/db';
 import { isEmployeeLedgerDualWriteEnabled } from '@/lib/employeeLedgerConfig';
 import { roundMoney } from '@/lib/reportMonthUtils';
+import { getMaxEmployeeAdvanceRepayment } from '@/lib/hr/advance-repayment';
 import {
   EmployeeLedgerDualWriteError,
   EMP_LEDGER_REF_TYPE_CASH_MOVE,
@@ -141,6 +142,7 @@ export async function executeEmployeeFunding(params: {
   }
 
   const amount = roundMoney(params.amount);
+  if (amount <= 0) throw new EmployeeLedgerFundingError('مبلغ السداد يجب ألا يقل عن قرش واحد');
   const isRepayment = params.purpose === 'advance_repayment';
   if (isRepayment && (!params.repaymentId || !/^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(params.repaymentId))) {
     throw new EmployeeLedgerFundingError('معرف سداد السلفة غير صالح');
@@ -232,7 +234,7 @@ export async function executeEmployeeFunding(params: {
       const monthBalance = await getEmployeeMonthlyBranchBalance(
         params.empId, params.branchId, payrollMonth, transaction,
       );
-      const due = roundMoney(Math.min(Math.max(0, -branchBalance), Math.max(0, -monthBalance)));
+      const due = getMaxEmployeeAdvanceRepayment(branchBalance, monthBalance);
       if (due <= 0) throw new EmployeeLedgerFundingError('لا توجد سلفة مستحقة قابلة للسداد على هذا الفرع والشهر');
       if (amount > due) throw new EmployeeLedgerFundingError(`المبلغ أكبر من العجز المتبقي (${due.toFixed(2)} ج.م)`);
     }
