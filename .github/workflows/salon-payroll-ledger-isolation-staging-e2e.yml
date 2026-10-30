@@ -1,0 +1,76 @@
+name: Salon Payroll and Ledger Isolation E2E — Staging Only
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: salon-payroll-ledger-isolation-e2e
+  cancel-in-progress: false
+
+jobs:
+  salon-payroll-ledger-isolation-e2e:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'agent/salon-payroll-report-isolation'
+    runs-on: ubuntu-latest
+    environment: drvo-staging
+    timeout-minutes: 15
+    env:
+      DRVO_STAGING_SSH_HOST: ${{ secrets.DRVO_STAGING_SSH_HOST || secrets.VPS_HOST }}
+      DRVO_STAGING_SSH_KEY: ${{ secrets.DRVO_STAGING_SSH_KEY }}
+      DRVO_STAGING_DB_PASSWORD: ${{ secrets.DRVO_STAGING_DB_PASSWORD }}
+      DRVO_STAGING_DB_SERVER: 127.0.0.1
+      DRVO_STAGING_DB_PORT: '14330'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Refuse local and production environment files
+        shell: bash
+        run: |
+          set -euo pipefail
+          for f in .env .env.local .env.production .env.production.local; do
+            if [[ -f "$f" ]]; then echo "Unsafe environment file: $f" >&2; exit 10; fi
+          done
+      - name: Require dedicated staging credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -n "$DRVO_STAGING_SSH_HOST" ]] || exit 11
+          [[ -n "$DRVO_STAGING_SSH_KEY" ]] || exit 11
+          [[ -n "$DRVO_STAGING_DB_PASSWORD" ]] || exit 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Staging-only SSH tunnel
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$DRVO_STAGING_SSH_KEY" > ~/.ssh/drvo_staging
+          chmod 600 ~/.ssh/drvo_staging
+          ssh-keyscan -H "$DRVO_STAGING_SSH_HOST" >> ~/.ssh/known_hosts
+          ssh -i ~/.ssh/drvo_staging -o BatchMode=yes -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 \
+            -L 14330:127.0.0.1:1433 "drvo-tunnel@$DRVO_STAGING_SSH_HOST" -N &
+          echo $! > /tmp/salon-staging-tunnel.pid
+          for i in {1..30}; do
+            if nc -z 127.0.0.1 14330; then exit 0; fi
+            sleep 1
+          done
+          echo 'Staging SQL tunnel unavailable' >&2
+          exit 12
+      - name: Two fresh salon tenants → attendance → payroll → payout → tenant ledger summary → cleanup
+        run: npx tsx scripts/drvo/drvo-016-hr-payroll-smoke.ts
+      - name: Close SSH tunnel
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f /tmp/salon-staging-tunnel.pid ]]; then
+            kill "$(cat /tmp/salon-staging-tunnel.pid)" || true
+          fi
