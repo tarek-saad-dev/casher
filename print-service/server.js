@@ -152,7 +152,17 @@ async function printHtmlDocument(html, {
     try {
       await page.setViewport({ width: 600, height: 600, deviceScaleFactor: 2 });
       await page.setContent(html, { waitUntil: 'domcontentloaded' });
-      await page.evaluate(() => document.fonts.ready);
+      // 80mm rolls have ~72mm printable width (576 dots). Keep capture within
+      // the printable raster even for generic HTML without receipt-specific CSS.
+      const captureWidth = width === '58mm' ? '58mm' : '72mm';
+      await page.evaluate(async (fixedWidth) => {
+        document.documentElement.style.width = fixedWidth;
+        document.body.style.width = fixedWidth;
+        document.body.style.maxWidth = fixedWidth;
+        document.body.style.boxSizing = 'border-box';
+        await document.fonts.ready;
+        await Promise.all(Array.from(document.images, (image) => image.decode().catch(() => {})));
+      }, captureWidth);
       const element = await page.$('body');
       if (!element) throw new Error('Receipt body not found');
       const png = await element.screenshot({ type: 'png' });
