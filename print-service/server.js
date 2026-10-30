@@ -62,6 +62,14 @@ async function getEscposBrowser() {
   return browser;
 }
 
+async function closeEscposBrowser() {
+  const pending = escposBrowserPromise;
+  escposBrowserPromise = null;
+  if (!pending) return;
+  const browser = await pending.catch(() => null);
+  if (browser?.isConnected()) await browser.close();
+}
+
 function createRequestId(incoming) {
   if (typeof incoming === 'string' && incoming.trim()) return incoming.trim().slice(0, 64);
   return `ps-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -407,4 +415,5 @@ module.exports = {
   printHtmlDocument,
   createRequestId,
   PRINTER_NAME,
+  closeEscposBrowser,
 };
