@@ -15,25 +15,22 @@ Cashier now has a local printer-control page at **`/admin/settings/printing`** (
 
 ### Update an existing cashier Windows agent
 
-On the same PC where the scheduled task `CUT Salon Print Agent` is installed, open PowerShell in the user's Windows session:
+On the same PC where the scheduled task `CUT Salon Print Agent` is installed, open PowerShell in the user's Windows session. The original checkout was cloned with `--depth 1 --branch feature/...`, meaning it may not know about the `main` branch. Fetch `main` explicitly:
 
 ```powershell
 Stop-ScheduledTask -TaskName 'CUT Salon Print Agent'
 cd C:\CUT-Print-Agent
-git pull --ff-only
+git status --short
+git fetch origin main:refs/remotes/origin/main
+git switch -C main origin/main
+cd .\print-service
+npm ci
 Start-ScheduledTask -TaskName 'CUT Salon Print Agent'
 Start-Sleep -Seconds 3
 Invoke-RestMethod http://127.0.0.1:7788/settings
 ```
 
-**Note:** The PC's Git checkout may still be on the previous feature branch even after its PR was merged. Switch to the updated `main` branch before pulling for the new management page, for example:
-
-```powershell
-cd C:\CUT-Print-Agent
-git fetch origin
-git checkout main
-git pull --ff-only origin main
-```
+Do not switch branches if `git status --short` shows **uncommitted local changes** until you have reviewed them. Git switch should not alter the installed Windows task; its runner points to this repository path.
 
 Check the `/settings` endpoint and open `https://ops.cutsaloon.com/admin/settings/printing` in Chrome **on the cashier PC**. Do not try to restart the local service from the VPS.
 
