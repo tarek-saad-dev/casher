@@ -125,6 +125,20 @@ describe('print-service', () => {
     assert.equal(a.body.requestId, b.body.requestId);
   });
 
+  it('demo Arabic invoice is accepted without touching physical hardware', async () => {
+    const fixture = require('./demo-receipt.json');
+    const res = await request(server, {
+      method: 'POST',
+      path: '/print/receipt',
+      body: fixture,
+    });
+    assert.equal(res.status, 200);
+    assert.equal(res.body.ok, true);
+    assert.equal(res.body.requestId, fixture.requestId);
+    assert.equal(res.body.invoiceId, 0);
+    assert.equal(res.body.status, 'accepted');
+  });
+
   it('print/test mock mode succeeds', async () => {
     const res = await request(server, {
       method: 'POST',
