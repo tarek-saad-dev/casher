@@ -196,6 +196,12 @@ describe('print-service', () => {
       headers: { Origin: 'https://untrusted.invalid' },
     });
     assert.equal(origin.status, 403);
+    const hostileTest = await request(server, {
+      method: 'POST', path: '/print/test',
+      body: { requestId: 'hostile-origin-test' },
+      headers: { Origin: 'https://untrusted.invalid' },
+    });
+    assert.equal(hostileTest.status, 403);
     const current = await request(server, { method: 'GET', path: '/settings' });
     assert.equal(current.body.enabled, true);
   });
