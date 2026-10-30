@@ -37,6 +37,7 @@ describe('isExcludedPartnersExpenseCategory', () => {
     expect(isExcludedPartnersExpenseCategory('تحويل بين طرق الدفع — مصروف')).toBe(true);
     expect(isExcludedPartnersExpenseCategory('تحويل بين طرق الدفع مصروف')).toBe(true);
     expect(isExcludedPartnersExpenseCategory('(تحويل بين طرق الدفع - مصروف)')).toBe(true);
+    expect(isExcludedPartnersExpenseCategory('تحويل تسوية مستحقات موظف')).toBe(true);
   });
 
   it('does not exclude unrelated daily or transfer-like categories', () => {

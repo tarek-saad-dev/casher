@@ -97,14 +97,18 @@ export interface EmpLedgerEmployeeBranchBreakdown {
   /** سلفة = advanceExcess */
   advance: number;
   deductions: number;
+  /** صافي تسوية بين الفروع (دائن − مدين) على هذا الفرع */
+  settlementNet: number;
   balance: number;
   /** Raw ledger buckets (for reconciliation / KPIs). */
   salaryCredits: number;
   targetCredits: number;
   fundingCredits: number;
+  settlementCredits: number;
   advanceDebits: number;
   payoutDebits: number;
   deductionDebits: number;
+  settlementDebits: number;
 }
 
 export interface EmpLedgerEmployeeSummaryRow {
