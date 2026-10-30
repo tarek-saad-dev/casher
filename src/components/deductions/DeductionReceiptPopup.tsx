@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { Printer, X, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { createPrintRequestId, printHtmlViaLocalService, openBrowserPrintFallback } from '@/lib/localPrintClient';
 import { getPrintBrandHtml, usePrintBrand } from '@/lib/tenant/tenantBrandClient';
 
 interface DeductionReceiptData {
@@ -29,7 +30,7 @@ interface DeductionReceiptPopupProps {
 // ═══════════════════════════════════════════════════════════
 const RECEIPT_CSS = `
   @page {
-    size: 58mm auto;
+    size: 80mm 200mm;
     margin: 0mm;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -177,6 +178,9 @@ const RECEIPT_CSS = `
 export default function DeductionReceiptPopup({ open, deduction, onClose }: DeductionReceiptPopupProps) {
   const printBrand = usePrintBrand();
   const [printing, setPrinting] = useState(false);
+  const [printError, setPrintError] = useState<string | null>(null);
+  const [printSuccess, setPrintSuccess] = useState(false);
+  const printLockRef = useRef(false);
   const [visible, setVisible] = useState(false);
   const [progress, setProgress] = useState(100);
   const printWindowRef = useRef<Window | null>(null);
@@ -299,44 +303,33 @@ export default function DeductionReceiptPopup({ open, deduction, onClose }: Dedu
     }, 300);
   };
 
-  // Print handler
-  const handlePrint = useCallback(() => {
-    if (printing || !deduction) return;
+  const handlePrint = useCallback(async () => {
+    if (printLockRef.current || !deduction) return;
+    printLockRef.current = true;
     setPrinting(true);
-
-    if (printWindowRef.current && !printWindowRef.current.closed) {
-      printWindowRef.current.close();
-    }
-
-    const win = window.open('', '_blank', 'width=300,height=400');
-    if (!win) {
+    setPrintError(null);
+    setPrintSuccess(false);
+    try {
+      const result = await printHtmlViaLocalService({
+        html: buildReceiptHTML(),
+        requestId: createPrintRequestId(`deduction-${deduction.deductionInvID}`),
+        width: '58mm',
+        printer: 'default',
+      });
+      if (result.ok) setPrintSuccess(true);
+      else setPrintError(result.userMessage);
+    } catch {
+      setPrintError('تعذر إرسال الإيصال لخدمة الطباعة المحلية.');
+    } finally {
+      printLockRef.current = false;
       setPrinting(false);
-      return;
     }
-    printWindowRef.current = win;
+  }, [deduction, buildReceiptHTML]);
 
-    const html = buildReceiptHTML();
-    win.document.write(html);
-    win.document.close();
-
-    win.onload = () => {
-      win.onafterprint = () => {
-        win.close();
-        printWindowRef.current = null;
-        setPrinting(false);
-      };
-
-      win.print();
-
-      setTimeout(() => {
-        if (printWindowRef.current && !printWindowRef.current.closed) {
-          printWindowRef.current.close();
-          printWindowRef.current = null;
-        }
-        setPrinting(false);
-      }, 10000);
-    };
-  }, [printing, deduction, buildReceiptHTML]);
+  const handleBrowserFallback = useCallback(() => {
+    const result = openBrowserPrintFallback(buildReceiptHTML(), createPrintRequestId('deduction-browser'));
+    if (result.ok === false) setPrintError(result.userMessage);
+  }, [buildReceiptHTML]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -420,6 +413,13 @@ export default function DeductionReceiptPopup({ open, deduction, onClose }: Dedu
           )}
         </div>
 
+        {printError && <p role="alert" className="text-xs text-red-600">{printError}</p>}
+        {printSuccess && <p role="status" className="text-xs text-green-700">تم إرسال الإيصال لقائمة انتظار الطابعة.</p>}
+        {printError && (
+          <Button variant="outline" size="sm" className="w-full text-xs" onClick={handleBrowserFallback}>
+            طباعة من المتصفح
+          </Button>
+        )}
         {/* Actions */}
         <div className="flex gap-2">
           <Button
