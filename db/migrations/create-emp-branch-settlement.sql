@@ -66,24 +66,29 @@ ELSE
 GO
 
 -- Cash categories for physical till transfer (P&L-neutral via transfer classification)
+DECLARE @SettlementTenantId UNIQUEIDENTIFIER =
+  (SELECT TOP 1 TenantId FROM dbo.TblExpINCat ORDER BY ExpINID);
+
+IF @SettlementTenantId IS NULL
+  THROW 51010, N'Cannot seed settlement cash categories: TblExpINCat has no TenantId', 1;
+
 IF NOT EXISTS (
   SELECT 1 FROM dbo.TblExpINCat
   WHERE CatName = N'تحويل تسوية مستحقات موظف' AND ExpINType = N'مصروفات'
 )
 BEGIN
-  INSERT INTO dbo.TblExpINCat (CatName, ExpINType)
-  VALUES (N'تحويل تسوية مستحقات موظف', N'مصروفات');
+  INSERT INTO dbo.TblExpINCat (TenantId, CatName, ExpINType)
+  VALUES (@SettlementTenantId, N'تحويل تسوية مستحقات موظف', N'مصروفات');
   PRINT N'Created expense category: تحويل تسوية مستحقات موظف';
 END
-GO
 
 IF NOT EXISTS (
   SELECT 1 FROM dbo.TblExpINCat
   WHERE CatName = N'تحويل تسوية مستحقات موظف' AND ExpINType = N'ايرادات'
 )
 BEGIN
-  INSERT INTO dbo.TblExpINCat (CatName, ExpINType)
-  VALUES (N'تحويل تسوية مستحقات موظف', N'ايرادات');
+  INSERT INTO dbo.TblExpINCat (TenantId, CatName, ExpINType)
+  VALUES (@SettlementTenantId, N'تحويل تسوية مستحقات موظف', N'ايرادات');
   PRINT N'Created income category: تحويل تسوية مستحقات موظف';
 END
 GO

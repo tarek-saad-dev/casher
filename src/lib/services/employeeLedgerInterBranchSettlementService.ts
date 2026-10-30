@@ -16,6 +16,7 @@ import {
   type SettlementPair,
 } from '@/lib/hr/interBranchSettlementMath';
 import { listActiveBranches } from '@/lib/branch/repository';
+import { resolveLegacyBranchTenantId } from '@/platform/masterData/tenantScope';
 
 export const EMP_LEDGER_REASON_SETTLEMENT = 'settlement' as const;
 export const EMP_LEDGER_REF_TYPE_BRANCH_SETTLEMENT = 'EmpBranchSettlement' as const;
@@ -53,39 +54,44 @@ export function buildSettlementLedgerNote(args: {
 
 async function ensureSettlementCashCategories(
   transaction: LedgerTransaction,
+  tenantId: string,
 ): Promise<{ expenseExpInId: number; incomeExpInId: number }> {
   const expFind = await new sql.Request(transaction)
     .input('name', sql.NVarChar(200), SETTLEMENT_CASH_EXPENSE_CAT)
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
     .query(`
       SELECT TOP 1 ExpINID FROM dbo.TblExpINCat
-      WHERE CatName = @name AND ExpINType = N'مصروفات'
+      WHERE TenantId = @tenantId AND CatName = @name AND ExpINType = N'مصروفات'
     `);
   let expenseExpInId = Number(expFind.recordset[0]?.ExpINID ?? 0);
   if (!expenseExpInId) {
     const ins = await new sql.Request(transaction)
       .input('name', sql.NVarChar(200), SETTLEMENT_CASH_EXPENSE_CAT)
+      .input('tenantId', sql.UniqueIdentifier, tenantId)
       .query(`
-        INSERT INTO dbo.TblExpINCat (CatName, ExpINType)
+        INSERT INTO dbo.TblExpINCat (TenantId, CatName, ExpINType)
         OUTPUT INSERTED.ExpINID
-        VALUES (@name, N'مصروفات')
+        VALUES (@tenantId, @name, N'مصروفات')
       `);
     expenseExpInId = Number(ins.recordset[0].ExpINID);
   }
 
   const incFind = await new sql.Request(transaction)
     .input('name', sql.NVarChar(200), SETTLEMENT_CASH_INCOME_CAT)
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
     .query(`
       SELECT TOP 1 ExpINID FROM dbo.TblExpINCat
-      WHERE CatName = @name AND ExpINType = N'ايرادات'
+      WHERE TenantId = @tenantId AND CatName = @name AND ExpINType = N'ايرادات'
     `);
   let incomeExpInId = Number(incFind.recordset[0]?.ExpINID ?? 0);
   if (!incomeExpInId) {
     const ins = await new sql.Request(transaction)
       .input('name', sql.NVarChar(200), SETTLEMENT_CASH_INCOME_CAT)
+      .input('tenantId', sql.UniqueIdentifier, tenantId)
       .query(`
-        INSERT INTO dbo.TblExpINCat (CatName, ExpINType)
+        INSERT INTO dbo.TblExpINCat (TenantId, CatName, ExpINType)
         OUTPUT INSERTED.ExpINID
-        VALUES (@name, N'ايرادات')
+        VALUES (@tenantId, @name, N'ايرادات')
       `);
     incomeExpInId = Number(ins.recordset[0].ExpINID);
   }
@@ -374,7 +380,13 @@ export async function executeInterBranchSettlement(params: {
     let destCashMoveId: number | null = null;
 
     if (params.settlementType === 'cash_transfer') {
-      const cats = await ensureSettlementCashCategories(transaction);
+      const tenantId = await resolveLegacyBranchTenantId(params.sourceBranchId, transaction);
+      if (!tenantId) {
+        throw new EmployeeLedgerInterBranchSettlementError(
+          'تعذر تحديد TenantId لفئات التحويل',
+        );
+      }
+      const cats = await ensureSettlementCashCategories(transaction, tenantId);
       const invTime = getCairoInvTimeDotStr();
 
       const outInv = await allocateInvID(transaction, 'TblCashMove', 'مصروفات', 5000);
@@ -823,7 +835,13 @@ export async function voidInterBranchSettlement(params: {
     let revDestCashMoveId: number | null = null;
 
     if (row.SettlementType === 'cash_transfer') {
-      const cats = await ensureSettlementCashCategories(transaction);
+      const tenantId = await resolveLegacyBranchTenantId(originalSourceId, transaction);
+      if (!tenantId) {
+        throw new EmployeeLedgerInterBranchSettlementError(
+          'تعذر تحديد TenantId لفئات التحويل',
+        );
+      }
+      const cats = await ensureSettlementCashCategories(transaction, tenantId);
       const invTime = getCairoInvTimeDotStr();
       const outInv = await allocateInvID(transaction, 'TblCashMove', 'مصروفات', 5000);
       const inInv = await allocateInvID(transaction, 'TblCashMove', 'ايرادات', 5000);
