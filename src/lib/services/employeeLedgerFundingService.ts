@@ -228,10 +228,10 @@ export async function executeEmployeeFunding(params: {
 
       // Never collect more than the employee owes on THIS branch and month.
       // The branch-wide balance also prevents "repaying" a debt cleared by other months.
-      const [branchBalance, monthBalance] = await Promise.all([
-        getEmployeeBranchBalance(params.empId, params.branchId, transaction),
-        getEmployeeMonthlyBranchBalance(params.empId, params.branchId, payrollMonth, transaction),
-      ]);
+      const branchBalance = await getEmployeeBranchBalance(params.empId, params.branchId, transaction);
+      const monthBalance = await getEmployeeMonthlyBranchBalance(
+        params.empId, params.branchId, payrollMonth, transaction,
+      );
       const due = roundMoney(Math.min(Math.max(0, -branchBalance), Math.max(0, -monthBalance)));
       if (due <= 0) throw new EmployeeLedgerFundingError('لا توجد سلفة مستحقة قابلة للسداد على هذا الفرع والشهر');
       if (amount > due) throw new EmployeeLedgerFundingError(`المبلغ أكبر من العجز المتبقي (${due.toFixed(2)} ج.م)`);
