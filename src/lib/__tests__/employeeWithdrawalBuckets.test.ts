@@ -114,7 +114,7 @@ describe('computePartnersAdvanceExcess', () => {
     ).toBe(0);
   });
 
-  it('Omar Gleem: settlement moves 265 from سلف to استلم راتب', () => {
+  it('Omar Gleem: settlement clears سلف without inflating استلم راتب', () => {
     const params = {
       advanceDebits: 265,
       payoutDebits: 0,
@@ -123,12 +123,13 @@ describe('computePartnersAdvanceExcess', () => {
       settlementCredits: 265,
       settlementDebits: 0,
     };
-    expect(computePartnersSettlementCoveredAsReceived(params)).toBe(265);
+    // Partners display: received = salaryAndTarget only; سلف after settlement = 0
+    expect(params.salaryAndTarget).toBe(0);
     expect(computePartnersAdvanceExcess(params)).toBe(0);
-    expect(params.salaryAndTarget + computePartnersSettlementCoveredAsReceived(params)).toBe(265);
+    expect(computePartnersSettlementCoveredAsReceived(params)).toBe(265);
   });
 
-  it('Huda Camp: settlement moves 1285 from سلف to استلم راتب', () => {
+  it('Huda Camp: settlement clears سلف without inflating استلم راتب', () => {
     const params = {
       advanceDebits: 1285,
       payoutDebits: 0,
@@ -137,13 +138,43 @@ describe('computePartnersAdvanceExcess', () => {
       settlementCredits: 1285,
       settlementDebits: 0,
     };
-    expect(computePartnersSettlementCoveredAsReceived(params)).toBe(1285);
+    expect(params.salaryAndTarget).toBe(0);
     expect(computePartnersAdvanceExcess(params)).toBe(0);
   });
 
-  it('does not double-count when salary already covers the draw', () => {
+  it('Tariq Camp: salary 1000 + settlement 1780 covering advances → received 1000, سلف 0', () => {
+    // 9 cash advances totaling 2780; monthly salary due 1000; settlement #5 credit 1780
+    const params = {
+      advanceDebits: 2780,
+      payoutDebits: 0,
+      salaryAndTarget: 1000,
+      fundingCredits: 0,
+      settlementCredits: 1780,
+      settlementDebits: 0,
+    };
+    expect(params.salaryAndTarget).toBe(1000);
+    expect(computePartnersAdvanceExcess(params)).toBe(0);
+    // Must NOT add settlement into received (bug: 1000+1780=2780)
+    expect(
+      params.salaryAndTarget + computePartnersSettlementCoveredAsReceived(params),
+    ).toBe(2780);
+    expect(params.salaryAndTarget).not.toBe(
+      params.salaryAndTarget + computePartnersSettlementCoveredAsReceived(params),
+    );
+  });
+
+  it('does not treat settlement as cover when salary already covers the draw', () => {
     expect(
       computePartnersSettlementCoveredAsReceived({
+        advanceDebits: 200,
+        payoutDebits: 0,
+        salaryAndTarget: 500,
+        fundingCredits: 0,
+        settlementCredits: 200,
+      }),
+    ).toBe(0);
+    expect(
+      computePartnersAdvanceExcess({
         advanceDebits: 200,
         payoutDebits: 0,
         salaryAndTarget: 500,
@@ -163,8 +194,8 @@ describe('computePartnersAdvanceExcess', () => {
       settlementCredits: 1876.17 + 1285,
       settlementDebits: 1876.17,
     };
-    expect(computePartnersSettlementCoveredAsReceived(params)).toBe(1285);
     expect(computePartnersAdvanceExcess(params)).toBe(0);
+    expect(params.salaryAndTarget).toBe(0);
   });
 
   it('Gleem after void+#3: net settlement negative does not fake-cover advances', () => {

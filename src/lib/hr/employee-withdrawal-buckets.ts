@@ -59,9 +59,9 @@ function partnersSettlementNet(params: {
 }
 
 /**
- * Portion of uncovered cash draws (beyond salary+target+funding) that was
- * cleared by *net* incoming inter-branch settlement. Shown under «استلم راتب»
- * instead of «سلف» — no new cash payout; voided pairs net to ~0.
+ * Portion of uncovered cash draws cleared by *net* incoming inter-branch
+ * settlement. Used only to explain سلف clearance — must NOT be added into
+ * partners «استلم راتب» (settlement is not new salary entitlement).
  */
 export function computePartnersSettlementCoveredAsReceived(params: {
   advanceDebits: number;

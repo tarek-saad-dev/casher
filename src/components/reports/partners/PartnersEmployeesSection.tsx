@@ -47,7 +47,7 @@ export default function PartnersEmployeesSection({
     <section className="w-full min-w-0 bg-zinc-900/50 border border-zinc-800/50 rounded-xl p-3 sm:p-4 md:p-6 print:break-inside-avoid">
       <h2 className="text-base sm:text-lg font-bold text-white mb-1 sm:mb-2">الموظفون</h2>
       <p className="text-xs text-zinc-500 mb-3 sm:mb-4">
-        استلم راتب = استحقاق الدفتر + سلف غُطّيت بتسوية بين الفروع. سلف = المتبقي بعد الاستحقاق والتمويل والتسوية.
+        استلم راتب = استحقاق الدفتر فقط (راتب + تارجت). سلف = السحب الزائد بعد خصم الاستحقاق والتمويل والتسوية بين الفروع — التسوية لا تزيد الراتب.
       </p>
 
       {loading && rows.length === 0 ? (
