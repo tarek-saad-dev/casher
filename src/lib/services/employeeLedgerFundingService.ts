@@ -3,6 +3,7 @@ import 'server-only';
 import { getPool, sql, allocateInvID } from '@/lib/db';
 import { isEmployeeLedgerDualWriteEnabled } from '@/lib/employeeLedgerConfig';
 import { roundMoney } from '@/lib/reportMonthUtils';
+import { getMaxEmployeeAdvanceRepayment } from '@/lib/hr/advance-repayment';
 import {
   EmployeeLedgerDualWriteError,
   EMP_LEDGER_REF_TYPE_CASH_MOVE,
@@ -10,13 +11,14 @@ import {
   isMissingLedgerTableError,
   payrollMonthFromWorkDate,
 } from '@/lib/services/employeeLedgerDualWrite';
-import { getEmployeeAllTimeBalance, validateLedgerMonth } from '@/lib/services/employeeLedgerService';
+import { getEmployeeAllTimeBalance, getEmployeeBranchBalance, getEmployeeMonthlyBranchBalance, validateLedgerMonth } from '@/lib/services/employeeLedgerService';
 import type { EmpLedgerFundingResponse } from '@/lib/types/employee-ledger';
 import { getCairoInvTimeDotStr } from '@/lib/businessDate';
 import { ensureTenantFinanceCategory } from '@/platform/masterData/financeCategories';
 import { resolveLegacyBranchTenantId } from '@/platform/masterData/tenantScope';
 
 export const EMPLOYEE_FUNDING_CATEGORY_NAME = 'تمويل من موظف';
+export const ADVANCE_REPAYMENT_CATEGORY_NAME = 'سداد سلفة موظف';
 export { EMP_LEDGER_REASON_EMPLOYEE_FUNDING };
 export const EMPLOYEE_FUNDING_LEDGER_NOTE = 'تمويل من موظف للمحل';
 
@@ -29,15 +31,17 @@ export class EmployeeLedgerFundingError extends Error {
   }
 }
 
-function buildCashMoveNotes(employeeName: string, notes?: string | null): string {
-  const base = `تمويل من موظف: ${employeeName}`;
+function buildCashMoveNotes(employeeName: string, notes?: string | null, repaymentId?: string): string {
+  const base = repaymentId ? `سداد سلفة موظف: ${employeeName}` : `تمويل من موظف: ${employeeName}`;
   const extra = notes?.trim();
-  return extra ? `${base} — ${extra}` : base;
+  const label = extra ? `${base} — ${extra}` : base;
+  return repaymentId ? `${label} — repaymentRef:${repaymentId}` : label;
 }
 
-function buildLedgerNotes(notes?: string | null): string {
+function buildLedgerNotes(notes?: string | null, repayment?: boolean): string {
+  const base = repayment ? 'سداد سلفة موظف للمحل (تحصيل دين، ليس مبيعات)' : EMPLOYEE_FUNDING_LEDGER_NOTE;
   const extra = notes?.trim();
-  return extra ? `${EMPLOYEE_FUNDING_LEDGER_NOTE} — ${extra}` : EMPLOYEE_FUNDING_LEDGER_NOTE;
+  return (extra ? `${base} — ${extra}` : base).slice(0, 500);
 }
 
 export async function ensureEmployeeFundingIncomeCategory(
@@ -57,6 +61,7 @@ export async function insertEmployeeFundingLedgerEntry(
     amount: number;
     notes?: string | null;
     createdByUserId?: number | null;
+    repayment?: boolean;
   },
 ): Promise<number> {
   const payrollMonth = payrollMonthFromWorkDate(params.entryDate);
@@ -71,7 +76,7 @@ export async function insertEmployeeFundingLedgerEntry(
     .input('RefType', sql.NVarChar(80), EMP_LEDGER_REF_TYPE_CASH_MOVE)
     .input('RefID', sql.Int, params.cashMoveId)
     .input('CashMoveID', sql.Int, params.cashMoveId)
-    .input('Notes', sql.NVarChar(500), buildLedgerNotes(params.notes))
+    .input('Notes', sql.NVarChar(500), buildLedgerNotes(params.notes, params.repayment))
     .input('CreatedByUserID', sql.Int, params.createdByUserId ?? null)
     .query(`
       INSERT INTO dbo.TblEmpLedgerEntry (
@@ -101,6 +106,10 @@ export async function executeEmployeeFunding(params: {
   branchId: number;
   /** Nullable only for legacy records predating the business-day migration. */
   businessDayId: number | null;
+  /** Dedicated collection of an existing employee advance, never new employee investment. */
+  purpose?: 'advance_repayment';
+  /** Stable UUID prevents a repeated click/network retry from collecting twice. */
+  repaymentId?: string;
 }): Promise<EmpLedgerFundingResponse> {
   if (!isEmployeeLedgerDualWriteEnabled()) {
     throw new EmployeeLedgerFundingError(
@@ -111,7 +120,7 @@ export async function executeEmployeeFunding(params: {
   if (!params.empId || params.empId <= 0) {
     throw new EmployeeLedgerFundingError('يجب اختيار الموظف');
   }
-  if (!params.amount || params.amount <= 0) {
+  if (!Number.isFinite(params.amount) || !params.amount || params.amount <= 0) {
     throw new EmployeeLedgerFundingError('يجب إدخال مبلغ صحيح أكبر من صفر');
   }
   if (!params.paymentMethodId || params.paymentMethodId <= 0) {
@@ -133,6 +142,11 @@ export async function executeEmployeeFunding(params: {
   }
 
   const amount = roundMoney(params.amount);
+  if (amount <= 0) throw new EmployeeLedgerFundingError('مبلغ السداد يجب ألا يقل عن قرش واحد');
+  const isRepayment = params.purpose === 'advance_repayment';
+  if (isRepayment && (!params.repaymentId || !/^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(params.repaymentId))) {
+    throw new EmployeeLedgerFundingError('معرف سداد السلفة غير صالح');
+  }
   const db = await getPool();
   const tenantId = await resolveLegacyBranchTenantId(params.branchId);
 
@@ -163,14 +177,72 @@ export async function executeEmployeeFunding(params: {
   }
 
   const invTime = getCairoInvTimeDotStr();
-  const cashNotes = buildCashMoveNotes(employeeName, params.notes);
+  const cashNotes = buildCashMoveNotes(employeeName, params.notes, isRepayment ? params.repaymentId : undefined);
 
   const transaction = new sql.Transaction(db);
   await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
 
   try {
+    if (isRepayment) {
+      // One transaction-scoped lock per employee/branch/month; protects the debt limit
+      // and the idempotency check against concurrent settlement requests.
+      const lock = await new sql.Request(transaction)
+        .input('lockResource', sql.NVarChar(255), `advance-repay:${params.branchId}:${params.empId}:${payrollMonth}`)
+        .query(`
+          DECLARE @status INT;
+          EXEC @status = sys.sp_getapplock
+            @Resource = @lockResource, @LockMode = 'Exclusive',
+            @LockOwner = 'Transaction', @LockTimeout = 10000;
+          SELECT @status AS LockStatus;
+        `);
+      if (Number(lock.recordset[0]?.LockStatus) < 0) {
+        throw new EmployeeLedgerFundingError('تعذر تأمين تسجيل السداد، برجاء المحاولة مرة أخرى');
+      }
+
+      // A retry of exactly the same operation must return the existing receipt.
+      const prior = await new sql.Request(transaction)
+        .input('empId', sql.Int, params.empId)
+        .input('branchId', sql.Int, params.branchId)
+        .input('marker', sql.NVarChar(100), `repaymentRef:${params.repaymentId}`)
+        .query(`
+          SELECT TOP (1) cm.ID AS CashMoveID, l.ID AS LedgerEntryID, cm.GrandTolal AS Amount
+          FROM dbo.TblCashMove cm WITH (UPDLOCK, HOLDLOCK)
+          INNER JOIN dbo.TblEmpLedgerEntry l ON l.CashMoveID = cm.ID AND l.IsVoided = 0
+          WHERE cm.EmpID = @empId AND cm.BranchID = @branchId
+            AND cm.invType = N'ايرادات' AND cm.inOut = N'in'
+            AND CHARINDEX(@marker, ISNULL(cm.Notes, N'')) > 0
+          ORDER BY cm.ID DESC
+        `);
+      if (prior.recordset.length) {
+        const priorRow = prior.recordset[0];
+        const currentBalance = await getEmployeeAllTimeBalance(params.empId, transaction);
+        if (roundMoney(Number(priorRow.Amount)) !== amount) {
+          throw new EmployeeLedgerFundingError('هذا الطلب سُجل سابقًا بمبلغ مختلف');
+        }
+        await transaction.commit();
+        return {
+          success: true, cashMoveId: Number(priorRow.CashMoveID),
+          ledgerEntryId: Number(priorRow.LedgerEntryID),
+          employeeName, amount, previousBalance: roundMoney(currentBalance - amount),
+          newBalance: currentBalance, ledgerDualWrite: true, idempotentReplay: true,
+        };
+      }
+
+      // Never collect more than the employee owes on THIS branch and month.
+      // The branch-wide balance also prevents "repaying" a debt cleared by other months.
+      const branchBalance = await getEmployeeBranchBalance(params.empId, params.branchId, transaction);
+      const monthBalance = await getEmployeeMonthlyBranchBalance(
+        params.empId, params.branchId, payrollMonth, transaction,
+      );
+      const due = getMaxEmployeeAdvanceRepayment(branchBalance, monthBalance);
+      if (due <= 0) throw new EmployeeLedgerFundingError('لا توجد سلفة مستحقة قابلة للسداد على هذا الفرع والشهر');
+      if (amount > due) throw new EmployeeLedgerFundingError(`المبلغ أكبر من العجز المتبقي (${due.toFixed(2)} ج.م)`);
+    }
+
     const previousBalance = await getEmployeeAllTimeBalance(params.empId, transaction);
-    const fundingExpINID = await ensureEmployeeFundingIncomeCategory(transaction, tenantId);
+    const fundingExpINID = isRepayment
+      ? await ensureTenantFinanceCategory(transaction, tenantId, ADVANCE_REPAYMENT_CATEGORY_NAME, 'ايرادات')
+      : await ensureEmployeeFundingIncomeCategory(transaction, tenantId);
     const newInvID = await allocateInvID(transaction, 'TblCashMove', 'ايرادات', 5000);
 
     const cashReq = new sql.Request(transaction);
@@ -213,6 +285,7 @@ export async function executeEmployeeFunding(params: {
       amount,
       notes: params.notes,
       createdByUserId: params.createdByUserId,
+      repayment: isRepayment,
     });
 
     const newBalance = roundMoney(previousBalance + amount);

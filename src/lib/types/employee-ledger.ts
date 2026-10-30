@@ -248,6 +248,8 @@ export interface EmpLedgerDuesSettlementResponse {
 
 export interface EmpLedgerFundingResponse {
   success: true;
+  /** True when the same repayment operation was already committed. */
+  idempotentReplay?: boolean;
   cashMoveId: number;
   ledgerEntryId: number;
   employeeName: string;

@@ -2,11 +2,14 @@
 
 import type { PartnersMonthlyReportResponse } from '@/lib/types/partners-report';
 import { formatPartnersCurrency } from './partnersReportUtils';
+import type { AdvanceRepaymentTarget } from './EmployeeAdvanceRepaymentDialog';
 
 interface PartnersEmployeesSectionProps {
   rows: PartnersMonthlyReportResponse['employeeSummary'];
   totals: PartnersMonthlyReportResponse['employeeSummaryTotals'];
   loading: boolean;
+  canRepay?: boolean;
+  onRepay?: (target: AdvanceRepaymentTarget) => void;
 }
 
 function TableSkeleton() {
@@ -42,6 +45,8 @@ export default function PartnersEmployeesSection({
   rows,
   totals,
   loading,
+  canRepay = false,
+  onRepay,
 }: PartnersEmployeesSectionProps) {
   return (
     <section className="w-full min-w-0 bg-zinc-900/50 border border-zinc-800/50 rounded-xl p-3 sm:p-4 md:p-6 print:break-inside-avoid">
@@ -92,6 +97,12 @@ export default function PartnersEmployeesSection({
                   }
                   valueClassName="text-rose-400"
                 />
+                {canRepay && row.advanceExcess > 0 && !row.hasSpecialAccounting && onRepay && (
+                  <button type="button" className="print:hidden rounded-lg border border-emerald-500/40 text-emerald-300 px-3 py-2 text-sm font-semibold"
+                    onClick={() => onRepay({ employeeId: row.employeeId, employeeName: row.employeeName, advanceExcess: row.advanceExcess })}>
+                    سداد السلفة
+                  </button>
+                )}
               </article>
             ))}
 
@@ -123,6 +134,7 @@ export default function PartnersEmployeesSection({
                   >
                     سلف
                   </th>
+                  {canRepay && <th className="text-right py-3 px-2 font-medium print:hidden">الإجراء</th>}
                 </tr>
               </thead>
               <tbody>
@@ -152,6 +164,18 @@ export default function PartnersEmployeesSection({
                         <span className="text-zinc-500">—</span>
                       )}
                     </td>
+                    {canRepay && (
+                      <td className="py-3 px-2 print:hidden">
+                        {row.advanceExcess > 0 && !row.hasSpecialAccounting && onRepay ? (
+                          <button type="button" className="rounded-lg border border-emerald-500/40 text-emerald-300 px-3 py-1.5 text-xs font-bold hover:bg-emerald-500/10"
+                            onClick={() => onRepay({ employeeId: row.employeeId, employeeName: row.employeeName, advanceExcess: row.advanceExcess })}>
+                            سداد السلفة
+                          </button>
+                        ) : row.hasSpecialAccounting && row.advanceExcess > 0 ? (
+                          <span className="text-xs text-amber-500" title="البيانات معدلة يدويًا؛ راجع دفتر الموظف قبل سداد أي مبلغ">مراجعة يدوية</span>
+                        ) : null}
+                      </td>
+                    )}
                   </tr>
                 ))}
                 <tr className="bg-zinc-800/40 font-bold print:break-inside-avoid print:bg-zinc-100">
@@ -172,6 +196,7 @@ export default function PartnersEmployeesSection({
                       {formatPartnersCurrency(totals.totalAdvanceExcess ?? 0)}
                     </span>
                   </td>
+                  {canRepay && <td className="print:hidden" />}
                 </tr>
               </tbody>
             </table>

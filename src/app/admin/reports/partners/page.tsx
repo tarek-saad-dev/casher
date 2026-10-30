@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { AlertCircle } from 'lucide-react';
+import EmployeeAdvanceRepaymentDialog, { type AdvanceRepaymentTarget } from '@/components/reports/partners/EmployeeAdvanceRepaymentDialog';
 import { Button } from '@/components/ui/button';
 import PartnersReportFilters from '@/components/reports/partners/PartnersReportFilters';
 import PartnersEmployeesSection from '@/components/reports/partners/PartnersEmployeesSection';
@@ -59,6 +60,8 @@ function PartnersReportPageContent() {
   const [error, setError] = useState<string | null>(null);
   const [report, setReport] = useState<PartnersMonthlyReportResponse | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+  const [repaymentTarget, setRepaymentTarget] = useState<AdvanceRepaymentTarget | null>(null);
+  const [repaymentSuccess, setRepaymentSuccess] = useState('');
 
   const fetchIdRef = useRef(0);
   const hasSyncedInitialUrlRef = useRef(false);
@@ -255,6 +258,11 @@ function PartnersReportPageContent() {
           onPrint={handlePrint}
         />
 
+        {repaymentSuccess && (
+          <div role="status" className="print:hidden rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300">
+            {repaymentSuccess}
+          </div>
+        )}
         {error && !report && (
           <div className="print:hidden flex flex-col items-center gap-4 rounded-xl border border-rose-500/20 bg-rose-950/20 p-4 sm:p-6 w-full min-w-0">
             <div className="flex items-start gap-2 text-rose-400 text-sm text-center max-w-full">
@@ -283,6 +291,8 @@ function PartnersReportPageContent() {
             />
 
             <PartnersEmployeesSection
+              canRepay={isCurrentMonth && !loading && !!report}
+              onRepay={(target) => { setRepaymentSuccess(''); setRepaymentTarget(target); }}
               rows={report?.employeeSummary ?? []}
               totals={
                 report?.employeeSummaryTotals ?? {
@@ -345,6 +355,15 @@ function PartnersReportPageContent() {
             />
           </>
         )}
+        <EmployeeAdvanceRepaymentDialog
+          target={repaymentTarget}
+          month={`${year}-${String(month).padStart(2, '0')}`}
+          onClose={() => setRepaymentTarget(null)}
+          onSuccess={() => {
+            setRepaymentSuccess('تم تسجيل سداد السلفة في الخزينة ودفتر الموظف. تم تحديث التدفق النقدي؛ السداد ليس إيراد مبيعات أو ربحًا جديدًا.');
+            void fetchReport(year, month);
+          }}
+        />
       </div>
     </>
   );

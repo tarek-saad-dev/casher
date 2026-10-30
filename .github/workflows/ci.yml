@@ -74,6 +74,9 @@ jobs:
           src/platform/__tests__/platformOutboxRollback.test.ts
           --reporter=default
 
+      - name: Employee advance repayment and non-revenue classification regression
+        run: npx vitest run src/lib/hr/__tests__/advance-repayment.test.ts
+
       - name: Retroactive payroll agreement math regression
         run: npx vitest run src/lib/payroll/__tests__/payrollAgreementMath.test.ts src/lib/payroll/__tests__/retroPayrollRolloutGate.test.ts
 
