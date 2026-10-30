@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  BookOpen, Loader2, AlertCircle, RefreshCw, TrendingUp, TrendingDown, Scale, Wallet, HandCoins, CalendarDays, Gift,
+  BookOpen, Loader2, AlertCircle, RefreshCw, TrendingUp, TrendingDown, Scale, Wallet, HandCoins, CalendarDays, Gift, ArrowLeftRight,
 } from 'lucide-react';
 import KpiCard from '@/components/shared/KpiCard';
 import { Button } from '@/components/ui/button';
@@ -24,6 +24,9 @@ import { hrBranchLabel } from '@/lib/hr/legacyHrBranchPolicy';
 import EmployeePayoutModal, { type EmployeePayoutTarget } from '@/components/hr/EmployeePayoutModal';
 import EmployeeFundingModal from '@/components/hr/EmployeeFundingModal';
 import EmployeeAdditionalTargetModal from '@/components/hr/EmployeeAdditionalTargetModal';
+import EmployeeInterBranchSettlementModal, {
+  type InterBranchSettlementTarget,
+} from '@/components/hr/EmployeeInterBranchSettlementModal';
 import MonthlySalaryPostModal from '@/components/hr/MonthlySalaryPostModal';
 import EmployeeDailyTargetLedgerDetailsDialog from '@/components/hr/EmployeeDailyTargetLedgerDetailsDialog';
 import Link from 'next/link';
@@ -172,6 +175,8 @@ export default function EmployeeLedgerPanel() {
   const [payoutOpen, setPayoutOpen] = useState(false);
   const [fundingOpen, setFundingOpen] = useState(false);
   const [additionalTargetOpen, setAdditionalTargetOpen] = useState(false);
+  const [settlementTarget, setSettlementTarget] = useState<InterBranchSettlementTarget | null>(null);
+  const [settlementOpen, setSettlementOpen] = useState(false);
   const [monthlySalaryOpen, setMonthlySalaryOpen] = useState(false);
   const [targetDetailsId, setTargetDetailsId] = useState<number | null>(null);
 
@@ -362,6 +367,18 @@ export default function EmployeeLedgerPanel() {
     setSuccessMsg(message);
     void refresh();
   };
+
+  const handleSettlementSuccess = (message: string) => {
+    setSuccessMsg(message);
+    void refresh();
+  };
+
+  function employeeHasCrossBranchSettlementOpportunity(row: EmpLedgerEmployeeSummaryRow): boolean {
+    const parts = Object.values(row.branches ?? {});
+    const hasPos = parts.some((p) => p.balance > 0);
+    const hasNeg = parts.some((p) => p.balance < 0);
+    return hasPos && hasNeg;
+  }
 
   const handleMonthlySalarySuccess = (message: string) => {
     setSuccessMsg(message);
@@ -683,6 +700,31 @@ export default function EmployeeLedgerPanel() {
                             <Wallet className="w-3.5 h-3.5" />
                             صرف مستحقات
                           </Button>
+                          {idx === 0 && employeeHasCrossBranchSettlementOpportunity(row) ? (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-8 gap-1 border-border text-xs"
+                              disabled={!dualWriteEnabled}
+                              title={
+                                !dualWriteEnabled
+                                  ? 'يتطلب تفعيل EMP_LEDGER_DUAL_WRITE_ENABLED'
+                                  : 'تسوية رصيد موجب في فرع مع مديونية في فرع آخر'
+                              }
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSettlementTarget({
+                                  empId: row.empId,
+                                  empName: row.empName,
+                                });
+                                setSettlementOpen(true);
+                              }}
+                            >
+                              <ArrowLeftRight className="w-3.5 h-3.5" />
+                              تسوية بين الفروع
+                            </Button>
+                          ) : null}
                         </div>
                       </td>
                     </tr>
@@ -825,6 +867,17 @@ export default function EmployeeLedgerPanel() {
         defaultEmpId={additionalTargetDefaultEmpId}
         defaultBranchId={additionalTargetDefaultBranchId}
         onSuccess={handleAdditionalTargetSuccess}
+      />
+
+      <EmployeeInterBranchSettlementModal
+        open={settlementOpen}
+        onClose={() => {
+          setSettlementOpen(false);
+          setSettlementTarget(null);
+        }}
+        employee={settlementTarget}
+        dualWriteEnabled={dualWriteEnabled}
+        onSuccess={handleSettlementSuccess}
       />
 
       <MonthlySalaryPostModal

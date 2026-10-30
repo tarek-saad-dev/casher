@@ -293,12 +293,21 @@ function mapBranchFinancialRow(row: Record<string, unknown>): EmpLedgerBranchFin
   const salaryCredits = roundMoney(Number(row.SalaryCredits ?? 0));
   const targetCredits = roundMoney(Number(row.TargetCredits ?? 0));
   const fundingCredits = roundMoney(Number(row.FundingCredits ?? 0));
+  const settlementCredits = roundMoney(Number(row.SettlementCredits ?? 0));
   const advanceDebits = roundMoney(Number(row.AdvanceDebits ?? 0));
   const payoutDebits = roundMoney(Number(row.PayoutDebits ?? 0));
   const deductionDebits = roundMoney(Number(row.DeductionDebits ?? 0));
+  const settlementDebits = roundMoney(Number(row.SettlementDebits ?? 0));
   const accrued = roundMoney(salaryCredits + targetCredits);
   const balance = roundMoney(
-    salaryCredits + targetCredits + fundingCredits - advanceDebits - payoutDebits - deductionDebits,
+    salaryCredits +
+      targetCredits +
+      fundingCredits +
+      settlementCredits -
+      advanceDebits -
+      payoutDebits -
+      deductionDebits -
+      settlementDebits,
   );
   return {
     branchId: Number(row.BranchID),
@@ -337,6 +346,11 @@ const LEDGER_BUCKET_SELECT = `
     THEN l.Amount ELSE 0 END), 0) AS FundingCredits,
   ISNULL(SUM(CASE
     WHEN l.ID IS NOT NULL
+     AND l.EntryDirection = N'credit'
+     AND l.EntryReason = N'settlement'
+    THEN l.Amount ELSE 0 END), 0) AS SettlementCredits,
+  ISNULL(SUM(CASE
+    WHEN l.ID IS NOT NULL
      AND l.EntryDirection = N'debit'
      AND l.EntryReason = N'advance'
     THEN l.Amount ELSE 0 END), 0) AS AdvanceDebits,
@@ -348,8 +362,13 @@ const LEDGER_BUCKET_SELECT = `
   ISNULL(SUM(CASE
     WHEN l.ID IS NOT NULL
      AND l.EntryDirection = N'debit'
-     AND l.EntryReason IN (N'deduction', N'settlement', N'adjustment')
-    THEN l.Amount ELSE 0 END), 0) AS DeductionDebits
+     AND l.EntryReason IN (N'deduction', N'adjustment')
+    THEN l.Amount ELSE 0 END), 0) AS DeductionDebits,
+  ISNULL(SUM(CASE
+    WHEN l.ID IS NOT NULL
+     AND l.EntryDirection = N'debit'
+     AND l.EntryReason = N'settlement'
+    THEN l.Amount ELSE 0 END), 0) AS SettlementDebits
 `;
 
 /**
@@ -464,13 +483,16 @@ function emptyBranchBreakdown(
     revenueWithdrawal: 0,
     advance: 0,
     deductions: 0,
+    settlementNet: 0,
     balance: 0,
     salaryCredits: 0,
     targetCredits: 0,
     fundingCredits: 0,
+    settlementCredits: 0,
     advanceDebits: 0,
     payoutDebits: 0,
     deductionDebits: 0,
+    settlementDebits: 0,
   };
 }
 
@@ -478,9 +500,11 @@ function mapEmployeeBranchBreakdown(row: Record<string, unknown>): EmpLedgerEmpl
   const salaryCredits = roundMoney(Number(row.SalaryCredits ?? 0));
   const targetCredits = roundMoney(Number(row.TargetCredits ?? 0));
   const fundingCredits = roundMoney(Number(row.FundingCredits ?? 0));
+  const settlementCredits = roundMoney(Number(row.SettlementCredits ?? 0));
   const advanceDebits = roundMoney(Number(row.AdvanceDebits ?? 0));
   const payoutDebits = roundMoney(Number(row.PayoutDebits ?? 0));
   const deductionDebits = roundMoney(Number(row.DeductionDebits ?? 0));
+  const settlementDebits = roundMoney(Number(row.SettlementDebits ?? 0));
 
   const { payoutWithinDues, revenueWithdrawal, advanceExcess } =
     computeEmployeeWithdrawalBuckets({
@@ -496,10 +520,11 @@ function mapEmployeeBranchBreakdown(row: Record<string, unknown>): EmpLedgerEmpl
   const payout = payoutWithinDues;
   const advance = advanceExcess;
   const deductions = deductionDebits;
-  // Same ledger identity: salary+target+funding − (payout+revenueWithdrawal+advance) − deductions
+  const settlementNet = roundMoney(settlementCredits - settlementDebits);
+  // salary+target+funding+settlementNet − (payout+revenueWithdrawal+advance) − deductions
   // because payout+revenueWithdrawal+advance === advanceDebits+payoutDebits.
   const balance = roundMoney(
-    salary + target + funding - payout - revenueWithdrawal - advance - deductions,
+    salary + target + funding + settlementNet - payout - revenueWithdrawal - advance - deductions,
   );
 
   return {
@@ -513,13 +538,16 @@ function mapEmployeeBranchBreakdown(row: Record<string, unknown>): EmpLedgerEmpl
     revenueWithdrawal,
     advance,
     deductions,
+    settlementNet,
     balance,
     salaryCredits,
     targetCredits,
     fundingCredits,
+    settlementCredits,
     advanceDebits,
     payoutDebits,
     deductionDebits,
+    settlementDebits,
   };
 }
 

@@ -30,9 +30,12 @@ function normalizePartnersExactCategoryName(categoryName: string): string {
 }
 
 const EXACT_EXCLUDED_CATEGORY_NAMES = new Set(
-  ['تحويلات', 'غير مصنف', 'تحويل بين طرق الدفع مصروف'].map((name) =>
-    normalizePartnersExactCategoryName(name)
-  )
+  [
+    'تحويلات',
+    'غير مصنف',
+    'تحويل بين طرق الدفع مصروف',
+    'تحويل تسوية مستحقات موظف',
+  ].map((name) => normalizePartnersExactCategoryName(name))
 );
 
 export function isExcludedPartnersExpenseCategory(categoryName: string): boolean {
