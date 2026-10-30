@@ -92,6 +92,9 @@ jobs:
       - name: Deploy script shell syntax
         run: bash -n deploy/deploy-casher
 
+      - name: CUT Pulse automation validation
+        run: npx vitest run src/modules/messaging/automation/draftRules.test.ts --reporter=default
+
       - name: Production build
         run: npm run build
 

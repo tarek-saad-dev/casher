@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AlertTriangle,
+  Workflow,
   CheckCircle2,
   Inbox,
   MessageCircle,
@@ -183,7 +184,7 @@ export default function AdminWhatsAppPage() {
         )}
       </section>
 
-      <div className="mb-6 flex gap-2 border-b border-border pb-1">
+      <Link href="/admin/whatsapp/automations/new" className="mb-5 flex items-center justify-between gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/5 px-4 py-4 hover:border-amber-500/60">\n        <span className="flex items-center gap-3"><Workflow className="h-5 w-5 text-amber-400" /><span><strong className="block text-sm text-foreground">CUT Pulse — استوديو الأتمتة</strong><span className="block text-xs text-zinc-400">صمّم سيناريوهات واتساب، جرّب الشروط، واحفظ مسودات آمنة</span></span></span><span className="text-xs text-amber-400">فتح الاستوديو ←</span>\n      </Link>\n\n      <div className="mb-6 flex gap-2 border-b border-border pb-1">
         <button
           type="button"
           onClick={() => setTab('templates')}
