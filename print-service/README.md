@@ -60,6 +60,28 @@ curl.exe -X POST http://127.0.0.1:7788/print/receipt -H "Content-Type: applicati
 
 The demo has invoice ID **0** and "TEST" in the customer/line, and does not save any invoice in the Cashier database. A success response means Windows accepted the spool job; verify the **physical paper** for Arabic direction, readable text, width, no unnecessary blank feed and no clipping. The request ID in the fixture is intentionally fixed, so repeating the same command within 10 minutes will **not reprint** it unless you deliberately change that ID. Do not use the test payload for a live invoice.
 
+### Permanent Windows auto-start (after a successful physical test)
+
+This branch includes a **per-user Windows Task Scheduler installer** so the cashier PC runs the service silently at Windows sign-in. The installed task is called `CUT Salon Print Agent`, uses **ESC/POS + auto-cut**, listens only on `127.0.0.1:7788`, and logs to `print-service/logs/print-agent.log`. No VPS process can replace this local service.
+
+1. In the CMD window running `npm start`, press **Ctrl+C** to stop the manually started service. Do **not** kill all `node.exe` instances.
+2. Open PowerShell as the **same Windows account used for cashier sign-in** and run:
+
+   ```powershell
+   cd C:\CUT-Print-Agent
+   git pull --ff-only
+   cd .\print-service
+   npm ci
+   powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\windows\install-autostart.ps1"
+   ```
+
+3. If it reports port 7788 still occupied, stop the existing service and manually start the registered task: `Start-ScheduledTask -TaskName 'CUT Salon Print Agent'`.
+4. Verify `http://127.0.0.1:7788/health` has `"engine":"escpos"`, `"printer":"XP-80"`. A healthy service is **not proof of printer hardware readiness**.
+5. Verify `Get-ScheduledTask -TaskName 'CUT Salon Print Agent'` shows Running. Log off and sign in to test autostart, then print one short physical receipt.
+6. If it fails, inspect `Get-Content .\logs\print-agent.log -Tail 50` and Windows printer queue. Uninstall only our task with `powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\windows\uninstall-autostart.ps1"`.
+
+The installer refuses to run if the `XP-80` Windows printer or `node_modules` is missing, and it never silently terminates another process already using port 7788. A `Ctrl+C` on the old foreground service is necessary before starting the task.
+
 ### Troubleshooting and safeguards
 
 - `ERR_CONNECTION_REFUSED`: local agent isn't running or port 7788 is blocked.
