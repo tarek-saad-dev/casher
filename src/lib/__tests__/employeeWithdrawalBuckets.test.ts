@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   computeEmployeeWithdrawalBuckets,
   computePartnersAdvanceExcess,
+  computePartnersSettlementCoveredAsReceived,
 } from '@/lib/hr/employee-withdrawal-buckets';
 
 describe('computeEmployeeWithdrawalBuckets', () => {
@@ -113,43 +114,57 @@ describe('computePartnersAdvanceExcess', () => {
     ).toBe(0);
   });
 
-  it('Omar Gleem: settlement credit clears 265 advance debt', () => {
-    expect(
-      computePartnersAdvanceExcess({
-        advanceDebits: 265,
-        payoutDebits: 0,
-        salaryAndTarget: 0,
-        fundingCredits: 0,
-        settlementCredits: 265,
-        settlementDebits: 0,
-      }),
-    ).toBe(0);
+  it('Omar Gleem: settlement moves 265 from سلف to استلم راتب', () => {
+    const params = {
+      advanceDebits: 265,
+      payoutDebits: 0,
+      salaryAndTarget: 0,
+      fundingCredits: 0,
+      settlementCredits: 265,
+      settlementDebits: 0,
+    };
+    expect(computePartnersSettlementCoveredAsReceived(params)).toBe(265);
+    expect(computePartnersAdvanceExcess(params)).toBe(0);
+    expect(params.salaryAndTarget + computePartnersSettlementCoveredAsReceived(params)).toBe(265);
   });
 
-  it('Huda Camp: settlement credit clears 1285 advance debt', () => {
+  it('Huda Camp: settlement moves 1285 from سلف to استلم راتب', () => {
+    const params = {
+      advanceDebits: 1285,
+      payoutDebits: 0,
+      salaryAndTarget: 0,
+      fundingCredits: 0,
+      settlementCredits: 1285,
+      settlementDebits: 0,
+    };
+    expect(computePartnersSettlementCoveredAsReceived(params)).toBe(1285);
+    expect(computePartnersAdvanceExcess(params)).toBe(0);
+  });
+
+  it('does not double-count when salary already covers the draw', () => {
     expect(
-      computePartnersAdvanceExcess({
-        advanceDebits: 1285,
+      computePartnersSettlementCoveredAsReceived({
+        advanceDebits: 200,
         payoutDebits: 0,
-        salaryAndTarget: 0,
+        salaryAndTarget: 500,
         fundingCredits: 0,
-        settlementCredits: 1285,
+        settlementCredits: 200,
       }),
     ).toBe(0);
   });
 
   it('voided lifetime settlement nets out (#1 credit + #2 reverse debit) then #3 credit remains', () => {
     // Camp: #1 credit 1876.17 + #2 debit 1876.17 + #3 credit 1285 → net +1285
-    expect(
-      computePartnersAdvanceExcess({
-        advanceDebits: 1285,
-        payoutDebits: 0,
-        salaryAndTarget: 0,
-        fundingCredits: 0,
-        settlementCredits: 1876.17 + 1285,
-        settlementDebits: 1876.17,
-      }),
-    ).toBe(0);
+    const params = {
+      advanceDebits: 1285,
+      payoutDebits: 0,
+      salaryAndTarget: 0,
+      fundingCredits: 0,
+      settlementCredits: 1876.17 + 1285,
+      settlementDebits: 1876.17,
+    };
+    expect(computePartnersSettlementCoveredAsReceived(params)).toBe(1285);
+    expect(computePartnersAdvanceExcess(params)).toBe(0);
   });
 
   it('Gleem after void+#3: net settlement negative does not fake-cover advances', () => {

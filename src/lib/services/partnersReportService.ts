@@ -19,6 +19,7 @@ import { resolveLegacyBranchTenantId } from '@/platform/masterData/tenantScope';
 import {
   computeEmployeeWithdrawalBuckets,
   computePartnersAdvanceExcess,
+  computePartnersSettlementCoveredAsReceived,
 } from '@/lib/hr/employee-withdrawal-buckets';
 import {
   applyEmployeePartnerOverride,
@@ -357,14 +358,20 @@ function mapPartnersEmployeeRows(input: {
       salaryAndTarget: liveSalaryAndTarget,
       revenue: fundingCredits,
     });
-    const liveAdvanceExcess = computePartnersAdvanceExcess({
+    const settlementBucket = {
       advanceDebits,
       payoutDebits,
       salaryAndTarget: liveSalaryAndTarget,
       fundingCredits,
       settlementCredits,
       settlementDebits,
-    });
+    };
+    const settlementCoveredAsReceived =
+      computePartnersSettlementCoveredAsReceived(settlementBucket);
+    const liveAdvanceExcess = computePartnersAdvanceExcess(settlementBucket);
+    // «استلم راتب» = ledger dues + advances cleared by inter-branch settlement
+    // (reclassification only; no new cash payout / no branch P&L transfer).
+    const liveReceived = roundMoney(liveSalaryAndTarget + settlementCoveredAsReceived);
 
     const override = getEmployeePartnerOverrideFromMap(
       partnerOverrides,
@@ -376,7 +383,7 @@ function mapPartnersEmployeeRows(input: {
       override,
       actualRevenue: baseShopRevenue,
       paidSalaryOrAdvance: calculatedPaid,
-      salaryAndTarget: liveSalaryAndTarget,
+      salaryAndTarget: liveReceived,
       advanceExcess: liveAdvanceExcess,
       isServiceWorker,
     });
@@ -411,7 +418,7 @@ function mapPartnersEmployeeRows(input: {
         isServiceWorker,
         live: {
           shopRevenue: baseShopRevenue,
-          salaryAndTarget: liveSalaryAndTarget,
+          salaryAndTarget: liveReceived,
           advanceDebits,
           settlementCredits,
           settlementDebits,

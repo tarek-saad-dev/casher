@@ -48,14 +48,41 @@ export function computeEmployeeWithdrawalBuckets(params: {
   return { moneyTaken, payoutWithinDues, revenueWithdrawal, advanceExcess };
 }
 
+function partnersSettlementNet(params: {
+  settlementCredits?: number;
+  settlementDebits?: number;
+}): number {
+  return round2(
+    Math.max(0, params.settlementCredits ?? 0) -
+      Math.max(0, params.settlementDebits ?? 0),
+  );
+}
+
 /**
- * Partners-report «سلف» / remaining employee debt at a branch:
- * cash taken (advances + payouts) beyond accrued salary+target+funding,
- * after *net* inter-branch settlement (credits − debits) reduces the uncovered
- * portion when positive (incoming settlement).
- *
- * Outgoing settlement debits reallocate dues — they must not inflate سلف.
- * Voided settlements (#1 + reverse #2) net to ~0 so they do not double-count.
+ * Portion of uncovered cash draws (beyond salary+target+funding) that was
+ * cleared by *net* incoming inter-branch settlement. Shown under «استلم راتب»
+ * instead of «سلف» — no new cash payout; voided pairs net to ~0.
+ */
+export function computePartnersSettlementCoveredAsReceived(params: {
+  advanceDebits: number;
+  payoutDebits: number;
+  salaryAndTarget: number;
+  fundingCredits: number;
+  settlementCredits?: number;
+  settlementDebits?: number;
+}): number {
+  const taken =
+    Math.max(0, params.advanceDebits) + Math.max(0, params.payoutDebits);
+  const baseCovered =
+    Math.max(0, params.fundingCredits) + Math.max(0, params.salaryAndTarget);
+  const excessWithoutSettlement = round2(Math.max(0, taken - baseCovered));
+  const settlementNet = Math.max(0, partnersSettlementNet(params));
+  return round2(Math.min(excessWithoutSettlement, settlementNet));
+}
+
+/**
+ * Partners-report «سلف»: remaining uncovered cash draws after salary+target+
+ * funding and after net incoming inter-branch settlement.
  */
 export function computePartnersAdvanceExcess(params: {
   advanceDebits: number;
@@ -69,13 +96,9 @@ export function computePartnersAdvanceExcess(params: {
 }): number {
   const taken =
     Math.max(0, params.advanceDebits) + Math.max(0, params.payoutDebits);
-  const settlementNet = round2(
-    Math.max(0, params.settlementCredits ?? 0) -
-      Math.max(0, params.settlementDebits ?? 0),
-  );
   const covered =
     Math.max(0, params.fundingCredits) +
     Math.max(0, params.salaryAndTarget) +
-    Math.max(0, settlementNet);
+    Math.max(0, partnersSettlementNet(params));
   return round2(Math.max(0, taken - covered));
 }

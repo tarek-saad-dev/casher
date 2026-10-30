@@ -38,11 +38,6 @@ function MobileValueRow({
   );
 }
 
-function formatOrDash(n: number, className: string) {
-  if (!(n > 0)) return <span className="text-zinc-500">—</span>;
-  return <span className={className}>{formatPartnersCurrency(n)}</span>;
-}
-
 export default function PartnersEmployeesSection({
   rows,
   totals,
@@ -52,8 +47,7 @@ export default function PartnersEmployeesSection({
     <section className="w-full min-w-0 bg-zinc-900/50 border border-zinc-800/50 rounded-xl p-3 sm:p-4 md:p-6 print:break-inside-avoid">
       <h2 className="text-base sm:text-lg font-bold text-white mb-1 sm:mb-2">الموظفون</h2>
       <p className="text-xs text-zinc-500 mb-3 sm:mb-4">
-        السلف = المسحوب نقدًا من الخزنة. التسوية = إعادة توزيع دفترية بين الفروع (بدون إيراد مبيعات).
-        المديونية = ما تبقّى بعد الراتب والتارجت والتمويل والتسويات الواردة.
+        استلم راتب = استحقاق الدفتر + سلف غُطّيت بتسوية بين الفروع. سلف = المتبقي بعد الاستحقاق والتمويل والتسوية.
       </p>
 
       {loading && rows.length === 0 ? (
@@ -64,6 +58,7 @@ export default function PartnersEmployeesSection({
         </div>
       ) : (
         <>
+          {/* Mobile: employee cards */}
           <div className="md:hidden print:hidden space-y-3">
             {rows.map((row) => (
               <article
@@ -87,25 +82,14 @@ export default function PartnersEmployeesSection({
                   valueClassName="text-amber-400"
                 />
                 <MobileValueRow
-                  label="سلف مسحوبة"
-                  value={formatOrDash(row.advanceDebits, 'text-zinc-200')}
-                />
-                <MobileValueRow
-                  label="تسوية واردة / صادرة"
+                  label="سلف"
                   value={
-                    <span className="flex flex-col items-end gap-0.5 text-sm">
-                      <span className="text-sky-300">
-                        وارد {formatPartnersCurrency(row.settlementCredits)}
-                      </span>
-                      <span className="text-zinc-400">
-                        صادر {formatPartnersCurrency(row.settlementDebits)}
-                      </span>
-                    </span>
+                    row.advanceExcess > 0 ? (
+                      formatPartnersCurrency(row.advanceExcess)
+                    ) : (
+                      <span className="text-zinc-500">—</span>
+                    )
                   }
-                />
-                <MobileValueRow
-                  label="مديونية متبقية"
-                  value={formatOrDash(row.advanceExcess, 'text-rose-400')}
                   valueClassName="text-rose-400"
                 />
               </article>
@@ -119,30 +103,25 @@ export default function PartnersEmployeesSection({
                 valueClassName="text-amber-400"
               />
               <MobileValueRow
-                label="إجمالي المديونية المتبقية"
+                label="إجمالي السلف"
                 value={formatPartnersCurrency(totals.totalAdvanceExcess ?? 0)}
                 valueClassName="text-rose-400"
               />
             </article>
           </div>
 
-          <div className="hidden md:block print:block overflow-x-auto">
-            <table className="w-full text-sm min-w-[640px]">
+          {/* Desktop + print: table */}
+          <div className="hidden md:block print:block">
+            <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-zinc-800 text-zinc-400 print:border-zinc-300 print:text-zinc-600">
                   <th className="text-right py-3 px-2 font-medium">الموظف</th>
                   <th className="text-right py-3 px-2 font-medium">استلم راتب (راتب + تارجت)</th>
-                  <th className="text-right py-3 px-2 font-medium" title="سلف نقدية مسجّلة في الدفتر">
-                    سلف مسحوبة
-                  </th>
-                  <th className="text-right py-3 px-2 font-medium" title="تسوية بين الفروع — دفترية وليست إيراد مبيعات">
-                    تسوية واردة / صادرة
-                  </th>
                   <th
                     className="text-right py-3 px-2 font-medium"
-                    title="ما زاد عن الراتب + التارجت + التمويل + التسوية الواردة"
+                    title="ما زاد عن الراتب + التارجت + التمويل بعد خصم التسوية بين الفروع"
                   >
-                    مديونية متبقية
+                    سلف
                   </th>
                 </tr>
               </thead>
@@ -162,17 +141,6 @@ export default function PartnersEmployeesSection({
                       <span className="block text-[10px] text-zinc-500 font-normal print:text-zinc-600">
                         راتب {formatPartnersCurrency(row.ledgerSalary)} + تارجت{' '}
                         {formatPartnersCurrency(row.ledgerTarget)}
-                      </span>
-                    </td>
-                    <td className="py-3 px-2 tabular-nums text-zinc-200">
-                      {formatOrDash(row.advanceDebits, 'text-zinc-200 font-medium')}
-                    </td>
-                    <td className="py-3 px-2 tabular-nums text-sm">
-                      <span className="block text-sky-300">
-                        وارد {formatPartnersCurrency(row.settlementCredits)}
-                      </span>
-                      <span className="block text-zinc-500">
-                        صادر {formatPartnersCurrency(row.settlementDebits)}
                       </span>
                     </td>
                     <td className="py-3 px-2 tabular-nums">
@@ -196,11 +164,9 @@ export default function PartnersEmployeesSection({
                       {formatPartnersCurrency(totals.totalSalaryAndTarget ?? 0)}
                     </span>
                   </td>
-                  <td className="py-3 px-2 text-zinc-500">—</td>
-                  <td className="py-3 px-2 text-zinc-500">—</td>
                   <td className="py-3 px-2 tabular-nums">
                     <span className="block text-[10px] text-zinc-500 font-normal print:text-zinc-600 mb-0.5">
-                      إجمالي المديونية المتبقية
+                      إجمالي السلف
                     </span>
                     <span className="text-rose-400 print:text-rose-700">
                       {formatPartnersCurrency(totals.totalAdvanceExcess ?? 0)}
