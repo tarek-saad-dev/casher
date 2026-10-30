@@ -9,6 +9,20 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  thermal-print-agent:
+    name: Local print agent / ESC-POS regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install print agent
+        run: npm ci --prefix print-service
+      - name: Test raster encoder, queue and print endpoints (no physical printer)
+        run: npm test --prefix print-service
+
   drvo-validation:
     name: DRVO / booking / queue validation
     runs-on: ubuntu-latest
@@ -91,6 +105,9 @@ jobs:
 
       - name: Deploy script shell syntax
         run: bash -n deploy/deploy-casher
+
+      - name: Local print client and receipt interaction regressions
+        run: npx vitest run src/lib/__tests__/localPrintClient.test.ts src/components/expenses/__tests__/ExpenseReceiptPopup.print.test.tsx
 
       - name: Production build
         run: npm run build
