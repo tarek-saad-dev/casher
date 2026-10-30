@@ -320,6 +320,7 @@ export default function ExpenseReceiptPopup({ open, expense, onClose }: ExpenseR
       requestId,
       width: '58mm',
       printer: 'default',
+      receiptType: 'expense',
     });
 
     if (result.ok) {
@@ -470,7 +471,7 @@ export default function ExpenseReceiptPopup({ open, expense, onClose }: ExpenseR
               {printing ? 'جاري...' : 'طباعة'}
             </Button>
           </div>
-          {printError && (
+          {printError && printError.code !== 'PRINT_DISABLED' && printError.code !== 'PRINT_TYPE_DISABLED' && (
             <Button
               variant="secondary"
               size="sm"
