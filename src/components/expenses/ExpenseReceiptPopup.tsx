@@ -155,6 +155,13 @@ const RECEIPT_CSS = `
     border: 1px solid #000;
     display: inline-block;
   }
+  /* Larger thermal bitmap text, while keeping the 58mm receipt compact. */
+  html, body { font-size: 11px; line-height: 1.35; }
+  .receipt-info, .deduction-info, .info-label, .info-value,
+  .amount-label, .notes-label, .reason-label { font-size: 11px; }
+  .notes-text, .reason-text, .receipt-footer { font-size: 10px; }
+  .amount-value { font-size: 20px; }
+
 `;
 
 export default function ExpenseReceiptPopup({ open, expense, onClose }: ExpenseReceiptPopupProps) {
