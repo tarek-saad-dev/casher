@@ -22,6 +22,8 @@ jobs:
         run: npm ci --prefix print-service
       - name: Test raster encoder, queue and print endpoints (no physical printer)
         run: npm test --prefix print-service
+      - name: Exercise the opt-in ESC/POS engine with mock spooler
+        run: PRINT_ENGINE=escpos PRINT_ADAPTER=mock npm test --prefix print-service
 
   drvo-validation:
     name: DRVO / booking / queue validation
