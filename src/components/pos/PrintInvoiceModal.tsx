@@ -486,6 +486,16 @@ const THERMAL_CSS = `
       #000 6px
     );
   }
+  /* Printer readability: actual ESC/POS bitmap renders screen CSS, not @media print. */
+  html, body { font-size: 12px; line-height: 1.4; }
+  .receipt-info, .total-row { font-size: 12px; }
+  th, td { font-size: 11px; padding: 2mm 1mm; }
+  .service-name { font-size: 12px; }
+  .barber-name, .line-price-gross, .line-price-disc,
+  .pkg-item-name, .pkg-item-price { font-size: 10px; }
+  .line-price-net { font-size: 12px; }
+  .total-row.grand { font-size: 18px; }
+
 `;
 
 export default function PrintInvoiceModal({ open, invID, onClose }: PrintInvoiceModalProps) {
