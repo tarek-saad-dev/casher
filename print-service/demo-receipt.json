@@ -1,0 +1,29 @@
+{
+  "requestId": "cut-demo-readable-v2-01",
+  "invID": 0,
+  "invDate": "2026-10-30",
+  "invTime": "20:30",
+  "customerName": "عميل تجريبي - TEST",
+  "customerPhone": "",
+  "SubTotal": 330,
+  "Dis": 0,
+  "DisVal": 0,
+  "GrandTotal": 330,
+  "PayCash": 330,
+  "PayVisa": 0,
+  "PaymentMethodID": 1,
+  "TotalBonus": 0,
+  "Notes": "إيصال اختبار فقط - غير حقيقي",
+  "items": [
+    {
+      "ProName": "Hair Cut - قص شعر تجريبي",
+      "EmpName": "Barber TEST",
+      "SPrice": 330,
+      "Qty": 1,
+      "SPriceAfterDis": 330,
+      "Dis": 0,
+      "DisVal": 0,
+      "SValue": 330
+    }
+  ]
+}
