@@ -5,6 +5,8 @@ import {
   createPrintRequestId,
   printHtmlViaLocalService,
   userMessageForCode,
+  getLocalPrinterSettings,
+  patchLocalPrinterSettings,
 } from '@/lib/localPrintClient';
 
 type FetchLike = (
@@ -31,6 +33,51 @@ describe('localPrintClient', () => {
     const b = createPrintRequestId('exp-12');
     expect(a.startsWith('exp-12-')).toBe(true);
     expect(a).not.toBe(b);
+  });
+
+  it('supports printer policy errors without suggesting an automatic browser fallback', async () => {
+    const fetchImpl: FetchLike = vi.fn(async url => {
+      if (String(url).endsWith('/health')) return jsonResponse(200, { status: 'ok' });
+      return jsonResponse(409, {
+        ok: false,
+        requestId: 'blocked-expense',
+        stage: 'settings',
+        code: 'PRINT_TYPE_DISABLED',
+        message: 'Receipt type paused',
+      });
+    });
+    const result = await printHtmlViaLocalService(
+      { html: '<html>Expense</html>', receiptType: 'expense', requestId: 'blocked-expense' },
+      { fetchImpl },
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.code).toBe('PRINT_TYPE_DISABLED');
+      expect(result.userMessage).toContain('إيقاف');
+    }
+    const sent = JSON.parse(String((fetchImpl as ReturnType<typeof vi.fn>).mock.calls[1][1]?.body));
+    expect(sent.receiptType).toBe('expense');
+  });
+
+  it('reads and updates printer controls from the same local agent', async () => {
+    const mock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      expect(String(input)).toBe(`${PRINT_SERVICE_URL}/settings`);
+      if (init?.method === 'PATCH') {
+        expect(JSON.parse(String(init.body))).toEqual({ types: { invoice: false } });
+        return jsonResponse(200, { ok: true });
+      }
+      return jsonResponse(200, {
+        ok: true, enabled: true, autoCut: true,
+        types: { invoice: true, expense: true, deduction: true, other: true },
+        printer: 'XP-80', engine: 'escpos', adapter: 'real',
+        activeJobs: 0, pendingJobs: 0, lastAcceptedAt: null,
+        scope: 'this-computer', physicalPrinterStatus: 'unknown',
+      });
+    });
+    const result = await getLocalPrinterSettings();
+    expect(result.engine).toBe('escpos');
+    await patchLocalPrinterSettings({ types: { invoice: false } });
+    expect(mock).toHaveBeenCalledTimes(2);
   });
 
   it('userMessageForCode returns Arabic diagnostics', () => {

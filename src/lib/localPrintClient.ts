@@ -15,6 +15,8 @@ export type PrintErrorCode =
   | 'PRINTER_OFFLINE'
   | 'SPOOLER_ERROR'
   | 'PRINT_COMMAND_FAILED'
+  | 'PRINT_DISABLED'
+  | 'PRINT_TYPE_DISABLED'
   | 'BROWSER_PRINT_FAILED'
   | 'TIMEOUT'
   | 'UNKNOWN';
@@ -43,6 +45,7 @@ export interface PrintHtmlPayload {
   requestId?: string;
   width?: string;
   printer?: string;
+  receiptType?: 'invoice' | 'expense' | 'deduction' | 'other';
 }
 
 const ARABIC_MESSAGES: Record<PrintErrorCode, string> = {
@@ -55,6 +58,8 @@ const ARABIC_MESSAGES: Record<PrintErrorCode, string> = {
   PRINTER_OFFLINE: 'الطابعة غير متصلة أو في وضع Offline.',
   SPOOLER_ERROR: 'فشل Windows في إرسال المهمة إلى الطابعة. راجع قائمة انتظار الطباعة.',
   PRINT_COMMAND_FAILED: 'فشلت عملية الطباعة داخل خدمة الطباعة المحلية.',
+  PRINT_DISABLED: 'الطباعة متوقفة حاليًا من صفحة إدارة الطباعة.',
+  PRINT_TYPE_DISABLED: 'تم إيقاف طباعة هذا النوع من الإيصالات من الإعدادات.',
   BROWSER_PRINT_FAILED: 'فشلت الطباعة من المتصفح.',
   TIMEOUT: 'انتهت مهلة الاتصال بخدمة الطباعة المحلية.',
   UNKNOWN: 'تعذرت الطباعة لسبب غير معروف.',
@@ -94,6 +99,8 @@ function classifyServiceCode(code?: string, message?: string): PrintErrorCode {
     'PRINTER_OFFLINE',
     'SPOOLER_ERROR',
     'PRINT_COMMAND_FAILED',
+    'PRINT_DISABLED',
+    'PRINT_TYPE_DISABLED',
     'BROWSER_PRINT_FAILED',
     'TIMEOUT',
   ];
@@ -184,6 +191,7 @@ export async function printHtmlViaLocalService(
         html: payload.html,
         width: payload.width ?? '80mm',
         printer: payload.printer ?? 'default',
+        receiptType: payload.receiptType ?? 'other',
         requestId,
       }),
       signal: controller.signal,
@@ -313,4 +321,63 @@ export function openBrowserPrintFallback(html: string, requestId?: string): { ok
       userMessage: userMessageForCode('BROWSER_PRINT_FAILED'),
     };
   }
+}
+
+
+export type ReceiptType = 'invoice' | 'expense' | 'deduction' | 'other';
+
+export interface LocalPrinterSettings {
+  enabled: boolean;
+  autoCut: boolean;
+  types: Record<ReceiptType, boolean>;
+  printer: string;
+  engine: 'escpos' | 'pdf';
+  adapter: string;
+  pendingJobs: number;
+  activeJobs: number;
+  lastAcceptedAt: string | null;
+  scope: string;
+  physicalPrinterStatus: 'unknown';
+}
+
+async function settingsRequest<T>(
+  endpoint: string,
+  options: { method?: 'GET' | 'PATCH' | 'POST'; body?: object; timeoutMs?: number } = {},
+): Promise<T> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), options.timeoutMs ?? 6000);
+  try {
+    const response = await fetch(PRINT_SERVICE_URL + endpoint, {
+      method: options.method ?? 'GET',
+      headers: { 'Content-Type': 'application/json' },
+      ...(options.body ? { body: JSON.stringify(options.body) } : {}),
+      signal: controller.signal,
+      cache: 'no-store',
+    });
+    const data = await response.json();
+    if (!response.ok || data?.ok !== true) {
+      throw new Error(data?.message || data?.code || 'فشل الاتصال بخدمة الطباعة');
+    }
+    return data as T;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export async function getLocalPrinterSettings(): Promise<LocalPrinterSettings> {
+  return settingsRequest<LocalPrinterSettings>('/settings');
+}
+
+export async function patchLocalPrinterSettings(
+  update: { enabled?: boolean; autoCut?: boolean; types?: Partial<LocalPrinterSettings['types']> },
+): Promise<void> {
+  await settingsRequest('/settings', { method: 'PATCH', body: update });
+}
+
+export async function printLocalTestReceipt(): Promise<void> {
+  await settingsRequest('/print/test', {
+    method: 'POST',
+    body: { requestId: createPrintRequestId('dashboard-test') },
+    timeoutMs: 25000,
+  });
 }

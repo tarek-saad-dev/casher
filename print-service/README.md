@@ -1,5 +1,39 @@
 # CUT Salon Local Print Agent
 
+## Printer Control Center
+
+Cashier now has a local printer-control page at **`/admin/settings/printing`** (under Settings → إدارة الطباعة). It contacts the local print service on **this Windows PC only**.
+
+- Global printing switch: enables or pauses **new** print jobs without killing the agent; jobs already accepted by Windows cannot be cancelled by the UI.
+- Receipt-type switches: sales invoices, expenses, deductions and other/test print jobs. All relevant Cashier client print requests identify their type. Other legacy clients without `receiptType` fall into `other`.
+- Auto-cut: takes effect on the next ESC/POS job, no restart needed.
+- Agent status, engine, Windows printer name, agent job count and last accepted job time.
+- One-off diagnostic test: submits a real test spool job, and clearly does **not** promise paper actually exited.
+- Settings are stored locally in `%LOCALAPPDATA%\CUT-Salon\print-settings.json` and survive a Windows sign-in or agent restart. Printer name and engine are not remotely changeable from this page to avoid accidental outages.
+- Trusted-origin browser requests are accepted only from `ALLOWED_ORIGINS`. The agent remains bound to loopback. This is **workstation-level control**, not branch-wide or cloud control. For multi-device administration, add authenticated centrally managed policies and device enrollment separately.
+- Page/agent version coupling: updating the VPS alone does **not** update an existing Windows print agent. Install/update the agent code from GitHub and restart the scheduled task to activate the new endpoints.
+
+### Update an existing cashier Windows agent
+
+On the same PC where the scheduled task `CUT Salon Print Agent` is installed, open PowerShell in the user's Windows session. The original checkout was cloned with `--depth 1 --branch feature/...`, meaning it may not know about the `main` branch. Fetch `main` explicitly:
+
+```powershell
+Stop-ScheduledTask -TaskName 'CUT Salon Print Agent'
+cd C:\CUT-Print-Agent
+git status --short
+git fetch origin main:refs/remotes/origin/main
+git switch -C main origin/main
+cd .\print-service
+npm ci
+Start-ScheduledTask -TaskName 'CUT Salon Print Agent'
+Start-Sleep -Seconds 3
+Invoke-RestMethod http://127.0.0.1:7788/settings
+```
+
+Do not switch branches if `git status --short` shows **uncommitted local changes** until you have reviewed them. Git switch should not alter the installed Windows task; its runner points to this repository path.
+
+Check the `/settings` endpoint and open `https://ops.cutsaloon.com/admin/settings/printing` in Chrome **on the cashier PC**. Do not try to restart the local service from the VPS.
+
 ## Deployment status
 
 The POS invoice, expense and deduction buttons use the **local agent first** and show a **manual** Chrome fallback when the agent is unreachable. The agent has two engines:

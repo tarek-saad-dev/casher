@@ -187,6 +187,7 @@ export default function DeductionReceiptPopup({ open, deduction, onClose }: Dedu
   const [printing, setPrinting] = useState(false);
   const [printError, setPrintError] = useState<string | null>(null);
   const [printSuccess, setPrintSuccess] = useState(false);
+  const [policyBlocked, setPolicyBlocked] = useState(false);
   const printLockRef = useRef(false);
   const [visible, setVisible] = useState(false);
   const [progress, setProgress] = useState(100);
@@ -315,6 +316,7 @@ export default function DeductionReceiptPopup({ open, deduction, onClose }: Dedu
     printLockRef.current = true;
     setPrinting(true);
     setPrintError(null);
+    setPolicyBlocked(false);
     setPrintSuccess(false);
     try {
       const result = await printHtmlViaLocalService({
@@ -322,9 +324,10 @@ export default function DeductionReceiptPopup({ open, deduction, onClose }: Dedu
         requestId: createPrintRequestId(`deduction-${deduction.deductionInvID}`),
         width: '58mm',
         printer: 'default',
+        receiptType: 'deduction',
       });
       if (result.ok) setPrintSuccess(true);
-      else setPrintError(result.userMessage);
+      else { setPrintError(result.userMessage); setPolicyBlocked(result.code === 'PRINT_DISABLED' || result.code === 'PRINT_TYPE_DISABLED'); }
     } catch {
       setPrintError('تعذر إرسال الإيصال لخدمة الطباعة المحلية.');
     } finally {
@@ -422,7 +425,7 @@ export default function DeductionReceiptPopup({ open, deduction, onClose }: Dedu
 
         {printError && <p role="alert" className="text-xs text-red-600">{printError}</p>}
         {printSuccess && <p role="status" className="text-xs text-green-700">تم إرسال الإيصال لقائمة انتظار الطابعة.</p>}
-        {printError && (
+        {printError && !policyBlocked && (
           <Button variant="outline" size="sm" className="w-full text-xs" onClick={handleBrowserFallback}>
             طباعة من المتصفح
           </Button>

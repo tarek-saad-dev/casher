@@ -505,6 +505,7 @@ export default function PrintInvoiceModal({ open, invID, onClose }: PrintInvoice
   const [printing, setPrinting] = useState(false);
   const [printError, setPrintError] = useState<string | null>(null);
   const [printSuccess, setPrintSuccess] = useState(false);
+  const [policyBlocked, setPolicyBlocked] = useState(false);
   const printLockRef = useRef(false);
   const printWindowRef = useRef<Window | null>(null);
   const receiptModel = useMemo(() => (data ? buildReceiptModel(data) : null), [data]);
@@ -515,6 +516,7 @@ export default function PrintInvoiceModal({ open, invID, onClose }: PrintInvoice
     setLoading(true);
     setPrinting(false);
     setPrintError(null);
+    setPolicyBlocked(false);
     setPrintSuccess(false);
     fetch(`/api/sales/${invID}`)
       .then(r => r.json())
@@ -730,10 +732,11 @@ export default function PrintInvoiceModal({ open, invID, onClose }: PrintInvoice
         html: buildReceiptHTML(),
         width: '72mm',
         printer: 'default',
+        receiptType: 'invoice',
         requestId: createPrintRequestId(`invoice-${data.invID}`),
       });
       if (result.ok) setPrintSuccess(true);
-      else setPrintError(result.userMessage);
+      else { setPrintError(result.userMessage); setPolicyBlocked(result.code === 'PRINT_DISABLED' || result.code === 'PRINT_TYPE_DISABLED'); }
     } catch {
       setPrintError('تعذر إرسال الفاتورة للطابعة المحلية.');
     } finally {
@@ -999,7 +1002,7 @@ export default function PrintInvoiceModal({ open, invID, onClose }: PrintInvoice
                 <X className="w-4 h-4 ml-2" />
                 إغلاق
               </Button>
-              {printError && (
+              {printError && !policyBlocked && (
                 <Button variant="secondary" onClick={handleBrowserFallback} disabled={printing} data-testid="invoice-browser-fallback">
                   طباعة من المتصفح
                 </Button>
