@@ -33,6 +33,7 @@ export interface PrintServiceResponse {
   invoiceId?: number;
   printer?: string;
   ok?: boolean;
+  code?: string;
 }
 
 /**
@@ -77,7 +78,9 @@ async function sendToLocalPrintService(data: PrintReceiptData): Promise<PrintSer
   const result: PrintServiceResponse | null = await res.json().catch(() => null);
 
   if (!res.ok || !result || result.success === false || result.ok === false) {
-    throw new Error(result?.error || result?.message || 'Local print failed');
+    const error = new Error(result?.error || result?.message || 'Local print failed') as Error & { code?: string };
+    error.code = result?.code;
+    throw error;
   }
 
   return result;
@@ -121,6 +124,12 @@ export async function printReceiptWithFallback(
       console.log('[print] Print flow finished (local service)');
       return true;
     } catch (printErr) {
+      const code = (printErr as Error & { code?: string })?.code;
+      if (code === 'PRINT_DISABLED' || code === 'PRINT_TYPE_DISABLED') {
+        addToast?.('info', 'الطباعة موقوفة من إدارة الطباعة — لم يتم طباعة الفاتورة');
+        // Return handled to prevent the legacy caller from opening a second print window.
+        return true;
+      }
       console.warn('[print] Print-service failed, opening browser print fallback', printErr instanceof Error ? printErr.message : printErr);
       addToast?.('info', 'فشلت الطباعة المحلية — جاري الطباعة عبر المتصفح');
       console.log('[print] Browser print modal opened');
