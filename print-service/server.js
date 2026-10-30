@@ -33,6 +33,15 @@ app.use(cors({
   methods: ['GET', 'POST', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'X-Request-Id'],
 }));
+// CORS alone hides responses: it does not stop a cross-origin form POST from
+// reaching a route. Explicitly block non-allowlisted browser origins.
+app.use((req, res, next) => {
+  const origin = req.get('Origin');
+  if (origin && !ALLOWED_ORIGINS.includes(origin)) {
+    return res.status(403).json({ ok: false, code: 'FORBIDDEN_ORIGIN' });
+  }
+  return next();
+});
 
 // Serialized jobs; changes to settings affect pending jobs before they reach Windows.
 let printTail = Promise.resolve();
@@ -279,15 +288,6 @@ app.get('/health', (req, res) => {
 });
 
 // This page controls the LOCAL Windows PC, not other branches or the VPS.
-// Reject unsupported browser origins even when CORS would only hide the response.
-app.use('/settings', (req, res, next) => {
-  const origin = req.get('Origin');
-  if (origin && !ALLOWED_ORIGINS.includes(origin)) {
-    return res.status(403).json({ ok: false, code: 'FORBIDDEN_ORIGIN' });
-  }
-  return next();
-});
-
 app.get('/settings', (req, res) => res.json({
   ok: true,
   ...printSettings.get(),
