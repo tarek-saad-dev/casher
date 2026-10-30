@@ -1,4 +1,51 @@
-# POS Print Service
+# CUT Salon Local Print Agent
+
+## Deployment status
+
+The POS invoice, expense and deduction buttons use the **local agent first** and show a **manual** Chrome fallback when the agent is unreachable. The agent has two engines:
+
+- \`PRINT_ENGINE=pdf\` (default): existing Puppeteer → PDF → Windows printer route. Keep this until each branch printer is verified.
+- \`PRINT_ENGINE=escpos\` (opt-in): Chromium renders the existing Arabic receipt to a PNG, the agent converts it to **bounded monochrome ESC/POS raster commands**, then sends a RAW job through the Windows spooler. No PDF, no Windows graphical pagination, no browser print preview. Rendering still uses Chromium to preserve RTL, branding and logos.
+
+**A RAW job is not compatible with every Windows printer driver. Verify that this particular XP-80 is ESC/POS-capable and that its driver accepts datatype RAW before enabling.** The \`/health\` response proves only that the local process is alive; a successful print response proves that Windows accepted the job, not that the physical receipt came out.
+
+### Safe first-time test (Windows, on the cashier PC)
+
+1. Clear any stuck XP-80 jobs in Windows, verify the printer is Online and the thermal self-test prints a short receipt. Disconnect the printer or keep it off until the queue is cleared if it previously fed blank paper continuously.
+2. Install Node.js 22 and run \`npm ci\` **inside \`print-service\`**. Check \`Get-Printer | Select Name\` and confirm the exact printer name.
+3. In a **PowerShell** window in \`print-service\`, configure only this session:
+
+   \`\`\`powershell
+   $env:PRINTER_NAME = 'XP-80'
+   $env:PRINT_ENGINE = 'escpos'
+   $env:PRINTER_AUTO_CUT = '0'
+   $env:ALLOWED_ORIGINS = 'https://ops.cutsaloon.com,http://localhost:5500,http://127.0.0.1:5500'
+   npm start
+   \`\`\`
+
+4. Open \`http://127.0.0.1:7788/health\` on **the same PC**, confirm \`"engine":"escpos"\`. Keep a finger on the power switch for the first controlled test.
+5. **One short test only** (do not repeatedly press Print):
+
+   \`\`\`powershell
+   Invoke-RestMethod -Uri 'http://127.0.0.1:7788/print/test' -Method Post -ContentType 'application/json' -Body '{"requestId":"first-hardware-test-1"}'
+   \`\`\`
+
+6. Confirm: a single short receipt, readable black text and Arabic, correct direction, no blank feed, and correct paper cut (if supported; it is disabled by default). Then test an actual invoice, expense, and deduction, plus a two-job back-to-back test. If RAW prints blank paper or code symbols, **turn off the printer, cancel all jobs**, set \`PRINT_ENGINE=pdf\` and use the documented browser fallback until the driver/firmware is fixed.
+7. Measure first-print and warm-print latency using the browser developer console timestamps and the service logs. Do not claim a speed improvement until the hardware measurements are captured.
+
+The local agent must run **on each branch's cashier Windows PC**, not on the VPS. \`127.0.0.1\` always means the browser's own machine. For auto-start, install the app as an appropriately permissioned Windows service or create a Windows Task Scheduler task to run \`npm start\` in the service directory at user sign-in (set the working directory and printer access correctly). Do not expose port 7788 beyond loopback.
+
+### Troubleshooting and safeguards
+
+- \`ERR_CONNECTION_REFUSED\`: local agent isn't running or port 7788 is blocked.
+- \`CORS\` / local network permission: check \`ALLOWED_ORIGINS\` contains the **exact** POS origin including scheme, and grant the trusted Cashier site Chrome's local network/device permission when prompted.
+- \`SPOOLER_ERROR\`: check Windows printer status/queue, installed printer name, and local PowerShell stdout/stderr. PDF and RAW modes need different driver support.
+- Requests are serialized and request IDs are de-duplicated for 10 minutes while the agent runs; retries with the same ID do **not** queue a second paper receipt. Explicitly create a new ID for an intentional reprint.
+- Receipts taller than 4800 dots or wider than 576 dots are **rejected before sending data**. No unbounded feed; partial cut is disabled unless \`PRINTER_AUTO_CUT=1\`.
+- Browser fallback is **manual**. Never automatically retry on another printing channel after a timeout because the spooler may already have accepted the first job.
+- If using an environment file, load it explicitly with your service manager; this project currently reads \`process.env\` and does not automatically load \`.env\`.
+
+## Previous setup reference
 
 A local Node.js print service for the POS system that prints receipts directly to thermal printer without using Chrome print preview.
 
