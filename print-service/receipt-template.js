@@ -15,7 +15,7 @@
 // ──────────────────────────────────────────────────────────────────────────────
 const THERMAL_CSS = `
   @page {
-    size: 72mm auto;
+    size: 80mm 200mm;
     margin: 0mm;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
