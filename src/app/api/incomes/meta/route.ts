@@ -4,6 +4,11 @@ import { getSession } from '@/lib/session';
 import { authenticate, isAuthResult } from '@/lib/api-auth';
 import { getActiveBranchContext } from '@/lib/branch/context';
 import { getUserOpenShiftForBranch } from '@/lib/branch/shiftSession';
+import { ensureStoreIncomeCategories } from '@/lib/services/storeIncomeService';
+import {
+  STORE_NON_REVENUE_CASH_IN_CATEGORY,
+  STORE_OTHER_BUSINESS_INCOME_CATEGORY,
+} from '@/lib/accounting/storeIncome';
 
 // GET /api/incomes/meta — categories, payment methods, open shift (active branch)
 export async function GET() {
@@ -13,6 +18,12 @@ export async function GET() {
   try {
     const session = await getSession();
     const db = await getPool();
+
+    try {
+      await ensureStoreIncomeCategories(auth.tenantId);
+    } catch (ensureErr) {
+      console.warn('[api/incomes/meta] store income categories ensure skipped:', ensureErr);
+    }
 
     // Categories — active income categories only for new-entry form
     const catRes = await db.request()
@@ -69,10 +80,19 @@ export async function GET() {
       }
     }
 
+    const categories = catRes.recordset as Array<{ ExpINID: number; ExpINType: string; CatName: string }>;
+    const storeIncomeCategories = {
+      other_business_income:
+        categories.find((c) => c.CatName === STORE_OTHER_BUSINESS_INCOME_CATEGORY) ?? null,
+      non_revenue_cash_in:
+        categories.find((c) => c.CatName === STORE_NON_REVENUE_CASH_IN_CATEGORY) ?? null,
+    };
+
     return NextResponse.json({
-      categories:     catRes.recordset,
+      categories,
       paymentMethods: pmRes.recordset,
       openShift,
+      storeIncomeCategories,
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';

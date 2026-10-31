@@ -22,6 +22,11 @@ import {
 } from '@/lib/services/employeeLedgerDualWrite';
 import { syncEmployeeFundingFromCashMove } from '@/lib/services/employeeLedgerFundingSyncService';
 import { maybeScheduleFundingWhatsAppFromIncomeCategory } from '@/lib/services/employeeAdvanceWhatsAppNotify';
+import { parseStoreIncomeKind } from '@/lib/accounting/storeIncome';
+import {
+  ensureStoreIncomeCategory,
+  findDuplicateStoreIncome,
+} from '@/lib/services/storeIncomeService';
 
 // ─────────────────────── GET /api/incomes ───────────────────────
 // Query params: fromDate, toDate, expInId?, paymentMethodId?, shiftMoveId?, search?
@@ -269,11 +274,15 @@ export async function POST(req: NextRequest) {
     if (!session) return NextResponse.json({ error: 'يجب تسجيل الدخول أولاً' }, { status: 401 });
 
     const body = await req.json();
-    const { amount, expInId, paymentMethodId, notes } = body;
+    const { amount, paymentMethodId, notes } = body;
+    const storeIncomeKind = parseStoreIncomeKind(body.storeIncomeKind);
+    let expInId = body.expInId != null ? Number(body.expInId) : null;
 
     // ── Client-side validation ──
     if (!amount || Number(amount) <= 0) return NextResponse.json({ error: 'قيمة الإيراد يجب أن تكون أكبر من صفر' }, { status: 400 });
-    if (!expInId) return NextResponse.json({ error: 'يجب اختيار تصنيف الإيراد' }, { status: 400 });
+    if (!storeIncomeKind && !expInId) {
+      return NextResponse.json({ error: 'يجب اختيار تصنيف الإيراد' }, { status: 400 });
+    }
     if (!paymentMethodId) return NextResponse.json({ error: 'يجب اختيار طريقة الدفع' }, { status: 400 });
 
     const { resolveBranchDayAndShiftForWrite } = await import('@/lib/branch/operationalGates');
@@ -283,34 +292,78 @@ export async function POST(req: NextRequest) {
     const owned = finalizeCurrentFinancialWrite('income.create', gated, body);
     if (!owned.ok) return owned.response;
     const branchId = owned.ownership.branchId;
+    const invDate = owned.ownership.businessDate!;
 
     const actor = await buildStaffActorContext(session.UserID, session.TenantId);
     const treasuryPorts = await buildTreasuryWritePorts(actor);
+    const amountNum = Number(amount);
+    const notesText = typeof notes === 'string' ? notes.trim() : '';
     const idempotencyKey =
       typeof body.idempotencyKey === 'string' && body.idempotencyKey.trim()
         ? body.idempotencyKey.trim()
-        : `income:${branchId}:${randomUUID()}`;
+        : storeIncomeKind
+          ? `store-income:${branchId}:${invDate}:${storeIncomeKind}:${amountNum}:${paymentMethodId}`
+          : `income:${branchId}:${randomUUID()}`;
 
     const created = await withUnitOfWork(async ({ transaction }) => {
+      let storeCategoryName: string | null = null;
+      if (storeIncomeKind) {
+        const ensured = await ensureStoreIncomeCategory(
+          transaction,
+          storeIncomeKind,
+          session.TenantId,
+        );
+        expInId = ensured.expInId;
+        storeCategoryName = ensured.categoryName;
+
+        const dup = await findDuplicateStoreIncome(transaction, {
+          branchId,
+          invDate,
+          expInId: Number(expInId),
+          amount: amountNum,
+          paymentMethodId: Number(paymentMethodId),
+        });
+        if (dup) {
+          return {
+            inserted: {
+              ID: dup.ID,
+              invID: dup.invID,
+              ExpINID: expInId,
+              Amount: amountNum,
+            },
+            fundingSync: { ledgerDualWrite: false, outcome: 'skipped_store_income' as const },
+            idempotentReplay: true,
+            duplicate: true,
+            resolvedExpInId: Number(expInId),
+          };
+        }
+      }
+
       const result = await createIncomeThroughTreasury(transaction, treasuryPorts, {
         locationId: branchId,
-        amount: Number(amount),
+        amount: amountNum,
         categoryId: Number(expInId),
         paymentMethodId: Number(paymentMethodId),
-        notes: notes?.trim() || null,
+        notes: notesText || (storeIncomeKind ? (storeCategoryName ?? 'إيراد للمحل') : null),
         idempotencyKey,
       });
 
-      const fundingSync = await syncEmployeeFundingFromCashMove(transaction, result.cashMoveId, {
-        createdByUserId: session.UserID,
-      });
+      let fundingSync: { ledgerDualWrite: boolean; outcome: string } = {
+        ledgerDualWrite: false,
+        outcome: 'skipped_store_income',
+      };
+      if (!storeIncomeKind) {
+        fundingSync = await syncEmployeeFundingFromCashMove(transaction, result.cashMoveId, {
+          createdByUserId: session.UserID,
+        });
+      }
 
       const rowRes = await new sql.Request(transaction)
         .input('id', sql.Int, result.cashMoveId)
         .query(`
           SELECT
             ID, invID, invDate, invTime, ExpINID, GrandTolal AS Amount, Notes,
-            ShiftMoveID, PaymentMethodID
+            ShiftMoveID, PaymentMethodID, EmpID
           FROM dbo.TblCashMove WHERE ID = @id
         `);
 
@@ -318,25 +371,30 @@ export async function POST(req: NextRequest) {
         inserted: rowRes.recordset[0],
         fundingSync,
         idempotentReplay: result.idempotentReplay,
+        duplicate: false,
+        resolvedExpInId: Number(expInId),
       };
     });
 
-    const notesText = typeof notes === 'string' ? notes.trim() : '';
-    const fundingWa = await maybeScheduleFundingWhatsAppFromIncomeCategory({
-      expINID: Number(expInId),
-      invID: Number(created.inserted.invID),
-      amount: Number(amount),
-      paymentMethodId: Number(paymentMethodId),
-      notes: notesText || undefined,
-    });
+    const fundingWa = storeIncomeKind
+      ? { scheduled: false }
+      : await maybeScheduleFundingWhatsAppFromIncomeCategory({
+          expINID: created.resolvedExpInId,
+          invID: Number(created.inserted.invID),
+          amount: amountNum,
+          paymentMethodId: Number(paymentMethodId),
+          notes: notesText || undefined,
+        });
 
     return NextResponse.json({
       ...created.inserted,
+      storeIncomeKind: storeIncomeKind ?? undefined,
+      duplicate: created.duplicate || undefined,
       ledgerDualWrite: created.fundingSync.ledgerDualWrite,
       ledgerSync: created.fundingSync.outcome,
       advanceWhatsApp: fundingWa.scheduled,
       idempotentReplay: created.idempotentReplay,
-    }, { status: created.idempotentReplay ? 200 : 201 });
+    }, { status: created.idempotentReplay || created.duplicate ? 200 : 201 });
   } catch (err: unknown) {
     if (err instanceof EmployeeLedgerDualWriteError) {
       return NextResponse.json({ error: err.message }, { status: 400 });

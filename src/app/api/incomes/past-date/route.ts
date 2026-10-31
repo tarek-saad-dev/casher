@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getPool, sql } from '@/lib/db';
+import { sql } from '@/lib/db';
 import { getSession } from '@/lib/session';
 import { withUnitOfWork } from '@/platform/public';
 import { buildStaffActorContext } from '@/lib/bookingSchedulingComposition';
@@ -12,6 +12,11 @@ import {
 } from '@/lib/services/employeeLedgerDualWrite';
 import { syncEmployeeFundingFromCashMove } from '@/lib/services/employeeLedgerFundingSyncService';
 import { maybeScheduleFundingWhatsAppFromIncomeCategory } from '@/lib/services/employeeAdvanceWhatsAppNotify';
+import { parseStoreIncomeKind } from '@/lib/accounting/storeIncome';
+import {
+  ensureStoreIncomeCategory,
+  findDuplicateStoreIncome,
+} from '@/lib/services/storeIncomeService';
 
 // POST /api/incomes/past-date - Add income for past dates
 export async function POST(req: NextRequest) {
@@ -20,28 +25,32 @@ export async function POST(req: NextRequest) {
 
   try {
     const session = await getSession();
-    if (!session) return NextResponse.json({ error: 'يجب تسجيل الدخول أولاً' }, { status: 401 });
+    if (!session) return NextResponse.json({ error: '??? ????? ?????? ?????' }, { status: 401 });
 
     const body = await req.json();
-    const { invDate, invTime, amount, expInId, paymentMethodId, notes } = body;
+    const { invDate, invTime, amount, paymentMethodId, notes } = body;
+    const storeIncomeKind = parseStoreIncomeKind(body.storeIncomeKind);
+    let expInId = body.expInId != null ? Number(body.expInId) : null;
 
     // Validation
-    if (!invDate) return NextResponse.json({ error: 'التاريخ مطلوب' }, { status: 400 });
-    if (!amount || Number(amount) <= 0) return NextResponse.json({ error: 'قيمة الإيراد يجب أن تكون أكبر من صفر' }, { status: 400 });
-    if (!expInId) return NextResponse.json({ error: 'يجب اختيار تصنيف الإيراد' }, { status: 400 });
-    if (!paymentMethodId) return NextResponse.json({ error: 'يجب اختيار طريقة الدفع' }, { status: 400 });
+    if (!invDate) return NextResponse.json({ error: '??????? ?????' }, { status: 400 });
+    if (!amount || Number(amount) <= 0) return NextResponse.json({ error: '???? ??????? ??? ?? ???? ???? ?? ???' }, { status: 400 });
+    if (!storeIncomeKind && !expInId) {
+      return NextResponse.json({ error: '??? ?????? ????? ???????' }, { status: 400 });
+    }
+    if (!paymentMethodId) return NextResponse.json({ error: '??? ?????? ????? ?????' }, { status: 400 });
 
     // Validate that the date is in the past or today
     const inputDate = new Date(invDate);
     const today = new Date();
     today.setHours(23, 59, 59, 999); // End of today
-    
+
     if (inputDate > today) {
-      return NextResponse.json({ error: 'لا يمكن إضافة إيراد لتاريخ في المستقبل' }, { status: 400 });
+      return NextResponse.json({ error: '?? ???? ????? ????? ?????? ?? ????????' }, { status: 400 });
     }
 
-    // ──── Enforce active branch + matching business day for this date (Phase 1D) ────
-    // Never trust browser branchId — ownership comes only from validated session context.
+    // ???? Enforce active branch + matching business day for this date (Phase 1D) ????
+    // Never trust browser branchId ? ownership comes only from validated session context.
     // Does NOT attach to the open day and does NOT auto-create a day for this date.
     const { requireBranchOperationAccess } = await import('@/lib/branch/context');
     const { resolveBranchDayForDate } = await import('@/lib/branch/operationalGates');
@@ -57,57 +66,113 @@ export async function POST(req: NextRequest) {
 
     const actor = await buildStaffActorContext(session.UserID, session.TenantId);
     const treasuryPorts = await buildTreasuryWritePorts(actor);
+    const amountNum = Number(amount);
+    const notesText = typeof notes === 'string' ? notes.trim() : '';
+    const businessDate = String(invDate).slice(0, 10);
     const idempotencyKey =
       typeof body.idempotencyKey === 'string' && body.idempotencyKey.trim()
         ? body.idempotencyKey.trim()
-        : `income.past:${branchId}:${randomUUID()}`;
-    const notesText = typeof notes === 'string' ? notes.trim() : '';
+        : storeIncomeKind
+          ? `store-income.past:${branchId}:${businessDate}:${storeIncomeKind}:${amountNum}:${paymentMethodId}`
+          : `income.past:${branchId}:${randomUUID()}`;
 
     const created = await withUnitOfWork(async ({ transaction }) => {
+      let storeCategoryName: string | null = null;
+      if (storeIncomeKind) {
+        const ensured = await ensureStoreIncomeCategory(
+          transaction,
+          storeIncomeKind,
+          session.TenantId,
+        );
+        expInId = ensured.expInId;
+        storeCategoryName = ensured.categoryName;
+
+        const dup = await findDuplicateStoreIncome(transaction, {
+          branchId,
+          invDate: businessDate,
+          expInId: Number(expInId),
+          amount: amountNum,
+          paymentMethodId: Number(paymentMethodId),
+        });
+        if (dup) {
+          return {
+            newRecord: {
+              ID: dup.ID,
+              invID: dup.invID,
+              invDate: businessDate,
+              invTime: invTime || '12:00',
+              ExpINID: expInId,
+              Amount: amountNum,
+              Notes: notesText || storeCategoryName,
+              PaymentMethodID: Number(paymentMethodId),
+              EmpID: null,
+            },
+            fundingSync: { ledgerDualWrite: false, outcome: 'skipped_store_income' as const },
+            idempotentReplay: true,
+            duplicate: true,
+            resolvedExpInId: Number(expInId),
+          };
+        }
+      }
+
       const result = await createIncomeThroughTreasury(transaction, treasuryPorts, {
         locationId: branchId,
-        amount: Number(amount),
+        amount: amountNum,
         categoryId: Number(expInId),
         paymentMethodId: Number(paymentMethodId),
-        notes: notesText || null,
+        notes: notesText || (storeIncomeKind ? (storeCategoryName ?? '????? ?????') : null),
         idempotencyKey,
         invTime: invTime || '12:00',
         historical: {
           businessDayId,
-          businessDate: String(invDate).slice(0, 10),
+          businessDate,
           shiftInstanceId: historical.ownership.shiftMoveId,
         },
       });
 
-      const fundingSync = await syncEmployeeFundingFromCashMove(transaction, result.cashMoveId, {
-        createdByUserId: session.UserID,
-      });
+      let fundingSync: { ledgerDualWrite: boolean; outcome: string } = {
+        ledgerDualWrite: false,
+        outcome: 'skipped_store_income',
+      };
+      if (!storeIncomeKind) {
+        fundingSync = await syncEmployeeFundingFromCashMove(transaction, result.cashMoveId, {
+          createdByUserId: session.UserID,
+        });
+      }
 
       const rowRes = await new sql.Request(transaction)
         .input('id', sql.Int, result.cashMoveId)
         .query(`
           SELECT
-            ID, invID, invDate, invTime, ExpINID, GrandTolal AS Amount, Notes, PaymentMethodID
+            ID, invID, invDate, invTime, ExpINID, GrandTolal AS Amount, Notes, PaymentMethodID, EmpID
           FROM dbo.TblCashMove WHERE ID = @id
         `);
 
-      return { newRecord: rowRes.recordset[0], fundingSync, idempotentReplay: result.idempotentReplay };
+      return {
+        newRecord: rowRes.recordset[0],
+        fundingSync,
+        idempotentReplay: result.idempotentReplay,
+        duplicate: false,
+        resolvedExpInId: Number(expInId),
+      };
     });
 
     const newRecord = created.newRecord;
     const fundingSync = created.fundingSync;
 
-    const fundingWa = await maybeScheduleFundingWhatsAppFromIncomeCategory({
-      expINID: Number(expInId),
-      invID: Number(newRecord.invID),
-      amount: Number(amount),
-      paymentMethodId: Number(paymentMethodId),
-      notes: notesText || undefined,
-    });
+    const fundingWa = storeIncomeKind
+      ? { scheduled: false }
+      : await maybeScheduleFundingWhatsAppFromIncomeCategory({
+          expINID: created.resolvedExpInId,
+          invID: Number(newRecord.invID),
+          amount: amountNum,
+          paymentMethodId: Number(paymentMethodId),
+          notes: notesText || undefined,
+        });
 
     return NextResponse.json({
       success: true,
-      message: 'تم إضافة الإيراد للتاريخ المحدد بنجاح',
+      message: '?? ????? ??????? ??????? ?????? ?????',
       ledgerDualWrite: fundingSync.ledgerDualWrite,
       ledgerSync: fundingSync.outcome,
       advanceWhatsApp: fundingWa.scheduled,
@@ -121,8 +186,11 @@ export async function POST(req: NextRequest) {
         Amount: newRecord.Amount,
         Notes: newRecord.Notes,
         PaymentMethodID: newRecord.PaymentMethodID,
+        EmpID: newRecord.EmpID ?? null,
+        storeIncomeKind: storeIncomeKind ?? undefined,
+        duplicate: created.duplicate || undefined,
       },
-    }, { status: created.idempotentReplay ? 200 : 201 });
+    }, { status: created.idempotentReplay || created.duplicate ? 200 : 201 });
 
   } catch (err: unknown) {
     if (err instanceof EmployeeLedgerDualWriteError) {
@@ -130,6 +198,6 @@ export async function POST(req: NextRequest) {
     }
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error('[api/incomes/past-date] POST error:', message);
-    return NextResponse.json({ error: 'فشل إضافة الإيراد: ' + message }, { status: 500 });
+    return NextResponse.json({ error: '??? ????? ???????: ' + message }, { status: 500 });
   }
 }
