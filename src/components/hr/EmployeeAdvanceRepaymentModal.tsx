@@ -95,7 +95,7 @@ export default function EmployeeAdvanceRepaymentModal({
     }
   }, []);
 
-  const loadDebt = useCallback(async (empId: number) => {
+  const loadDebt = useCallback(async (empId: number, expectedBranchId: number) => {
     setLoadingDebt(true);
     try {
       const res = await fetch(
@@ -103,6 +103,12 @@ export default function EmployeeAdvanceRepaymentModal({
       );
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'فشل تحميل المديونية');
+      const liveBranchId = Number(data.branchId ?? 0);
+      if (liveBranchId > 0 && liveBranchId !== expectedBranchId) {
+        throw new Error(
+          'الفرع التشغيلي الحالي لا يطابق فرع الصف — بدّل سياق الفرع المصرح به ثم أعد فتح رد السلفة',
+        );
+      }
       const d = Math.max(0, Number(data.outstandingDebt ?? 0));
       setLiveDebt(d);
       setAmount(d > 0 ? String(d) : '');
@@ -123,9 +129,9 @@ export default function EmployeeAdvanceRepaymentModal({
   }, [open, employee?.empId, employee?.branchId, resetForm, loadPaymentMethods]);
 
   useEffect(() => {
-    if (!open || !employee?.empId) return;
-    void loadDebt(employee.empId);
-  }, [open, employee?.empId, loadDebt]);
+    if (!open || !employee?.empId || !employee.branchId) return;
+    void loadDebt(employee.empId, employee.branchId);
+  }, [open, employee?.empId, employee?.branchId, loadDebt]);
 
   const parsedAmount = Number(amount);
   const amountOk =
@@ -264,7 +270,9 @@ export default function EmployeeAdvanceRepaymentModal({
             </div>
 
             <p className="text-[11px] text-zinc-500 leading-relaxed">
-              يُسجَّل Cash IN في خزينة الفرع + قيد دائن «رد سلفة» دون حذف السلف الأصلية أو تسجيل إيراد مبيعات.
+              تأكيد الاستلام يُسجِّل Cash IN + قيد دائن «رد سلفة» في خزينة الفرع التشغيلي الحالي
+              ({employee.branchLabel}) فقط، دون حذف السلف الأصلية أو تسجيل إيراد مبيعات. المبلغ لا يتجاوز
+              المديونية الفعلية من الخادم.
             </p>
 
             {error ? <p className="text-sm text-rose-400">{error}</p> : null}
