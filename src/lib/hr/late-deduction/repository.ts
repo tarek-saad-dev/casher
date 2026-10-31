@@ -159,15 +159,27 @@ export async function upsertLateDeductionCase(
       MERGE dbo.TblEmpLateDeductionCase AS t
       USING (SELECT @empId AS EmpID, @branchId AS BranchID, @workDate AS WorkDate) AS s
       ON t.EmpID = s.EmpID AND t.BranchID = s.BranchID AND t.WorkDate = s.WorkDate
+      WHEN MATCHED AND t.Status IN (N'cancelled', N'manager_applied') THEN UPDATE SET
+        UpdatedAt = SYSUTCDATETIME()
       WHEN MATCHED THEN UPDATE SET
         AttendanceID = COALESCE(@attendanceId, t.AttendanceID),
         ScheduledStartTime = COALESCE(TRY_CAST(@scheduledStart AS TIME), t.ScheduledStartTime),
         ScheduledEndTime = COALESCE(TRY_CAST(@scheduledEnd AS TIME), t.ScheduledEndTime),
         LateMinutes = @lateMinutes,
-        DeductionKind = @deductionKind,
-        Status = @status,
-        DailyBasePay = @dailyBasePay,
-        Amount = @amount,
+        DeductionKind = CASE
+          -- Race loser must not wipe an already-applied case via finalize_pending.
+          WHEN t.Status = N'applied' AND @status = N'finalize_pending' THEN t.DeductionKind
+          ELSE @deductionKind
+        END,
+        Status = CASE
+          WHEN t.Status = N'applied' AND @status = N'finalize_pending' THEN t.Status
+          ELSE @status
+        END,
+        DailyBasePay = COALESCE(@dailyBasePay, t.DailyBasePay),
+        Amount = CASE
+          WHEN t.Status = N'applied' AND @status = N'finalize_pending' THEN t.Amount
+          ELSE @amount
+        END,
         LedgerEntryID = COALESCE(@ledgerEntryId, t.LedgerEntryID),
         UpdatedAt = SYSUTCDATETIME()
       WHEN NOT MATCHED THEN INSERT (

@@ -304,6 +304,11 @@ export async function finalizeLateDeductionOnCheckIn(
     financialOk = false;
   }
 
+  // Prefer finalize_pending over pending_manager on ledger failure so minute
+  // recovery can retry; never invent a manager queue item for a race loser.
+  const failureStatus =
+    existing?.status === 'applied' ? 'applied' : 'finalize_pending';
+
   const row = await upsertLateDeductionCase(db, {
     empId: input.empId,
     branchId: input.branchId,
@@ -313,9 +318,9 @@ export async function finalizeLateDeductionOnCheckIn(
     scheduledEnd: input.scheduledEnd ?? null,
     lateMinutes,
     deductionKind: calc.bracket,
-    status: financialOk ? 'applied' : 'pending_manager',
+    status: financialOk ? 'applied' : failureStatus,
     dailyBasePay: pay.dailyBasePay,
-    amount: financialOk ? calc.amount : null,
+    amount: financialOk ? calc.amount : existing?.amount ?? null,
     ledgerEntryId,
   });
 
@@ -337,10 +342,10 @@ export async function finalizeLateDeductionOnCheckIn(
   return {
     handled: true,
     caseId: row.caseId,
-    status: financialOk ? 'applied' : 'pending_manager',
+    status: financialOk ? 'applied' : failureStatus,
     bracket: calc.bracket,
-    amount: financialOk ? calc.amount : null,
-    ledgerEntryId,
+    amount: financialOk ? calc.amount : existing?.amount ?? null,
+    ledgerEntryId: ledgerEntryId ?? existing?.ledgerEntryId ?? null,
     lateMinutes,
     reason: financialOk ? undefined : 'ledger_failed',
   };
