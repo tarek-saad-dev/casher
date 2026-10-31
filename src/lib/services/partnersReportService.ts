@@ -35,6 +35,7 @@ import { maybeBuildClassificationPayload } from '@/lib/accounting/financialRepor
 import { getBranchById } from '@/lib/branch/repository';
 import { getEffectiveBranchPartnerShares, toPartnerPercentageList } from '@/lib/branch/partnerShares';
 import { sumStoreOtherBusinessIncomeForMonth } from '@/lib/services/storeIncomeService';
+import { resolveLegacyBranchTenantId } from '@/platform/masterData/tenantScope';
 
 export type PartnersEmployeeControlLive = {
   shopRevenue: number | null;
@@ -77,6 +78,7 @@ export async function buildPartnersMonthlyReport(
   if (!branch) {
     throw new Error('الفرع غير موجود');
   }
+  const tenantId = await resolveLegacyBranchTenantId(branchId);
   const [
     totalRevenue,
     revenueByEmployee,
@@ -99,7 +101,7 @@ export async function buildPartnersMonthlyReport(
     numbersMode === 'controlled'
       ? loadPartnersEmployeeOverridesForBranch(branch.branchId, branch.branchCode)
       : Promise.resolve({} as PartnersOverridesMap),
-    getEmployeeLedgerSummary(ledgerMonth, branchId),
+    getEmployeeLedgerSummary(ledgerMonth, branchId, { tenantId }),
     getEffectiveBranchPartnerShares(branchId, period.endDate),
   ]);
 
@@ -264,6 +266,7 @@ export async function buildPartnersEmployeeControlSheet(
   if (!branch) {
     throw new Error('الفرع غير موجود');
   }
+  const tenantId = await resolveLegacyBranchTenantId(branchId);
 
   const [
     actualRevenueByEmployee,
@@ -278,7 +281,7 @@ export async function buildPartnersEmployeeControlSheet(
     getEmployeeNamesById(),
     getMonthlyEmployeeAdvances(year, month, branchId),
     loadPartnersEmployeeOverridesForBranch(branch.branchId, branch.branchCode),
-    getEmployeeLedgerSummary(ledgerMonth, branchId),
+    getEmployeeLedgerSummary(ledgerMonth, branchId, { tenantId }),
   ]);
 
   const { controlRows } = mapPartnersEmployeeRows({
