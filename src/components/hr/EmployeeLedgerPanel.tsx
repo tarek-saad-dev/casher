@@ -362,15 +362,14 @@ export default function EmployeeLedgerPanel() {
     row: EmpLedgerEmployeeSummaryRow,
     branchBreakdown: EmpLedgerEmployeeBranchBreakdown,
   ) => {
-    // Allowed from «الكل» when the row is the authorized operating branch — backend still
-    // stamps Cash IN / ledger via requireBranchOperationAccess (session branch only).
-    if (!operatingBranch) return;
-    if (branchBreakdown.branchId !== operatingBranch.branchId) return;
+    // Any accessible branch row — API stamps Cash IN / ledger on body.branchId after ops ACL.
+    if (!dualWriteEnabled) return;
+    if (!branchBreakdown.branchId || branchBreakdown.branchId <= 0) return;
     setRepayTarget({
       empId: row.empId,
       empName: row.empName,
-      branchId: operatingBranch.branchId,
-      branchLabel: operatingBranchLabel ?? shortBranchLabel(operatingBranch),
+      branchId: branchBreakdown.branchId,
+      branchLabel: shortBranchLabel(branchBreakdown),
       // Modal loads all-time debt (incl. carry-forward); month balance is only a hint.
       outstandingDebt: Math.max(0, -branchBreakdown.balance),
     });
@@ -743,19 +742,13 @@ export default function EmployeeLedgerPanel() {
                                 ? 'border-emerald-800/60 text-emerald-300'
                                 : 'border-border text-zinc-400',
                             )}
-                            disabled={
-                              !dualWriteEnabled
-                              || !operatingBranch
-                              || br.branchId !== operatingBranch.branchId
-                            }
+                            disabled={!dualWriteEnabled || !(br.branchId > 0)}
                             title={
                               !dualWriteEnabled
                                 ? 'يتطلب تفعيل EMP_LEDGER_DUAL_WRITE_ENABLED'
-                                : !operatingBranch
-                                  ? 'تعذر تحديد الفرع التشغيلي النشط'
-                                  : br.branchId !== operatingBranch.branchId
-                                    ? `هذا الصف لفرع ${shortBranchLabel(tb)} — بدّل الفرع التشغيلي النشط إليه (الحالي: ${operatingBranchLabel}) ثم أكّد الاستلام في خزينته`
-                                    : 'استلام رد سلفة في خزينة الفرع التشغيلي الحالي (مديونية فعلية شاملة المرحّل من الخادم)'
+                                : !(br.branchId > 0)
+                                  ? 'فرع الصف غير معروف'
+                                  : `استلام رد سلفة في خزينة ${shortBranchLabel(tb)} (مديونية فعلية شاملة المرحّل)`
                             }
                             onClick={(e) => {
                               e.stopPropagation();
@@ -983,9 +976,7 @@ export default function EmployeeLedgerPanel() {
           : `صرف المستحقات متوقف حتى تختار الفرع التشغيلي النشط${operatingBranchLabel ? ` (${operatingBranchLabel})` : ''} ويُحدَّث رصيد شهره. عرض «الكل» أو فرع غير فرع الجلسة لا يُسوّي الرصيد المعروض.`}
       </p>
       <p className="text-xs text-emerald-200/80 px-1" data-testid="advance-repayment-branch-rule">
-        {operatingBranch
-          ? `رد السلفة متاح من عرض «الكل» على صف الفرع التشغيلي الحالي فقط (${operatingBranchLabel}). لفرع آخر بدّل سياق التشغيل المصرح به — المديونية تُجلب من الخادم (شاملة المرحّل) والاستلام في خزينة ذلك الفرع فقط.`
-          : 'رد السلفة يتطلب فرعًا تشغيليًا مصرحًا به.'}
+        رد السلفة متاح لكل صف فرع مصرح به: الاستلام يُسجَّل في خزينة ذلك الفرع فقط، والمديونية تُجلب من الخادم (شاملة المرحّل) دون تجاوزها.
       </p>
       <p className="text-xs text-zinc-600 px-1">
         الرصيد المعروض حسب شهر الرواتب وفلتر الفرع. الإجمالي العام = مجموع أرصدة الفروع بدون تكرار.
