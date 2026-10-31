@@ -6,7 +6,7 @@ import {
   LATE_DEDUCTION_CONFIG_KEY_ACTIVATED_ON,
   LATE_DEDUCTION_CONFIG_KEY_ENABLED,
 } from './constants';
-import { ensureLateDeductionSchema } from './schema';
+import { isLateDeductionSchemaReady } from './schema';
 
 export interface LateDeductionConfig {
   enabled: boolean;
@@ -20,7 +20,7 @@ function parseEnabled(raw: string | null | undefined): boolean {
 
 export async function getLateDeductionConfig(): Promise<LateDeductionConfig> {
   const db = await getPool();
-  const ok = await ensureLateDeductionSchema(db);
+  const ok = await isLateDeductionSchemaReady(db);
   if (!ok) return { enabled: false, activatedOn: null };
 
   const result = await db.request().query(`
@@ -59,7 +59,9 @@ export async function setLateDeductionEnabled(params: {
   activatedOn?: string | null;
 }): Promise<LateDeductionConfig> {
   const db = await getPool();
-  await ensureLateDeductionSchema(db);
+  if (!(await isLateDeductionSchemaReady(db))) {
+    throw new Error('Late deduction schema missing — apply DRVO migration employee-late-deduction');
+  }
 
   const current = await getLateDeductionConfig();
   let activatedOn = current.activatedOn;

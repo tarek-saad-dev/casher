@@ -6,6 +6,7 @@ export const LATE_DEDUCTION_CONFIG_KEY_ACTIVATED_ON = 'late_deduction_activated_
 
 export type LateDeductionCaseStatus =
   | 'alerting'
+  | 'finalize_pending'
   | 'applied'
   | 'pending_manager'
   | 'manager_applied'
@@ -15,6 +16,7 @@ export type LateDeductionCaseStatus =
 
 export const LATE_DEDUCTION_CASE_STATUSES: readonly LateDeductionCaseStatus[] = [
   'alerting',
+  'finalize_pending',
   'applied',
   'pending_manager',
   'manager_applied',

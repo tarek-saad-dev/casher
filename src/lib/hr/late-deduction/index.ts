@@ -25,7 +25,10 @@ export type {
   FinalizeLateDeductionResult,
 } from './finalizeOnCheckIn';
 
+export { enqueueLateDeductionFinalize } from './enqueueFinalize';
+export { recoverPendingLateDeductionFinalizations } from './recoverFinalizations';
 export { runLateDeductionAlertScan } from './alertScan';
+export { isLateDeductionSchemaReady } from './schema';
 
 export {
   listLateDeductionManagerQueue,
@@ -40,6 +43,7 @@ export {
   buildFinalDeductionMessage,
   buildExemptCheckInLateMessage,
   buildManagerDecisionEmployeeMessage,
+  buildManagerReviewEmployeeAckMessage,
 } from './messages';
 
 export { LATE_DEDUCTION_REF_TYPE, LATE_DEDUCTION_ENTRY_REASON } from './constants';

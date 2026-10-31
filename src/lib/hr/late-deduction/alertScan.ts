@@ -21,7 +21,8 @@ import {
   thresholdsDueForLateMinutes,
   type LateAlertThreshold,
 } from './rules';
-import { ensureLateDeductionSchema } from './schema';
+import { recoverPendingLateDeductionFinalizations } from './recoverFinalizations';
+import { isLateDeductionSchemaReady } from './schema';
 import { scheduleLateDeductionWhatsApp, sendLateDeductionWhatsApp } from './whatsapp';
 
 const SCAN_LOCK_RESOURCE = 'late_deduction_alert_scan';
@@ -33,6 +34,8 @@ export interface LateAlertScanResult {
   candidates: number;
   notified: number;
   errors: number;
+  recoveredFinalizations?: number;
+  recoveryErrors?: number;
 }
 
 async function withScanLock<T>(
@@ -98,7 +101,7 @@ export async function runLateDeductionAlertScan(params?: {
 }): Promise<LateAlertScanResult> {
   const locked = await withScanLock(async () => {
     const db = await getPool();
-    const schemaOk = await ensureLateDeductionSchema(db);
+    const schemaOk = await isLateDeductionSchemaReady(db);
     if (!schemaOk) {
       return {
         candidates: 0,
@@ -120,6 +123,12 @@ export async function runLateDeductionAlertScan(params?: {
         reason: 'feature_disabled_or_before_activation',
       } satisfies LateAlertScanResult;
     }
+
+    // Recover durable finalize_pending / missed check-in finalizations first.
+    const recovery = await recoverPendingLateDeductionFinalizations({
+      businessDate: workDate,
+      branchId: params?.branchId,
+    });
 
     const nowHhmm = getCairoTimeStr(now).slice(0, 5);
     const dayOfWeek = (() => {
@@ -362,6 +371,8 @@ export async function runLateDeductionAlertScan(params?: {
       notified,
       errors,
       workDate,
+      recoveredFinalizations: recovery.recovered,
+      recoveryErrors: recovery.errors,
     } satisfies LateAlertScanResult;
   });
 

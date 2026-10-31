@@ -26,7 +26,14 @@ export async function POST(req: NextRequest) {
         const branchIds = requestedBranchId
           ? target.branchIds.filter((id) => id === requestedBranchId)
           : target.branchIds;
-        const totals = { candidates: 0, notified: 0, errors: 0, skippedBranches: 0 };
+        const totals = {
+          candidates: 0,
+          notified: 0,
+          errors: 0,
+          skippedBranches: 0,
+          recoveredFinalizations: 0,
+          recoveryErrors: 0,
+        };
         let workDate: string | undefined;
         for (const branchId of branchIds) {
           const r = await runLateDeductionAlertScan({
@@ -38,14 +45,22 @@ export async function POST(req: NextRequest) {
           totals.candidates += r.candidates;
           totals.notified += r.notified;
           totals.errors += r.errors;
+          totals.recoveredFinalizations += r.recoveredFinalizations ?? 0;
+          totals.recoveryErrors += r.recoveryErrors ?? 0;
           workDate = r.workDate ?? workDate;
         }
         return { ...totals, branches: branchIds.length, workDate };
       },
     );
 
-    const sum = (k: 'candidates' | 'notified' | 'errors') =>
-      outcomes.reduce((acc, o) => acc + (o.result?.[k] ?? 0), 0);
+    const sum = (
+      k:
+        | 'candidates'
+        | 'notified'
+        | 'errors'
+        | 'recoveredFinalizations'
+        | 'recoveryErrors',
+    ) => outcomes.reduce((acc, o) => acc + (o.result?.[k] ?? 0), 0);
 
     return NextResponse.json({
       ok: outcomes.every((o) => o.ok),
@@ -53,6 +68,8 @@ export async function POST(req: NextRequest) {
       candidates: sum('candidates'),
       notified: sum('notified'),
       errors: sum('errors'),
+      recoveredFinalizations: sum('recoveredFinalizations'),
+      recoveryErrors: sum('recoveryErrors'),
       tenants: outcomes.map((o) => ({
         tenantCode: o.tenantCode,
         ok: o.ok,

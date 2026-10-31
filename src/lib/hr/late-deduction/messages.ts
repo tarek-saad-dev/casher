@@ -161,20 +161,20 @@ export function buildManagerDecisionEmployeeMessage(params: {
   ].join('\n');
 }
 
-export function buildManagerReviewNotifyMessage(params: {
-  employeeName: string;
-  workDate: string;
-  lateMinutes: number;
+/** Employee-facing notice after check-in beyond the automatic threshold. */
+export function buildManagerReviewEmployeeAckMessage(params: {
   checkInTime: string;
+  lateMinutes: number;
 }): string {
   return [
-    '🚨 *Late Attendance Manager Review | CUT SALON*',
+    '🚨 *Late Attendance Escalation | CUT SALON*',
     '',
-    `Employee: ${params.employeeName}`,
-    `Work date: ${params.workDate}`,
     `Check-in: ${timeLabel(params.checkInTime)}`,
+    '',
     `Late duration: ${params.lateMinutes} minutes`,
     '',
-    'Automatic deduction threshold exceeded. Please enter the final penalty amount.',
+    'You have exceeded the automatic deduction threshold.',
+    '',
+    'Your attendance case has been referred to management to determine the appropriate penalty.',
   ].join('\n');
 }

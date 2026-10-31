@@ -14,7 +14,7 @@ import {
 import {
   buildExemptCheckInLateMessage,
   buildFinalDeductionMessage,
-  buildManagerReviewNotifyMessage,
+  buildManagerReviewEmployeeAckMessage,
 } from './messages';
 import {
   findLateDeductionCase,
@@ -27,7 +27,7 @@ import {
   resolveLateDeductionBracket,
   type LateDeductionBracket,
 } from './rules';
-import { ensureLateDeductionSchema } from './schema';
+import { isLateDeductionSchemaReady } from './schema';
 import { scheduleLateDeductionWhatsApp } from './whatsapp';
 
 export interface FinalizeLateDeductionInput {
@@ -63,7 +63,7 @@ export async function finalizeLateDeductionOnCheckIn(
   input: FinalizeLateDeductionInput,
 ): Promise<FinalizeLateDeductionResult> {
   const db = await getPool();
-  const schemaOk = await ensureLateDeductionSchema(db);
+  const schemaOk = await isLateDeductionSchemaReady(db);
   if (!schemaOk) {
     return { handled: false, reason: 'schema_unavailable' };
   }
@@ -91,6 +91,16 @@ export async function finalizeLateDeductionOnCheckIn(
       reason: 'cancelled_do_not_recreate',
       caseId: existing.caseId,
       status: existing.status,
+      lateMinutes,
+    };
+  }
+  if (existing?.status === 'manager_applied') {
+    return {
+      handled: true,
+      reason: 'manager_decision_locked',
+      caseId: existing.caseId,
+      status: existing.status,
+      amount: existing.amount,
       lateMinutes,
     };
   }
@@ -206,11 +216,9 @@ export async function finalizeLateDeductionOnCheckIn(
       scheduleLateDeductionWhatsApp({
         empId: input.empId,
         branchId: input.branchId,
-        text: buildManagerReviewNotifyMessage({
-          employeeName: input.empName ?? `Emp#${input.empId}`,
-          workDate: input.workDate,
-          lateMinutes,
+        text: buildManagerReviewEmployeeAckMessage({
           checkInTime: input.checkInTime,
+          lateMinutes,
         }),
         metadata: { lateCaseId: row.caseId, event: 'missing_pay_data' },
       });
@@ -251,11 +259,9 @@ export async function finalizeLateDeductionOnCheckIn(
       scheduleLateDeductionWhatsApp({
         empId: input.empId,
         branchId: input.branchId,
-        text: buildManagerReviewNotifyMessage({
-          employeeName: input.empName ?? `Emp#${input.empId}`,
-          workDate: input.workDate,
-          lateMinutes,
+        text: buildManagerReviewEmployeeAckMessage({
           checkInTime: input.checkInTime,
+          lateMinutes,
         }),
         metadata: { lateCaseId: row.caseId, event: 'manager_review' },
       });

@@ -79,4 +79,14 @@ describe('late deduction WhatsApp message builders', () => {
     });
     expect(msg).toContain('No automatic late deduction was applied');
   });
+
+  it('manager-review employee ack does not ask the employee to enter a penalty', async () => {
+    const { buildManagerReviewEmployeeAckMessage } = await import('../messages');
+    const msg = buildManagerReviewEmployeeAckMessage({
+      checkInTime: '14:10',
+      lateMinutes: 130,
+    });
+    expect(msg).toContain('referred to management');
+    expect(msg).not.toContain('Please enter the final penalty');
+  });
 });

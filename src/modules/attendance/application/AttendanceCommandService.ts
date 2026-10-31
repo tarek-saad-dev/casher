@@ -22,7 +22,10 @@ import {
   syncAttendanceAbsenceToDayOffOverride,
 } from '@/lib/hr/attendance-shift-schedule-sync';
 import { scheduleAttendanceCheckInOutWhatsApp } from '@/lib/services/employeeAttendanceWhatsAppNotify';
-import { scheduleFinalizeLateDeductionOnCheckIn } from '@/lib/hr/late-deduction';
+import {
+  enqueueLateDeductionFinalize,
+  scheduleFinalizeLateDeductionOnCheckIn,
+} from '@/lib/hr/late-deduction';
 import { shouldNotifyAttendanceTimeChange } from '@/lib/hr/attendance-whatsapp-message';
 import { assertEmployeeEligibleForBranchAttendance } from '@/lib/hr/attendance/branchAttendance.service';
 import {
@@ -381,23 +384,20 @@ export async function saveAdminAttendance(
     branchId,
   });
 
-  // Finalize late deduction only when check-in is newly set or corrected.
-  if (
-    CheckInTime &&
-    shouldNotifyAttendanceTimeChange(previousCheckIn, CheckInTime)
-  ) {
-    scheduleFinalizeLateDeductionOnCheckIn({
-      empId: Number(EmpID),
-      empName: employeeName,
-      branchId,
-      workDate: WorkDate,
-      attendanceId,
-      checkInTime: CheckInTime,
-      scheduledStart: schedStart,
-      scheduledEnd: schedEnd,
-      userId: input.userId ?? null,
-    });
-  }
+  const lateFinalizeInput =
+    CheckInTime && shouldNotifyAttendanceTimeChange(previousCheckIn, CheckInTime)
+      ? {
+          empId: Number(EmpID),
+          empName: employeeName,
+          branchId,
+          workDate: WorkDate,
+          attendanceId,
+          checkInTime: CheckInTime,
+          scheduledStart: schedStart,
+          scheduledEnd: schedEnd,
+          userId: input.userId ?? null,
+        }
+      : null;
 
   if (CheckInTime && CheckOutTime) {
     try {
@@ -421,6 +421,14 @@ export async function saveAdminAttendance(
 
   if (activeTxn) {
     await activeTxn.commit();
+  }
+
+  // After commit only — durable enqueue + async finalize (never against rolled-back attendance).
+  if (lateFinalizeInput) {
+    await enqueueLateDeductionFinalize(lateFinalizeInput).catch((err) => {
+      console.warn('[api/admin/attendance] late-deduction enqueue failed', err);
+    });
+    scheduleFinalizeLateDeductionOnCheckIn(lateFinalizeInput);
   }
 
   return {
@@ -1006,6 +1014,9 @@ export async function saveAdminAttendanceBulk(
       scheduleAttendanceCheckInOutWhatsApp(job);
     }
     for (const job of lateDeductionJobs) {
+      await enqueueLateDeductionFinalize(job).catch((err) => {
+        console.warn('[api/admin/attendance/bulk] late-deduction enqueue failed', err);
+      });
       scheduleFinalizeLateDeductionOnCheckIn(job);
     }
   } catch (innerErr) {

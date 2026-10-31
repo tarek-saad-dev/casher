@@ -51,6 +51,7 @@ export const CRON_BEARER_PREFIX_ROUTES = [
   '/api/cron/',
   '/api/admin/hr/nightly-close',
   '/api/admin/attendance/auto-absence/run',
+  '/api/admin/hr/late-deduction/alerts/run',
   '/api/payroll/daily/auto-generate',
   '/api/internal/operations/business-day/reconcile',
   '/api/internal/messaging/inbox',

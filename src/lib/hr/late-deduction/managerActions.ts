@@ -8,7 +8,7 @@ import {
   listPendingManagerCases,
   type LateDeductionCaseRow,
 } from './repository';
-import { ensureLateDeductionSchema } from './schema';
+import { isLateDeductionSchemaReady } from './schema';
 import { scheduleLateDeductionWhatsApp } from './whatsapp';
 import { roundMoney } from '@/lib/reportMonthUtils';
 
@@ -24,7 +24,7 @@ export async function listLateDeductionManagerQueue(params?: {
   workDate?: string;
 }): Promise<LateDeductionCaseRow[]> {
   const db = await getPool();
-  await ensureLateDeductionSchema(db);
+  if (!(await isLateDeductionSchemaReady(db))) return [];
   return listPendingManagerCases(db, params);
 }
 
@@ -40,7 +40,9 @@ export async function applyManagerLatePenalty(params: {
   suppressWhatsApp?: boolean;
 }): Promise<LateDeductionCaseRow> {
   const db = await getPool();
-  await ensureLateDeductionSchema(db);
+  if (!(await isLateDeductionSchemaReady(db))) {
+    throw new LateDeductionActionError('مخطط خصم التأخير غير مُثبَّت — نفّذ ترحيل DRVO أولاً');
+  }
 
   const amount = roundMoney(Number(params.amount));
   if (!(amount > 0)) {
@@ -122,7 +124,9 @@ export async function cancelLateDeductionCase(params: {
   userId: number;
 }): Promise<LateDeductionCaseRow> {
   const db = await getPool();
-  await ensureLateDeductionSchema(db);
+  if (!(await isLateDeductionSchemaReady(db))) {
+    throw new LateDeductionActionError('مخطط خصم التأخير غير مُثبَّت — نفّذ ترحيل DRVO أولاً');
+  }
 
   const reason = String(params.reason ?? '').trim();
   if (!reason) throw new LateDeductionActionError('سبب الإلغاء مطلوب');
@@ -167,7 +171,9 @@ export async function setEmployeeLateDeductionExempt(params: {
   tenantId?: string | null;
 }): Promise<void> {
   const db = await getPool();
-  await ensureLateDeductionSchema(db);
+  if (!(await isLateDeductionSchemaReady(db))) {
+    throw new LateDeductionActionError('مخطط خصم التأخير غير مُثبَّت — نفّذ ترحيل DRVO أولاً');
+  }
   const req = db
     .request()
     .input('empId', sql.Int, params.empId)

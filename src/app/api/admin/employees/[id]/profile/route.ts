@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
 import { requireTenantSession } from '@/lib/api-auth';
 import { requireMasterDataTenantId } from '@/platform/masterData/tenantScope';
-import { ensureLateDeductionSchema } from '@/lib/hr/late-deduction/schema';
+import { isLateDeductionSchemaReady } from '@/lib/hr/late-deduction/schema';
 
 async function ensureScheduleTable(db: any) {
   await db.request().query(`
@@ -251,8 +251,11 @@ export async function PATCH(
 
     const tenantId = requireMasterDataTenantId(session.TenantId, 'PATCH /api/admin/employees/[id]/profile');
     const db = await getPool();
-    if (LateDeductionExempt !== undefined) {
-      await ensureLateDeductionSchema(db);
+    if (LateDeductionExempt !== undefined && !(await isLateDeductionSchemaReady(db))) {
+      return NextResponse.json(
+        { error: 'مخطط خصم التأخير غير مُثبَّت — نفّذ ترحيل DRVO employee-late-deduction أولاً' },
+        { status: 503 },
+      );
     }
     const transaction = new sql.Transaction(db);
     await transaction.begin();

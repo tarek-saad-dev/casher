@@ -230,6 +230,7 @@ vi.mock('@/lib/services/employeeAttendanceWhatsAppNotify', () => ({
 }));
 
 vi.mock('@/lib/hr/late-deduction', () => ({
+  enqueueLateDeductionFinalize: vi.fn(async () => ({ enqueued: true })),
   scheduleFinalizeLateDeductionOnCheckIn: vi.fn(),
 }));
 

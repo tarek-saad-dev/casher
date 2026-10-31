@@ -1,0 +1,12 @@
+[Unit]
+Description=Run Casher late deduction alerts every minute
+
+[Timer]
+OnBootSec=90s
+OnUnitActiveSec=60s
+AccuracySec=5s
+Unit=late-deduction-alerts.service
+Persistent=true
+
+[Install]
+WantedBy=timers.target
