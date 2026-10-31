@@ -391,6 +391,11 @@ vi.mock('@/lib/services/employeeAttendanceWhatsAppNotify', () => ({
     harness.scheduleAttendanceCheckInOutWhatsApp(...args),
 }));
 
+vi.mock('@/lib/hr/late-deduction', () => ({
+  enqueueLateDeductionFinalize: vi.fn(async () => ({ enqueued: true })),
+  scheduleFinalizeLateDeductionOnCheckIn: vi.fn(),
+}));
+
 vi.mock('@/lib/payroll/syncPayrollHoursFromAttendance', () => ({
   syncNonPostedPayrollHoursFromAttendance: (...args: unknown[]) =>
     harness.syncNonPostedPayrollHoursFromAttendance(...args),

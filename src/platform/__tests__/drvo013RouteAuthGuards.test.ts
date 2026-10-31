@@ -324,6 +324,7 @@ describe('DRVO-013 cron / system jobs fan out tenant-by-tenant', () => {
     expect(tenantJobs.map((i) => i.url).sort()).toEqual(
       [
         '/api/admin/attendance/auto-absence/run',
+        '/api/admin/hr/late-deduction/alerts/run',
         '/api/admin/hr/nightly-close',
         '/api/internal/operations/business-day/reconcile',
         '/api/payroll/daily/auto-generate',
@@ -339,6 +340,7 @@ describe('DRVO-013 cron / system jobs fan out tenant-by-tenant', () => {
   it('app-family system jobs check the app per tenant', () => {
     expect(read('src/app/api/payroll/daily/auto-generate/route.ts')).toContain("app: 'payroll'");
     expect(read('src/app/api/admin/hr/nightly-close/route.ts')).toContain("app: 'payroll'");
+    expect(read('src/app/api/admin/hr/late-deduction/alerts/run/route.ts')).toContain("app: 'payroll'");
     expect(read('src/app/api/admin/attendance/auto-absence/run/route.ts')).toContain("app: 'attendance'");
   });
 

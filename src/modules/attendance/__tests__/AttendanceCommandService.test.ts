@@ -219,6 +219,10 @@ vi.mock('@/lib/services/employeeAttendanceWhatsAppNotify', () => ({
   scheduleAttendanceCheckInOutWhatsApp: (...a: unknown[]) =>
     scheduleAttendanceCheckInOutWhatsApp(...a),
 }));
+vi.mock('@/lib/hr/late-deduction', () => ({
+  enqueueLateDeductionFinalize: vi.fn(async () => ({ enqueued: true })),
+  scheduleFinalizeLateDeductionOnCheckIn: vi.fn(),
+}));
 vi.mock('@/lib/booking/AvailabilityMutationNotifier', () => ({
   AvailabilityMutationNotifier: {
     employeeDayChanged: (...a: unknown[]) => availabilityEmployeeDayChanged(...a),
@@ -256,6 +260,11 @@ vi.mock('@/lib/timeUtils', () => ({
     const scheduled = eh * 60 + (em || 0);
     return mins < scheduled ? scheduled - mins : 0;
   }),
+  sqlTimeToHHmm: (v: unknown) => {
+    if (v == null || v === '') return null;
+    const s = String(v);
+    return s.length >= 5 ? s.slice(0, 5) : s;
+  },
 }));
 
 function hhmm(v: unknown): string | null {

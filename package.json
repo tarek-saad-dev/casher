@@ -14,6 +14,8 @@
     "nightly-close:watch": "tsx scripts/run-nightly-close.ts --watch",
     "nightly-close:dry": "tsx scripts/run-nightly-close.ts --dry-run",
     "business-day:reconcile": "tsx scripts/run-business-day-reconcile.ts",
+    "late-deduction:alerts": "tsx scripts/run-late-deduction-alerts.ts",
+    "late-deduction:alerts:watch": "tsx scripts/run-late-deduction-alerts.ts --watch",
     "recalc:mtd-targets": "tsx scripts/recalc-employee-mtd-targets-current-month.ts",
     "recalc:mtd-targets:dry": "tsx scripts/recalc-employee-mtd-targets-current-month.ts --dry-run",
     "sync:install": "cd sync-service && npm install && npm run build",

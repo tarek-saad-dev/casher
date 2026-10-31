@@ -11,6 +11,10 @@
     {
       "path": "/api/internal/operations/business-day/reconcile",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/admin/hr/late-deduction/alerts/run",
+      "schedule": "* * * * *"
     }
   ]
 }
