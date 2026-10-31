@@ -119,34 +119,43 @@ describe('EmployeeLedgerPanel advance repayment UX', () => {
 
   afterEach(() => cleanup());
 
-  it('source: repayment ignores branchViewMatchesOperating; payout still requires it', () => {
+  it('source: repayment uses row branchId; API accepts branchId with ops ACL', () => {
     const root = path.join(__dirname, '..', '..', '..', '..');
     const panel = fs.readFileSync(
       path.join(root, 'src/components/hr/EmployeeLedgerPanel.tsx'),
       'utf8',
     );
-    expect(panel).toMatch(/openAdvanceRepayment[\s\S]*?branchBreakdown\.branchId !== operatingBranch\.branchId/);
+    const route = fs.readFileSync(
+      path.join(root, 'src/app/api/admin/hr/employee-ledger/advance-repayment/route.ts'),
+      'utf8',
+    );
+    const modal = fs.readFileSync(
+      path.join(root, 'src/components/hr/EmployeeAdvanceRepaymentModal.tsx'),
+      'utf8',
+    );
+    expect(panel).toContain('branchId: branchBreakdown.branchId');
     expect(panel).not.toMatch(
-      /openAdvanceRepayment[\s\S]*?if \(!operatingBranch \|\| !branchViewMatchesOperating\) return/,
+      /openAdvanceRepayment[\s\S]*?branchBreakdown\.branchId !== operatingBranch\.branchId/,
     );
     expect(panel).toMatch(
       /openPayout[\s\S]*?if \(!operatingBranch \|\| !branchViewMatchesOperating\) return/,
     );
-    expect(panel).toContain('data-testid="advance-repayment-branch-rule"');
+    expect(route).toContain('userCanWriteOpsOnBranch');
+    expect(route).toContain('body.branchId');
+    expect(modal).toContain('branchId=${expectedBranchId}');
+    expect(modal).toContain('branchId: employee.branchId');
   });
 
-  it('enables رد سلفة on operating-branch row while filter is الكل', async () => {
+  it('enables رد سلفة on Gleem and Camp rows while filter is الكل', async () => {
     render(<EmployeeLedgerPanel />);
     await waitFor(() => expect(screen.getByText('زياد')).toBeInTheDocument());
 
     const repayButtons = screen.getAllByRole('button', { name: /رد سلفة/ });
     expect(repayButtons.length).toBeGreaterThanOrEqual(2);
-
-    // Row 0 = GLEEM (operating) enabled; row 1 = CAMP disabled with switch hint
     expect(repayButtons[0]).not.toBeDisabled();
-    expect(repayButtons[1]).toBeDisabled();
-    expect(repayButtons[1].getAttribute('title') ?? '').toMatch(/بدّل الفرع التشغيلي/);
-
-    expect(screen.getByTestId('advance-repayment-branch-rule')).toHaveTextContent(/عرض «الكل»/);
+    expect(repayButtons[1]).not.toBeDisabled();
+    expect(screen.getByTestId('advance-repayment-branch-rule')).toHaveTextContent(
+      /لكل صف فرع مصرح/,
+    );
   });
 });

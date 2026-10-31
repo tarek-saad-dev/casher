@@ -99,15 +99,13 @@ export default function EmployeeAdvanceRepaymentModal({
     setLoadingDebt(true);
     try {
       const res = await fetch(
-        `/api/admin/hr/employee-ledger/advance-repayment?empId=${empId}`,
+        `/api/admin/hr/employee-ledger/advance-repayment?empId=${empId}&branchId=${expectedBranchId}`,
       );
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'فشل تحميل المديونية');
       const liveBranchId = Number(data.branchId ?? 0);
       if (liveBranchId > 0 && liveBranchId !== expectedBranchId) {
-        throw new Error(
-          'الفرع التشغيلي الحالي لا يطابق فرع الصف — بدّل سياق الفرع المصرح به ثم أعد فتح رد السلفة',
-        );
+        throw new Error('فرع المديونية من الخادم لا يطابق فرع الصف — أعد المحاولة');
       }
       const d = Math.max(0, Number(data.outstandingDebt ?? 0));
       setLiveDebt(d);
@@ -155,6 +153,7 @@ export default function EmployeeAdvanceRepaymentModal({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           empId: employee.empId,
+          branchId: employee.branchId,
           amount: parsedAmount,
           paymentMethodId: Number(paymentMethodId),
           date: repayDate,
@@ -270,9 +269,8 @@ export default function EmployeeAdvanceRepaymentModal({
             </div>
 
             <p className="text-[11px] text-zinc-500 leading-relaxed">
-              تأكيد الاستلام يُسجِّل Cash IN + قيد دائن «رد سلفة» في خزينة الفرع التشغيلي الحالي
-              ({employee.branchLabel}) فقط، دون حذف السلف الأصلية أو تسجيل إيراد مبيعات. المبلغ لا يتجاوز
-              المديونية الفعلية من الخادم.
+              تأكيد الاستلام يُسجِّل Cash IN + قيد دائن «رد سلفة» في خزينة فرع {employee.branchLabel} فقط،
+              دون حذف السلف الأصلية أو تسجيل إيراد مبيعات. المبلغ لا يتجاوز المديونية الفعلية من الخادم.
             </p>
 
             {error ? <p className="text-sm text-rose-400">{error}</p> : null}
