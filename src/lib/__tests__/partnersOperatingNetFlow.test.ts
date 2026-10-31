@@ -9,6 +9,12 @@ describe('partners operating net flow', () => {
     expect(calcOperatingNet(remainingAfterEmployees, 45000)).toBe(67101);
   });
 
+  it('includes store other business income once in remaining then operating net', () => {
+    const remaining = calcRemainingAfterEmployees(100000, 30000, 4000);
+    expect(remaining).toBe(74000);
+    expect(calcOperatingNet(remaining, 10000)).toBe(64000);
+  });
+
   it('matches employee remainder minus filtered operating expenses', () => {
     const remaining = calcRemainingAfterEmployees(100000, 30000);
     const expenses = 25000;

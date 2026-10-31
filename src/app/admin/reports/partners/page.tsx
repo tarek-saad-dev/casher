@@ -294,12 +294,15 @@ function PartnersReportPageContent() {
             />
 
             <PartnersEmployeeFlowSection
+              year={year}
+              month={month}
               totals={
                 report?.employeeSummaryTotals ?? {
                   totalShopRevenue: 0,
                   totalPaidSalaryAndAdvances: 0,
                 }
               }
+              storeOtherBusinessIncome={report?.summary.storeOtherBusinessIncome ?? 0}
               loading={loading}
             />
 
@@ -321,6 +324,7 @@ function PartnersReportPageContent() {
                 }
               }
               filteredOperatingExpenses={report?.summary.operatingExpenses ?? 0}
+              storeOtherBusinessIncome={report?.summary.storeOtherBusinessIncome ?? 0}
               loading={loading}
             />
 
@@ -335,6 +339,7 @@ function PartnersReportPageContent() {
               }
               partners={report?.partners ?? []}
               filteredOperatingExpenses={report?.summary.operatingExpenses ?? 0}
+              storeOtherBusinessIncome={report?.summary.storeOtherBusinessIncome ?? 0}
               loading={loading}
               classifiedOperatingNet={
                 hasManualEmployeeNumbers

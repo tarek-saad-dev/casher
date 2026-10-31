@@ -15,6 +15,8 @@ interface PartnersFinalSettlementSectionProps {
   /** Effective branch partner shares from the API response (Phase 1E). */
   partners: PartnersMonthlyReportResponse['partners'];
   filteredOperatingExpenses: number;
+  /** Profit store income — used only for legacy operatingNet path (classified already includes it). */
+  storeOtherBusinessIncome?: number;
   loading: boolean;
   classifiedOperatingNet?: number | null;
   legacyOperatingNet?: number | null;
@@ -26,14 +28,17 @@ export default function PartnersFinalSettlementSection({
   totals,
   partners,
   filteredOperatingExpenses,
+  storeOtherBusinessIncome = 0,
   loading,
   classifiedOperatingNet,
 }: PartnersFinalSettlementSectionProps) {
   const remainingAfterEmployees = calcRemainingAfterEmployees(
     totals.totalShopRevenue,
-    partnersEmployeePaidTotal(totals)
+    partnersEmployeePaidTotal(totals),
+    storeOtherBusinessIncome,
   );
   const operatingNet = calcOperatingNet(remainingAfterEmployees, filteredOperatingExpenses);
+  // Classified cleanNetProfit already includes otherBusinessIncome once — do not add again.
   const baseAmount = classifiedOperatingNet ?? operatingNet;
 
   const result = useMemo(

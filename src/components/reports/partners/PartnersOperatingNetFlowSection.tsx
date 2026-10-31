@@ -7,6 +7,8 @@ import { formatPartnersCurrency, partnersEmployeePaidTotal } from './partnersRep
 interface PartnersOperatingNetFlowSectionProps {
   totals: PartnersMonthlyReportResponse['employeeSummaryTotals'];
   filteredOperatingExpenses: number;
+  /** Profit-affecting store income included in remaining after employees. */
+  storeOtherBusinessIncome?: number;
   loading: boolean;
 }
 
@@ -34,11 +36,13 @@ export function calcOperatingNet(
 export default function PartnersOperatingNetFlowSection({
   totals,
   filteredOperatingExpenses,
+  storeOtherBusinessIncome = 0,
   loading,
 }: PartnersOperatingNetFlowSectionProps) {
   const remainingAfterEmployees = calcRemainingAfterEmployees(
     totals.totalShopRevenue,
-    partnersEmployeePaidTotal(totals)
+    partnersEmployeePaidTotal(totals),
+    storeOtherBusinessIncome,
   );
   const operatingNet = calcOperatingNet(remainingAfterEmployees, filteredOperatingExpenses);
   const isNegative = operatingNet < 0;
