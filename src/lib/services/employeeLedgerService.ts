@@ -293,6 +293,7 @@ function mapBranchFinancialRow(row: Record<string, unknown>): EmpLedgerBranchFin
   const salaryCredits = roundMoney(Number(row.SalaryCredits ?? 0));
   const targetCredits = roundMoney(Number(row.TargetCredits ?? 0));
   const fundingCredits = roundMoney(Number(row.FundingCredits ?? 0));
+  const repaymentCredits = roundMoney(Number(row.RepaymentCredits ?? 0));
   const settlementCredits = roundMoney(Number(row.SettlementCredits ?? 0));
   const advanceDebits = roundMoney(Number(row.AdvanceDebits ?? 0));
   const payoutDebits = roundMoney(Number(row.PayoutDebits ?? 0));
@@ -303,6 +304,7 @@ function mapBranchFinancialRow(row: Record<string, unknown>): EmpLedgerBranchFin
     salaryCredits +
       targetCredits +
       fundingCredits +
+      repaymentCredits +
       settlementCredits -
       advanceDebits -
       payoutDebits -
@@ -317,7 +319,7 @@ function mapBranchFinancialRow(row: Record<string, unknown>): EmpLedgerBranchFin
     paid: payoutDebits,
     advances: advanceDebits,
     deductions: deductionDebits,
-    transfers: fundingCredits,
+    transfers: roundMoney(fundingCredits + repaymentCredits),
     balance,
     salaryCredits,
     targetCredits,
@@ -344,6 +346,11 @@ const LEDGER_BUCKET_SELECT = `
      AND l.EntryDirection = N'credit'
      AND l.EntryReason IN (N'employee_funding', N'tip')
     THEN l.Amount ELSE 0 END), 0) AS FundingCredits,
+  ISNULL(SUM(CASE
+    WHEN l.ID IS NOT NULL
+     AND l.EntryDirection = N'credit'
+     AND l.EntryReason = N'advance_repayment'
+    THEN l.Amount ELSE 0 END), 0) AS RepaymentCredits,
   ISNULL(SUM(CASE
     WHEN l.ID IS NOT NULL
      AND l.EntryDirection = N'credit'
@@ -488,6 +495,7 @@ function emptyBranchBreakdown(
     salaryCredits: 0,
     targetCredits: 0,
     fundingCredits: 0,
+    repaymentCredits: 0,
     settlementCredits: 0,
     advanceDebits: 0,
     payoutDebits: 0,
@@ -500,18 +508,21 @@ function mapEmployeeBranchBreakdown(row: Record<string, unknown>): EmpLedgerEmpl
   const salaryCredits = roundMoney(Number(row.SalaryCredits ?? 0));
   const targetCredits = roundMoney(Number(row.TargetCredits ?? 0));
   const fundingCredits = roundMoney(Number(row.FundingCredits ?? 0));
+  const repaymentCredits = roundMoney(Number(row.RepaymentCredits ?? 0));
   const settlementCredits = roundMoney(Number(row.SettlementCredits ?? 0));
   const advanceDebits = roundMoney(Number(row.AdvanceDebits ?? 0));
   const payoutDebits = roundMoney(Number(row.PayoutDebits ?? 0));
   const deductionDebits = roundMoney(Number(row.DeductionDebits ?? 0));
   const settlementDebits = roundMoney(Number(row.SettlementDebits ?? 0));
 
+  // Funding + advance repayments cover withdrawals before remaining سلفة.
+  const coverCredits = roundMoney(fundingCredits + repaymentCredits);
   const { payoutWithinDues, revenueWithdrawal, advanceExcess } =
     computeEmployeeWithdrawalBuckets({
       advanceDebits,
       payoutDebits,
       salaryAndTarget: salaryCredits + targetCredits,
-      revenue: fundingCredits,
+      revenue: coverCredits,
     });
 
   const salary = salaryCredits;
@@ -521,10 +532,17 @@ function mapEmployeeBranchBreakdown(row: Record<string, unknown>): EmpLedgerEmpl
   const advance = advanceExcess;
   const deductions = deductionDebits;
   const settlementNet = roundMoney(settlementCredits - settlementDebits);
-  // salary+target+funding+settlementNet − (payout+revenueWithdrawal+advance) − deductions
-  // because payout+revenueWithdrawal+advance === advanceDebits+payoutDebits.
+  // salary+target+funding+repayment+settlementNet − withdrawals − deductions
   const balance = roundMoney(
-    salary + target + funding + settlementNet - payout - revenueWithdrawal - advance - deductions,
+    salary +
+      target +
+      funding +
+      repaymentCredits +
+      settlementNet -
+      payout -
+      revenueWithdrawal -
+      advance -
+      deductions,
   );
 
   return {
@@ -543,6 +561,7 @@ function mapEmployeeBranchBreakdown(row: Record<string, unknown>): EmpLedgerEmpl
     salaryCredits,
     targetCredits,
     fundingCredits,
+    repaymentCredits,
     settlementCredits,
     advanceDebits,
     payoutDebits,
@@ -558,6 +577,7 @@ function sumBranchBreakdowns(
   | 'salaryCredits'
   | 'targetCredits'
   | 'fundingCredits'
+  | 'repaymentCredits'
   | 'advanceDebits'
   | 'payoutDebits'
   | 'deductionDebits'
@@ -572,6 +592,7 @@ function sumBranchBreakdowns(
   const salaryCredits = roundMoney(parts.reduce((s, p) => s + p.salaryCredits, 0));
   const targetCredits = roundMoney(parts.reduce((s, p) => s + p.targetCredits, 0));
   const fundingCredits = roundMoney(parts.reduce((s, p) => s + p.fundingCredits, 0));
+  const repaymentCredits = roundMoney(parts.reduce((s, p) => s + p.repaymentCredits, 0));
   const advanceDebits = roundMoney(parts.reduce((s, p) => s + p.advanceDebits, 0));
   const payoutDebits = roundMoney(parts.reduce((s, p) => s + p.payoutDebits, 0));
   const deductionDebits = roundMoney(parts.reduce((s, p) => s + p.deductionDebits, 0));
@@ -585,13 +606,14 @@ function sumBranchBreakdowns(
     salaryCredits,
     targetCredits,
     fundingCredits,
+    repaymentCredits,
     advanceDebits,
     payoutDebits,
     deductionDebits,
     settlementCredits,
     settlementDebits,
     balance,
-    revenue: fundingCredits,
+    revenue: roundMoney(fundingCredits + repaymentCredits),
     payoutWithinDues,
     revenueWithdrawal,
     advanceExcess,
@@ -740,6 +762,7 @@ export async function getEmployeeLedgerSummary(
       salaryCredits: acc.salaryCredits + row.salaryCredits,
       targetCredits: acc.targetCredits + row.targetCredits,
       fundingCredits: acc.fundingCredits + row.fundingCredits,
+      repaymentCredits: acc.repaymentCredits + row.repaymentCredits,
       advanceDebits: acc.advanceDebits + row.advanceDebits,
       payoutDebits: acc.payoutDebits + row.payoutDebits,
       deductionDebits: acc.deductionDebits + row.deductionDebits,
@@ -753,6 +776,7 @@ export async function getEmployeeLedgerSummary(
       salaryCredits: 0,
       targetCredits: 0,
       fundingCredits: 0,
+      repaymentCredits: 0,
       advanceDebits: 0,
       payoutDebits: 0,
       deductionDebits: 0,
@@ -789,6 +813,7 @@ export async function getEmployeeLedgerSummary(
       salaryCredits: roundMoney(totals.salaryCredits),
       targetCredits: roundMoney(totals.targetCredits),
       fundingCredits: roundMoney(totals.fundingCredits),
+      repaymentCredits: roundMoney(totals.repaymentCredits),
       advanceDebits: roundMoney(totals.advanceDebits),
       payoutDebits: roundMoney(totals.payoutDebits),
       deductionDebits: roundMoney(totals.deductionDebits),

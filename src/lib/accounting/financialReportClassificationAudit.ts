@@ -122,7 +122,10 @@ export function classifyCategoryForFinancialAudit(
   } else if (input.txnKind === 'revenue' && isIncome) {
     revenueClass = 'legacy_employee_income_mirror';
     classificationGuess = 'employee_mapped_revenue_category';
-  } else if (isIncome && containsAny(n, ['رد سلف', 'سداد', 'تسوية سلف', 'سد'])) {
+  } else if (
+    isIncome &&
+    containsAny(n, ['رد سلف', 'استرداد سلف', 'سداد سلف', 'تسوية سلف'])
+  ) {
     revenueClass = 'non_revenue_cash_in';
     ledgerCashClass = 'advance_repayment';
     classificationGuess = 'advance_repayment';

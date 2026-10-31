@@ -346,7 +346,9 @@ function mapPartnersEmployeeRows(input: {
     const ledgerSalary = roundMoney(ledger?.salaryCredits ?? 0);
     const ledgerTarget = roundMoney(ledger?.targetCredits ?? 0);
     const liveSalaryAndTarget = roundMoney(ledgerSalary + ledgerTarget);
-    const fundingCredits = roundMoney(ledger?.fundingCredits ?? 0);
+    const fundingCredits = roundMoney(
+      (ledger?.fundingCredits ?? 0) + (ledger?.repaymentCredits ?? 0),
+    );
     const advanceDebits = roundMoney(ledger?.advanceDebits ?? 0);
     const payoutDebits = roundMoney(ledger?.payoutDebits ?? 0);
     const settlementCredits = roundMoney(ledger?.settlementCredits ?? 0);
@@ -357,7 +359,9 @@ function mapPartnersEmployeeRows(input: {
       salaryAndTarget: liveSalaryAndTarget,
       revenue: fundingCredits,
     });
-    // Settlement covers advance debt only — never inflate «استلم راتب».
+    // Settlement / advance repayment cover debt only — never inflate «استلم راتب».
+    // Repayment is not sales revenue (partners totalRevenue is services-only), so
+    // lowering advanceExcess reverses the cash-operating hit once without P&L double-count.
     const liveAdvanceExcess = computePartnersAdvanceExcess({
       advanceDebits,
       payoutDebits,

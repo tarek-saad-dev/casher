@@ -106,6 +106,14 @@ const FALLBACK_CATEGORY_RULES: Array<{ patterns: string[]; match: Omit<RuleMatch
     },
   },
   {
+    // Must precede generic «سلف» so استرداد/رد سلفة is not treated as advance expense.
+    patterns: ['رد سلف', 'استرداد سلف', 'سداد سلف'],
+    match: {
+      flowGroup: 'advance_repayment', flowKind: 'advance_repayment_in', pnlImpact: 'none', partyType: 'employee',
+      confidence: 'high', reason: 'رد سلفة للخزنة — استرداد وليس إيراد مبيعات', requiresEmployee: true, needsReviewByDefault: false,
+    },
+  },
+  {
     patterns: ['شريك', 'رأس مال', 'راس مال', 'تمويل', 'ضخ'],
     match: {
       flowGroup: 'capital', flowKind: 'partner_capital_in', pnlImpact: 'none', partyType: 'partner',

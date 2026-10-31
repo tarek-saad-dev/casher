@@ -14,6 +14,7 @@ export const EMP_LEDGER_ENTRY_REASONS = [
   'adjustment',
   'employee_funding',
   'tip',
+  'advance_repayment',
 ] as const;
 export type EmpLedgerEntryReason = (typeof EMP_LEDGER_ENTRY_REASONS)[number];
 
@@ -21,6 +22,7 @@ export const EMP_LEDGER_SALARY_CREDIT_REASONS = ['hourly_wage', 'monthly_salary'
 export const EMP_LEDGER_TARGET_CREDIT_REASONS = ['target', 'commission', 'bonus'] as const;
 export const EMP_LEDGER_FUNDING_CREDIT_REASONS = ['employee_funding'] as const;
 export const EMP_LEDGER_TIP_CREDIT_REASONS = ['tip'] as const;
+export const EMP_LEDGER_ADVANCE_REPAYMENT_CREDIT_REASONS = ['advance_repayment'] as const;
 export const EMP_LEDGER_ADVANCE_DEBIT_REASONS = ['advance'] as const;
 export const EMP_LEDGER_PAYOUT_DEBIT_REASONS = ['payout'] as const;
 export const EMP_LEDGER_DEDUCTION_DEBIT_REASONS = ['deduction', 'settlement', 'adjustment'] as const;
@@ -104,6 +106,8 @@ export interface EmpLedgerEmployeeBranchBreakdown {
   salaryCredits: number;
   targetCredits: number;
   fundingCredits: number;
+  /** رد سلفة (استرداد نقدي للخزنة) — يغطي المديونية دون تمويل/إيراد */
+  repaymentCredits: number;
   settlementCredits: number;
   advanceDebits: number;
   payoutDebits: number;
@@ -117,6 +121,7 @@ export interface EmpLedgerEmployeeSummaryRow {
   salaryCredits: number;
   targetCredits: number;
   fundingCredits: number;
+  repaymentCredits: number;
   advanceDebits: number;
   payoutDebits: number;
   deductionDebits: number;
@@ -207,6 +212,7 @@ export interface EmpLedgerSummaryResponse {
     salaryCredits: number;
     targetCredits: number;
     fundingCredits: number;
+    repaymentCredits: number;
     advanceDebits: number;
     payoutDebits: number;
     deductionDebits: number;
@@ -257,6 +263,20 @@ export interface EmpLedgerFundingResponse {
   ledgerDualWrite: true;
 }
 
+export interface EmpLedgerAdvanceRepaymentResponse {
+  success: true;
+  cashMoveId: number;
+  ledgerEntryId: number;
+  employeeName: string;
+  amount: number;
+  previousBalance: number;
+  newBalance: number;
+  outstandingDebtBefore: number;
+  outstandingDebtAfter: number;
+  ledgerDualWrite: true;
+  idempotentReplay?: boolean;
+}
+
 export interface EmpLedgerAdditionalTargetResponse {
   success: true;
   ledgerEntryId: number;
@@ -284,6 +304,7 @@ export const EMP_LEDGER_REASON_LABELS: Record<EmpLedgerEntryReason, string> = {
   adjustment: 'تعديل',
   employee_funding: 'تمويل للمحل',
   tip: 'تبس',
+  advance_repayment: 'رد سلفة',
 };
 
 export interface EmpLedgerTipResponse {

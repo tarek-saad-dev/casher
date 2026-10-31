@@ -21,7 +21,7 @@ describe('employee ledger multi-branch financial summary', () => {
     expect(svc).toContain('CROSS JOIN dbo.TblBranch');
     expect(svc).toContain('l.BranchID');
     expect(svc).toMatch(
-      /salary \+ target \+ funding - payout - revenueWithdrawal - advance - deductions/,
+      /salary\+target\+funding\+repayment\+settlementNet/,
     );
   });
 
@@ -29,6 +29,7 @@ describe('employee ledger multi-branch financial summary', () => {
     const salary = 1000;
     const target = 200;
     const funding = 300;
+    const repayment = 100;
     const advanceDebits = 150;
     const payoutDebits = 400;
     const deductions = 50;
@@ -37,18 +38,25 @@ describe('employee ledger multi-branch financial summary', () => {
         advanceDebits,
         payoutDebits,
         salaryAndTarget: salary + target,
-        revenue: funding,
+        revenue: funding + repayment,
       });
     const classified =
       salary +
       target +
-      funding -
+      funding +
+      repayment -
       payoutWithinDues -
       revenueWithdrawal -
       advanceExcess -
       deductions;
     const ledger =
-      salary + target + funding - advanceDebits - payoutDebits - deductions;
+      salary +
+      target +
+      funding +
+      repayment -
+      advanceDebits -
+      payoutDebits -
+      deductions;
     expect(classified).toBeCloseTo(ledger, 2);
     expect(payoutWithinDues + revenueWithdrawal + advanceExcess).toBeCloseTo(
       advanceDebits + payoutDebits,
