@@ -18,6 +18,10 @@ import {
   isAtPartnersReportMinimum,
 } from '@/lib/reports/partnersReportPeriod';
 import type { PartnersMonthlyReportResponse } from '@/lib/types/partners-report';
+import {
+  downloadPDF,
+  generatePartnersReportPDF,
+} from '@/lib/services/partnersReportPdfService';
 
 function parseYearFromParams(value: string | null, fallback: number): number {
   const parsed = value ? parseInt(value, 10) : fallback;
@@ -72,6 +76,7 @@ function PartnersReportPageContent({
   const [error, setError] = useState<string | null>(null);
   const [report, setReport] = useState<PartnersMonthlyReportResponse | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+  const [printLoading, setPrintLoading] = useState(false);
 
   const fetchIdRef = useRef(0);
   const hasSyncedInitialUrlRef = useRef(false);
@@ -196,8 +201,27 @@ function PartnersReportPageContent({
     applyPeriod(currentPeriod.year, currentPeriod.month);
   };
 
-  const handlePrint = () => {
-    window.print();
+  const handlePrint = async () => {
+    if (!report || printLoading) return;
+
+    setPrintLoading(true);
+    try {
+      const blob = await generatePartnersReportPDF({
+        report,
+        title,
+        subtitle,
+        year,
+        month,
+      });
+      const fileName = `Partners-Report-${year}-${String(month).padStart(2, '0')}.pdf`;
+      downloadPDF(blob, fileName);
+    } catch (err) {
+      console.error('[PartnersReport] PDF export error:', err);
+      const message = err instanceof Error ? err.message : 'حدث خطأ أثناء تجهيز ملف الطباعة';
+      window.alert(message);
+    } finally {
+      setPrintLoading(false);
+    }
   };
 
   return (
@@ -265,7 +289,10 @@ function PartnersReportPageContent({
           onNextMonth={goToNextMonth}
           onCurrentMonth={goToCurrentMonth}
           onRefresh={() => fetchReport(year, month)}
-          onPrint={handlePrint}
+          onPrint={() => {
+            void handlePrint();
+          }}
+          printLoading={printLoading}
         />
 
         {error && !report && (
@@ -313,6 +340,7 @@ function PartnersReportPageContent({
                   totalPaidSalaryAndAdvances: 0,
                 }
               }
+              storeOtherBusinessIncome={report?.summary.storeOtherBusinessIncome ?? 0}
               loading={loading}
             />
 
@@ -334,6 +362,7 @@ function PartnersReportPageContent({
                 }
               }
               filteredOperatingExpenses={report?.summary.operatingExpenses ?? 0}
+              storeOtherBusinessIncome={report?.summary.storeOtherBusinessIncome ?? 0}
               loading={loading}
             />
 
@@ -348,6 +377,7 @@ function PartnersReportPageContent({
               }
               partners={report?.partners ?? []}
               filteredOperatingExpenses={report?.summary.operatingExpenses ?? 0}
+              storeOtherBusinessIncome={report?.summary.storeOtherBusinessIncome ?? 0}
               loading={loading}
               classifiedOperatingNet={
                 hasManualEmployeeNumbers

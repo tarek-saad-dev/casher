@@ -26,6 +26,7 @@ interface PartnersReportFiltersProps {
   onCurrentMonth: () => void;
   onRefresh: () => void;
   onPrint: () => void;
+  printLoading?: boolean;
 }
 
 const touchButtonClass =
@@ -44,6 +45,7 @@ export default function PartnersReportFilters({
   onCurrentMonth,
   onRefresh,
   onPrint,
+  printLoading = false,
 }: PartnersReportFiltersProps) {
   const allowedYears = getPartnersReportAllowedYears();
   const allowedMonths = getPartnersReportAllowedMonths(year);
@@ -155,12 +157,16 @@ export default function PartnersReportFilters({
             type="button"
             variant="outline"
             onClick={onPrint}
+            disabled={loading || printLoading}
             aria-label="طباعة التقرير"
+            aria-busy={printLoading}
             className={`${touchButtonClass} w-full sm:w-auto text-sm`}
           >
-            <Printer className="h-4 w-4 shrink-0" aria-hidden />
-            <span className="sm:hidden">طباعة</span>
-            <span className="hidden sm:inline">طباعة التقرير</span>
+            <Printer className={`h-4 w-4 shrink-0 ${printLoading ? 'animate-pulse' : ''}`} aria-hidden />
+            <span className="sm:hidden">{printLoading ? 'جارٍ…' : 'طباعة'}</span>
+            <span className="hidden sm:inline">
+              {printLoading ? 'جارٍ تجهيز ملف A4…' : 'طباعة التقرير'}
+            </span>
           </Button>
         </div>
       </div>
