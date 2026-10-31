@@ -1,6 +1,11 @@
 {
-  "action": "PLAN",
+  "action": "APPLY",
   "requested_by": "tarek-saad-dev",
   "pr_number": 190,
-  "target_sha": "32a93a31ed7b81c9336695859ad0efcf2fd22d60"
+  "target_sha": "32a93a31ed7b81c9336695859ad0efcf2fd22d60",
+  "manifest_digest": "3ec06b0ffb5c52c1b4dca87914679745b30136a0f50086ae529044787d09f368",
+  "migrations": [
+    "employee-late-deduction"
+  ],
+  "approval": "TAREK_APPROVED_PRODUCTION_MIGRATION"
 }
