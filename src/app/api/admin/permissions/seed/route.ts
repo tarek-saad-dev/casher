@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getPool } from '@/lib/db';
-import { isAuthResult, requirePlatformOperator } from '@/lib/api-auth';
+import { isAuthResult, requireAdmin } from '@/lib/api-auth';
 import { ensureWorkforceAvailabilityGrants } from '@/lib/permissions/workforceAvailabilityPermissions';
 
 export const runtime = 'nodejs';
@@ -35,6 +35,7 @@ const PAGES = [
   { key: 'reports.full_day',       name: 'تقرير اليوم كامل',       path: '/admin/reports/full-day',          section: 'تقارير مدير',      access: 'roles', sort: 27 },
   { key: 'reports.monthly',        name: 'التقرير الشهري',         path: '/reports/monthly',                 section: 'تقارير مدير',      access: 'roles', sort: 28 },
   { key: 'reports.partners',       name: 'تقرير الشركاء',          path: '/admin/reports/partners',          section: 'تقارير شريك',      access: 'roles', sort: 29 },
+  { key: 'reports.partners_real',  name: 'تقرير الشهر الحقيقي',    path: '/admin/reports/partners-real',     section: 'تقارير شريك',      access: 'roles', sort: 30 },
   { key: 'reports.partners_overrides', name: 'تعديل', path: '/admin/reports/partners-overrides', section: 'الإدارة', access: 'roles', sort: 1005 },
   { key: 'admin.partners',         name: 'إدارة الشركاء',           path: '/admin/partners',                  section: 'تقارير شريك',      access: 'roles', sort: 31 },
   // Expenses
@@ -77,7 +78,6 @@ const PAGES = [
   { key: 'admin.shift',            name: 'الورديات',               path: '/admin/shift',                     section: 'الإدارة',            access: 'roles', sort: 106 },
   { key: 'admin.settings',         name: 'الإعدادات',              path: '/admin/settings',                  section: 'الإدارة',            access: 'roles', sort: 107 },
   { key: 'admin.queue_settings',   name: 'إعدادات الطابور',        path: '/admin/queue-booking-settings',    section: 'الإدارة',            access: 'roles', sort: 108 },
-  { key: 'admin.tenant',           name: 'هوية المنشأة',           path: '/admin/tenant',                    section: 'الإدارة',            access: 'roles', sort: 109 },
   // Operations
   { key: 'operations.main',        name: 'لوحة التشغيل',           path: '/operations',                      section: 'لوحة التشغيل',       access: 'all',   sort: 5 },
   { key: 'cut_club.main',          name: 'CUT CLUB',               path: '/admin/cut-club',                  section: 'CUT CLUB',           access: 'roles', sort: 6 },
@@ -107,7 +107,7 @@ const ROLE_ACCESS: { role: string; pages: string[]; canEdit?: boolean; canDelete
     pages: [
       'income.pos','income.new',
       'sales.today','income_review.all_sales','income_review.today_rev','income_review.all_rev',
-      'income_review.payments','reports.emp_services','reports.emp_monthly_work_revenue','reports.monthly','reports.partners','reports.partners_overrides','admin.partners',
+      'income_review.payments','reports.emp_services','reports.emp_monthly_work_revenue','reports.monthly','reports.partners','reports.partners_real','reports.partners_overrides','admin.partners',
       'expenses.new','reports.expenses',
       'treasury.daily','treasury.period_summary','treasury.movement','treasury.summary',
       'treasury.shift_close','treasury.monthly_close',
@@ -116,7 +116,7 @@ const ROLE_ACCESS: { role: string; pages: string[]; canEdit?: boolean; canDelete
       'bookings.list','bookings.new','bookings.calendar',
       'hr.employees','hr.attendance','hr.payroll','hr.workforce_availability','hr.advances','hr.salaries',
       'admin.operations','admin.booking_operations','admin.branches','admin.users','admin.services','admin.packages','admin.payment_methods',
-      'admin.categories','admin.loyalty','admin.shift','admin.settings','admin.queue_settings','admin.tenant',
+      'admin.categories','admin.loyalty','admin.shift','admin.settings','admin.queue_settings',
       'operations.main','cut_club.main',
       'audit.payment_methods',
       'audit.cash_move_classification',
@@ -191,9 +191,8 @@ const ROLE_ACCESS: { role: string; pages: string[]; canEdit?: boolean; canDelete
   },
 ];
 
-/** Mutates the global role/page catalog and every user's roles — platform operator only. */
 export async function POST() {
-  const auth = await requirePlatformOperator();
+  const auth = await requireAdmin();
   if (!isAuthResult(auth)) return auth;
 
   try {

@@ -10,7 +10,7 @@ import {
   AlertTriangle, Crown, KeyRound, FileKey2, Banknote, ShieldCheck, Users,
   HeartHandshake, Layers, Beaker, Settings2, Sun, Building2, Package,
   MessageCircle,
-  Inbox, Printer,
+  Inbox,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -67,7 +67,7 @@ export const NAV_CATEGORIES: NavCategory[] = [
   },
   {
     title: 'واتساب',
-    description: 'صندوق الوارد والمحادثات',
+    description: 'المحادثات، القوالب، الحملات، الجروبات والتقارير',
     sectionTitles: ['واتساب'],
   },
 ];
@@ -152,8 +152,9 @@ export const NAV_SECTIONS: NavSection[] = [
     title: 'تقارير شريك',
     icon: UsersRound,
     items: [
-      { href: '/admin/reports/partners', label: 'تقرير الشركاء', icon: UsersRound },
-      { href: '/admin/partners',         label: 'إدارة الشركاء',  icon: Building2  },
+      { href: '/admin/reports/partners',      label: 'تقرير الشركاء',        icon: UsersRound },
+      { href: '/admin/reports/partners-real', label: 'تقرير الشهر الحقيقي', icon: FileBarChart },
+      { href: '/admin/partners',              label: 'إدارة الشركاء',         icon: Building2  },
     ],
   },
   {
@@ -168,7 +169,6 @@ export const NAV_SECTIONS: NavSection[] = [
     title: 'الخزنة',
     icon: Wallet,
     items: [
-      { href: '/manager/closing',         label: 'تقفيل المدير',        icon: ShieldCheck   },
       { href: '/treasury/daily',          label: 'قفل اليوم',           icon: Lock          },
       { href: '/treasury/group-daily',    label: 'خزنة كل الفروع',      icon: Building2     },
       { href: '/treasury/period-summary', label: 'ملخص الخزنة الدوري',  icon: Calendar      },
@@ -206,8 +206,14 @@ export const NAV_SECTIONS: NavSection[] = [
     title: 'واتساب',
     icon: MessageCircle,
     items: [
-      { href: '/admin/whatsapp/inbox', label: 'صندوق الوارد', icon: Inbox, badge: 'whatsapp-unread' },
-      { href: '/admin/whatsapp',       label: 'إعدادات واتساب', icon: Settings },
+      { href: '/admin/whatsapp/inbox',              label: 'صندوق الوارد',           icon: Inbox },
+      { href: '/admin/whatsapp?tab=templates',      label: 'قوالب الرسائل',          icon: FileBarChart },
+      { href: '/admin/whatsapp?tab=campaigns',      label: 'الحملات',                icon: PlusCircle },
+      { href: '/admin/whatsapp?tab=groups',         label: 'الجروبات',               icon: UsersRound },
+      { href: '/admin/reports/full-day',            label: 'إرسال التقارير اليومية', icon: Sun },
+      { href: '/admin/customers/follow-up',         label: 'متابعة العملاء',          icon: HeartHandshake },
+      { href: '/admin/integrations/whatsapp',       label: 'تشخيص تكامل واتساب',     icon: Activity },
+      { href: '/admin/whatsapp',                    label: 'إعدادات واتساب',         icon: Settings },
     ],
   },
   {
@@ -237,10 +243,6 @@ export const NAV_SECTIONS: NavSection[] = [
       { href: '/admin/loyalty',                   label: 'إدارة النقاط',          icon: Star       },
       { href: '/admin/shift',                     label: 'الورديات',               icon: Clock      },
       { href: '/admin/settings',                  label: 'الإعدادات',              icon: Settings   },
-      { href: '/admin/settings/printing',         label: 'إدارة الطباعة',           icon: Printer    },
-      { href: '/admin/billing',                   label: 'الاشتراك والتكلفة',     icon: CreditCard },
-      { href: '/admin/apps',                      label: 'التطبيقات',             icon: LayoutGrid },
-      { href: '/admin/tenant',                    label: 'هوية المنشأة',           icon: Building2  },
       { href: '/admin/ai-concierge',              label: 'مساعد الصالون',          icon: MessageCircle },
       { href: '/admin/queue-booking-settings',    label: 'إعدادات الطابور',       icon: Ticket     },
       { href: '/admin/permissions/users',         label: 'صلاحيات المستخدمين',    icon: KeyRound     },

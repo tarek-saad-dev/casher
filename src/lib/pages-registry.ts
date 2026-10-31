@@ -29,6 +29,7 @@ export const SYSTEM_PAGES: PageDefinition[] = [
   { key: 'reports.full_day',        name: 'تقرير اليوم كامل',        path: '/admin/reports/full-day',          section: 'تقارير مدير',     accessMode: 'roles', sort: 27,  defaultRoles: ['super_admin','admin','manager','accountant'] },
   { key: 'reports.monthly',         name: 'التقرير الشهري',          path: '/reports/monthly',                 section: 'تقارير مدير',     accessMode: 'roles', sort: 28,  defaultRoles: ['super_admin','admin','manager','accountant','viewer'] },
   { key: 'reports.partners',        name: 'تقرير الشركاء',           path: '/admin/reports/partners',          section: 'تقارير شريك',     accessMode: 'roles', sort: 29,  defaultRoles: ['super_admin','admin','manager','accountant','partner'] },
+  { key: 'reports.partners_real',   name: 'تقرير الشهر الحقيقي',     path: '/admin/reports/partners-real',     section: 'تقارير شريك',     accessMode: 'roles', sort: 30,  defaultRoles: ['super_admin','admin','manager','accountant'] },
   { key: 'reports.partners_overrides', name: 'تعديل', path: '/admin/reports/partners-overrides', section: 'الإدارة', accessMode: 'roles', sort: 1005,  defaultRoles: ['super_admin','admin'] },
   { key: 'admin.partners',          name: 'إدارة الشركاء',           path: '/admin/partners',                  section: 'تقارير شريك',     accessMode: 'roles', sort: 31,  defaultRoles: ['super_admin','admin'] },
   // ── Expenses ─────────────────────────────────────────────────────────────────
@@ -74,6 +75,7 @@ export const SYSTEM_PAGES: PageDefinition[] = [
   { key: 'admin.settings',          name: 'الإعدادات',               path: '/admin/settings',                  section: 'الإدارة',           accessMode: 'roles', sort: 109, defaultRoles: ['super_admin','admin'] },
   { key: 'admin.whatsapp.inbox',    name: 'صندوق الوارد',            path: '/admin/whatsapp/inbox',          section: 'واتساب',            accessMode: 'roles', sort: 1090, defaultRoles: ['super_admin','admin'] },
   { key: 'admin.whatsapp',          name: 'إعدادات واتساب',          path: '/admin/whatsapp',                  section: 'واتساب',            accessMode: 'roles', sort: 1095, defaultRoles: ['super_admin','admin'] },
+  { key: 'admin.integrations.whatsapp', name: 'تشخيص تكامل واتساب', path: '/admin/integrations/whatsapp',  section: 'واتساب',            accessMode: 'roles', sort: 1096, defaultRoles: ['super_admin','admin'] },
   { key: 'admin.queue_settings',    name: 'إعدادات الطابور',         path: '/admin/queue-booking-settings',    section: 'الإدارة',           accessMode: 'roles', sort: 110, defaultRoles: ['super_admin','admin'] },
   // ── Special ──────────────────────────────────────────────────────────────────
   { key: 'operations.main',         name: 'لوحة التشغيل',            path: '/operations',                      section: 'لوحة التشغيل',      accessMode: 'all',   sort: 5 },

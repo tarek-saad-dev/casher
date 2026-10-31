@@ -15,7 +15,6 @@ import {
   getMonthlyExpensesByCategory,
 } from '@/lib/services/monthlyExpensesReportService';
 import { getEmployeeLedgerSummary } from '@/lib/services/employeeLedgerService';
-import { resolveLegacyBranchTenantId } from '@/platform/masterData/tenantScope';
 import {
   computeEmployeeWithdrawalBuckets,
   computePartnersAdvanceExcess,
@@ -40,9 +39,6 @@ import { sumStoreOtherBusinessIncomeForMonth } from '@/lib/services/storeIncomeS
 export type PartnersEmployeeControlLive = {
   shopRevenue: number | null;
   salaryAndTarget: number;
-  advanceDebits: number;
-  settlementCredits: number;
-  settlementDebits: number;
   advanceExcess: number;
   ledgerSalary: number;
   ledgerTarget: number;
@@ -57,11 +53,23 @@ export type PartnersEmployeeControlRow = {
   override: EmployeeMonthlyOverride | null;
 };
 
+export type PartnersReportNumbersMode = 'controlled' | 'live';
+
+export type BuildPartnersMonthlyReportOptions = {
+  /**
+   * `controlled` (default): apply stored employee overrides + standing barber −10%.
+   * `live`: system numbers only — no override file, no barber discount.
+   */
+  numbersMode?: PartnersReportNumbersMode;
+};
+
 export async function buildPartnersMonthlyReport(
   year: number,
   month: number,
   branchId: number,
+  options?: BuildPartnersMonthlyReportOptions,
 ): Promise<PartnersMonthlyReportResponse> {
+  const numbersMode: PartnersReportNumbersMode = options?.numbersMode ?? 'controlled';
   const period = getMonthDateRange(year, month);
   const ledgerMonth = `${year}-${String(month).padStart(2, '0')}`;
 
@@ -84,14 +92,14 @@ export async function buildPartnersMonthlyReport(
     getEmployeeServicesRevenue(year, month, branchId),
     getEmployeeServicesRevenueByEmployee(year, month, branchId),
     getEmployeeActualInvoiceRevenueByEmployee(year, month, branchId),
-    getEmployeeJobById(branchId),
-    getEmployeeNamesById(branchId),
+    getEmployeeJobById(),
+    getEmployeeNamesById(),
     getMonthlyExpensesByCategory(year, month, branchId),
     getMonthlyEmployeeAdvances(year, month, branchId),
-    loadPartnersEmployeeOverridesForBranch(branch.branchId, branch.branchCode),
-    resolveLegacyBranchTenantId(branchId).then((tenantId) =>
-      getEmployeeLedgerSummary(ledgerMonth, branchId, { tenantId }),
-    ),
+    numbersMode === 'controlled'
+      ? loadPartnersEmployeeOverridesForBranch(branch.branchId, branch.branchCode)
+      : Promise.resolve({} as PartnersOverridesMap),
+    getEmployeeLedgerSummary(ledgerMonth, branchId),
     getEffectiveBranchPartnerShares(branchId, period.endDate),
   ]);
 
@@ -144,6 +152,7 @@ export async function buildPartnersMonthlyReport(
     employeeNames,
     ledgerSummaryEmployees: ledgerSummary.employees,
     partnerOverrides,
+    numbersMode,
   });
 
   const employeeSummaryTotals = {
@@ -265,13 +274,11 @@ export async function buildPartnersEmployeeControlSheet(
     ledgerSummary,
   ] = await Promise.all([
     getEmployeeActualInvoiceRevenueByEmployee(year, month, branchId),
-    getEmployeeJobById(branchId),
-    getEmployeeNamesById(branchId),
+    getEmployeeJobById(),
+    getEmployeeNamesById(),
     getMonthlyEmployeeAdvances(year, month, branchId),
     loadPartnersEmployeeOverridesForBranch(branch.branchId, branch.branchCode),
-    resolveLegacyBranchTenantId(branchId).then((tenantId) =>
-      getEmployeeLedgerSummary(ledgerMonth, branchId, { tenantId }),
-    ),
+    getEmployeeLedgerSummary(ledgerMonth, branchId),
   ]);
 
   const { controlRows } = mapPartnersEmployeeRows({
@@ -283,6 +290,7 @@ export async function buildPartnersEmployeeControlSheet(
     employeeNames,
     ledgerSummaryEmployees: ledgerSummary.employees,
     partnerOverrides,
+    numbersMode: 'controlled',
   });
 
   return {
@@ -314,6 +322,7 @@ function mapPartnersEmployeeRows(input: {
     fundingCredits: number;
   }>;
   partnerOverrides: PartnersOverridesMap;
+  numbersMode?: PartnersReportNumbersMode;
 }) {
   const {
     year,
@@ -324,7 +333,9 @@ function mapPartnersEmployeeRows(input: {
     employeeNames,
     ledgerSummaryEmployees,
     partnerOverrides,
+    numbersMode = 'controlled',
   } = input;
+  const useLiveNumbers = numbersMode === 'live';
 
   const actualRevenueById = new Map(
     actualRevenueByEmployee.map((row) => [row.employeeId, row])
@@ -337,9 +348,7 @@ function mapPartnersEmployeeRows(input: {
         row.salaryCredits > 0 ||
         row.targetCredits > 0 ||
         row.advanceDebits > 0 ||
-        row.payoutDebits > 0 ||
-        row.settlementCredits > 0 ||
-        row.settlementDebits > 0
+        row.payoutDebits > 0
     )
     .map((row) => row.empId);
   const employeeIds = new Set<number>([
@@ -367,37 +376,28 @@ function mapPartnersEmployeeRows(input: {
     const ledgerSalary = roundMoney(ledger?.salaryCredits ?? 0);
     const ledgerTarget = roundMoney(ledger?.targetCredits ?? 0);
     const liveSalaryAndTarget = roundMoney(ledgerSalary + ledgerTarget);
-    const fundingCredits = roundMoney(
-      (ledger?.fundingCredits ?? 0) + (ledger?.repaymentCredits ?? 0),
-    );
-    const advanceDebits = roundMoney(ledger?.advanceDebits ?? 0);
-    const payoutDebits = roundMoney(ledger?.payoutDebits ?? 0);
-    const settlementCredits = roundMoney(ledger?.settlementCredits ?? 0);
-    const settlementDebits = roundMoney(ledger?.settlementDebits ?? 0);
+    const fundingCredits = roundMoney(ledger?.fundingCredits ?? 0);
     const { moneyTaken } = computeEmployeeWithdrawalBuckets({
-      advanceDebits,
-      payoutDebits,
+      advanceDebits: ledger?.advanceDebits ?? 0,
+      payoutDebits: ledger?.payoutDebits ?? 0,
       salaryAndTarget: liveSalaryAndTarget,
       revenue: fundingCredits,
     });
-    // Settlement / advance repayment cover debt only — never inflate «استلم راتب».
-    // Repayment is not sales revenue (partners totalRevenue is services-only), so
-    // lowering advanceExcess reverses the cash-operating hit once without P&L double-count.
     const liveAdvanceExcess = computePartnersAdvanceExcess({
-      advanceDebits,
-      payoutDebits,
+      advanceDebits: ledger?.advanceDebits ?? 0,
+      payoutDebits: ledger?.payoutDebits ?? 0,
       salaryAndTarget: liveSalaryAndTarget,
       fundingCredits,
-      settlementCredits,
-      settlementDebits,
     });
 
-    const override = getEmployeePartnerOverrideFromMap(
-      partnerOverrides,
-      employeeId,
-      year,
-      month
-    );
+    const override = useLiveNumbers
+      ? undefined
+      : getEmployeePartnerOverrideFromMap(
+          partnerOverrides,
+          employeeId,
+          year,
+          month
+        );
     const overridden = applyEmployeePartnerOverride({
       override,
       actualRevenue: baseShopRevenue,
@@ -405,7 +405,8 @@ function mapPartnersEmployeeRows(input: {
       salaryAndTarget: liveSalaryAndTarget,
       advanceExcess: liveAdvanceExcess,
       isServiceWorker,
-      isBarber,
+      // Live mode skips the standing barber −10% as well as stored overrides.
+      isBarber: useLiveNumbers ? false : isBarber,
     });
 
     const employeeName =
@@ -427,9 +428,6 @@ function mapPartnersEmployeeRows(input: {
         ledgerTarget,
         salaryAndTarget: overridden.salaryAndTarget,
         moneyTaken,
-        advanceDebits,
-        settlementCredits,
-        settlementDebits,
         advanceExcess: overridden.advanceExcess,
       },
       control: {
@@ -440,9 +438,6 @@ function mapPartnersEmployeeRows(input: {
         live: {
           shopRevenue: baseShopRevenue,
           salaryAndTarget: liveSalaryAndTarget,
-          advanceDebits,
-          settlementCredits,
-          settlementDebits,
           advanceExcess: liveAdvanceExcess,
           ledgerSalary,
           ledgerTarget,

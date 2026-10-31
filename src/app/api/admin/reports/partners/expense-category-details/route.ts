@@ -11,6 +11,7 @@ import {
 } from '@/lib/branch';
 
 const PARTNERS_REPORT_PATH = '/admin/reports/partners';
+const PARTNERS_REAL_REPORT_PATH = '/admin/reports/partners-real';
 
 function parseCategoryId(value: string | null): number | null {
   if (value == null || value === '' || value === 'null') return null;
@@ -24,10 +25,15 @@ function parseCategoryId(value: string | null): number | null {
  *
  * Phase 1E: branch-scoped. `branchId`/`scope=all` are hidden query params —
  * no branch switcher UI is exposed. Default = caller's active branch.
+ *
+ * Access: controlled partners report OR real-month report (same expense drill-down).
  */
 export async function GET(req: NextRequest) {
   try {
-    const auth = await requirePageAccess(PARTNERS_REPORT_PATH);
+    let auth = await requirePageAccess(PARTNERS_REPORT_PATH);
+    if (!isAuthResult(auth)) {
+      auth = await requirePageAccess(PARTNERS_REAL_REPORT_PATH);
+    }
     if (!isAuthResult(auth)) return auth;
 
     const url = new URL(req.url);
