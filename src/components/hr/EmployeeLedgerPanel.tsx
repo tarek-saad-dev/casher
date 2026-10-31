@@ -35,6 +35,7 @@ import EmployeeDailyTargetLedgerDetailsDialog from '@/components/hr/EmployeeDail
 import Link from 'next/link';
 import { EMPLOYEE_LEDGER_REFRESH_EVENT } from '@/lib/cashMoveDeleteClient';
 import { attachRunningBalances } from '@/lib/hr/employee-ledger-running-balance';
+import { calculateBranchLedgerLiquidity } from '@/lib/hr/employee-ledger-liquidity';
 import {
   getCairoMonthCloseAwareMonth,
   isInMonthCloseGraceWindow,
@@ -305,6 +306,19 @@ export default function EmployeeLedgerPanel() {
         }
       : null;
 
+  // Cash forecast is for every employee, even if an employee is selected in the ledger table.
+  // Never offset one employee's negative account against another's positive dues.
+  const branchLiquidity = useMemo(() => {
+    if (!summary || (summary.month && summary.month !== month)) return [];
+    const allBranches = calculateBranchLedgerLiquidity(summary.tableBranches ?? [], summary.employees ?? []);
+    return branchFilter === 'all'
+      ? allBranches
+      : allBranches.filter((row) => String(row.branchId) === branchFilter);
+  }, [summary, branchFilter, month]);
+  const totalCashRequired = Math.round(
+    branchLiquidity.reduce((sum, row) => sum + row.cashRequired, 0) * 100,
+  ) / 100;
+
   const branchFinancial = summary?.branchFinancial;
   type BranchCard = {
     key: string;
@@ -563,6 +577,60 @@ export default function EmployeeLedgerPanel() {
           مراجعة تطابق الدفتر مع اليوميات والخزنة
         </Link>
       </div>
+
+      {/* Cash required to settle positive employee balances per branch (selected month). */}
+      {branchLiquidity.length > 0 && (
+        <section
+          className="overflow-hidden rounded-xl border border-emerald-500/25 bg-zinc-900/50"
+          aria-label="إجمالي أرصدة الفروع واحتياج السيولة"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-800 px-4 py-3">
+            <h3 className="flex items-center gap-2 text-sm font-semibold text-zinc-100">
+              <Wallet className="h-4 w-4 text-emerald-400" />
+              إجمالي أرصدة كل فرع — احتياج السيولة
+            </h3>
+            <span className="text-xs text-zinc-400">شهر {month} · كل الموظفين</span>
+          </div>
+          <div className="grid grid-cols-1 gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">
+            {branchLiquidity.map((row) => (
+              <div key={row.branchId} className="rounded-lg border border-zinc-800 bg-zinc-950/40 p-4">
+                <p className="mb-3 text-sm font-semibold text-zinc-100">
+                  {row.label || shortBranchLabel(row)}
+                </p>
+                <p className="text-xs text-zinc-400">المطلوب سحبه من سيولة الفرع</p>
+                <p className="mt-1 font-mono text-2xl font-bold tabular-nums text-emerald-400">
+                  {fmt(row.cashRequired)} <span className="text-sm font-medium">ج.م</span>
+                </p>
+                <div className="mt-3 space-y-1.5 border-t border-zinc-800 pt-3 text-xs">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-zinc-400">رصيد الفرع (الصافي)</span>
+                    <span className={cn('font-mono font-semibold', balanceTone(row.netBalance))}>
+                      {fmt(row.netBalance)} ج.م
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-zinc-400">سلف / أرصدة سالبة على الموظفين</span>
+                    <span className="font-mono text-rose-400">{fmt(row.employeeDebt)} ج.م</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-zinc-800 bg-emerald-500/5 px-4 py-3">
+            <span className="text-sm font-medium text-zinc-200">
+              إجمالي المطلوب من سيولة {branchFilter === 'all' ? 'الفروع' : 'الفرع'}
+            </span>
+            <strong className="font-mono text-xl tabular-nums text-emerald-400">
+              {fmt(totalCashRequired)} ج.م
+            </strong>
+          </div>
+          <p className="px-4 pb-3 pt-2 text-xs leading-relaxed text-zinc-400">
+            مجموع الأرصدة الموجبة لكل موظف في كل فرع خلال الشهر المحدد.
+            الأرصدة السالبة لا تقلل المبلغ المطلوب للصرف، وتظهر منفصلة.
+            هذا تقدير للمستحقات وليس رصيد الخزنة الفعلي.
+          </p>
+        </section>
+      )}
 
       {/* Branch financial summary */}
       {branchCards.length > 0 && (
