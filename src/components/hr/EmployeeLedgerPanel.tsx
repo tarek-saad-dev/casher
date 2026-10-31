@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  BookOpen, Loader2, AlertCircle, RefreshCw, TrendingUp, TrendingDown, Scale, Wallet, HandCoins, CalendarDays, Gift, ArrowLeftRight,
+  BookOpen, Loader2, AlertCircle, RefreshCw, TrendingUp, TrendingDown, Scale, Wallet, HandCoins, CalendarDays, Gift, ArrowLeftRight, Banknote,
 } from 'lucide-react';
 import KpiCard from '@/components/shared/KpiCard';
 import { Button } from '@/components/ui/button';
@@ -23,6 +23,9 @@ import { EMP_LEDGER_REASON_LABELS } from '@/lib/types/employee-ledger';
 import { hrBranchLabel } from '@/lib/hr/legacyHrBranchPolicy';
 import EmployeePayoutModal, { type EmployeePayoutTarget } from '@/components/hr/EmployeePayoutModal';
 import EmployeeFundingModal from '@/components/hr/EmployeeFundingModal';
+import EmployeeAdvanceRepaymentModal, {
+  type EmployeeAdvanceRepaymentTarget,
+} from '@/components/hr/EmployeeAdvanceRepaymentModal';
 import EmployeeAdditionalTargetModal from '@/components/hr/EmployeeAdditionalTargetModal';
 import EmployeeInterBranchSettlementModal, {
   type InterBranchSettlementTarget,
@@ -173,6 +176,8 @@ export default function EmployeeLedgerPanel() {
   const [dualWriteEnabled, setDualWriteEnabled] = useState(false);
   const [payoutTarget, setPayoutTarget] = useState<EmployeePayoutTarget | null>(null);
   const [payoutOpen, setPayoutOpen] = useState(false);
+  const [repayTarget, setRepayTarget] = useState<EmployeeAdvanceRepaymentTarget | null>(null);
+  const [repayOpen, setRepayOpen] = useState(false);
   const [fundingOpen, setFundingOpen] = useState(false);
   const [additionalTargetOpen, setAdditionalTargetOpen] = useState(false);
   const [settlementTarget, setSettlementTarget] = useState<InterBranchSettlementTarget | null>(null);
@@ -353,12 +358,34 @@ export default function EmployeeLedgerPanel() {
     setPayoutOpen(true);
   };
 
+  const openAdvanceRepayment = (
+    row: EmpLedgerEmployeeSummaryRow,
+    branchBreakdown: EmpLedgerEmployeeBranchBreakdown,
+  ) => {
+    if (!operatingBranch || !branchViewMatchesOperating) return;
+    if (branchBreakdown.branchId !== operatingBranch.branchId) return;
+    setRepayTarget({
+      empId: row.empId,
+      empName: row.empName,
+      branchId: operatingBranch.branchId,
+      branchLabel: operatingBranchLabel ?? shortBranchLabel(operatingBranch),
+      // Modal loads all-time debt (incl. carry-forward); month balance is only a hint.
+      outstandingDebt: Math.max(0, -branchBreakdown.balance),
+    });
+    setRepayOpen(true);
+  };
+
   const handlePayoutSuccess = (message: string) => {
     setSuccessMsg(message);
     void refresh();
   };
 
   const handleFundingSuccess = (message: string) => {
+    setSuccessMsg(message);
+    void refresh();
+  };
+
+  const handleRepaySuccess = (message: string) => {
     setSuccessMsg(message);
     void refresh();
   };
@@ -618,6 +645,7 @@ export default function EmployeeLedgerPanel() {
                     salaryCredits: 0,
                     targetCredits: 0,
                     fundingCredits: 0,
+                    repaymentCredits: 0,
                     settlementCredits: 0,
                     advanceDebits: 0,
                     payoutDebits: 0,
@@ -702,6 +730,40 @@ export default function EmployeeLedgerPanel() {
                           >
                             <Wallet className="w-3.5 h-3.5" />
                             صرف مستحقات
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className={cn(
+                              'h-8 gap-1 text-xs',
+                              br.balance < 0
+                                ? 'border-emerald-800/60 text-emerald-300'
+                                : 'border-border text-zinc-400',
+                            )}
+                            disabled={
+                              !dualWriteEnabled
+                              || !branchViewMatchesOperating
+                              || br.branchId !== operatingBranch?.branchId
+                            }
+                            title={
+                              !dualWriteEnabled
+                                ? 'يتطلب تفعيل EMP_LEDGER_DUAL_WRITE_ENABLED'
+                                : !operatingBranch
+                                  ? 'تعذر تحديد الفرع التشغيلي النشط'
+                                  : !branchViewMatchesOperating
+                                    ? `اختر الفرع التشغيلي النشط (${operatingBranchLabel})`
+                                    : br.branchId !== operatingBranch.branchId
+                                      ? 'رد السلفة متاح فقط لصف الفرع التشغيلي النشط'
+                                      : 'استلام رد سلفة في خزينة الفرع (يشمل الأرصدة المرحلة)'
+                            }
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openAdvanceRepayment(row, br);
+                            }}
+                          >
+                            <Banknote className="w-3.5 h-3.5" />
+                            رد سلفة
                           </Button>
                           {idx === 0 && employeeHasCrossBranchSettlementOpportunity(row) ? (
                             <Button
@@ -859,6 +921,17 @@ export default function EmployeeLedgerPanel() {
         employees={employees}
         dualWriteEnabled={dualWriteEnabled}
         onSuccess={handleFundingSuccess}
+      />
+
+      <EmployeeAdvanceRepaymentModal
+        open={repayOpen}
+        onClose={() => {
+          setRepayOpen(false);
+          setRepayTarget(null);
+        }}
+        employee={repayTarget}
+        dualWriteEnabled={dualWriteEnabled}
+        onSuccess={handleRepaySuccess}
       />
 
       <EmployeeAdditionalTargetModal
