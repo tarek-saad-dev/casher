@@ -21,8 +21,10 @@ import {
 } from '@/lib/hr/employee-withdrawal-buckets';
 import {
   applyEmployeePartnerOverride,
+  displayEmployeeOverride,
   getEmployeePartnerOverrideFromMap,
   getOverrideEmployeeIdsFromMap,
+  isBarberJob,
   type EmployeeMonthlyOverride,
   type PartnersOverridesMap,
 } from '@/lib/reports/partnersEmployeeOverrides';
@@ -32,6 +34,7 @@ import { isFinancialReportClassificationEnabled } from '@/lib/accounting/financi
 import { maybeBuildClassificationPayload } from '@/lib/accounting/financialReportClassificationService';
 import { getBranchById } from '@/lib/branch/repository';
 import { getEffectiveBranchPartnerShares, toPartnerPercentageList } from '@/lib/branch/partnerShares';
+import { sumStoreOtherBusinessIncomeForMonth } from '@/lib/services/storeIncomeService';
 
 export type PartnersEmployeeControlLive = {
   shopRevenue: number | null;
@@ -45,6 +48,7 @@ export type PartnersEmployeeControlRow = {
   employeeId: number;
   employeeName: string;
   isServiceWorker: boolean;
+  isBarber: boolean;
   live: PartnersEmployeeControlLive;
   override: EmployeeMonthlyOverride | null;
 };
@@ -151,12 +155,25 @@ export async function buildPartnersMonthlyReport(
     ),
   };
 
+  // Partners report revenue must follow employee «دخل للمحل» after overrides
+  // (barber −10%, static/percent rules, etc.) — not the raw services total.
+  // Store «إيراد آخر للمحل» (EmpID NULL) is added once: into legacy operatingNet here,
+  // and via otherBusinessIncome on the classified path (not into salesRevenueOverride).
+  const partnersShopRevenue = employeeSummaryTotals.totalShopRevenue;
+  const storeOtherBusinessIncome = await sumStoreOtherBusinessIncomeForMonth(
+    year,
+    month,
+    branchId,
+  );
   const totalEmployeeAdvances = employeeSummaryTotals.totalPaidSalaryAndAdvances;
+  const legacyTotalRevenue = roundMoney(partnersShopRevenue + storeOtherBusinessIncome);
   const operatingNet = roundMoney(
-    totalRevenue - totalEmployeeAdvances - operatingExpenses
+    legacyTotalRevenue - totalEmployeeAdvances - operatingExpenses
   );
   const operatingNetExplanation =
-    'بعد خصم الرواتب والسلف من قسم الموظفين ومصروفات التشغيل الأخرى بعد استبعاد سلف وتارجت الموظفين';
+    storeOtherBusinessIncome > 0
+      ? 'بعد خصم الرواتب والسلف من قسم الموظفين ومصروفات التشغيل الأخرى، مع إضافة إيراد آخر للمحل (غير مربوط بموظف)'
+      : 'بعد خصم الرواتب والسلف من قسم الموظفين ومصروفات التشغيل الأخرى بعد استبعاد سلف وتارجت الموظفين';
 
   const partners = toPartnerPercentageList(partnerShares);
 
@@ -164,7 +181,7 @@ export async function buildPartnersMonthlyReport(
     period,
     partners,
     summary: {
-      totalRevenue,
+      totalRevenue: legacyTotalRevenue,
       totalExpenses,
       operatingExpenses,
       excludedEmployeeSettlementExpenses,
@@ -172,6 +189,7 @@ export async function buildPartnersMonthlyReport(
       advancesIncludedInExpenses: false,
       operatingNet,
       operatingNetExplanation,
+      storeOtherBusinessIncome,
     },
     revenueDetails,
     expensesByCategory,
@@ -191,12 +209,14 @@ export async function buildPartnersMonthlyReport(
     year,
     month,
     branchId,
-    salesRevenueOverride: totalRevenue,
+    // Invoice shop revenue only — store otherBusinessIncome comes from CashMove classification.
+    salesRevenueOverride: partnersShopRevenue,
     legacyTotals: {
-      totalRevenue,
+      totalRevenue: legacyTotalRevenue,
       totalExpenses,
       operatingExpenses,
       operatingNet,
+      storeOtherBusinessIncome,
     },
   });
 
@@ -209,7 +229,7 @@ export async function buildPartnersMonthlyReport(
       cleanNetProfit,
       legacyOperatingNet: operatingNet,
       explanation:
-        'تم احتساب صافي الربح بعد استبعاد السلف وصرف المستحقات وحركات الموظفين غير الربحية، وإضافة تكلفة الرواتب من دفتر الموظفين.',
+        'تم احتساب صافي الربح بعد استبعاد السلف وصرف المستحقات وحركات الموظفين غير الربحية، وإضافة تكلفة الرواتب من دفتر الموظفين، مع احتساب إيراد آخر للمحل مرة واحدة فقط.',
     },
   };
 }
@@ -325,6 +345,7 @@ function mapPartnersEmployeeRows(input: {
     const job = employeeJobs.get(employeeId) ?? '';
     const calculatedActualRevenue = actual?.actualInvoiceRevenue ?? 0;
     const calculatedPaid = roundMoney(advance?.totalAdvance ?? 0);
+    const isBarber = isBarberJob(job);
     const isServiceWorker =
       isBarberOrServiceWorker(job) || calculatedActualRevenue > 0;
 
@@ -363,6 +384,7 @@ function mapPartnersEmployeeRows(input: {
       salaryAndTarget: liveSalaryAndTarget,
       advanceExcess: liveAdvanceExcess,
       isServiceWorker,
+      isBarber,
     });
 
     const employeeName =
@@ -390,6 +412,7 @@ function mapPartnersEmployeeRows(input: {
         employeeId,
         employeeName,
         isServiceWorker,
+        isBarber,
         live: {
           shopRevenue: baseShopRevenue,
           salaryAndTarget: liveSalaryAndTarget,
@@ -397,7 +420,7 @@ function mapPartnersEmployeeRows(input: {
           ledgerSalary,
           ledgerTarget,
         },
-        override: override ?? null,
+        override: displayEmployeeOverride(override, isBarber),
       } satisfies PartnersEmployeeControlRow,
     };
   });

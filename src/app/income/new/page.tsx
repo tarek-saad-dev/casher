@@ -12,12 +12,17 @@ import {
   CheckCircle, AlertTriangle, Info, ChevronDown,
 } from 'lucide-react';
 import { cashMoveDeleteToastMessage, notifyEmployeeLedgerRefresh } from '@/lib/cashMoveDeleteClient';
+import {
+  STORE_INCOME_KIND_LABELS,
+  type StoreIncomeKind,
+} from '@/lib/accounting/storeIncome';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 interface Category   { ExpINID: number; CatName: string; ExpINType: string }
 interface PayMethod  { PaymentID: number; PaymentMethod: string }
 interface OpenShift  { ShiftMoveID: number; ShiftName: string; UserName: string; NewDay: string }
+type EntryMode = 'regular' | 'store';
 
 interface IncomeItem {
   ID: number; invID: number; invDate: string; invTime: string;
@@ -128,6 +133,8 @@ export default function NewRevenuePage() {
   const [formCat,      setFormCat]      = useState('');
   const [formPm,       setFormPm]       = useState('');
   const [formNotes,    setFormNotes]    = useState('');
+  const [entryMode,    setEntryMode]    = useState<EntryMode>('regular');
+  const [storeIncomeKind, setStoreIncomeKind] = useState<StoreIncomeKind>('other_business_income');
   const [saving,       setSaving]       = useState(false);
   const [formError,    setFormError]    = useState('');
 
@@ -190,6 +197,8 @@ export default function NewRevenuePage() {
     setFormCat('');
     setFormPm('');
     setFormNotes('');
+    setEntryMode('regular');
+    setStoreIncomeKind('other_business_income');
     setFormError('');
   };
 
@@ -201,6 +210,7 @@ export default function NewRevenuePage() {
     setFormCat(String(item.ExpINID));
     setFormPm(String(item.PaymentMethodID));
     setFormNotes(item.Notes ?? '');
+    setEntryMode('regular');
     setFormError('');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -210,19 +220,29 @@ export default function NewRevenuePage() {
     setFormError('');
     if (!formDate)              return setFormError('التاريخ مطلوب');
     if (!formAmount || Number(formAmount) <= 0) return setFormError('القيمة يجب أن تكون أكبر من صفر');
-    if (!formCat)               return setFormError('يجب اختيار التصنيف');
+    if (entryMode === 'regular' && !formCat) return setFormError('يجب اختيار التصنيف');
     if (!formPm)                return setFormError('يجب اختيار طريقة الدفع');
 
     setSaving(true);
     try {
-      const payload = {
-        invDate:         formDate,
-        amount:          Number(formAmount),
-        expInId:         Number(formCat),
-        paymentMethodId: Number(formPm),
-        notes:           formNotes.trim() || null,
-        shiftMoveId:     openShift?.ShiftMoveID ?? null,
-      };
+      const isStoreCreate = !editingId && entryMode === 'store';
+      const payload = isStoreCreate
+        ? {
+            invDate: formDate,
+            amount: Number(formAmount),
+            paymentMethodId: Number(formPm),
+            notes: formNotes.trim() || STORE_INCOME_KIND_LABELS[storeIncomeKind],
+            storeIncomeKind,
+            shiftMoveId: openShift?.ShiftMoveID ?? null,
+          }
+        : {
+            invDate: formDate,
+            amount: Number(formAmount),
+            expInId: Number(formCat),
+            paymentMethodId: Number(formPm),
+            notes: formNotes.trim() || null,
+            shiftMoveId: openShift?.ShiftMoveID ?? null,
+          };
 
       const url    = editingId ? `/api/incomes/${editingId}` : '/api/incomes';
       const method = editingId ? 'PATCH' : 'POST';
@@ -234,11 +254,12 @@ export default function NewRevenuePage() {
         const ledgerNote = data.ledgerDualWrite
           ? ' وتم تحديث دفتر الموظفين'
           : '';
+        const dupNote = data.duplicate || data.data?.duplicate ? ' (موجود مسبقاً)' : '';
         addToast(
           'success',
           editingId
             ? `تم تعديل الإيراد بنجاح${ledgerNote}`
-            : `تم حفظ الإيراد بنجاح${ledgerNote}`,
+            : `تم حفظ الإيراد بنجاح${ledgerNote}${dupNote}`,
         );
         resetForm();
         await loadData();
@@ -353,6 +374,62 @@ export default function NewRevenuePage() {
           {editingId ? <Pencil className="w-4 h-4 text-amber-400" /> : <Plus className="w-4 h-4 text-emerald-400" />}
           {editingId ? `تعديل إيراد #${editingId}` : 'إضافة إيراد جديد'}
         </h2>
+        {!editingId && (
+          <div className="mb-4 space-y-3">
+            <Label className="text-xs text-zinc-400">نوع التسجيل</Label>
+            <div className="grid grid-cols-2 gap-2 max-w-md">
+              <button
+                type="button"
+                onClick={() => setEntryMode('regular')}
+                className={`rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${
+                  entryMode === 'regular'
+                    ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
+                    : 'border-zinc-700 bg-zinc-950 text-zinc-400'
+                }`}
+              >
+                إيراد عادي
+              </button>
+              <button
+                type="button"
+                onClick={() => { setEntryMode('store'); setFormCat(''); }}
+                className={`rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${
+                  entryMode === 'store'
+                    ? 'border-sky-500/40 bg-sky-500/10 text-sky-300'
+                    : 'border-zinc-700 bg-zinc-950 text-zinc-400'
+                }`}
+              >
+                إيراد للمحل
+              </button>
+            </div>
+            {entryMode === 'store' && (
+              <div className="rounded-xl border border-sky-500/20 bg-sky-500/5 p-3 space-y-2 max-w-xl">
+                <p className="text-xs text-zinc-400">بدون ربط بموظف — يزيد خزينة الفرع مباشرة</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {(['other_business_income', 'non_revenue_cash_in'] as StoreIncomeKind[]).map((kind) => (
+                    <button
+                      key={kind}
+                      type="button"
+                      onClick={() => setStoreIncomeKind(kind)}
+                      className={`rounded-lg border px-3 py-2 text-right text-sm ${
+                        storeIncomeKind === kind
+                          ? 'border-sky-400/50 bg-sky-500/15 text-white'
+                          : 'border-zinc-700 bg-zinc-950 text-zinc-400'
+                      }`}
+                    >
+                      <span className="block font-medium">{STORE_INCOME_KIND_LABELS[kind]}</span>
+                      <span className="block text-[11px] opacity-80 mt-0.5">
+                        {kind === 'other_business_income'
+                          ? 'يؤثر على صافي الربح وتقرير الشركاء'
+                          : 'تحصيل غير ربحي — خزينة فقط'}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {/* Date */}
           <div className="space-y-1.5">
@@ -371,7 +448,8 @@ export default function NewRevenuePage() {
               className="bg-zinc-950 border-zinc-700 text-white" dir="ltr" />
           </div>
 
-          {/* Category */}
+          {/* Category — hidden for new store income (server resolves category) */}
+          {(editingId || entryMode === 'regular') && (
           <div className="space-y-1.5">
             <Label htmlFor="form-cat" className="text-xs text-zinc-400">التصنيف *</Label>
             <div className="relative">
@@ -387,6 +465,7 @@ export default function NewRevenuePage() {
               <ChevronDown className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500 pointer-events-none" />
             </div>
           </div>
+          )}
 
           {/* Payment Method */}
           <div className="space-y-1.5">

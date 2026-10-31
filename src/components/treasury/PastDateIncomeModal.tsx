@@ -19,6 +19,10 @@ import IncomeCategoryPicker, {
 import ExpensePaymentMethodPicker from '@/components/expenses/ExpensePaymentMethodPicker';
 import type { PaymentMethod } from '@/lib/types';
 import { getCairoBusinessDate } from '@/lib/businessDate';
+import {
+  STORE_INCOME_KIND_LABELS,
+  type StoreIncomeKind,
+} from '@/lib/accounting/storeIncome';
 
 interface PastDateIncomeModalProps {
   isOpen: boolean;
@@ -32,6 +36,8 @@ interface PastDateIncomeModalProps {
   attachToOpenDay?: boolean;
 }
 
+type EntryMode = 'regular' | 'store';
+
 interface IncomeFormState {
   incomeDate: string;
   incomeTime: string;
@@ -39,6 +45,8 @@ interface IncomeFormState {
   categoryId: number | null;
   paymentMethodId: number | null;
   notes: string;
+  entryMode: EntryMode;
+  storeIncomeKind: StoreIncomeKind;
 }
 
 const INITIAL_FORM: IncomeFormState = {
@@ -48,6 +56,8 @@ const INITIAL_FORM: IncomeFormState = {
   categoryId: null,
   paymentMethodId: null,
   notes: '',
+  entryMode: 'regular',
+  storeIncomeKind: 'other_business_income',
 };
 
 function getCurrentTimeValue(date = new Date()): string {
@@ -260,18 +270,21 @@ export default function PastDateIncomeModal({
     };
   }, [isOpen, onClose, submitting]);
 
+  const isStoreMode = form.entryMode === 'store';
+
   const amountError = useMemo(
     () => (touched.amount || form.amount ? getAmountValidationError(form.amount) : null),
     [form.amount, touched.amount],
   );
   const categoryError =
-    touched.category && !form.categoryId ? 'يجب اختيار تصنيف الإيراد' : null;
+    !isStoreMode && touched.category && !form.categoryId ? 'يجب اختيار تصنيف الإيراد' : null;
   const paymentError =
     touched.payment && !form.paymentMethodId ? 'يجب اختيار طريقة الدفع' : null;
 
   const parsedAmount = parseAmount(form.amount);
   const selectedCategory = categories.find((c) => c.ExpINID === form.categoryId);
   const selectedPaymentMethod = paymentMethods.find((m) => m.ID === form.paymentMethodId);
+  const storeKindLabel = STORE_INCOME_KIND_LABELS[form.storeIncomeKind];
 
   const dateAllowed =
     !!form.incomeDate &&
@@ -281,17 +294,17 @@ export default function PastDateIncomeModal({
     !amountError &&
     parsedAmount !== null &&
     parsedAmount > 0 &&
-    form.categoryId !== null &&
+    (isStoreMode || form.categoryId !== null) &&
     form.paymentMethodId !== null &&
     dateAllowed &&
     !submitting &&
-    !categoriesLoading &&
+    (!isStoreMode ? !categoriesLoading : true) &&
     !paymentMethodsLoading;
 
   const showSummary =
     parsedAmount !== null &&
     parsedAmount > 0 &&
-    !!selectedCategory &&
+    (isStoreMode || !!selectedCategory) &&
     !!selectedPaymentMethod;
 
   const handleClose = () => {
@@ -308,11 +321,12 @@ export default function PastDateIncomeModal({
       !!form.incomeDate &&
       (attachToOpenDay || !businessToday || form.incomeDate <= businessToday);
 
+    const storeMode = form.entryMode === 'store';
     const ready =
       !amountValidation &&
       currentAmount !== null &&
       currentAmount > 0 &&
-      form.categoryId !== null &&
+      (storeMode || form.categoryId !== null) &&
       form.paymentMethodId !== null &&
       dateOk;
 
@@ -333,9 +347,15 @@ export default function PastDateIncomeModal({
           invDate: form.incomeDate,
           ...(attachToOpenDay ? {} : { invTime: form.incomeTime || '12:00' }),
           amount: currentAmount,
-          expInId: form.categoryId,
           paymentMethodId: form.paymentMethodId,
-          notes: notes || 'إيراد إضافي',
+          notes:
+            notes
+            || (storeMode
+              ? STORE_INCOME_KIND_LABELS[form.storeIncomeKind]
+              : 'إيراد إضافي'),
+          ...(storeMode
+            ? { storeIncomeKind: form.storeIncomeKind }
+            : { expInId: form.categoryId }),
         }),
       });
 
@@ -470,6 +490,83 @@ export default function PastDateIncomeModal({
               <p className="sm:col-span-2 text-xs text-muted-foreground">{dateHint}</p>
             </section>
 
+            <section aria-label="نوع الإيراد" className="space-y-3">
+              <p className="text-sm font-semibold text-foreground">نوع التسجيل</p>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  disabled={submitting}
+                  onClick={() =>
+                    setForm((current) => ({ ...current, entryMode: 'regular' }))
+                  }
+                  className={cn(
+                    'rounded-xl border px-3 py-2.5 text-sm font-medium transition-colors',
+                    form.entryMode === 'regular'
+                      ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-300'
+                      : 'border-border bg-surface-muted/30 text-muted-foreground hover:bg-surface-muted',
+                  )}
+                >
+                  إيراد عادي
+                </button>
+                <button
+                  type="button"
+                  disabled={submitting}
+                  onClick={() =>
+                    setForm((current) => ({
+                      ...current,
+                      entryMode: 'store',
+                      categoryId: null,
+                    }))
+                  }
+                  className={cn(
+                    'rounded-xl border px-3 py-2.5 text-sm font-medium transition-colors',
+                    form.entryMode === 'store'
+                      ? 'border-sky-500/50 bg-sky-500/10 text-sky-300'
+                      : 'border-border bg-surface-muted/30 text-muted-foreground hover:bg-surface-muted',
+                  )}
+                >
+                  إيراد للمحل
+                </button>
+              </div>
+              {isStoreMode ? (
+                <div className="space-y-2 rounded-xl border border-sky-500/20 bg-sky-500/5 p-3">
+                  <p className="text-xs text-muted-foreground">
+                    يُسجَّل على الفرع مباشرة بدون ربط بموظف (EmpID فارغ)
+                  </p>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    {(
+                      [
+                        'other_business_income',
+                        'non_revenue_cash_in',
+                      ] as StoreIncomeKind[]
+                    ).map((kind) => (
+                      <button
+                        key={kind}
+                        type="button"
+                        disabled={submitting}
+                        onClick={() =>
+                          setForm((current) => ({ ...current, storeIncomeKind: kind }))
+                        }
+                        className={cn(
+                          'rounded-lg border px-3 py-2 text-right text-sm transition-colors',
+                          form.storeIncomeKind === kind
+                            ? 'border-sky-400/60 bg-sky-500/15 text-foreground'
+                            : 'border-border bg-surface text-muted-foreground hover:bg-surface-muted',
+                        )}
+                      >
+                        <span className="block font-medium">{STORE_INCOME_KIND_LABELS[kind]}</span>
+                        <span className="mt-0.5 block text-[11px] opacity-80">
+                          {kind === 'other_business_income'
+                            ? 'يؤثر على صافي الربح'
+                            : 'يزيد الخزينة فقط — مثل قبض جمعية'}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </section>
+
             <section aria-label="المبلغ">
               <label htmlFor="quick-income-amount" className="text-sm font-semibold text-foreground">
                 المبلغ
@@ -529,19 +626,21 @@ export default function PastDateIncomeModal({
               />
             </section>
 
-            <IncomeCategoryPicker
-              categories={categories}
-              selectedId={form.categoryId}
-              loading={categoriesLoading}
-              error={categoriesError}
-              onRetry={loadMeta}
-              disabled={submitting}
-              categoryError={categoryError}
-              onSelect={(categoryId) => {
-                setForm((current) => ({ ...current, categoryId }));
-                setTouched((current) => ({ ...current, category: true }));
-              }}
-            />
+            {!isStoreMode ? (
+              <IncomeCategoryPicker
+                categories={categories}
+                selectedId={form.categoryId}
+                loading={categoriesLoading}
+                error={categoriesError}
+                onRetry={loadMeta}
+                disabled={submitting}
+                categoryError={categoryError}
+                onSelect={(categoryId) => {
+                  setForm((current) => ({ ...current, categoryId }));
+                  setTouched((current) => ({ ...current, category: true }));
+                }}
+              />
+            ) : null}
 
             <ExpensePaymentMethodPicker
               methods={paymentMethods}
@@ -565,7 +664,9 @@ export default function PastDateIncomeModal({
                 <p className="text-sm font-semibold text-foreground">
                   سيتم تسجيل {parsedAmount?.toLocaleString('ar-EG')} جنيه
                 </p>
-                <p className="mt-1 text-sm text-muted-foreground">{selectedCategory?.CatName}</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {isStoreMode ? storeKindLabel : selectedCategory?.CatName}
+                </p>
                 <p className="mt-0.5 text-sm text-muted-foreground">
                   طريقة الدفع: {selectedPaymentMethod?.Name}
                 </p>

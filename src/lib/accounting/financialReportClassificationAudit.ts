@@ -4,9 +4,17 @@
  */
 
 import { normalizeForMatch } from '@/lib/accounting/cashMoveClassification';
+import {
+  STORE_NON_REVENUE_CASH_IN_CATEGORY,
+  STORE_OTHER_BUSINESS_INCOME_CATEGORY,
+} from '@/lib/accounting/storeIncome';
 
 export const EMPLOYEE_FUNDING_CATEGORY_NAME = 'تمويل من موظف';
 export const PAYOUT_EXPENSE_CATEGORY_NAME = 'صرف مستحقات الموظفين';
+export {
+  STORE_NON_REVENUE_CASH_IN_CATEGORY,
+  STORE_OTHER_BUSINESS_INCOME_CATEGORY,
+};
 
 export const READ_ONLY_FINANCIAL_AUDIT_GUARD = Object.freeze({
   allowWrites: false,
@@ -129,6 +137,12 @@ export function classifyCategoryForFinancialAudit(
   } else if (isIncome && containsAny(n, ['تحويل', 'تحويلات', 'بين طرق الدفع'])) {
     revenueClass = 'non_revenue_cash_in';
     classificationGuess = 'internal_transfer';
+  } else if (isIncome && name === STORE_NON_REVENUE_CASH_IN_CATEGORY) {
+    revenueClass = 'non_revenue_cash_in';
+    classificationGuess = 'store_non_revenue_cash_in';
+  } else if (isIncome && name === STORE_OTHER_BUSINESS_INCOME_CATEGORY) {
+    revenueClass = 'other_business_income';
+    classificationGuess = 'store_other_business_income';
   } else if (isIncome) {
     revenueClass = 'other_business_income';
     classificationGuess = 'other_business_income';

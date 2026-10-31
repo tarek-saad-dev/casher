@@ -7,6 +7,11 @@ import {
 } from '@/lib/services/employeeLedgerDualWrite';
 import { syncEmployeeFundingFromCashMove } from '@/lib/services/employeeLedgerFundingSyncService';
 import { maybeScheduleFundingWhatsAppFromIncomeCategory } from '@/lib/services/employeeAdvanceWhatsAppNotify';
+import { parseStoreIncomeKind } from '@/lib/accounting/storeIncome';
+import {
+  ensureStoreIncomeCategory,
+  findDuplicateStoreIncome,
+} from '@/lib/services/storeIncomeService';
 
 // POST /api/incomes/past-date - Add income for past dates
 export async function POST(req: NextRequest) {
@@ -18,12 +23,16 @@ export async function POST(req: NextRequest) {
     if (!session) return NextResponse.json({ error: 'يجب تسجيل الدخول أولاً' }, { status: 401 });
 
     const body = await req.json();
-    const { invDate, invTime, amount, expInId, paymentMethodId, notes } = body;
+    const { invDate, invTime, amount, paymentMethodId, notes } = body;
+    const storeIncomeKind = parseStoreIncomeKind(body.storeIncomeKind);
+    let expInId = body.expInId != null ? Number(body.expInId) : null;
 
     // Validation
     if (!invDate) return NextResponse.json({ error: 'التاريخ مطلوب' }, { status: 400 });
     if (!amount || Number(amount) <= 0) return NextResponse.json({ error: 'قيمة الإيراد يجب أن تكون أكبر من صفر' }, { status: 400 });
-    if (!expInId) return NextResponse.json({ error: 'يجب اختيار تصنيف الإيراد' }, { status: 400 });
+    if (!storeIncomeKind && !expInId) {
+      return NextResponse.json({ error: 'يجب اختيار تصنيف الإيراد' }, { status: 400 });
+    }
     if (!paymentMethodId) return NextResponse.json({ error: 'يجب اختيار طريقة الدفع' }, { status: 400 });
 
     // Validate that the date is in the past or today
@@ -55,6 +64,13 @@ export async function POST(req: NextRequest) {
     await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
 
     try {
+      let storeCategoryName: string | null = null;
+      if (storeIncomeKind) {
+        const ensured = await ensureStoreIncomeCategory(transaction, storeIncomeKind);
+        expInId = ensured.expInId;
+        storeCategoryName = ensured.categoryName;
+      }
+
       // 1. Validate category exists and is income type
       const catRes = await new sql.Request(transaction)
         .input('expInId', sql.Int, expInId)
@@ -75,18 +91,49 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'طريقة الدفع غير موجودة' }, { status: 400 });
       }
 
+      const amountNum = Number(amount);
+      const notesText = typeof notes === 'string' ? notes.trim() : '';
+      const defaultStoreNotes = storeCategoryName ?? 'إيراد للمحل';
+
+      if (storeIncomeKind) {
+        const dup = await findDuplicateStoreIncome(transaction, {
+          branchId,
+          invDate,
+          expInId: Number(expInId),
+          amount: amountNum,
+          paymentMethodId: Number(paymentMethodId),
+        });
+        if (dup) {
+          await transaction.commit();
+          return NextResponse.json({
+            success: true,
+            message: 'تم إضافة الإيراد للتاريخ المحدد بنجاح',
+            ledgerDualWrite: false,
+            ledgerSync: 'skipped_store_income',
+            advanceWhatsApp: false,
+            data: {
+              ID: dup.ID,
+              invID: dup.invID,
+              ExpINID: expInId,
+              Amount: amountNum,
+              duplicate: true,
+              storeIncomeKind,
+            },
+          });
+        }
+      }
+
       // 3. Allocate next invID safely (no UPDLOCK/HOLDLOCK)
       const nextInvID = await allocateInvID(transaction, 'TblCashMove', 'ايرادات', 5000);
 
-      // 4. Insert the income record for past date
-      const notesText = typeof notes === 'string' ? notes.trim() : '';
+      // 4. Insert the income record for past date — EmpID stays NULL for store income
       const insertReq = new sql.Request(transaction)
         .input('invID', sql.Int, nextInvID)
         .input('invDate', sql.Date, invDate)
         .input('invTime', sql.NVarChar(10), invTime || '12:00')
         .input('expInId', sql.Int, expInId)
-        .input('amount', sql.Decimal(10, 2), Number(amount))
-        .input('notes', sql.NVarChar(sql.MAX), notesText || null)
+        .input('amount', sql.Decimal(10, 2), amountNum)
+        .input('notes', sql.NVarChar(sql.MAX), notesText || (storeIncomeKind ? defaultStoreNotes : null))
         .input('paymentMethodId', sql.Int, paymentMethodId)
         .input('shiftMoveId', sql.Int, historical.ownership.shiftMoveId)
         .input('branchId', sql.Int, branchId)
@@ -94,29 +141,37 @@ export async function POST(req: NextRequest) {
 
       const insertRes = await insertReq.query(`
         INSERT INTO dbo.TblCashMove
-          (invID, invType, invDate, invTime, ClientID, ExpINID, GrandTolal, inOut, Notes, ShiftMoveID, PaymentMethodID, BranchID, BusinessDayID)
+          (invID, invType, invDate, invTime, ClientID, ExpINID, EmpID, GrandTolal, inOut, Notes, ShiftMoveID, PaymentMethodID, BranchID, BusinessDayID)
         OUTPUT
           INSERTED.ID, INSERTED.invID, INSERTED.invDate, INSERTED.invTime,
           INSERTED.ExpINID, INSERTED.GrandTolal AS Amount, INSERTED.Notes,
-          INSERTED.PaymentMethodID
+          INSERTED.PaymentMethodID, INSERTED.EmpID
         VALUES
-          (@invID, N'ايرادات', @invDate, @invTime, NULL, @expInId, @amount, N'in', @notes, @shiftMoveId, @paymentMethodId, @branchId, @businessDayId)
+          (@invID, N'ايرادات', @invDate, @invTime, NULL, @expInId, NULL, @amount, N'in', @notes, @shiftMoveId, @paymentMethodId, @branchId, @businessDayId)
       `);
 
       const newRecord = insertRes.recordset[0];
-      const fundingSync = await syncEmployeeFundingFromCashMove(transaction, Number(newRecord.ID), {
-        createdByUserId: session.UserID,
-      });
+      let fundingSync: { ledgerDualWrite: boolean; outcome: string } = {
+        ledgerDualWrite: false,
+        outcome: 'skipped_store_income',
+      };
+      if (!storeIncomeKind) {
+        fundingSync = await syncEmployeeFundingFromCashMove(transaction, Number(newRecord.ID), {
+          createdByUserId: session.UserID,
+        });
+      }
 
       await transaction.commit();
 
-      const fundingWa = await maybeScheduleFundingWhatsAppFromIncomeCategory({
-        expINID: Number(expInId),
-        invID: Number(newRecord.invID),
-        amount: Number(amount),
-        paymentMethodId: Number(paymentMethodId),
-        notes: notesText || undefined,
-      });
+      const fundingWa = storeIncomeKind
+        ? { scheduled: false }
+        : await maybeScheduleFundingWhatsAppFromIncomeCategory({
+            expINID: Number(expInId),
+            invID: Number(newRecord.invID),
+            amount: amountNum,
+            paymentMethodId: Number(paymentMethodId),
+            notes: notesText || undefined,
+          });
       
       return NextResponse.json({
         success: true,
@@ -133,6 +188,8 @@ export async function POST(req: NextRequest) {
           Amount: newRecord.Amount,
           Notes: newRecord.Notes,
           PaymentMethodID: newRecord.PaymentMethodID,
+          EmpID: newRecord.EmpID ?? null,
+          storeIncomeKind: storeIncomeKind ?? undefined,
         }
       });
 

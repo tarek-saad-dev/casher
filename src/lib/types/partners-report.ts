@@ -35,6 +35,8 @@ export interface PartnersMonthlyReportCore {
     advancesIncludedInExpenses: boolean;
     operatingNet: number;
     operatingNetExplanation: string;
+    /** «إيراد آخر للمحل» CashMoves (EmpID NULL) — included once in legacy totalRevenue/operatingNet. */
+    storeOtherBusinessIncome?: number;
   };
 
   revenueDetails: Array<{
