@@ -40,6 +40,7 @@ export const ROUTE_APP_FAMILIES: ReadonlyArray<{ prefix: string; app: AppRegistr
   { prefix: '/api/admin/hr/employee-monthly-quick-review', app: 'payroll' },
   { prefix: '/api/admin/hr/employee-monthly-report', app: 'payroll' },
   { prefix: '/api/admin/hr/employee-monthly-sheet', app: 'payroll' },
+  { prefix: '/api/admin/hr/late-deduction', app: 'payroll' },
 
   { prefix: '/api/reports', app: 'reports' },
   { prefix: '/api/admin/reports', app: 'reports' },
@@ -66,6 +67,7 @@ export const ROUTE_APP_FAMILIES: ReadonlyArray<{ prefix: string; app: AppRegistr
 export const ROUTE_APP_SYSTEM_JOB_ROUTES: readonly string[] = [
   '/api/payroll/daily/auto-generate',
   '/api/admin/attendance/auto-absence/run',
+  '/api/admin/hr/late-deduction/alerts/run',
 ];
 
 function matches(pathname: string, prefix: string): boolean {

@@ -89,6 +89,8 @@ export interface EmployeeHrFormState {
   imageUrl: string;
   /** Public booking list order — lower first. */
   displaySortOrder: string;
+  /** Fully exempt from automatic late deductions (attendance still recorded). */
+  lateDeductionExempt: boolean;
 }
 
 export function createEmptyEmployeeHrFormState(): EmployeeHrFormState {
@@ -118,6 +120,7 @@ export function createEmptyEmployeeHrFormState(): EmployeeHrFormState {
     notes: '',
     imageUrl: '',
     displaySortOrder: '999',
+    lateDeductionExempt: false,
   };
 }
 
@@ -206,6 +209,10 @@ export function employeeToFormState(
       emp.DisplaySortOrder != null && Number.isFinite(Number(emp.DisplaySortOrder))
         ? String(emp.DisplaySortOrder)
         : '999',
+    lateDeductionExempt: Boolean(
+      (emp as HrEmployeeListRow & { LateDeductionExempt?: boolean | number | null })
+        .LateDeductionExempt,
+    ),
   };
 }
 
@@ -359,6 +366,9 @@ export function buildProfileApiPayload(
   if (form.emergencyContactName.trim()) set('EmergencyContactName', form.emergencyContactName);
   if (form.emergencyContactPhone.trim()) set('EmergencyContactPhone', form.emergencyContactPhone);
   if (form.notes.trim()) set('Notes', form.notes);
+
+  payload.LateDeductionExempt = form.lateDeductionExempt;
+  hasOptional = true;
 
   return hasOptional || form.empName.trim() ? payload : null;
 }

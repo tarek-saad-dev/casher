@@ -22,6 +22,8 @@ import {
   syncAttendanceAbsenceToDayOffOverride,
 } from '@/lib/hr/attendance-shift-schedule-sync';
 import { scheduleAttendanceCheckInOutWhatsApp } from '@/lib/services/employeeAttendanceWhatsAppNotify';
+import { scheduleFinalizeLateDeductionOnCheckIn } from '@/lib/hr/late-deduction';
+import { shouldNotifyAttendanceTimeChange } from '@/lib/hr/attendance-whatsapp-message';
 import { assertEmployeeEligibleForBranchAttendance } from '@/lib/hr/attendance/branchAttendance.service';
 import {
   unlockScheduleForWorkOnDayOff,
@@ -378,6 +380,24 @@ export async function saveAdminAttendance(
     checkOutTime: CheckOutTime || null,
     branchId,
   });
+
+  // Finalize late deduction only when check-in is newly set or corrected.
+  if (
+    CheckInTime &&
+    shouldNotifyAttendanceTimeChange(previousCheckIn, CheckInTime)
+  ) {
+    scheduleFinalizeLateDeductionOnCheckIn({
+      empId: Number(EmpID),
+      empName: employeeName,
+      branchId,
+      workDate: WorkDate,
+      attendanceId,
+      checkInTime: CheckInTime,
+      scheduledStart: schedStart,
+      scheduledEnd: schedEnd,
+      userId: input.userId ?? null,
+    });
+  }
 
   if (CheckInTime && CheckOutTime) {
     try {
@@ -778,6 +798,17 @@ export async function saveAdminAttendanceBulk(
     checkOutTime?: string | null;
     branchId?: number;
   }> = [];
+  const lateDeductionJobs: Array<{
+    empId: number;
+    empName?: string;
+    branchId: number;
+    workDate: string;
+    attendanceId: number;
+    checkInTime: string;
+    scheduledStart: string | null;
+    scheduledEnd: string | null;
+    userId?: number | null;
+  }> = [];
 
   try {
     for (const empId of openEmpIds) {
@@ -953,12 +984,29 @@ export async function saveAdminAttendanceBulk(
         checkOutTime: checkOut,
         branchId,
       });
+
+      if (checkIn && shouldNotifyAttendanceTimeChange(previousCheckIn, checkIn)) {
+        lateDeductionJobs.push({
+          empId: Number(item.EmpID),
+          empName: empDef?.empName,
+          branchId,
+          workDate: WorkDate,
+          attendanceId,
+          checkInTime: checkIn,
+          scheduledStart: schedStart,
+          scheduledEnd: schedEnd,
+          userId: input.userId ?? null,
+        });
+      }
     }
 
     await transaction.commit();
 
     for (const job of whatsappJobs) {
       scheduleAttendanceCheckInOutWhatsApp(job);
+    }
+    for (const job of lateDeductionJobs) {
+      scheduleFinalizeLateDeductionOnCheckIn(job);
     }
   } catch (innerErr) {
     await transaction.rollback();

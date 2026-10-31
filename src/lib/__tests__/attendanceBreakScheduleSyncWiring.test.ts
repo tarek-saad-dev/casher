@@ -164,6 +164,10 @@ vi.mock('@/lib/services/employeeAttendanceWhatsAppNotify', () => ({
   scheduleAttendanceCheckInOutWhatsApp: vi.fn(),
 }));
 
+vi.mock('@/lib/hr/late-deduction', () => ({
+  scheduleFinalizeLateDeductionOnCheckIn: vi.fn(),
+}));
+
 // schedule-control apply/DELETE fire-and-forget notifyHotEffectiveDay → MERGE
 // TblBookingAvailabilityRevision on the shared getPool mock. Without this mock,
 // that async work races into later tests and shifts the sequential query queue

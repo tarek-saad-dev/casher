@@ -183,6 +183,7 @@ export default function EmployeeHrFormModal({
 
       const details = compensationData as CompensationDetails;
       const next = employeeToFormState(emp, profileData.employee ?? null, profileData.schedule ?? null);
+      next.lateDeductionExempt = Boolean(profileData.employee?.LateDeductionExempt);
       setForm(next);
       setInitialForm(next);
       setCompDetails(details);
@@ -797,6 +798,19 @@ export default function EmployeeHrFormModal({
               <Switch
                 checked={form.isPayrollEnabled}
                 onCheckedChange={(v) => patchForm({ isPayrollEnabled: v })}
+              />
+            </div>
+
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-muted/20 px-3 py-2.5">
+              <div className="space-y-0.5">
+                <Label className="text-sm">إعفاء من خصم التأخير التلقائي</Label>
+                <p className="text-xs text-muted-foreground">
+                  عند التفعيل: يُسجَّل التأخير دون خصم مالي تلقائي
+                </p>
+              </div>
+              <Switch
+                checked={form.lateDeductionExempt}
+                onCheckedChange={(v) => patchForm({ lateDeductionExempt: v })}
               />
             </div>
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
 import { requireTenantSession } from '@/lib/api-auth';
 import { requireMasterDataTenantId } from '@/platform/masterData/tenantScope';
+import { ensureLateDeductionSchema } from '@/lib/hr/late-deduction/schema';
 
 async function ensureScheduleTable(db: any) {
   await db.request().query(`
@@ -117,6 +118,13 @@ export async function GET(
           CONVERT(VARCHAR(5), DefaultCheckInTime, 108) AS DefaultCheckInTime,
           CONVERT(VARCHAR(5), DefaultCheckOutTime, 108) AS DefaultCheckOutTime,
           IsPayrollEnabled,
+          CASE
+            WHEN EXISTS (
+              SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+              WHERE TABLE_NAME = 'TblEmp' AND COLUMN_NAME = 'LateDeductionExempt'
+            ) THEN ISNULL(LateDeductionExempt, 0)
+            ELSE CAST(0 AS bit)
+          END AS LateDeductionExempt,
           isActive
         FROM dbo.TblEmp 
         WHERE EmpID = @empId AND TenantId = @tenantId
@@ -232,7 +240,8 @@ export async function PATCH(
       BaseSalary,
       TargetCommissionPercent,
       TargetMinSales,
-      IsPayrollEnabled
+      IsPayrollEnabled,
+      LateDeductionExempt,
     } = body;
 
     // Validation
@@ -242,6 +251,9 @@ export async function PATCH(
 
     const tenantId = requireMasterDataTenantId(session.TenantId, 'PATCH /api/admin/employees/[id]/profile');
     const db = await getPool();
+    if (LateDeductionExempt !== undefined) {
+      await ensureLateDeductionSchema(db);
+    }
     const transaction = new sql.Transaction(db);
     await transaction.begin();
 
@@ -297,7 +309,7 @@ export async function PATCH(
         SELECT COLUMN_NAME 
         FROM INFORMATION_SCHEMA.COLUMNS 
         WHERE TABLE_NAME = 'TblEmp' 
-          AND COLUMN_NAME IN ('NationalID', 'Address', 'EmergencyContactName', 'EmergencyContactPhone', 'BirthDate', 'HireDate', 'PersonalNotes', 'ModifiedDate', 'BaseSalary', 'TargetCommissionPercent', 'TargetMinSales', 'IsPayrollEnabled')
+          AND COLUMN_NAME IN ('NationalID', 'Address', 'EmergencyContactName', 'EmergencyContactPhone', 'BirthDate', 'HireDate', 'PersonalNotes', 'ModifiedDate', 'BaseSalary', 'TargetCommissionPercent', 'TargetMinSales', 'IsPayrollEnabled', 'LateDeductionExempt')
       `);
       
       const existingColumns = columnsCheck.recordset.map(r => r.COLUMN_NAME);
@@ -352,6 +364,10 @@ export async function PATCH(
       if (IsPayrollEnabled !== undefined) {
         updateFields.push("IsPayrollEnabled = @isPayrollEnabled");
         request.input("isPayrollEnabled", sql.Bit, IsPayrollEnabled ? 1 : 0);
+      }
+      if (LateDeductionExempt !== undefined && existingColumns.includes('LateDeductionExempt')) {
+        updateFields.push("LateDeductionExempt = @lateDeductionExempt");
+        request.input("lateDeductionExempt", sql.Bit, LateDeductionExempt ? 1 : 0);
       }
 
       if (updateFields.length > 0) {
