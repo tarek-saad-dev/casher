@@ -101,6 +101,16 @@ function CategoryDetailsPanel({
   cacheEntry: CategoryDetailsCacheEntry | undefined;
   onRetry: () => void;
 }) {
+  const loadedTx = cacheEntry?.transactions;
+  const loadedCount = loadedTx?.length;
+  const loadedTotal =
+    loadedTx && loadedTx.length > 0
+      ? loadedTx.reduce((sum, tx) => sum + tx.amount, 0)
+      : null;
+  const displayCount = loadedCount != null && !cacheEntry?.loading ? loadedCount : row.transactionCount;
+  const displayTotal =
+    loadedTotal != null && !cacheEntry?.loading ? loadedTotal : row.totalAmount;
+
   return (
     <div className="border-t border-zinc-800/60 bg-zinc-950/60 px-3 py-3 sm:px-4 sm:py-4 animate-in fade-in slide-in-from-top-1 duration-200">
       <div className="mb-3">
@@ -108,7 +118,7 @@ function CategoryDetailsPanel({
           تفاصيل فئة: {row.categoryName}
         </p>
         <p className="text-xs text-zinc-500 mt-1">
-          {row.transactionCount} عملية — بإجمالي {formatPartnersCurrency(row.totalAmount)}
+          {displayCount} عملية — بإجمالي {formatPartnersCurrency(displayTotal)}
         </p>
       </div>
 

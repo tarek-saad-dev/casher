@@ -71,6 +71,7 @@ export async function getMonthlyExpensesByCategory(
       LEFT JOIN [dbo].[TblExpINCat] cat ON cm.ExpINID = cat.ExpINID
       WHERE cm.invType = N'مصروفات'
         AND cm.inOut = N'out'
+        AND ${liveCashMovePredicate('cm')}
         AND YEAR(cm.invDate) = @year
         AND MONTH(cm.invDate) = @month
         AND cm.BranchID = @branchId
@@ -123,6 +124,7 @@ export async function getMonthlyEmployeeAdvances(
         AND em.TxnKind = N'advance'
         AND cm.invType = N'مصروفات'
         AND cm.inOut = N'out'
+        AND ${liveCashMovePredicate('cm')}
         AND YEAR(cm.invDate) = @year
         AND MONTH(cm.invDate) = @month
         AND cm.BranchID = @branchId
