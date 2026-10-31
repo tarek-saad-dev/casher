@@ -1232,6 +1232,42 @@ export default function DailyPayrollPanel() {
     };
   };
 
+  const markEmployeeAbsent = async (
+    empId: number,
+    empName: string,
+    rowBranchId: number | null | undefined,
+  ) => {
+    const branchId = rowBranchId != null && rowBranchId > 0
+      ? rowBranchId : selectedBranchId ?? sessionBranchId;
+    if (branchId == null) {
+      setError('لا يمكن تسجيل الغياب بدون فرع');
+      return;
+    }
+    if (!window.confirm(`تأكيد غياب ${empName} يوم ${date}؟ سيتم إلغاء اليومية وأجرها من الدفتر إن وُجدا.`)) return;
+    setGeneratingEmpId(empId);
+    setGeneratingBranchId(branchId);
+    setError('');
+    setSuccessMsg('');
+    try {
+      if (!(await ensureSessionBranch(branchId))) throw new Error('تعذر تبديل الفرع');
+      setWorkspaceBranchId(branchId);
+      const res = await fetch('/api/admin/hr/daily-payroll/mark-absent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ empId, workDate: date }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'تعذر تسجيل الغياب');
+      setSuccessMsg(`تم تسجيل غياب ${empName} وإلغاء اليومية إن وُجدت`);
+      await refreshAfterMutation(branchId, date);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'تعذر تسجيل الغياب');
+    } finally {
+      setGeneratingEmpId(null);
+      setGeneratingBranchId(null);
+    }
+  };
+
   const openEmployeeAttendance = (
     empId: number,
     empName: string,
@@ -2823,6 +2859,16 @@ export default function DailyPayrollPanel() {
                           >
                             <CalendarClock className="w-3 h-3" />
                             حضور اليوم
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-[10px] border-rose-500/40 text-rose-300 gap-1"
+                            disabled={busy || generating || regeneratingTarget || rowBusy || switchingBranch || rowClosed || row?.Status === 'PostedToCashMove' || row?.AttendanceStatus === 'Absent'}
+                            onClick={() => void markEmployeeAbsent(merged.empId, merged.empName, rowBranchId)}
+                          >
+                            غياب اليوم
                           </Button>
                           <Button
                             type="button"
