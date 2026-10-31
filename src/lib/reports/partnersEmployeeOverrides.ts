@@ -51,6 +51,39 @@ export const PARTNERS_OVERRIDE_PRESET_EMPLOYEES = [
   { employeeId: TAREK_EMP_ID, label: 'طارق' },
 ] as const;
 
+/** Partners-report shop revenue for barbers is the live figure minus this percent. */
+export const BARBER_SHOP_REVENUE_DISCOUNT_PCT = 10;
+
+export const DEFAULT_BARBER_SHOP_REVENUE_ADJUST: PartnersFieldAdjust = {
+  mode: 'subtract_pct',
+  value: BARBER_SHOP_REVENUE_DISCOUNT_PCT,
+};
+
+/** Barber role only — assistants stay on the live shop-revenue figure. */
+export function isBarberJob(job: string | null | undefined): boolean {
+  const normalized = (job ?? '').trim().toLowerCase();
+  if (!normalized) return false;
+  return (
+    normalized.includes('حلاق') ||
+    normalized.includes('barber') ||
+    normalized.includes('صنايع')
+  );
+}
+
+/** Control-sheet view: show the standing 10% barber discount when nothing else is stored. */
+export function displayEmployeeOverride(
+  override: EmployeeMonthlyOverride | undefined,
+  isBarber: boolean
+): EmployeeMonthlyOverride | null {
+  if (!isBarber || normalizeFieldAdjust(override?.actualRevenue)) {
+    return override ?? null;
+  }
+  return {
+    ...(override ?? {}),
+    actualRevenue: DEFAULT_BARBER_SHOP_REVENUE_ADJUST,
+  };
+}
+
 export const DEFAULT_PARTNERS_EMPLOYEE_OVERRIDES: PartnersOverridesMap = {
   '2026-06': {
     [ZIAD_EMP_ID]: {
@@ -378,6 +411,8 @@ export function applyEmployeePartnerOverride(params: {
   salaryAndTarget: number;
   advanceExcess: number;
   isServiceWorker: boolean;
+  /** When true and no explicit revenue rule is stored, shop revenue is 10% below live. */
+  isBarber?: boolean;
 }): {
   shopRevenue: number | null;
   salaryAndTarget: number;
@@ -391,8 +426,12 @@ export function applyEmployeePartnerOverride(params: {
   };
 } {
   const override = params.override;
-  const hasSpecialAccounting = hasEmployeeOverrideValues(override);
-  const revenueRule = normalizeFieldAdjust(override?.actualRevenue);
+  const explicitRevenueRule = normalizeFieldAdjust(override?.actualRevenue);
+  const revenueRule =
+    explicitRevenueRule ??
+    (params.isBarber ? DEFAULT_BARBER_SHOP_REVENUE_ADJUST : undefined);
+  const hasSpecialAccounting =
+    hasEmployeeOverrideValues(override) || (params.isBarber === true && !explicitRevenueRule);
   const salaryRule = normalizeFieldAdjust(override?.salaryAndTarget);
   const advanceRule = normalizeFieldAdjust(override?.advanceExcess);
   const hasLegacyPaidOverride =
