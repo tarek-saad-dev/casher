@@ -23,6 +23,8 @@ export const CASH_MOVE_WRITER_ALLOWLIST = [
   'src/lib/services/employeeLedgerFundingService.ts',
   'src/lib/services/employeeLedgerFundingSyncService.ts',
   'src/lib/services/employeeLedgerPayoutService.ts',
+  // Advance repayment posts paired CashMove income (grandfathered HR ledger writer)
+  'src/lib/services/employeeLedgerAdvanceRepaymentService.ts',
   // HR monthly dues settlement: one Treasury cash-out paired atomically with employee advance ledger debit
   'src/lib/services/employeeLedgerDuesSettlementService.ts',
   'src/lib/actions/deductionSettlementPairing.ts',

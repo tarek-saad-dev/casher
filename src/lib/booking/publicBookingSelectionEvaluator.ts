@@ -439,6 +439,7 @@ export async function evaluatePublicBookingSelection(args: {
         addonProIds: args.addonProIds,
         clientServiceIds: args.serviceIds,
         branchContext,
+        bookingDate: workDate,
       });
       selected = {
         services: packageBooking.services,

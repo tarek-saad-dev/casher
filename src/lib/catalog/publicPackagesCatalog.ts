@@ -22,6 +22,11 @@ import {
   type GroomOptionalGroup,
 } from '@/lib/catalog/groomOptionalAddons';
 import { requireMasterDataTenantId } from '@/platform/masterData/tenantScope';
+import { getCairoCalendarDate } from '@/lib/businessDate';
+import {
+  extractPackagePublicCode,
+  isPackageOfferedOnDate,
+} from '@/lib/catalog/packageCampaignWindow';
 
 export const PUBLIC_PACKAGES_CONTRACT_VERSION = 'public-packages-v2';
 export const PUBLIC_PACKAGES_CURRENCY = 'EGP' as const;
@@ -67,6 +72,8 @@ export type PublicGroomOptionalGroupWire = {
 export type PublicPackageWire = {
   packageId: number;
   kind: PackageKind;
+  /** Optional SKU from NotesAr seed/campaign marker (e.g. NOV-PRO600). */
+  code: string | null;
   nameAr: string;
   nameEn: string;
   name: string;
@@ -297,6 +304,7 @@ function mapPackageWire(
   return {
     packageId: pkg.PackageID,
     kind: pkg.PackageKind,
+    code: extractPackagePublicCode(pkg.NotesAr),
     nameAr: nameAr || nameEn,
     nameEn: nameEn || nameAr,
     name: nameAr || nameEn,
@@ -370,10 +378,13 @@ export async function getPublicPackagesCatalog(opts: {
   }
 
   const kindFilter = opts.kind && isPackageKind(opts.kind) ? opts.kind : undefined;
-  const rows = await listServicePackages(db, tenantId, {
-    kind: kindFilter,
-    activeOnly: true,
-  });
+  const todayCairo = getCairoCalendarDate();
+  const rows = (
+    await listServicePackages(db, tenantId, {
+      kind: kindFilter,
+      activeOnly: true,
+    })
+  ).filter((r) => isPackageOfferedOnDate(r.NotesAr, todayCairo));
 
   const itemsMap = await loadItemsByPackageIds(
     db,
@@ -418,6 +429,7 @@ export async function getPublicPackageById(
 
   const pkg = await getServicePackageById(db, tid, packageId);
   if (!pkg || pkg.isDeleted) return null;
+  if (!isPackageOfferedOnDate(pkg.NotesAr, getCairoCalendarDate())) return null;
 
   const items = pkg.items ?? [];
   const serviceMeta = await loadServiceMetaByIds(
