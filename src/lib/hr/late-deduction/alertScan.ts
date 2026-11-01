@@ -209,6 +209,9 @@ export async function runLateDeductionAlertScan(params?: {
         ORDER BY x.ID DESC
       ) att
       WHERE ISNULL(e.isActive, 1) = 1
+        AND @branchId IS NOT NULL
+        AND e.TenantId IN (SELECT l.TenantId FROM dbo.Location l
+          WHERE l.LegacyBranchId = @branchId AND l.Status = N'active')
         AND (
           @branchId IS NULL
           OR s.BranchID = @branchId

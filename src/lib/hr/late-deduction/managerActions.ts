@@ -11,6 +11,7 @@ import {
 import { isLateDeductionSchemaReady } from './schema';
 import { scheduleLateDeductionWhatsApp } from './whatsapp';
 import { roundMoney } from '@/lib/reportMonthUtils';
+import type { ConnectionPool } from 'mssql';
 
 export class LateDeductionActionError extends Error {
   constructor(message: string) {
@@ -19,8 +20,24 @@ export class LateDeductionActionError extends Error {
   }
 }
 
-export async function listLateDeductionManagerQueue(params?: {
-  branchId?: number;
+async function assertScopedCase(db: ConnectionPool, row: LateDeductionCaseRow, branchId: number, tenantId: string): Promise<void> {
+  if (row.branchId !== branchId) throw new LateDeductionActionError('الحالة غير موجودة في هذا الفرع');
+  const result = await db.request()
+    .input('empId', sql.Int, row.empId)
+    .input('branchId', sql.Int, branchId)
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
+    .query(`
+      SELECT TOP 1 1 AS Allowed FROM dbo.TblEmp e
+      JOIN dbo.Location l ON l.TenantId = e.TenantId
+      WHERE e.EmpID = @empId AND e.TenantId = @tenantId
+        AND l.LegacyBranchId = @branchId AND l.Status = N'active'
+    `);
+  if (!result.recordset.length) throw new LateDeductionActionError('الحالة غير موجودة في هذه المنشأة');
+}
+
+export async function listLateDeductionManagerQueue(params: {
+  branchId: number;
+  tenantId: string;
   workDate?: string;
 }): Promise<LateDeductionCaseRow[]> {
   const db = await getPool();
@@ -34,6 +51,8 @@ export async function listLateDeductionManagerQueue(params?: {
  */
 export async function applyManagerLatePenalty(params: {
   caseId: number;
+  branchId: number;
+  tenantId: string;
   amount: number;
   notes?: string | null;
   userId: number;
@@ -51,6 +70,7 @@ export async function applyManagerLatePenalty(params: {
 
   const existing = await findLateDeductionCaseById(db, params.caseId);
   if (!existing) throw new LateDeductionActionError('الحالة غير موجودة');
+  await assertScopedCase(db, existing, params.branchId, params.tenantId);
   if (existing.status === 'cancelled') {
     throw new LateDeductionActionError('لا يمكن اعتماد خصم لحالة ملغاة');
   }
@@ -120,6 +140,8 @@ export async function applyManagerLatePenalty(params: {
  */
 export async function cancelLateDeductionCase(params: {
   caseId: number;
+  branchId: number;
+  tenantId: string;
   reason: string;
   userId: number;
 }): Promise<LateDeductionCaseRow> {
@@ -133,6 +155,7 @@ export async function cancelLateDeductionCase(params: {
 
   const existing = await findLateDeductionCaseById(db, params.caseId);
   if (!existing) throw new LateDeductionActionError('الحالة غير موجودة');
+  await assertScopedCase(db, existing, params.branchId, params.tenantId);
   if (existing.status === 'cancelled') return existing;
 
   if (existing.attendanceId) {

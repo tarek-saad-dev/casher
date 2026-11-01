@@ -77,7 +77,9 @@ export async function recoverPendingLateDeductionFinalizations(params?: {
     WHERE a.WorkDate = @workDate
       AND a.CheckInTime IS NOT NULL
       AND ISNULL(a.LateMinutes, 0) > 0
-      AND (@branchId IS NULL OR a.BranchID = @branchId)
+      AND @branchId IS NOT NULL AND a.BranchID = @branchId
+      AND e.TenantId IN (SELECT l.TenantId FROM dbo.Location l
+        WHERE l.LegacyBranchId = @branchId AND l.Status = N'active')
       AND (
         c.CaseID IS NULL
         OR c.Status IN (N'finalize_pending', N'alerting')

@@ -228,14 +228,22 @@ export async function markFinalNotified(db: DbLike, caseId: number): Promise<voi
 
 export async function listPendingManagerCases(
   db: DbLike,
-  params?: { branchId?: number; workDate?: string },
+  params: { branchId: number; tenantId: string; workDate?: string },
 ): Promise<LateDeductionCaseRow[]> {
   const req = db.request();
-  const filters: string[] = [`Status = N'pending_manager'`];
-  if (params?.branchId) {
-    req.input('branchId', sql.Int, params.branchId);
-    filters.push('BranchID = @branchId');
-  }
+  const filters: string[] = [
+    `Status = N'pending_manager'`,
+    'BranchID = @branchId',
+    `EXISTS (
+      SELECT 1 FROM dbo.TblEmp e
+      INNER JOIN dbo.Location l ON l.TenantId = e.TenantId
+        AND l.LegacyBranchId = @branchId AND l.Status = N'active'
+      WHERE e.EmpID = dbo.TblEmpLateDeductionCase.EmpID
+        AND e.TenantId = @tenantId
+    )`,
+  ];
+  req.input('branchId', sql.Int, params.branchId);
+  req.input('tenantId', sql.UniqueIdentifier, params.tenantId);
   if (params?.workDate) {
     req.input('workDate', sql.Date, params.workDate);
     filters.push('WorkDate = @workDate');
