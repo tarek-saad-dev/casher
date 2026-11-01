@@ -63,3 +63,5 @@ Until BSP approval lands, keep NOV-PRO600 campaigns in **draft** and use allowli
 
 Outbound eligible recipients require rows in `TblMarketingConsentEvidence` with `Status = granted`.  
 Do not backfill consent from purchases or phone possession.
+
+Schema apply path: DRVO migration key `marketing-consent-evidence` (id 20) via the migration control plane / staging gate — not a silent production side-script.

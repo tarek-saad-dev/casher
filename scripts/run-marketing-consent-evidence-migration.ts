@@ -54,20 +54,22 @@ async function main() {
     }
   }
 
-  const sqlPath = path.join(process.cwd(), 'db/migrations/create-tbl-marketing-consent-evidence.sql');
-  const sqlText = readFileSync(sqlPath, 'utf8');
-  for (const batch of sqlText.split(/^\s*GO\s*$/gim)) {
-    const trimmed = batch.trim();
-    if (!trimmed) continue;
-    await pool.request().query(trimmed);
-  }
+  // Prefer the DRVO-020 canonical schema (manifest-bound). Legacy db/migrations copy is a mirror.
+  const sqlPath = path.join(
+    process.cwd(),
+    'db/drvo-migrations/020-marketing-consent-evidence/schema.sql',
+  );
+  const { executeSqlFile } = await import('./drvo/sqlBatch');
+  const { verifyMarketingConsentEvidenceSchema } = await import(
+    './drvo/migrations/020-marketing-consent-evidence'
+  );
+  await executeSqlFile(pool, sqlPath);
 
-  const check = await pool.request().query(`
-    SELECT
-      CASE WHEN OBJECT_ID(N'dbo.TblMarketingConsentEvidence', N'U') IS NULL THEN 0 ELSE 1 END AS consentTable,
-      (SELECT definition FROM sys.check_constraints WHERE name = N'CK_TblWhatsAppCampaign_Status') AS statusCheck
-  `);
-  console.log('Verify', check.recordset[0]);
+  const verify = await verifyMarketingConsentEvidenceSchema(pool);
+  console.log('Verify', verify);
+  if (!verify.ok) {
+    throw new Error(`Migration verify failed: ${verify.failures.join('; ')}`);
+  }
   console.log('Done.');
   process.exit(0);
 }

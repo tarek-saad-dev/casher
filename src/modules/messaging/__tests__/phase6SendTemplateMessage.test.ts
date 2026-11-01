@@ -359,6 +359,7 @@ describe('Phase 6 production callers + feature contract', () => {
       'employee.daily_report',
       'owner.daily_report',
       'employee.tip',
+      'whatsapp.campaign',
     ]);
   });
 

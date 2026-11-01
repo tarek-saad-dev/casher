@@ -1,8 +1,14 @@
--- ============================================================
--- Minimal marketing consent evidence (import/link only — no full CRM UI)
--- Idempotent. Safe to re-run.
--- Also allows campaign Status = paused.
--- ============================================================
+-- Legacy entrypoint mirror.
+-- Canonical source of truth: db/drvo-migrations/020-marketing-consent-evidence/schema.sql
+-- Prefer: DRVO migration key `marketing-consent-evidence` via the migration control plane,
+-- or: npx tsx scripts/run-marketing-consent-evidence-migration.ts
+--
+-- Kept identical to DRVO-020 for older docs/scripts that still reference this path.
+/*
+  DRVO-020: Marketing consent evidence + paused WhatsApp campaign status.
+  Additive consent table only — does not invent/backfill customer consent rows.
+  Idempotent. Safe to re-run.
+*/
 SET NOCOUNT ON;
 
 IF OBJECT_ID(N'dbo.TblMarketingConsentEvidence', N'U') IS NULL
