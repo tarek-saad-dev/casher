@@ -749,6 +749,7 @@ export async function createPublicBooking(
         addonProIds: precheck.packageBooking.addonProIds,
         clientServiceIds: precheck.packageBooking.serviceIds,
         branchContext: branchNow,
+        bookingDate: precheck.workDate,
       });
       servicesNow = {
         services: pkgNow.services,

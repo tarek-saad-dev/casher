@@ -6,6 +6,7 @@ import {
   resolveGroomPackageBooking,
 } from '@/lib/booking/groomPackageBooking';
 import type { PackageKind } from '@/lib/migrations/ensureServicePackages';
+import { getCairoCalendarDate } from '@/lib/businessDate';
 
 export async function resolvePosPackageRequest(
   req: NextRequest,
@@ -22,6 +23,8 @@ export async function resolvePosPackageRequest(
       addonProIds: body.addonProIds,
       clientServiceIds: body.clientServiceIds,
       allowedKinds,
+      // Campaign packages (e.g. NOV-PRO600) must not sell outside the Cairo window.
+      bookingDate: getCairoCalendarDate(),
     });
 
     return NextResponse.json({

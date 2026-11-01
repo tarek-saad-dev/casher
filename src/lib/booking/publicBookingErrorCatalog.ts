@@ -84,6 +84,7 @@ export type PublicBookingErrorCode =
   | 'BRANCH_AVAILABILITY_UNAVAILABLE'
   | 'PACKAGE_NOT_FOUND'
   | 'PACKAGE_NOT_ACTIVE'
+  | 'PACKAGE_OUTSIDE_CAMPAIGN_WINDOW'
   | 'PACKAGE_NOT_GROOM'
   | 'PACKAGE_EMPTY'
   | 'PACKAGE_SERVICE_INVALID'
@@ -558,6 +559,12 @@ export const PUBLIC_BOOKING_ERROR_CATALOG: Record<PublicBookingErrorCode, Public
     httpStatus: 409,
     messageAr: 'الباكدج غير نشط',
     messageEn: 'Package is not active',
+  },
+  PACKAGE_OUTSIDE_CAMPAIGN_WINDOW: {
+    code: 'PACKAGE_OUTSIDE_CAMPAIGN_WINDOW',
+    httpStatus: 409,
+    messageAr: 'هذا العرض متاح فقط خلال فترة الحملة',
+    messageEn: 'This package is only available during its campaign period',
   },
   PACKAGE_NOT_GROOM: {
     code: 'PACKAGE_NOT_GROOM',
