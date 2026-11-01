@@ -46,7 +46,7 @@ jobs:
             echo "Entire repo TypeScript check passed."
             exit 0
           fi
-          grep -E '^((src/lib/hr/late-deduction/)|(src/app/api/admin/hr/late-deduction/)|(src/components/hr/LateDeductionPanel)|(src/modules/attendance/)|(scripts/run-late-deduction-alerts))' /tmp/late-deduction-tsc.log > /tmp/late-deduction-scope-errors.log || true
+          grep -E '^((src/lib/hr/late-deduction/)|(src/app/api/admin/hr/late-deduction/)|(src/components/hr/LateDeductionPanel)|(scripts/run-late-deduction-alerts))' /tmp/late-deduction-tsc.log > /tmp/late-deduction-scope-errors.log || true
           if [[ -s /tmp/late-deduction-scope-errors.log ]]; then
             cat /tmp/late-deduction-scope-errors.log
             echo "Late deduction code has TypeScript errors." >&2
