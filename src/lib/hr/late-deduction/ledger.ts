@@ -22,18 +22,23 @@ export function isLateDeductionLedgerUniqueError(err: unknown): boolean {
 async function findActiveLateDeductionLedger(
   db: DbLike,
   attendanceId: number,
+  branchId: number,
+  empId: number,
 ): Promise<{ ledgerEntryId: number; amount: number } | null> {
   const existing = await db
     .request()
     .input('refType', sql.NVarChar(80), LATE_DEDUCTION_REF_TYPE)
     .input('refId', sql.Int, attendanceId)
+    .input('branchId', sql.Int, branchId)
+    .input('empId', sql.Int, empId)
     .input('reason', sql.NVarChar(40), LATE_DEDUCTION_ENTRY_REASON)
     .query(`
-      SELECT TOP 1 LedgerEntryID, Amount
+      SELECT TOP 1 ID AS LedgerEntryID, Amount
       FROM dbo.TblEmpLedgerEntry
       WHERE RefType = @refType
         AND RefID = @refId
         AND EntryReason = @reason
+        AND BranchID = @branchId AND EmpID = @empId
         AND IsVoided = 0
     `);
   const row = existing.recordset[0] as
@@ -72,7 +77,7 @@ export async function upsertLateDeductionLedgerEntry(
     kind: params.kind,
   });
 
-  const existing = await findActiveLateDeductionLedger(db, params.attendanceId);
+  const existing = await findActiveLateDeductionLedger(db, params.attendanceId, params.branchId, params.empId);
 
   if (existing) {
     if (existing.amount === params.amount) {
@@ -81,6 +86,8 @@ export async function upsertLateDeductionLedgerEntry(
     await db
       .request()
       .input('id', sql.Int, existing.ledgerEntryId)
+      .input('branchId', sql.Int, params.branchId)
+      .input('empId', sql.Int, params.empId)
       .input('amount', sql.Decimal(12, 2), params.amount)
       .input('notes', sql.NVarChar(500), notes)
       .input('attendanceId', sql.Int, params.attendanceId)
@@ -92,7 +99,7 @@ export async function upsertLateDeductionLedgerEntry(
             AttendanceID = @attendanceId,
             PayrollMonth = @payrollMonth,
             UpdatedAt = SYSDATETIME()
-        WHERE LedgerEntryID = @id AND IsVoided = 0
+        WHERE ID = @id AND BranchID = @branchId AND EmpID = @empId AND IsVoided = 0
       `);
     return { ledgerEntryId: existing.ledgerEntryId, outcome: 'updated' };
   }
@@ -117,7 +124,7 @@ export async function upsertLateDeductionLedgerEntry(
           PayrollMonth, RefType, RefID, CashMoveID, AttendanceID,
           Notes, IsVoided, CreatedByUserID, CreatedAt
         )
-        OUTPUT INSERTED.LedgerEntryID
+        OUTPUT INSERTED.ID AS LedgerEntryID
         VALUES (
           @branchId, @empId, @entryDate, N'debit', @reason, @amount,
           @payrollMonth, @refType, @refId, NULL, @attendanceId,
@@ -132,7 +139,7 @@ export async function upsertLateDeductionLedgerEntry(
   } catch (err) {
     if (!isLateDeductionLedgerUniqueError(err)) throw err;
     // Concurrent insert won — reuse that row (update amount if needed).
-    const raced = await findActiveLateDeductionLedger(db, params.attendanceId);
+    const raced = await findActiveLateDeductionLedger(db, params.attendanceId, params.branchId, params.empId);
     if (!raced) throw err;
     if (raced.amount === params.amount) {
       return { ledgerEntryId: raced.ledgerEntryId, outcome: 'unchanged' };
@@ -140,6 +147,8 @@ export async function upsertLateDeductionLedgerEntry(
     await db
       .request()
       .input('id', sql.Int, raced.ledgerEntryId)
+      .input('branchId', sql.Int, params.branchId)
+      .input('empId', sql.Int, params.empId)
       .input('amount', sql.Decimal(12, 2), params.amount)
       .input('notes', sql.NVarChar(500), notes)
       .input('attendanceId', sql.Int, params.attendanceId)
@@ -151,7 +160,7 @@ export async function upsertLateDeductionLedgerEntry(
             AttendanceID = @attendanceId,
             PayrollMonth = @payrollMonth,
             UpdatedAt = SYSDATETIME()
-        WHERE LedgerEntryID = @id AND IsVoided = 0
+        WHERE ID = @id AND BranchID = @branchId AND EmpID = @empId AND IsVoided = 0
       `);
     return { ledgerEntryId: raced.ledgerEntryId, outcome: 'updated' };
   }
@@ -161,6 +170,7 @@ export async function voidLateDeductionLedgerEntry(
   db: DbLike,
   params: {
     attendanceId: number;
+    branchId: number;
     voidReason: string;
   },
 ): Promise<number> {
@@ -168,6 +178,7 @@ export async function voidLateDeductionLedgerEntry(
     .request()
     .input('refType', sql.NVarChar(80), LATE_DEDUCTION_REF_TYPE)
     .input('refId', sql.Int, params.attendanceId)
+    .input('branchId', sql.Int, params.branchId)
     .input('reason', sql.NVarChar(40), LATE_DEDUCTION_ENTRY_REASON)
     .input('voidReason', sql.NVarChar(500), params.voidReason)
     .query(`
@@ -178,6 +189,7 @@ export async function voidLateDeductionLedgerEntry(
       WHERE RefType = @refType
         AND RefID = @refId
         AND EntryReason = @reason
+        AND BranchID = @branchId
         AND IsVoided = 0
     `);
   return result.rowsAffected[0] ?? 0;

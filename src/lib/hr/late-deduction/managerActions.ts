@@ -138,6 +138,7 @@ export async function cancelLateDeductionCase(params: {
   if (existing.attendanceId) {
     await voidLateDeductionLedgerEntry(db, {
       attendanceId: existing.attendanceId,
+      branchId: existing.branchId,
       voidReason: `إلغاء خصم تأخير: ${reason}`,
     });
   }

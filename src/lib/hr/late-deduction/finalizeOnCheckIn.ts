@@ -112,6 +112,7 @@ export async function finalizeLateDeductionOnCheckIn(
     if (existing?.ledgerEntryId || existing?.attendanceId) {
       await voidLateDeductionLedgerEntry(db, {
         attendanceId: input.attendanceId,
+        branchId: input.branchId,
         voidReason: 'إلغاء خصم التأخير — لم يعد متأخراً بعد تصحيح الحضور',
       });
     }
@@ -144,6 +145,7 @@ export async function finalizeLateDeductionOnCheckIn(
     if (existing?.ledgerEntryId) {
       await voidLateDeductionLedgerEntry(db, {
         attendanceId: input.attendanceId,
+        branchId: input.branchId,
         voidReason: 'إلغاء خصم التأخير — الموظف معفى',
       });
     }
@@ -195,6 +197,7 @@ export async function finalizeLateDeductionOnCheckIn(
     if (existing?.ledgerEntryId) {
       await voidLateDeductionLedgerEntry(db, {
         attendanceId: input.attendanceId,
+        branchId: input.branchId,
         voidReason: 'إلغاء خصم التأخير — بيانات الراتب/الجدول غير مكتملة',
       });
     }
@@ -238,6 +241,7 @@ export async function finalizeLateDeductionOnCheckIn(
     if (existing?.ledgerEntryId) {
       await voidLateDeductionLedgerEntry(db, {
         attendanceId: input.attendanceId,
+        branchId: input.branchId,
         voidReason: 'تحويل لقرار مدير — تجاوز 120 دقيقة',
       });
     }
