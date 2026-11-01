@@ -60,10 +60,13 @@ export async function GET(_req: NextRequest, { params }: RouteCtx) {
       });
     }
 
+    // allowInactive: historical October (and other soft-deleted) package bookings
+    // must still hydrate into POS without re-enabling them for new sales.
     const resolved = await resolveGroomPackageBooking({
       packageId: parsed.packageId,
       addonProIds: parsed.addonProIds,
       allowedKinds: ['groom', 'regular'],
+      allowInactive: true,
     });
 
     const servicesRes = await db

@@ -15,10 +15,15 @@ import {
 import { isRetailProductClassification } from '@/lib/booking/publicBookingServicePolicy';
 import { parsePublicServiceIdsParam } from '@/lib/booking/publicBookingBarberPolicy';
 import type { PackageKind } from '@/lib/migrations/ensureServicePackages';
+import {
+  isDateInsidePackageCampaign,
+  parsePackageCampaignWindow,
+} from '@/lib/catalog/packageCampaignWindow';
 
 export type GroomPackageBookingErrorCode =
   | 'PACKAGE_NOT_FOUND'
   | 'PACKAGE_NOT_ACTIVE'
+  | 'PACKAGE_OUTSIDE_CAMPAIGN_WINDOW'
   | 'PACKAGE_NOT_GROOM'
   | 'PACKAGE_EMPTY'
   | 'PACKAGE_SERVICE_INVALID'
@@ -256,6 +261,17 @@ export async function resolveGroomPackageBooking(args: {
   allowedKinds?: readonly PackageKind[];
   /** DRVO-019: public booking always scopes the package and its services to the branch tenant. */
   tenantId?: string | null;
+  /**
+   * When true, soft-deleted packages still resolve (POS handoff from an existing booking).
+   * New plan/create/catalog paths must leave this false.
+   */
+  allowInactive?: boolean;
+  /**
+   * Calendar date (YYYY-MM-DD) for campaign-window packages.
+   * When omitted, campaign packages are still resolvable if currently soft-active —
+   * callers that book a date must pass bookingDate so out-of-window dates are rejected.
+   */
+  bookingDate?: string | null;
 }): Promise<ResolvedGroomPackageBooking> {
   const allowedKinds: readonly PackageKind[] = args.allowedKinds?.length
     ? args.allowedKinds
@@ -275,14 +291,30 @@ export async function resolveGroomPackageBooking(args: {
     .input('tenantId', sql.UniqueIdentifier, tenantId)
     .query(`
       SELECT PackageID, NameEn, NameAr, PackageKind, PackagePrice, DurationMinutes,
-             ISNULL(isDeleted, 0) AS isDeleted
+             NotesAr, ISNULL(isDeleted, 0) AS isDeleted
       FROM dbo.TblServicePackage
       WHERE PackageID = @PackageID AND (@tenantId IS NULL OR TenantId = @tenantId)
     `);
   const pkg = pkgRes.recordset[0] as Record<string, unknown> | undefined;
   if (!pkg) throw new GroomPackageBookingError('PACKAGE_NOT_FOUND', { packageId });
-  if (Number(pkg.isDeleted) === 1) {
+  if (Number(pkg.isDeleted) === 1 && !args.allowInactive) {
     throw new GroomPackageBookingError('PACKAGE_NOT_ACTIVE', { packageId });
+  }
+  const notesAr = pkg.NotesAr != null ? String(pkg.NotesAr) : null;
+  const campaign = parsePackageCampaignWindow(notesAr);
+  if (
+    campaign &&
+    args.bookingDate &&
+    !args.allowInactive &&
+    !isDateInsidePackageCampaign(campaign, String(args.bookingDate).trim())
+  ) {
+    throw new GroomPackageBookingError('PACKAGE_OUTSIDE_CAMPAIGN_WINDOW', {
+      packageId,
+      bookingDate: args.bookingDate,
+      campaignFrom: campaign.from,
+      campaignTo: campaign.to,
+      campaignCode: campaign.code,
+    });
   }
   const packageKind = String(pkg.PackageKind ?? '') as PackageKind;
   if (!allowedKinds.includes(packageKind)) {
@@ -488,6 +520,7 @@ export function mapGroomPackageErrorToPublicCode(
 ):
   | 'PACKAGE_NOT_FOUND'
   | 'PACKAGE_NOT_ACTIVE'
+  | 'PACKAGE_OUTSIDE_CAMPAIGN_WINDOW'
   | 'PACKAGE_NOT_GROOM'
   | 'PACKAGE_EMPTY'
   | 'PACKAGE_SERVICE_INVALID'

@@ -8,6 +8,7 @@
 | الخدمات | ProIDs `9` قص شعر، `10` ذقن وفيد، `22` حمام زيت، `29` تنظيف بشرة كلاسيكي |
 | المدة الحالية | **85 دقيقة** (30 + 20 + 5 + 30، من كتالوج الفرع) |
 | الفروع | `GLEEM` و`CAMP_CAESAR` |
+| الحالة (نوفمبر 2026) | **Soft-deleted for NEW bookings** by `scripts/seed-november-protein-package.ts`. Historical bookings/invoices kept. See `docs/booking-november-protein-package.md`. |
 
 البيانات متخزنة في `TblServicePackage` / `TblServicePackageItem`، وأسعار `TblPro` ما اتغيرتش.
 

@@ -25,6 +25,8 @@ export async function resolvePublicPackageBooking(args: {
   addonProIds?: unknown;
   clientServiceIds?: unknown;
   branchContext: PublicBookingBranchContext;
+  /** Calendar date (YYYY-MM-DD) — required for campaign-window packages at plan/create time. */
+  bookingDate?: string | null;
 }): Promise<ResolvedGroomPackageBooking> {
   const pkg = await resolveGroomPackageBooking({
     packageId: args.packageId,
@@ -32,6 +34,7 @@ export async function resolvePublicPackageBooking(args: {
     clientServiceIds: args.clientServiceIds,
     allowedKinds: PUBLIC_BOOKABLE_PACKAGE_KINDS,
     tenantId: requireMasterDataTenantId(args.branchContext.tenantId, 'public package booking'),
+    bookingDate: args.bookingDate ?? null,
   });
   if (pkg.packageKind !== 'regular') return pkg;
 

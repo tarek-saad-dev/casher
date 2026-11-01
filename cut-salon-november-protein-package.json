@@ -1,0 +1,88 @@
+{
+  "schemaVersion": 1,
+  "source": "CUT Salon November 2026 Protein Package",
+  "internalCode": "NOV-PRO600",
+  "targetAdminPage": "/admin/packages",
+  "currency": "EGP",
+  "timezone": "Africa/Cairo",
+  "campaign": {
+    "code": "NOV-PRO600",
+    "nameEn": "November 2026",
+    "from": "2026-11-01",
+    "to": "2026-11-30",
+    "timezone": "Africa/Cairo"
+  },
+  "pricingPolicy": "Seasonal promo bundle. Customer pays PackagePrice (600) TOTAL — included component list prices are not charged again. OriginalPrice is the verified standalone sum at seed time (not a marketing claim).",
+  "notes": [
+    "Seed with: npx tsx scripts/seed-november-protein-package.ts --dry-run|--apply [--local|--cloud]",
+    "Disable October new bookings in the same apply (soft-delete REGULAR_OCTOBER_2026 / PackageID 7 when present).",
+    "Care Mask face-vs-hair type is TBD — seed ensures a generic Care Mask service and keeps the package item remappable.",
+    "Short-hair eligibility only at this price; longer/thicker hair must be quoted before treatment (no silent price increase).",
+    "Do not claim a 1,000 EGP regular package price unless verified by pricing records.",
+    "Protein material inventory deduction is NOT supported for service ProIDs — report only.",
+    "PackageKind must be regular. Bonus stays 0 (no multi-service commission stack)."
+  ],
+  "disablePackages": [
+    {
+      "key": "REGULAR_OCTOBER_2026",
+      "nameEn": "October Package",
+      "nameAr": "باكدج أكتوبر",
+      "reason": "November campaign supersedes October promotional booking for NEW bookings only."
+    }
+  ],
+  "ensureServices": [
+    {
+      "key": "CARE_MASK",
+      "nameEn": "Care Mask",
+      "nameAr": "ماسك عناية",
+      "preferredPrice": 50,
+      "preferredDurationMinutes": 5,
+      "categoryPreferences": ["Skincare", "Hair Treatments & Care", "خدمات اضافيه للشعر"],
+      "proType": "serv",
+      "note": "Generic placeholder until face vs hair mask type is confirmed. Remap package item ProID later if needed."
+    }
+  ],
+  "packages": [
+    {
+      "key": "NOV-PRO600",
+      "nameEn": "November Protein Reset",
+      "nameAr": "عرض بروتين نوفمبر",
+      "price": 600,
+      "displayOrder": 1,
+      "recommended": true,
+      "active": true,
+      "descriptionEn": "November 2026 Protein Reset: professional haircut, protein treatment (short hair, subject to assessment), hot & cold towel ritual, and care mask. Longer or thicker hair must be quoted before treatment. Does not promise permanent straightening or suitability for all hair types.",
+      "descriptionAr": "عرض بروتين نوفمبر 2026: قص شعر احترافي، بروتين (للشعر القصير بعد التقييم)، طقوس فوطة ساخنة وباردة، وماسك عناية. الشعر الأطول أو الأكثر كثافة يحتاج تسعيرًا وموافقة قبل العلاج. لا يضمن فردًا دائمًا أو ملاءمة لكل أنواع الشعر.",
+      "includedServices": [
+        {
+          "key": "HAIR_CUT",
+          "proId": 9,
+          "preferredName": "Hair Cut",
+          "role": "Professional Haircut"
+        },
+        {
+          "key": "SHORT_HAIR_PROTEIN",
+          "proId": 15,
+          "preferredName": "Short Hair Protein",
+          "role": "Protein Treatment",
+          "expectedPrice": 700,
+          "note": "Package price covers eligible short hair only. Live catalog price verified 2026-11-01."
+        },
+        {
+          "key": "HOT_COLD_TOWEL",
+          "proId": 43,
+          "preferredName": "Hot / Cold Towel",
+          "role": "Hot & Cold Towel Ritual"
+        },
+        {
+          "key": "CARE_MASK",
+          "proId": null,
+          "resolveByExactName": true,
+          "preferredName": "Care Mask",
+          "role": "Care Mask",
+          "note": "Configurable — face vs hair type not confirmed at launch."
+        }
+      ]
+    }
+  ]
+}

@@ -266,7 +266,8 @@ export function validatePackageBody(body: unknown): { ok: true; data: PackageWri
       DepositAmount: b.PackageKind === 'groom' ? DepositAmount : null,
       IncludesTrial: b.PackageKind === 'groom' ? Boolean(b.IncludesTrial) : false,
       SessionCount: b.PackageKind === 'groom' ? SessionCount : null,
-      NotesAr: b.PackageKind === 'groom' ? (String(b.NotesAr ?? '').trim() || null) : null,
+      // NotesAr holds seed markers + optional [campaign:…] windows for regular promos too.
+      NotesAr: String(b.NotesAr ?? '').trim() || null,
       items: normalizeItems(b.items as PackageItemInput[] | undefined),
     },
   };
