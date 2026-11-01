@@ -68,7 +68,7 @@ export async function finalizeLateDeductionOnCheckIn(
     return { handled: false, reason: 'schema_unavailable' };
   }
 
-  const config = await getLateDeductionConfig();
+  const config = await getLateDeductionConfig(input.branchId);
   if (!isWorkDateEligibleForLateDeduction(input.workDate, config)) {
     return { handled: false, reason: 'feature_disabled_or_before_activation' };
   }

@@ -43,7 +43,7 @@ export async function recoverPendingLateDeductionFinalizations(params?: {
     return { ...empty, reason: 'schema_unavailable' };
   }
 
-  const config = await getLateDeductionConfig();
+  const config = await getLateDeductionConfig(params?.branchId ?? 0);
   if (!isWorkDateEligibleForLateDeduction(workDate, config)) {
     return { ...empty, reason: 'feature_disabled_or_before_activation' };
   }

@@ -14,7 +14,7 @@ export async function GET() {
   if (!isAuthResult(auth)) return auth;
 
   try {
-    const config = await getLateDeductionConfig();
+    const config = await getLateDeductionConfig(auth.activeBranchId);
     return NextResponse.json({ ok: true, config });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -31,15 +31,11 @@ export async function PUT(req: NextRequest) {
   try {
     const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
     const enabled = Boolean(body.enabled);
-    const activatedOn =
-      typeof body.activatedOn === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.activatedOn)
-        ? body.activatedOn
-        : null;
-
     const config = await setLateDeductionEnabled({
       enabled,
+      branchId: auth.activeBranchId,
+      tenantId: auth.tenantId,
       userId: auth.userId,
-      activatedOn,
     });
     return NextResponse.json({ ok: true, config });
   } catch (err) {

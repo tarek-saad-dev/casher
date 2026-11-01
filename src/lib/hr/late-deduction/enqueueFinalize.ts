@@ -31,7 +31,7 @@ export async function enqueueLateDeductionFinalize(
     return { enqueued: false, reason: 'schema_unavailable' };
   }
 
-  const config = await getLateDeductionConfig();
+  const config = await getLateDeductionConfig(input.branchId);
   if (!isWorkDateEligibleForLateDeduction(input.workDate, config)) {
     return { enqueued: false, reason: 'feature_disabled_or_before_activation' };
   }

@@ -111,7 +111,7 @@ export async function runLateDeductionAlertScan(params?: {
       } satisfies LateAlertScanResult;
     }
 
-    const config = await getLateDeductionConfig();
+    const config = await getLateDeductionConfig(params?.branchId ?? 0);
     const now = params?.now ?? new Date();
     const workDate = params?.businessDate ?? getCairoBusinessDate(now);
     if (!isWorkDateEligibleForLateDeduction(workDate, config)) {
