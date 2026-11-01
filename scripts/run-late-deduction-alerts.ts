@@ -11,7 +11,7 @@
  *
  * Env:
  *   NIGHTLY_CLOSE_BASE_URL  default http://127.0.0.1:3000
- *   CRON_SECRET             Bearer token (default "dev" if unset)
+ *   CRON_SECRET             Required bearer token — fail closed if unset
  */
 import path from 'path';
 import dotenv from 'dotenv';
@@ -23,7 +23,8 @@ const BASE_URL = (process.env.NIGHTLY_CLOSE_BASE_URL || 'http://127.0.0.1:3000')
   /\/$/,
   '',
 );
-const CRON_SECRET = process.env.CRON_SECRET || 'dev';
+const CRON_SECRET = process.env.CRON_SECRET;
+if (!CRON_SECRET) throw new Error('CRON_SECRET is required for late-deduction alerts');
 const ENDPOINT = '/api/admin/hr/late-deduction/alerts/run';
 const REQUEST_TIMEOUT_MS = 2 * 60 * 1000;
 const WATCH_INTERVAL_MS = 60_000;

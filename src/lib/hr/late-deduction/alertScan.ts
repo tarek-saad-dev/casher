@@ -14,6 +14,7 @@ import { buildLateAlertMessage } from './messages';
 import {
   findLateDeductionCase,
   markThresholdNotified,
+  releaseThresholdNotified,
   upsertLateDeductionCase,
 } from './repository';
 import {
@@ -258,7 +259,7 @@ export async function runLateDeductionAlertScan(params?: {
 
         candidates += 1;
         const exempt = Boolean(row.LateDeductionExempt);
-        const due = thresholdsDueForLateMinutes(lateMinutes);
+        const due = thresholdsDueForLateMinutes(lateMinutes).slice(-1);
         if (!due.length) continue;
 
         let caseRow = await findLateDeductionCase(db, empId, branchId, workDate);
@@ -334,6 +335,18 @@ export async function runLateDeductionAlertScan(params?: {
           });
 
           if (params?.sendInline) {
+            // Check again before send: a parallel attendance writer may have checked in.
+            const arrival = await db.request()
+              .input('empId', sql.Int, empId)
+              .input('branchId', sql.Int, branchId)
+              .input('workDate', sql.Date, workDate)
+              .query(`SELECT TOP 1 CheckInTime FROM dbo.TblEmpAttendance
+                WHERE EmpID = @empId AND BranchID = @branchId AND WorkDate = @workDate
+                AND CheckInTime IS NOT NULL ORDER BY ID DESC`);
+            if (arrival.recordset.length) {
+              await releaseThresholdNotified(db, caseRow.caseId, threshold);
+              continue;
+            }
             const sendResult = await sendLateDeductionWhatsApp({
               empId,
               branchId,
@@ -348,6 +361,7 @@ export async function runLateDeductionAlertScan(params?: {
               notified += 1;
             } else {
               errors += 1;
+              await releaseThresholdNotified(db, caseRow.caseId, threshold);
             }
           } else {
             scheduleLateDeductionWhatsApp({

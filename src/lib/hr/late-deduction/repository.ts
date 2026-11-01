@@ -217,6 +217,20 @@ export async function markThresholdNotified(
   return (result.rowsAffected[0] ?? 0) > 0;
 }
 
+/** Release a failed send so the minute worker can safely retry. */
+export async function releaseThresholdNotified(
+  db: DbLike,
+  caseId: number,
+  threshold: 1 | 61 | 121,
+): Promise<void> {
+  const col = threshold === 1 ? 'NotifiedAt1' : threshold === 61 ? 'NotifiedAt61' : 'NotifiedAt121';
+  await db.request().input('caseId', sql.Int, caseId).query(`
+    UPDATE dbo.TblEmpLateDeductionCase
+    SET ${col} = NULL, UpdatedAt = SYSUTCDATETIME()
+    WHERE CaseID = @caseId AND Status = N'alerting'
+  `);
+}
+
 export async function markFinalNotified(db: DbLike, caseId: number): Promise<void> {
   await db
     .request()
