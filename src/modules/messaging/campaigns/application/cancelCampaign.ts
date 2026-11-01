@@ -5,7 +5,7 @@ import {
   updateCampaignStatus,
 } from '../infra/campaignRepository';
 
-const CANCELLABLE = new Set(['draft', 'queued', 'running']);
+const CANCELLABLE = new Set(['draft', 'queued', 'running', 'paused']);
 
 export async function cancelCampaign(campaignId: number) {
   const campaign = await getCampaignById(campaignId);

@@ -22,6 +22,8 @@ export const ATTENDANCE_CHECK_OUT_TEMPLATE_KEY = 'attendance.check_out' as const
 export const EMPLOYEE_DAILY_REPORT_TEMPLATE_KEY = 'employee.daily_report' as const;
 export const OWNER_DAILY_REPORT_TEMPLATE_KEY = 'owner.daily_report' as const;
 export const EMPLOYEE_TIP_TEMPLATE_KEY = 'employee.tip' as const;
+/** Official marketing template key for WhatsApp campaigns (NOV-PRO600 and others). */
+export const WHATSAPP_CAMPAIGN_TEMPLATE_KEY = 'whatsapp.campaign' as const;
 
 /** Copied from whatsapp-bot DEFAULT_TEMPLATES.first_time — do not restyle. */
 export const CUSTOMER_FIRST_TIME_DEFAULT_TEMPLATE = `أهلاً وسهلاً {{customerName}}! 🎉
@@ -118,6 +120,19 @@ export const EMPLOYEE_TIP_DEFAULT_TEMPLATE = `مرحباً {{customerName}}
 رصيدك الحالي في الحساب: {{newBalance}} ج.م.
 طريقة الدفع: {{paymentMethod}}`;
 
+/** NOV-PRO600 marketing body — short hair only, assessment required. Meta-approved copy may replace this. */
+export const WHATSAPP_CAMPAIGN_DEFAULT_TEMPLATE = `أهلاً {{first_name}} 👋
+
+عرض نوفمبر في CUT Salon ({{branch_name}}):
+
+✨ باقة NOV-PRO600 بسعر 600 جنيه فقط
+قص شعر + بروتين شعر قصير + فوطة ساخنة/باردة + ماسك عناية
+
+مناسب للشعر القصير بعد تقييم المختص في الصالون.
+احجز موعدك خلال نوفمبر من التطبيق أو بالرسالة.
+
+فريق CUT Salon`;
+
 export const WHATSAPP_TEMPLATE_KEYS = [
   SALE_CUSTOMER_RECEIPT_TEMPLATE_KEY,
   CUSTOMER_FIRST_TIME_TEMPLATE_KEY,
@@ -131,6 +146,7 @@ export const WHATSAPP_TEMPLATE_KEYS = [
   EMPLOYEE_DAILY_REPORT_TEMPLATE_KEY,
   OWNER_DAILY_REPORT_TEMPLATE_KEY,
   EMPLOYEE_TIP_TEMPLATE_KEY,
+  WHATSAPP_CAMPAIGN_TEMPLATE_KEY,
 ] as const;
 
 export type WhatsAppTemplateKey = (typeof WHATSAPP_TEMPLATE_KEYS)[number];
@@ -148,4 +164,5 @@ export const CODE_DEFAULT_TEMPLATES: Record<string, string> = {
   [EMPLOYEE_DAILY_REPORT_TEMPLATE_KEY]: EMPLOYEE_DAILY_REPORT_DEFAULT_TEMPLATE,
   [OWNER_DAILY_REPORT_TEMPLATE_KEY]: OWNER_DAILY_REPORT_DEFAULT_TEMPLATE,
   [EMPLOYEE_TIP_TEMPLATE_KEY]: EMPLOYEE_TIP_DEFAULT_TEMPLATE,
+  [WHATSAPP_CAMPAIGN_TEMPLATE_KEY]: WHATSAPP_CAMPAIGN_DEFAULT_TEMPLATE,
 };

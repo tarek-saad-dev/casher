@@ -5,9 +5,13 @@ export const CAMPAIGN_STATUSES = [
   'completed',
   'cancelled',
   'failed',
+  'paused',
 ] as const;
 
 export const CAMPAIGN_MESSAGE_MODES = ['template', 'custom'] as const;
+
+export const NOV_PRO600_SEGMENTS = ['VIP', 'HAIR_CARE', 'HAIRCUT_REGULAR'] as const;
+export type NovPro600Segment = (typeof NOV_PRO600_SEGMENTS)[number];
 
 export const CAMPAIGN_RECIPIENT_STATUSES = [
   'pending',
@@ -33,9 +37,13 @@ export type AudienceRule = {
 };
 
 export type AudienceCriteria = {
-  /** Port of bot offerAudienceBuilder + legacy segments */
-  mode: 'all' | 'rules' | 'segment';
+  /** Port of bot offerAudienceBuilder + legacy segments + NOV-PRO600 presets */
+  mode: 'all' | 'rules' | 'segment' | 'nov_pro600';
   segmentType?: 'today' | 'this_week' | 'two_weeks' | 'one_month';
+  /** NOV-PRO600 presets (VIP / HAIR_CARE / HAIRCUT_REGULAR). Empty = all three. */
+  novPro600Segments?: NovPro600Segment[];
+  /** Optional as-of date (YYYY-MM-DD). Defaults to campaign window start. */
+  asOfDate?: string;
   branchId?: number;
   minAge?: number;
   maxAge?: number;
@@ -49,7 +57,10 @@ export type CampaignErrorCode =
   | 'INVALID_STATUS'
   | 'EMPTY_AUDIENCE'
   | 'INVALID_MESSAGE'
-  | 'SERIALIZATION_FAILED';
+  | 'SERIALIZATION_FAILED'
+  | 'CONSENT_REQUIRED'
+  | 'APPROVAL_REQUIRED'
+  | 'TEST_PHONE_DENIED';
 
 export class CampaignError extends Error {
   readonly code: CampaignErrorCode;
@@ -104,9 +115,15 @@ export type AudienceMember = {
   clientId: number;
   phone: string;
   name: string;
+  firstName?: string;
+  branchName?: string | null;
   visitCount: number;
   totalSpend: number;
   lastVisitDate: string | null;
+  segment?: NovPro600Segment;
+  sendEligible?: boolean;
+  consentEvidence?: string | null;
+  exclusionReason?: string | null;
 };
 
 export type CreateCampaignInput = {
@@ -148,10 +165,22 @@ export function parseAudienceCriteria(json: string): AudienceCriteria {
     if (!parsed || typeof parsed !== 'object' || !parsed.mode) {
       throw new Error('invalid audience');
     }
+    if (!['all', 'rules', 'segment', 'nov_pro600'].includes(parsed.mode)) {
+      throw new Error('invalid audience mode');
+    }
+    if (parsed.mode === 'nov_pro600' && parsed.novPro600Segments) {
+      parsed.novPro600Segments = parsed.novPro600Segments.filter((s) =>
+        (NOV_PRO600_SEGMENTS as readonly string[]).includes(s),
+      ) as NovPro600Segment[];
+    }
     return parsed;
   } catch {
     throw new CampaignError('بيانات الجمهور غير صالحة', 'SERIALIZATION_FAILED');
   }
+}
+
+export function isNovPro600Segment(value: unknown): value is NovPro600Segment {
+  return typeof value === 'string' && (NOV_PRO600_SEGMENTS as readonly string[]).includes(value);
 }
 
 export function buildRecipientIdempotencyKey(

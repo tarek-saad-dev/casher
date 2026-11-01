@@ -73,8 +73,12 @@ export {
   previewCampaignMessage,
   startCampaign,
   cancelCampaign,
+  pauseCampaign,
+  testSendCampaignMessage,
   syncCampaignProgress,
   CampaignError,
+  NOV_PRO600_SEGMENTS,
+  WHATSAPP_CAMPAIGN_TEMPLATE_KEY,
 } from './campaigns';
 
 export type {
@@ -84,4 +88,5 @@ export type {
   CampaignDetail,
   CampaignStatus,
   CampaignMessageMode,
+  NovPro600Segment,
 } from './campaigns';

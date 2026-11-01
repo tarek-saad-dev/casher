@@ -26,6 +26,7 @@ export async function POST(req: NextRequest) {
         templateKey?: string | null;
         customMessage?: string | null;
         sampleName?: string;
+        sampleBranchName?: string | null;
       };
 
       const rendered = await previewCampaignMessage({
@@ -33,6 +34,7 @@ export async function POST(req: NextRequest) {
         templateKey: body.templateKey ?? null,
         customMessage: body.customMessage ?? null,
         sampleName: body.sampleName,
+        sampleBranchName: body.sampleBranchName,
         branchId: admin.branchId,
       });
 

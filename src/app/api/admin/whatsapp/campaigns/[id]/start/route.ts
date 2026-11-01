@@ -13,8 +13,9 @@ type RouteContext = { params: Promise<{ id: string }> };
 
 /**
  * POST /api/admin/whatsapp/campaigns/[id]/start
+ * Body: { explicitApproval?: boolean } — required true for NOV-PRO600
  */
-export async function POST(_req: NextRequest, context: RouteContext) {
+export async function POST(req: NextRequest, context: RouteContext) {
   const admin = await requireWhatsAppTemplateAdmin();
   if (!isWhatsAppTemplateAdmin(admin)) return admin;
   return runWithStaffMessagingTenant(admin, 'admin/whatsapp/campaigns/[id]/start:POST', async () => {
@@ -25,7 +26,19 @@ export async function POST(_req: NextRequest, context: RouteContext) {
         return NextResponse.json({ error: 'معرّف الحملة غير صالح' }, { status: 400 });
       }
 
-      const result = await startCampaign({ campaignId, userId: admin.userId });
+      let explicitApproval = false;
+      try {
+        const body = (await req.json()) as { explicitApproval?: boolean };
+        explicitApproval = body?.explicitApproval === true;
+      } catch {
+        explicitApproval = false;
+      }
+
+      const result = await startCampaign({
+        campaignId,
+        userId: admin.userId,
+        explicitApproval,
+      });
       return NextResponse.json({ ok: true, ...result });
     } catch (err) {
       if (err instanceof CampaignError) {

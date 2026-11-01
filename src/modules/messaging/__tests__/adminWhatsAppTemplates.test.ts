@@ -300,7 +300,7 @@ describe('Admin WhatsApp template APIs', () => {
     const listed = await GET_LIST();
     const listedBody = await listed.json();
     expect(listed.status).toBe(200);
-    expect(listedBody.templates).toHaveLength(12);
+    expect(listedBody.templates).toHaveLength(13);
     expect(listedBody.templates.map((t: { templateKey: string }) => t.templateKey)).toEqual(
       expect.arrayContaining([
         'sale.customer_receipt',
@@ -315,6 +315,7 @@ describe('Admin WhatsApp template APIs', () => {
         'employee.daily_report',
         'owner.daily_report',
         'employee.tip',
+        'whatsapp.campaign',
       ]),
     );
     const sale = listedBody.templates.find(

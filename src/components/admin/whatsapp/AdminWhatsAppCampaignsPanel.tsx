@@ -28,7 +28,10 @@ type CampaignStatus =
   | 'running'
   | 'completed'
   | 'cancelled'
-  | 'failed';
+  | 'failed'
+  | 'paused';
+
+type NovSegment = 'VIP' | 'HAIR_CARE' | 'HAIRCUT_REGULAR';
 
 type CampaignRow = {
   id: number;
@@ -60,20 +63,31 @@ type CampaignDetail = CampaignRow & {
 };
 
 type AudienceCriteria = {
-  mode: 'all' | 'rules' | 'segment';
+  mode: 'all' | 'rules' | 'segment' | 'nov_pro600';
   segmentType?: 'today' | 'this_week' | 'two_weeks' | 'one_month';
+  novPro600Segments?: NovSegment[];
+  asOfDate?: string;
   branchId?: number;
-  minAge?: number;
-  maxAge?: number;
-  notVisitedSinceDays?: number;
-  rules?: Array<{
-    city?: string;
-    cameFrom?: string;
-    maritalStatus?: string;
-    minVisits?: number;
-    minSpend?: number;
-    lastVisitFrom?: string;
-    lastVisitTo?: string;
+};
+
+type NovPreview = {
+  matchingCount: number;
+  sendEligibleCount: number;
+  optedOutCount: number;
+  suppressedCount: number;
+  consentBlocker: string | null;
+  bySegment: Record<
+    NovSegment,
+    { matching: number; sendEligible: number; optedOut: number; suppressed: number }
+  >;
+  sample: Array<{
+    clientId: number;
+    name: string;
+    phoneMasked: string;
+    segment: NovSegment;
+    branchName: string | null;
+    sendEligible: boolean;
+    exclusionReason: string | null;
   }>;
 };
 
@@ -84,6 +98,7 @@ const STATUS_LABELS: Record<CampaignStatus, string> = {
   completed: 'مكتملة',
   cancelled: 'ملغاة',
   failed: 'فشلت',
+  paused: 'متوقفة',
 };
 
 const STATUS_VARIANT: Record<CampaignStatus, 'default' | 'secondary' | 'outline' | 'destructive'> = {
@@ -93,7 +108,26 @@ const STATUS_VARIANT: Record<CampaignStatus, 'default' | 'secondary' | 'outline'
   completed: 'default',
   cancelled: 'destructive',
   failed: 'destructive',
+  paused: 'outline',
 };
+
+const SEGMENT_LABELS: Record<NovSegment, string> = {
+  VIP: 'VIP',
+  HAIR_CARE: 'عناية الشعر',
+  HAIRCUT_REGULAR: 'حلاقة منتظمة',
+};
+
+const DEFAULT_NOV_MESSAGE = `أهلاً {{first_name}} 👋
+
+عرض نوفمبر في CUT Salon ({{branch_name}}):
+
+✨ باقة NOV-PRO600 بسعر 600 جنيه فقط
+قص شعر + بروتين شعر قصير + فوطة ساخنة/باردة + ماسك عناية
+
+مناسب للشعر القصير بعد تقييم المختص في الصالون.
+احجز موعدك خلال نوفمبر.
+
+فريق CUT Salon`;
 
 type Props = {
   branchId: number | null;
@@ -112,66 +146,36 @@ export default function AdminWhatsAppCampaignsPanel({ branchId, onToast }: Props
   const [detailLoading, setDetailLoading] = useState(false);
   const [templates, setTemplates] = useState<AdminWhatsAppTemplateView[]>([]);
 
-  const [name, setName] = useState('');
-  const [audienceMode, setAudienceMode] = useState<AudienceCriteria['mode']>('all');
-  const [segmentType, setSegmentType] = useState<AudienceCriteria['segmentType']>('today');
-  const [ruleCity, setRuleCity] = useState('');
-  const [ruleMinVisits, setRuleMinVisits] = useState('');
-  const [ruleMinSpend, setRuleMinSpend] = useState('');
-  const [ruleLastFrom, setRuleLastFrom] = useState('');
-  const [ruleLastTo, setRuleLastTo] = useState('');
-  const [notVisitedSinceDays, setNotVisitedSinceDays] = useState('');
-  const [minAge, setMinAge] = useState('');
-  const [maxAge, setMaxAge] = useState('');
-  const [messageMode, setMessageMode] = useState<'template' | 'custom'>('template');
-  const [templateKey, setTemplateKey] = useState('');
-  const [customMessage, setCustomMessage] = useState('مرحباً {{customerName}}\n\n');
-  const [audienceCount, setAudienceCount] = useState<number | null>(null);
+  const [name, setName] = useState('NOV-PRO600 — عرض بروتين نوفمبر');
+  const [selectedSegments, setSelectedSegments] = useState<NovSegment[]>([
+    'VIP',
+    'HAIR_CARE',
+    'HAIRCUT_REGULAR',
+  ]);
+  const [templateKey, setTemplateKey] = useState('whatsapp.campaign');
+  const [customMessage, setCustomMessage] = useState(DEFAULT_NOV_MESSAGE);
+  const [novPreview, setNovPreview] = useState<NovPreview | null>(null);
   const [audiencePreviewLoading, setAudiencePreviewLoading] = useState(false);
   const [messagePreview, setMessagePreview] = useState<string | null>(null);
   const [messagePreviewLoading, setMessagePreviewLoading] = useState(false);
   const [saveLoading, setSaveLoading] = useState(false);
   const [startLoading, setStartLoading] = useState(false);
   const [cancelLoading, setCancelLoading] = useState(false);
+  const [pauseLoading, setPauseLoading] = useState(false);
   const [confirmStartOpen, setConfirmStartOpen] = useState(false);
+  const [approvalChecked, setApprovalChecked] = useState(false);
   const [draftCampaignId, setDraftCampaignId] = useState<number | null>(null);
+  const [testPhone, setTestPhone] = useState('');
+  const [testSendLoading, setTestSendLoading] = useState(false);
 
   const audienceCriteria = useMemo((): AudienceCriteria => {
-    const criteria: AudienceCriteria = {
-      mode: audienceMode,
+    return {
+      mode: 'nov_pro600',
+      novPro600Segments: selectedSegments,
+      asOfDate: '2026-11-01',
       branchId: branchId ?? undefined,
     };
-    if (audienceMode === 'segment') {
-      criteria.segmentType = segmentType;
-    }
-    if (audienceMode === 'rules') {
-      criteria.rules = [
-        {
-          city: ruleCity || undefined,
-          minVisits: ruleMinVisits ? Number(ruleMinVisits) : undefined,
-          minSpend: ruleMinSpend ? Number(ruleMinSpend) : undefined,
-          lastVisitFrom: ruleLastFrom || undefined,
-          lastVisitTo: ruleLastTo || undefined,
-        },
-      ];
-    }
-    if (notVisitedSinceDays) criteria.notVisitedSinceDays = Number(notVisitedSinceDays);
-    if (minAge) criteria.minAge = Number(minAge);
-    if (maxAge) criteria.maxAge = Number(maxAge);
-    return criteria;
-  }, [
-    audienceMode,
-    branchId,
-    segmentType,
-    ruleCity,
-    ruleMinVisits,
-    ruleMinSpend,
-    ruleLastFrom,
-    ruleLastTo,
-    notVisitedSinceDays,
-    minAge,
-    maxAge,
-  ]);
+  }, [selectedSegments, branchId]);
 
   const loadCampaigns = useCallback(async () => {
     setLoading(true);
@@ -197,9 +201,11 @@ export default function AdminWhatsAppCampaignsPanel({ branchId, onToast }: Props
       const data = (await res.json()) as { templates?: AdminWhatsAppTemplateView[] };
       const list = Array.isArray(data.templates) ? data.templates : [];
       setTemplates(list);
-      if (!templateKey && list[0]) setTemplateKey(list[0].templateKey);
+      const campaignTpl = list.find((t) => t.templateKey === 'whatsapp.campaign');
+      if (campaignTpl) setTemplateKey(campaignTpl.templateKey);
+      else if (list[0] && !templateKey) setTemplateKey(list[0].templateKey);
     } catch {
-      /* optional for create form */
+      /* optional */
     }
   }, [templateKey]);
 
@@ -231,9 +237,20 @@ export default function AdminWhatsAppCampaignsPanel({ branchId, onToast }: Props
     if (view === 'detail' && selectedId != null) void loadDetail(selectedId);
   }, [view, selectedId, loadDetail]);
 
+  const toggleSegment = (seg: NovSegment) => {
+    setSelectedSegments((prev) => {
+      if (prev.includes(seg)) {
+        if (prev.length === 1) return prev;
+        return prev.filter((s) => s !== seg);
+      }
+      return [...prev, seg];
+    });
+    setNovPreview(null);
+  };
+
   const previewAudienceCount = async () => {
     setAudiencePreviewLoading(true);
-    setAudienceCount(null);
+    setNovPreview(null);
     try {
       const res = await fetch('/api/admin/whatsapp/campaigns/audience/preview', {
         method: 'POST',
@@ -243,8 +260,24 @@ export default function AdminWhatsAppCampaignsPanel({ branchId, onToast }: Props
       if (!res.ok) {
         throw new Error(await readFetchErrorMessage(res, 'تعذر معاينة الجمهور'));
       }
-      const data = (await res.json()) as { preview?: { count?: number } };
-      setAudienceCount(data.preview?.count ?? 0);
+      const data = (await res.json()) as { preview?: { novPro600?: NovPreview; count?: number } };
+      if (data.preview?.novPro600) {
+        setNovPreview(data.preview.novPro600);
+      } else {
+        setNovPreview({
+          matchingCount: data.preview?.count ?? 0,
+          sendEligibleCount: data.preview?.count ?? 0,
+          optedOutCount: 0,
+          suppressedCount: 0,
+          consentBlocker: null,
+          bySegment: {
+            VIP: { matching: 0, sendEligible: 0, optedOut: 0, suppressed: 0 },
+            HAIR_CARE: { matching: 0, sendEligible: 0, optedOut: 0, suppressed: 0 },
+            HAIRCUT_REGULAR: { matching: 0, sendEligible: 0, optedOut: 0, suppressed: 0 },
+          },
+          sample: [],
+        });
+      }
     } catch (err) {
       onToast('error', err instanceof Error ? err.message : 'تعذر معاينة الجمهور');
     } finally {
@@ -260,10 +293,12 @@ export default function AdminWhatsAppCampaignsPanel({ branchId, onToast }: Props
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          messageMode,
-          templateKey: messageMode === 'template' ? templateKey : null,
-          customMessage: messageMode === 'custom' ? customMessage : null,
-          sampleName: 'عميل تجريبي',
+          // Preview the editable draft body with personalization vars
+          messageMode: 'custom',
+          templateKey: null,
+          customMessage,
+          sampleName: 'أحمد محمد',
+          sampleBranchName: 'جليم – سابا باشا',
         }),
       });
       if (!res.ok) {
@@ -283,6 +318,10 @@ export default function AdminWhatsAppCampaignsPanel({ branchId, onToast }: Props
       onToast('error', 'اسم الحملة مطلوب');
       return null;
     }
+    if (selectedSegments.length === 0) {
+      onToast('error', 'اختر شريحة واحدة على الأقل');
+      return null;
+    }
     setSaveLoading(true);
     try {
       const res = await fetch('/api/admin/whatsapp/campaigns', {
@@ -290,9 +329,9 @@ export default function AdminWhatsAppCampaignsPanel({ branchId, onToast }: Props
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: name.trim(),
-          messageMode,
-          templateKey: messageMode === 'template' ? templateKey : null,
-          customMessage: messageMode === 'custom' ? customMessage : null,
+          messageMode: 'template',
+          templateKey,
+          customMessage: null,
           audience: audienceCriteria,
           branchId,
         }),
@@ -314,17 +353,22 @@ export default function AdminWhatsAppCampaignsPanel({ branchId, onToast }: Props
   };
 
   const startCampaign = async (campaignId: number) => {
+    if (!approvalChecked) {
+      onToast('error', 'يجب تأكيد الموافقة الصريحة قبل البدء');
+      return;
+    }
     setStartLoading(true);
     try {
       const res = await fetch(`/api/admin/whatsapp/campaigns/${campaignId}/start`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ explicitApproval: true }),
       });
       if (!res.ok) {
         throw new Error(await readFetchErrorMessage(res, 'تعذر بدء الحملة'));
       }
       onToast('success', 'تم بدء الحملة وإضافة الرسائل إلى قائمة الإرسال');
       setConfirmStartOpen(false);
-      setView('list');
       setSelectedId(campaignId);
       setView('detail');
     } catch (err) {
@@ -336,9 +380,7 @@ export default function AdminWhatsAppCampaignsPanel({ branchId, onToast }: Props
 
   const handleConfirmStart = async () => {
     let id = draftCampaignId;
-    if (!id) {
-      id = await saveDraft();
-    }
+    if (!id) id = await saveDraft();
     if (id) await startCampaign(id);
   };
 
@@ -361,127 +403,165 @@ export default function AdminWhatsAppCampaignsPanel({ branchId, onToast }: Props
     }
   };
 
+  const pauseCampaign = async (campaignId: number) => {
+    setPauseLoading(true);
+    try {
+      const res = await fetch(`/api/admin/whatsapp/campaigns/${campaignId}/pause`, {
+        method: 'POST',
+      });
+      if (!res.ok) {
+        throw new Error(await readFetchErrorMessage(res, 'تعذر إيقاف الحملة'));
+      }
+      onToast('success', 'تم إيقاف الحملة مؤقتًا');
+      await loadDetail(campaignId);
+      await loadCampaigns();
+    } catch (err) {
+      onToast('error', err instanceof Error ? err.message : 'تعذر إيقاف الحملة');
+    } finally {
+      setPauseLoading(false);
+    }
+  };
+
+  const sendTest = async () => {
+    setTestSendLoading(true);
+    try {
+      const res = await fetch('/api/admin/whatsapp/campaigns/test-send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phone: testPhone,
+          messageMode: 'template',
+          templateKey,
+          sampleName: 'مشرف الاختبار',
+          sampleBranchName: 'جليم – سابا باشا',
+        }),
+      });
+      if (!res.ok) {
+        throw new Error(await readFetchErrorMessage(res, 'تعذر إرسال رسالة الاختبار'));
+      }
+      onToast('success', 'تم وضع رسالة الاختبار في قائمة الإرسال');
+    } catch (err) {
+      onToast('error', err instanceof Error ? err.message : 'تعذر إرسال رسالة الاختبار');
+    } finally {
+      setTestSendLoading(false);
+    }
+  };
+
   const resetCreateForm = () => {
-    setName('');
-    setAudienceMode('all');
-    setSegmentType('today');
-    setRuleCity('');
-    setRuleMinVisits('');
-    setRuleMinSpend('');
-    setRuleLastFrom('');
-    setRuleLastTo('');
-    setNotVisitedSinceDays('');
-    setMinAge('');
-    setMaxAge('');
-    setMessageMode('template');
-    setCustomMessage('مرحباً {{customerName}}\n\n');
-    setAudienceCount(null);
+    setName('NOV-PRO600 — عرض بروتين نوفمبر');
+    setSelectedSegments(['VIP', 'HAIR_CARE', 'HAIRCUT_REGULAR']);
+    setTemplateKey('whatsapp.campaign');
+    setCustomMessage(DEFAULT_NOV_MESSAGE);
+    setNovPreview(null);
     setMessagePreview(null);
     setDraftCampaignId(null);
+    setApprovalChecked(false);
+    setTestPhone('');
   };
 
   if (view === 'create') {
     return (
-      <section className="rounded-2xl border border-border bg-surface p-5 space-y-6">
+      <section className="rounded-2xl border border-border bg-surface p-5 space-y-6" dir="rtl">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <Button type="button" variant="ghost" size="sm" onClick={() => { setView('list'); resetCreateForm(); }}>
               <ArrowRight className="h-4 w-4" />
               رجوع
             </Button>
-            <h2 className="text-base font-semibold">إنشاء حملة</h2>
+            <h2 className="text-base font-semibold">حملة NOV-PRO600</h2>
           </div>
+          <Badge variant="outline">600 ج.م · نوفمبر 2026</Badge>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2">
-          <div>
-            <label className="mb-1 block text-sm font-medium">اسم الحملة</label>
-            <input
-              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="مثال: عرض نهاية الأسبوع"
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium">الفرع</label>
-            <input
-              className="w-full rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm"
-              value={branchId != null ? `فرع #${branchId}` : '—'}
-              readOnly
-            />
-          </div>
+        <p className="text-sm text-zinc-400">
+          قص شعر + بروتين شعر قصير + فوطة ساخنة/باردة + ماسك عناية — للشعر القصير بعد تقييم المختص.
+        </p>
+
+        <div>
+          <label className="mb-1 block text-sm font-medium">اسم الحملة</label>
+          <input
+            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
         </div>
 
         <div>
-          <p className="mb-2 text-sm font-medium">الجمهور</p>
-          <div className="flex flex-wrap gap-2 mb-4">
-            {(['all', 'rules', 'segment'] as const).map((mode) => (
+          <p className="mb-2 text-sm font-medium">شرائح الجمهور (حصرية)</p>
+          <div className="flex flex-wrap gap-2 mb-3">
+            {(Object.keys(SEGMENT_LABELS) as NovSegment[]).map((seg) => (
               <Button
-                key={mode}
+                key={seg}
                 type="button"
                 size="sm"
-                variant={audienceMode === mode ? 'default' : 'outline'}
-                onClick={() => setAudienceMode(mode)}
+                variant={selectedSegments.includes(seg) ? 'default' : 'outline'}
+                onClick={() => toggleSegment(seg)}
               >
-                {mode === 'all' ? 'الكل' : mode === 'rules' ? 'قواعد' : 'شريحة'}
+                {SEGMENT_LABELS[seg]}
+                {novPreview ? ` · ${novPreview.bySegment[seg]?.matching ?? 0}` : ''}
               </Button>
             ))}
           </div>
-
-          {audienceMode === 'segment' && (
-            <select
-              className="mb-4 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
-              value={segmentType}
-              onChange={(e) => setSegmentType(e.target.value as AudienceCriteria['segmentType'])}
-            >
-              <option value="today">زيارة اليوم</option>
-              <option value="this_week">هذا الأسبوع</option>
-              <option value="two_weeks">آخر أسبوعين</option>
-              <option value="one_month">آخر شهر</option>
-            </select>
-          )}
-
-          {audienceMode === 'rules' && (
-            <div className="grid gap-3 md:grid-cols-2 mb-4">
-              <input className="rounded-lg border border-border bg-background px-3 py-2 text-sm" placeholder="المدينة" value={ruleCity} onChange={(e) => setRuleCity(e.target.value)} />
-              <input className="rounded-lg border border-border bg-background px-3 py-2 text-sm" placeholder="الحد الأدنى للزيارات" value={ruleMinVisits} onChange={(e) => setRuleMinVisits(e.target.value)} />
-              <input className="rounded-lg border border-border bg-background px-3 py-2 text-sm" placeholder="الحد الأدنى للإنفاق" value={ruleMinSpend} onChange={(e) => setRuleMinSpend(e.target.value)} />
-              <input type="date" className="rounded-lg border border-border bg-background px-3 py-2 text-sm" value={ruleLastFrom} onChange={(e) => setRuleLastFrom(e.target.value)} />
-              <input type="date" className="rounded-lg border border-border bg-background px-3 py-2 text-sm" value={ruleLastTo} onChange={(e) => setRuleLastTo(e.target.value)} />
-            </div>
-          )}
-
-          <div className="grid gap-3 md:grid-cols-3 mb-4">
-            <input className="rounded-lg border border-border bg-background px-3 py-2 text-sm" placeholder="لم يزر منذ (أيام)" value={notVisitedSinceDays} onChange={(e) => setNotVisitedSinceDays(e.target.value)} />
-            <input className="rounded-lg border border-border bg-background px-3 py-2 text-sm" placeholder="العمر من" value={minAge} onChange={(e) => setMinAge(e.target.value)} />
-            <input className="rounded-lg border border-border bg-background px-3 py-2 text-sm" placeholder="العمر إلى" value={maxAge} onChange={(e) => setMaxAge(e.target.value)} />
-          </div>
-
           <Button type="button" variant="outline" size="sm" onClick={() => void previewAudienceCount()} disabled={audiencePreviewLoading}>
-            {audiencePreviewLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'معاينة عدد المستلمين'}
+            {audiencePreviewLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'حساب الجمهور من البيانات الحية'}
           </Button>
-          {audienceCount != null && (
-            <p className="mt-2 text-sm text-emerald-300">عدد المستلمين المتوقع: {audienceCount}</p>
+
+          {novPreview && (
+            <div className="mt-3 space-y-2 rounded-xl border border-border bg-background/40 p-3 text-sm">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <Stat label="مطابق سلوكيًا" value={novPreview.matchingCount} />
+                <Stat label="مؤهل للإرسال" value={novPreview.sendEligibleCount} />
+                <Stat label="مستبعد" value={novPreview.suppressedCount} />
+                <Stat label="إلغاء اشتراك" value={novPreview.optedOutCount} />
+              </div>
+              {novPreview.consentBlocker && (
+                <p className="text-amber-300 flex items-start gap-2">
+                  <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                  <span>{novPreview.consentBlocker}</span>
+                </p>
+              )}
+              {novPreview.sample.length > 0 && (
+                <div className="max-h-40 overflow-auto text-xs text-zinc-400 space-y-1">
+                  {novPreview.sample.slice(0, 10).map((r) => (
+                    <div key={r.clientId} className="flex justify-between gap-2">
+                      <span>{r.name} · {r.phoneMasked}</span>
+                      <span>{SEGMENT_LABELS[r.segment]}{r.sendEligible ? '' : ' · غير مؤهل'}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
         </div>
 
         <div>
-          <p className="mb-2 text-sm font-medium">الرسالة</p>
-          <div className="flex flex-wrap gap-2 mb-3">
-            <Button type="button" size="sm" variant={messageMode === 'template' ? 'default' : 'outline'} onClick={() => setMessageMode('template')}>قالب</Button>
-            <Button type="button" size="sm" variant={messageMode === 'custom' ? 'default' : 'outline'} onClick={() => setMessageMode('custom')}>مخصص</Button>
-          </div>
-          {messageMode === 'template' ? (
-            <select className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" value={templateKey} onChange={(e) => setTemplateKey(e.target.value)}>
-              {templates.map((t) => (
+          <p className="mb-2 text-sm font-medium">الرسالة (قابلة للتعديل للمعاينة/المسودة)</p>
+          <select
+            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm mb-2"
+            value={templateKey}
+            onChange={(e) => setTemplateKey(e.target.value)}
+          >
+            {templates.length === 0 ? (
+              <option value="whatsapp.campaign">whatsapp.campaign</option>
+            ) : (
+              templates.map((t) => (
                 <option key={t.templateKey} value={t.templateKey}>{t.label}</option>
-              ))}
-            </select>
-          ) : (
-            <Textarea dir="rtl" className="min-h-[140px]" value={customMessage} onChange={(e) => setCustomMessage(e.target.value)} placeholder="استخدم {{customerName}} أو {{name}}" />
-          )}
-          <div className="mt-3 flex gap-2">
+              ))
+            )}
+          </select>
+          <p className="text-xs text-zinc-500 mb-2">
+            المتغيرات: {'{{first_name}}'} · {'{{branch_name}}'} · القالب المعتمد للإرسال: {templateKey}
+          </p>
+          <Textarea
+            dir="rtl"
+            className="min-h-[160px] mb-2"
+            value={customMessage}
+            onChange={(e) => setCustomMessage(e.target.value)}
+          />
+          <p className="text-xs text-amber-300/80 mb-2">
+            المعاينة تستخدم النص أعلاه. بدء الحملة لـ NOV-PRO600 يمر عبر مفتاح القالب المعتمد فقط بعد موافقة القناة الرسمية — لا إرسال جماعي عبر واتساب ويب غير مصرح.
+          </p>
+          <div className="flex flex-wrap gap-2">
             <Button type="button" variant="outline" size="sm" onClick={() => void previewMessage()} disabled={messagePreviewLoading}>
               {messagePreviewLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'معاينة الرسالة'}
             </Button>
@@ -489,6 +569,20 @@ export default function AdminWhatsAppCampaignsPanel({ branchId, onToast }: Props
           {messagePreview && (
             <div className="mt-3 rounded-xl border border-border bg-[#0b141a] p-3 text-sm whitespace-pre-wrap text-[#d9fdd3]">{messagePreview}</div>
           )}
+        </div>
+
+        <div className="rounded-xl border border-dashed border-border p-3 space-y-2">
+          <p className="text-sm font-medium">إرسال اختبار لمشرف مصرح</p>
+          <input
+            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+            dir="ltr"
+            placeholder="رقم في WHATSAPP_CAMPAIGN_TEST_PHONES"
+            value={testPhone}
+            onChange={(e) => setTestPhone(e.target.value)}
+          />
+          <Button type="button" variant="outline" size="sm" onClick={() => void sendTest()} disabled={testSendLoading || !testPhone.trim()}>
+            {testSendLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'إرسال اختبار'}
+          </Button>
         </div>
 
         <div className="flex flex-wrap gap-2 pt-2">
@@ -499,31 +593,41 @@ export default function AdminWhatsAppCampaignsPanel({ branchId, onToast }: Props
             type="button"
             onClick={() => {
               void (async () => {
-                if (audienceCount == null) await previewAudience();
+                if (!novPreview) await previewAudienceCount();
                 if (!messagePreview) await previewMessage();
+                setApprovalChecked(false);
                 setConfirmStartOpen(true);
               })();
             }}
-            disabled={saveLoading || startLoading || audiencePreviewLoading || messagePreviewLoading}
+            disabled={saveLoading || startLoading || audiencePreviewLoading}
           >
-            بدء الحملة
+            مراجعة وبدء الحملة
           </Button>
         </div>
 
         <Dialog open={confirmStartOpen} onOpenChange={setConfirmStartOpen}>
-          <DialogContent className="bg-zinc-900 border-zinc-700 text-white max-w-md">
+          <DialogContent className="bg-zinc-900 border-zinc-700 text-white max-w-md" dir="rtl">
             <DialogHeader>
-              <DialogTitle>تأكيد بدء الحملة</DialogTitle>
+              <DialogTitle>موافقة صريحة لبدء NOV-PRO600</DialogTitle>
               <DialogDescription className="text-zinc-400">
-                سيتم إنشاء لقطة للمستلمين وإضافة {audienceCount ?? 0} رسالة إلى قائمة الإرسال (Outbox).
-                لن يبدأ الإرسال تلقائيًا من هذه الشاشة — يعتمد على عامل الرسائل.
+                سيتم إضافة المستلمين المؤهلين فقط (بموافقة تسويقية موثقة) إلى Outbox عبر القناة الرسمية.
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-2 text-sm text-zinc-300">
-              <p>عدد المستلمين: <strong className="text-white">{audienceCount ?? '—'}</strong></p>
-              {!messagePreview && (
-                <p className="text-amber-300">لم تتم معاينة الرسالة بعد — يُفضّل المعاينة قبل التأكيد.</p>
+              <p>مطابق سلوكيًا: <strong className="text-white">{novPreview?.matchingCount ?? '—'}</strong></p>
+              <p>مؤهل للإرسال: <strong className="text-white">{novPreview?.sendEligibleCount ?? '—'}</strong></p>
+              {novPreview?.consentBlocker && (
+                <p className="text-amber-300">{novPreview.consentBlocker}</p>
               )}
+              <label className="flex items-start gap-2 pt-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={approvalChecked}
+                  onChange={(e) => setApprovalChecked(e.target.checked)}
+                />
+                <span>أؤكد الموافقة الصريحة على بدء هذه الحملة للعملاء المؤهلين فقط.</span>
+              </label>
             </div>
             {messagePreview && (
               <div className="rounded-xl border border-border bg-[#0b141a] p-3 text-sm whitespace-pre-wrap text-[#d9fdd3]">{messagePreview}</div>
@@ -532,7 +636,12 @@ export default function AdminWhatsAppCampaignsPanel({ branchId, onToast }: Props
               <Button variant="outline" onClick={() => setConfirmStartOpen(false)} disabled={startLoading}>إلغاء</Button>
               <Button
                 onClick={() => void handleConfirmStart()}
-                disabled={startLoading || !audienceCount || audienceCount <= 0}
+                disabled={
+                  startLoading
+                  || !approvalChecked
+                  || !novPreview
+                  || novPreview.sendEligibleCount <= 0
+                }
               >
                 {startLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'تأكيد البدء'}
               </Button>
@@ -545,13 +654,15 @@ export default function AdminWhatsAppCampaignsPanel({ branchId, onToast }: Props
 
   if (view === 'detail' && selectedId != null) {
     const c = detail;
-    const canCancel = c && ['draft', 'queued', 'running'].includes(c.status);
+    const canCancel = c && ['draft', 'queued', 'running', 'paused'].includes(c.status);
+    const canPause = c && ['queued', 'running'].includes(c.status);
+    const canResume = c && c.status === 'paused';
     const progressPct = c && c.progress.totalRecipients > 0
       ? Math.round(((c.progress.sentCount + c.progress.failedCount) / c.progress.totalRecipients) * 100)
       : 0;
 
     return (
-      <section className="rounded-2xl border border-border bg-surface p-5 space-y-5">
+      <section className="rounded-2xl border border-border bg-surface p-5 space-y-5" dir="rtl">
         <div className="flex items-center justify-between gap-3">
           <Button type="button" variant="ghost" size="sm" onClick={() => { setView('list'); setDetail(null); }}>
             <ArrowRight className="h-4 w-4" />
@@ -581,19 +692,43 @@ export default function AdminWhatsAppCampaignsPanel({ branchId, onToast }: Props
               <div className="h-2 rounded-full bg-muted overflow-hidden">
                 <div className="h-full bg-primary transition-all" style={{ width: `${progressPct}%` }} />
               </div>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-sm">
                 <Stat label="إجمالي" value={c.progress.totalRecipients} />
                 <Stat label="مُرسل" value={c.progress.sentCount} />
                 <Stat label="معلق" value={c.progress.pendingCount + c.progress.queuedCount} />
                 <Stat label="فشل" value={c.progress.failedCount} />
+                <Stat label="متوقف/ملغى" value={c.progress.cancelledCount} />
+                <Stat label="تخطّي" value={c.progress.skippedCount} />
               </div>
+              <p className="text-xs text-zinc-500">
+                حالات التسليم/الردود تعتمد على مزوّد واتساب الرسمي عند توفرها في الـinbox.
+              </p>
             </div>
 
-            {canCancel && (
-              <Button type="button" variant="destructive" onClick={() => void cancelCampaign(c.id)} disabled={cancelLoading}>
-                {cancelLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'إلغاء الحملة'}
-              </Button>
-            )}
+            <div className="flex flex-wrap gap-2">
+              {canPause && (
+                <Button type="button" variant="outline" onClick={() => void pauseCampaign(c.id)} disabled={pauseLoading}>
+                  {pauseLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'إيقاف مؤقت'}
+                </Button>
+              )}
+              {canResume && (
+                <Button
+                  type="button"
+                  onClick={() => {
+                    setApprovalChecked(true);
+                    void startCampaign(c.id);
+                  }}
+                  disabled={startLoading}
+                >
+                  {startLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'استئناف'}
+                </Button>
+              )}
+              {canCancel && (
+                <Button type="button" variant="destructive" onClick={() => void cancelCampaign(c.id)} disabled={cancelLoading}>
+                  {cancelLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'إلغاء الحملة'}
+                </Button>
+              )}
+            </div>
           </>
         ) : (
           <p className="text-sm text-zinc-400">تعذر تحميل تفاصيل الحملة.</p>
@@ -603,7 +738,7 @@ export default function AdminWhatsAppCampaignsPanel({ branchId, onToast }: Props
   }
 
   return (
-    <section className="rounded-2xl border border-border bg-surface p-5">
+    <section className="rounded-2xl border border-border bg-surface p-5" dir="rtl">
       <div className="mb-4 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <Megaphone className="h-5 w-5 text-primary" />
@@ -615,7 +750,7 @@ export default function AdminWhatsAppCampaignsPanel({ branchId, onToast }: Props
           </Button>
           <Button type="button" size="sm" onClick={() => { resetCreateForm(); setView('create'); }}>
             <Plus className="h-4 w-4" />
-            إنشاء حملة
+            حملة NOV-PRO600
           </Button>
         </div>
       </div>
@@ -632,7 +767,7 @@ export default function AdminWhatsAppCampaignsPanel({ branchId, onToast }: Props
           ))}
         </div>
       ) : campaigns.length === 0 ? (
-        <p className="text-sm text-zinc-400">لا توجد حملات بعد. أنشئ حملتك الأولى.</p>
+        <p className="text-sm text-zinc-400">لا توجد حملات بعد. أنشئ حملة NOV-PRO600.</p>
       ) : (
         <ul className="space-y-2">
           {campaigns.map((c) => (
