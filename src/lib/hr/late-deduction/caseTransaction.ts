@@ -1,12 +1,13 @@
 import 'server-only';
 
 import { getPool, sql } from '@/lib/db';
+import type { Request as SqlRequest } from 'mssql';
 
 /**
  * Serialize all mutations for a single employee/branch/work date. Keep the
  * ledger debit/void and case state in the SAME SQL transaction.
  */
-export type LateCaseDb = { request: () => sql.Request };
+export type LateCaseDb = { request: () => SqlRequest };
 
 export async function withLateDeductionCaseLock<T>(
   key: { empId: number; branchId: number; workDate: string },

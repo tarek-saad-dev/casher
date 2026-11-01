@@ -1,11 +1,12 @@
 import 'server-only';
 
 import { sql } from '@/lib/db';
+import type { Request as SqlRequest } from 'mssql';
 import { payrollMonthFromWorkDate } from '@/lib/services/employeeLedgerDualWrite';
 import { LATE_DEDUCTION_ENTRY_REASON, LATE_DEDUCTION_REF_TYPE } from './constants';
 import { buildLateDeductionLedgerNote } from './messages';
 
-type DbLike = { request: () => sql.Request };
+type DbLike = { request: () => SqlRequest };
 
 export { buildLateDeductionLedgerNote };
 

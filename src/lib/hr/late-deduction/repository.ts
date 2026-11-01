@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { sql } from '@/lib/db';
+import type { Request as SqlRequest } from 'mssql';
 import type { LateDeductionCaseStatus } from './constants';
 import type { LateDeductionKind } from './rules';
 
@@ -31,7 +32,7 @@ export interface LateDeductionCaseRow {
   doNotAutoRecreate: boolean;
 }
 
-type DbLike = { request: () => sql.Request };
+type DbLike = { request: () => SqlRequest };
 
 function mapCase(row: Record<string, unknown>): LateDeductionCaseRow {
   const toDate = (v: unknown) => {
