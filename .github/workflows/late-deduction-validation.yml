@@ -1,0 +1,39 @@
+name: Late Deduction — PR Validation
+
+on:
+  push:
+    branches:
+      - feat/automatic-employee-late-deductions
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/lib/hr/late-deduction/**'
+      - 'src/app/api/admin/hr/late-deduction/**'
+      - 'src/components/hr/LateDeductionPanel.tsx'
+      - 'scripts/run-late-deduction-alerts.ts'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  targeted-validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Late-deduction and attendance regression tests
+        run: >
+          npx vitest run
+          src/lib/hr/late-deduction/__tests__
+          src/modules/attendance/__tests__/AttendanceCommandService.test.ts
+          src/lib/__tests__/adminAttendancePut.characterization.test.ts
+          src/lib/__tests__/adminAttendanceBulk.characterization.test.ts
+          scripts/drvo/__tests__/drvo020LateDeductionMigration.test.ts
+      - name: TypeScript compile check
+        run: npx tsc --noEmit --pretty false
