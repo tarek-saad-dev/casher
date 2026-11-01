@@ -7,11 +7,17 @@ import {
 import { insertCampaign } from '../infra/campaignRepository';
 
 function validateAudience(audience: AudienceCriteria): void {
-  if (!audience || !['all', 'rules', 'segment'].includes(audience.mode)) {
+  if (!audience || !['all', 'rules', 'segment', 'nov_pro600'].includes(audience.mode)) {
     throw new CampaignError('وضع الجمهور غير صالح', 'INVALID_INPUT');
   }
   if (audience.mode === 'segment' && !audience.segmentType) {
     throw new CampaignError('يجب اختيار نوع الشريحة', 'INVALID_INPUT');
+  }
+  if (audience.mode === 'nov_pro600') {
+    const segs = audience.novPro600Segments;
+    if (segs && segs.length === 0) {
+      throw new CampaignError('يجب اختيار شريحة واحدة على الأقل من عرض نوفمبر', 'INVALID_INPUT');
+    }
   }
 }
 
@@ -34,6 +40,12 @@ export async function createCampaign(input: {
   }
   validateAudience(input.audience);
 
+  if (input.audience?.mode === 'nov_pro600' && input.messageMode !== 'template') {
+    throw new CampaignError(
+      'حملات NOV-PRO600 تتطلب قالب واتساب معتمد',
+      'INVALID_INPUT',
+    );
+  }
   if (input.messageMode === 'template' && !String(input.templateKey ?? '').trim()) {
     throw new CampaignError('يجب اختيار قالب الرسالة', 'INVALID_INPUT');
   }

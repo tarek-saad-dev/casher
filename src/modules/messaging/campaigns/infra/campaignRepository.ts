@@ -263,7 +263,9 @@ export async function cancelPendingRecipients(campaignId: number): Promise<numbe
     UPDATE dbo.TblWhatsAppCampaignRecipient
     SET Status = N'cancelled'
     OUTPUT INSERTED.ID
-    WHERE CampaignID = @campaignId AND TenantId = @tenantId AND Status = N'pending'
+    WHERE CampaignID = @campaignId
+      AND TenantId = @tenantId
+      AND Status IN (N'pending', N'queued')
   `);
   return result.recordset?.length ?? 0;
 }

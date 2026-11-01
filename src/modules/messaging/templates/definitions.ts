@@ -18,6 +18,7 @@ import {
   OWNER_DAILY_REPORT_TEMPLATE_KEY,
   SALE_CUSTOMER_RECEIPT_TEMPLATE_KEY,
   SALE_EMPLOYEE_NOTIFICATION_TEMPLATE_KEY,
+  WHATSAPP_CAMPAIGN_TEMPLATE_KEY,
 } from './catalog';
 
 export type MessageTemplateVariableDefinition = {
@@ -228,6 +229,20 @@ export const WHATSAPP_TEMPLATE_DEFINITIONS: readonly WhatsAppTemplateDefinition[
     label: 'إشعار تبس للموظف',
     description: 'تُرسل للموظف عند تسجيل تبس على الفاتورة',
     availableVariables: EMPLOYEE_TIP_VARIABLES,
+  },
+  {
+    templateKey: WHATSAPP_CAMPAIGN_TEMPLATE_KEY,
+    channel: 'whatsapp',
+    language: 'ar',
+    label: 'حملة تسويقية (NOV-PRO600)',
+    description: 'قالب تسويقي معتمد للحملات — استخدم متغيرات first_name و branch_name',
+    availableVariables: [
+      v('first_name', 'الاسم الأول', 'أحمد'),
+      v('firstName', 'الاسم الأول (بديل)', 'أحمد'),
+      v('customerName', 'الاسم الكامل', 'أحمد محمد'),
+      v('branch_name', 'اسم الفرع', 'جليم – سابا باشا'),
+      v('branchName', 'اسم الفرع (بديل)', 'جليم – سابا باشا'),
+    ],
   },
 ];
 

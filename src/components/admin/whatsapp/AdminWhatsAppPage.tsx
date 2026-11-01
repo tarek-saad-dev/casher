@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AlertTriangle,
@@ -40,9 +41,22 @@ function jsonHeaders(res: Response): boolean {
 
 export default function AdminWhatsAppPage() {
   const session = useSession();
+  const searchParams = useSearchParams();
   const branchId = session.viewBranch?.branchId ?? session.activeBranch?.branchId ?? null;
 
-  const [tab, setTab] = useState<Tab>('templates');
+  const initialTab = ((): Tab => {
+    const raw = searchParams.get('tab');
+    if (raw === 'campaigns' || raw === 'groups' || raw === 'templates') return raw;
+    return 'templates';
+  })();
+  const [tab, setTab] = useState<Tab>(initialTab);
+
+  useEffect(() => {
+    const raw = searchParams.get('tab');
+    if (raw === 'campaigns' || raw === 'groups' || raw === 'templates') {
+      setTab(raw);
+    }
+  }, [searchParams]);
   const [status, setStatus] = useState<StatusPayload | null>(null);
   const [statusUnavailable, setStatusUnavailable] = useState(false);
   const [statusLoading, setStatusLoading] = useState(true);

@@ -19,38 +19,83 @@ import { renderCampaignMessageForRecipient } from './renderCampaignMessage';
 export async function startCampaign(input: {
   campaignId: number;
   userId: number;
-}): Promise<{ campaignId: number; totalRecipients: number; enqueued: number }> {
+  /** Required for NOV-PRO600 and recommended for all campaigns */
+  explicitApproval?: boolean;
+}): Promise<{
+  campaignId: number;
+  totalRecipients: number;
+  enqueued: number;
+  skipped: number;
+}> {
   const campaign = await getCampaignById(input.campaignId);
   if (!campaign) {
     throw new CampaignError('الحملة غير موجودة', 'NOT_FOUND', 404);
   }
-  if (campaign.status !== 'draft') {
-    throw new CampaignError('يمكن بدء الحملات في وضع المسودة فقط', 'INVALID_STATUS', 409);
+  if (campaign.status !== 'draft' && campaign.status !== 'paused') {
+    throw new CampaignError('يمكن بدء الحملات في وضع المسودة أو المتوقفة فقط', 'INVALID_STATUS', 409);
   }
 
   const audience = parseAudienceCriteria(campaign.audienceJson);
+
+  if (audience.mode === 'nov_pro600') {
+    if (!input.explicitApproval) {
+      throw new CampaignError(
+        'مطلوب موافقة صريحة قبل بدء حملة NOV-PRO600',
+        'APPROVAL_REQUIRED',
+        403,
+      );
+    }
+    // Marketing traffic must use an approved template key when available.
+    if (campaign.messageMode !== 'template' || !String(campaign.templateKey ?? '').trim()) {
+      throw new CampaignError(
+        'حملات NOV-PRO600 تتطلب قالب واتساب معتمد (template) وليس رسالة حرة غير معتمدة',
+        'INVALID_MESSAGE',
+        422,
+      );
+    }
+  }
+
   const members = await buildCampaignAudience(audience);
   if (members.length === 0) {
+    if (audience.mode === 'nov_pro600') {
+      throw new CampaignError(
+        'لا يوجد مستلمون مؤهلون للإرسال (تحقق من أدلة الموافقة التسويقية والاستثناءات)',
+        'CONSENT_REQUIRED',
+        422,
+      );
+    }
     throw new CampaignError('لا يوجد مستلمون مطابقون للجمهور المحدد', 'EMPTY_AUDIENCE', 422);
   }
 
+  // Deduplicate by normalized phone within this campaign snapshot
+  const seenPhones = new Set<string>();
+  const uniqueMembers = members.filter((m) => {
+    const key = normalizePhoneDigits(m.phone);
+    if (!key || seenPhones.has(key)) return false;
+    seenPhones.add(key);
+    return true;
+  });
+
   await updateCampaignStatus(campaign.id, {
     status: 'queued',
-    totalRecipients: members.length,
-    pendingCount: members.length,
+    totalRecipients: uniqueMembers.length,
+    pendingCount: uniqueMembers.length,
     sentCount: 0,
     failedCount: 0,
     startedAt: new Date(),
+    cancelledAt: null,
+    lastError: null,
   });
 
   let enqueued = 0;
+  let skipped = 0;
 
-  for (let i = 0; i < members.length; i++) {
-    const member = members[i];
+  for (let i = 0; i < uniqueMembers.length; i++) {
+    const member = uniqueMembers[i];
     const current = await getCampaignById(campaign.id);
-    if (!current || current.status === 'cancelled') {
-      for (let j = i; j < members.length; j++) {
-        const pendingMember = members[j];
+    if (!current || current.status === 'cancelled' || current.status === 'paused') {
+      for (let j = i; j < uniqueMembers.length; j++) {
+        const pendingMember = uniqueMembers[j];
         const normalized = normalizePhoneDigits(pendingMember.phone);
         const key = buildRecipientIdempotencyKey(campaign.id, pendingMember.clientId, normalized);
         const existing = await getRecipientByIdempotencyKey(key);
@@ -61,11 +106,18 @@ export async function startCampaign(input: {
       break;
     }
 
+    if (audience.mode === 'nov_pro600' && member.sendEligible === false) {
+      skipped += 1;
+      continue;
+    }
+
     const messageContent = await renderCampaignMessageForRecipient({
       messageMode: campaign.messageMode,
       templateKey: campaign.templateKey,
       customMessage: campaign.customMessage,
       customerName: member.name,
+      firstName: member.firstName,
+      branchName: member.branchName,
       branchId: campaign.branchId,
     });
 
@@ -86,9 +138,13 @@ export async function startCampaign(input: {
         messageContent,
         idempotencyKey,
       });
+    } else if (recipient.status === 'sent' || recipient.status === 'cancelled') {
+      // Already finalized — skip without re-enqueue
+      continue;
     }
 
     try {
+      // Always call enqueue with the same idempotency key so retries are duplicate-safe.
       const result = await enqueueMessage({
         channel: 'whatsapp',
         recipient: { phone: member.phone },
@@ -98,8 +154,12 @@ export async function startCampaign(input: {
         metadata: {
           source: 'whatsapp.campaign',
           campaignId: campaign.id,
+          campaignCode: audience.mode === 'nov_pro600' ? 'NOV-PRO600' : undefined,
           customerId: member.clientId,
           branchId: campaign.branchId ?? undefined,
+          consentEvidence: member.consentEvidence ?? undefined,
+          segment: member.segment ?? undefined,
+          marketing: audience.mode === 'nov_pro600',
         },
         context: {
           branchId: campaign.branchId ?? undefined,
@@ -122,7 +182,7 @@ export async function startCampaign(input: {
   }
 
   const after = await getCampaignById(campaign.id);
-  if (after && after.status !== 'cancelled') {
+  if (after && after.status !== 'cancelled' && after.status !== 'paused') {
     const nextStatus =
       after.pendingCount === 0 && after.sentCount + after.failedCount >= after.totalRecipients
         ? 'completed'
@@ -136,7 +196,8 @@ export async function startCampaign(input: {
   const finalRow = await getCampaignById(campaign.id);
   return {
     campaignId: campaign.id,
-    totalRecipients: finalRow?.totalRecipients ?? members.length,
+    totalRecipients: finalRow?.totalRecipients ?? uniqueMembers.length,
     enqueued,
+    skipped,
   };
 }
