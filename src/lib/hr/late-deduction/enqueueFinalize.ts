@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { getPool } from '@/lib/db';
+import { withLateDeductionCaseLock } from './caseTransaction';
 import { calcLateMinutes } from '@/lib/timeUtils';
 import {
   getLateDeductionConfig,
@@ -39,6 +40,7 @@ export async function enqueueLateDeductionFinalize(
     return { enqueued: false, reason: 'missing_checkin_or_schedule' };
   }
 
+  return withLateDeductionCaseLock(input, async (db) => {
   const existing = await findLateDeductionCase(
     db,
     input.empId,
@@ -70,4 +72,5 @@ export async function enqueueLateDeductionFinalize(
   });
 
   return { enqueued: true, caseId: row.caseId };
+  });
 }

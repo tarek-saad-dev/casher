@@ -159,28 +159,30 @@ export async function upsertLateDeductionCase(
       MERGE dbo.TblEmpLateDeductionCase AS t
       USING (SELECT @empId AS EmpID, @branchId AS BranchID, @workDate AS WorkDate) AS s
       ON t.EmpID = s.EmpID AND t.BranchID = s.BranchID AND t.WorkDate = s.WorkDate
-      WHEN MATCHED AND t.Status IN (N'cancelled', N'manager_applied') THEN UPDATE SET
+      WHEN MATCHED AND (
+        t.Status IN (N'cancelled', N'manager_applied')
+        OR (@status = N'alerting' AND t.Status IN (
+          N'applied', N'pending_manager', N'exempt', N'skipped', N'finalize_pending'
+        ))
+      ) THEN UPDATE SET
         UpdatedAt = SYSUTCDATETIME()
       WHEN MATCHED THEN UPDATE SET
         AttendanceID = COALESCE(@attendanceId, t.AttendanceID),
         ScheduledStartTime = COALESCE(TRY_CAST(@scheduledStart AS TIME), t.ScheduledStartTime),
         ScheduledEndTime = COALESCE(TRY_CAST(@scheduledEnd AS TIME), t.ScheduledEndTime),
         LateMinutes = @lateMinutes,
-        DeductionKind = CASE
-          -- Race loser must not wipe an already-applied case via finalize_pending.
-          WHEN t.Status = N'applied' AND @status = N'finalize_pending' THEN t.DeductionKind
-          ELSE @deductionKind
-        END,
-        Status = CASE
-          WHEN t.Status = N'applied' AND @status = N'finalize_pending' THEN t.Status
-          ELSE @status
-        END,
+        DeductionKind = @deductionKind,
+        Status = @status,
         DailyBasePay = COALESCE(@dailyBasePay, t.DailyBasePay),
         Amount = CASE
-          WHEN t.Status = N'applied' AND @status = N'finalize_pending' THEN t.Amount
+          WHEN @status = N'finalize_pending' AND t.Status = N'applied' THEN t.Amount
           ELSE @amount
         END,
-        LedgerEntryID = COALESCE(@ledgerEntryId, t.LedgerEntryID),
+        LedgerEntryID = CASE
+          WHEN @status IN (N'skipped', N'exempt', N'pending_manager')
+            THEN @ledgerEntryId
+          ELSE COALESCE(@ledgerEntryId, t.LedgerEntryID)
+        END,
         UpdatedAt = SYSUTCDATETIME()
       WHEN NOT MATCHED THEN INSERT (
         EmpID, BranchID, WorkDate, AttendanceID, ScheduledStartTime, ScheduledEndTime,

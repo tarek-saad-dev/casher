@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { getPool } from '@/lib/db';
+import { withLateDeductionCaseLock } from './caseTransaction';
 import { calcLateMinutes } from '@/lib/timeUtils';
 import {
   getLateDeductionConfig,
@@ -78,6 +79,7 @@ export async function finalizeLateDeductionOnCheckIn(
   }
 
   const lateMinutes = calcLateMinutes(input.checkInTime, input.scheduledStart);
+  return withLateDeductionCaseLock(input, async (db) => {
   const existing = await findLateDeductionCase(
     db,
     input.empId,
@@ -353,6 +355,7 @@ export async function finalizeLateDeductionOnCheckIn(
     lateMinutes,
     reason: financialOk ? undefined : 'ledger_failed',
   };
+  });
 }
 
 /** Fire-and-forget wrapper used from attendance writers. */
