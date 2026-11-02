@@ -11,7 +11,7 @@ export const BOOKING_DEFAULT_DURATION_RANGE = { min: 5, max: 240 } as const;
 export const BOOKING_SETTINGS_DEFAULTS = {
   defaultMode: 'nearest' as BookingDefaultMode,
   slotIntervalMinutes: 15,
-  minNoticeMinutes: 30,
+  minNoticeMinutes: 60,
   maxBookingDaysAhead: 14,
   defaultServiceDurationMinutes: 30,
   allowSpecificBarber: true,

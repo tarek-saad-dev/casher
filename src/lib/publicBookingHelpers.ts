@@ -221,7 +221,7 @@ function mapSettingsRow(row: Record<string, unknown> | undefined): PublicSetting
       defaultMode: "nearest",
       slotIntervalMinutes: 15,
       maxBookingDaysAhead: 14,
-      minNoticeMinutes: 30,
+      minNoticeMinutes: 60,
       defaultServiceDurationMinutes: 30,
     };
   }
@@ -236,7 +236,7 @@ function mapSettingsRow(row: Record<string, unknown> | undefined): PublicSetting
     defaultMode: row.DefaultMode === "specific" ? "specific" : "nearest",
     slotIntervalMinutes: Number(row.SlotIntervalMinutes) || 15,
     maxBookingDaysAhead: Number(row.MaxBookingDaysAhead) || 14,
-    minNoticeMinutes: Number(row.MinNoticeMinutes) || 30,
+    minNoticeMinutes: Number(row.MinNoticeMinutes) || 60,
     defaultServiceDurationMinutes:
       Number(row.DefaultServiceDurationMinutes) || 30,
   };
@@ -260,7 +260,7 @@ async function loadPublicSettingsFromDb(branchId: number): Promise<PublicSetting
         ISNULL(DefaultMode, N'nearest') AS DefaultMode,
         ISNULL(SlotIntervalMinutes, 15) AS SlotIntervalMinutes,
         ISNULL(MaxBookingDaysAhead, 14) AS MaxBookingDaysAhead,
-        ISNULL(MinNoticeMinutes, 30) AS MinNoticeMinutes,
+        ISNULL(MinNoticeMinutes, 60) AS MinNoticeMinutes,
         ISNULL(DefaultServiceDurationMinutes, ISNULL(DefaultServiceMinutes, 30)) AS DefaultServiceDurationMinutes
       FROM [dbo].[QueueBookingSettings]
       WHERE BranchID = @branchId
@@ -334,7 +334,7 @@ async function loadGlobalTimingDefaultsFromDb(
         ISNULL(DefaultMode, N'nearest') AS DefaultMode,
         ISNULL(SlotIntervalMinutes, 15) AS SlotIntervalMinutes,
         ISNULL(MaxBookingDaysAhead, 14) AS MaxBookingDaysAhead,
-        ISNULL(MinNoticeMinutes, 30) AS MinNoticeMinutes,
+        ISNULL(MinNoticeMinutes, 60) AS MinNoticeMinutes,
         ISNULL(DefaultServiceDurationMinutes, ISNULL(DefaultServiceMinutes, 30)) AS DefaultServiceDurationMinutes
       FROM [dbo].[QueueBookingSettings]
       ORDER BY BranchID

@@ -36,7 +36,7 @@ async function ensureTableAndColumns(db: sql.ConnectionPool) {
         AllowNearestBarber BIT NOT NULL DEFAULT 1,
         DefaultMode NVARCHAR(20) NOT NULL DEFAULT N'nearest',
         SlotIntervalMinutes INT NOT NULL DEFAULT 15,
-        MinNoticeMinutes INT NOT NULL DEFAULT 30,
+        MinNoticeMinutes INT NOT NULL DEFAULT 60,
         MaxBookingDaysAhead INT NOT NULL DEFAULT 14,
         DefaultServiceDurationMinutes INT NULL,
         DefaultServiceMinutes INT NULL,
@@ -59,7 +59,7 @@ async function ensureTableAndColumns(db: sql.ConnectionPool) {
       default: "DEFAULT N'nearest'",
     },
     { name: "SlotIntervalMinutes", type: "INT", default: "DEFAULT 15" },
-    { name: "MinNoticeMinutes", type: "INT", default: "DEFAULT 30" },
+    { name: "MinNoticeMinutes", type: "INT", default: "DEFAULT 60" },
     { name: "MaxBookingDaysAhead", type: "INT", default: "DEFAULT 14" },
     { name: "DefaultServiceDurationMinutes", type: "INT", default: "NULL" },
     {

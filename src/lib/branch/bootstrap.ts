@@ -274,7 +274,7 @@ export async function ensureQueueBookingSettingsForBranch(
     (template?.MaxBookingDaysAhead != null ? Number(template.MaxBookingDaysAhead) : 14);
   const minNotice =
     options.minNoticeMinutes ??
-    (template?.MinNoticeMinutes != null ? Number(template.MinNoticeMinutes) : 30);
+    (template?.MinNoticeMinutes != null ? Number(template.MinNoticeMinutes) : 60);
   const defaultDur =
     options.defaultServiceDurationMinutes ??
     (template?.DefaultServiceDurationMinutes != null

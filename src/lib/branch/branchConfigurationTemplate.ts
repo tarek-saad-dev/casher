@@ -146,7 +146,7 @@ async function applyQueueBookingTiming(
       .input('defaultMode', sql.NVarChar(20), String(t.DefaultMode ?? 'nearest'))
       .input('slotInterval', sql.Int, Number(t.SlotIntervalMinutes ?? 15))
       .input('maxDays', sql.Int, Number(t.MaxBookingDaysAhead ?? 14))
-      .input('minNotice', sql.Int, Number(t.MinNoticeMinutes ?? 30))
+      .input('minNotice', sql.Int, Number(t.MinNoticeMinutes ?? 60))
       .input(
         'defaultDur',
         sql.Int,
@@ -182,7 +182,7 @@ async function applyQueueBookingTiming(
       .input('defaultMode', sql.NVarChar(20), String(t.DefaultMode ?? 'nearest'))
       .input('slotInterval', sql.Int, Number(t.SlotIntervalMinutes ?? 15))
       .input('maxDays', sql.Int, Number(t.MaxBookingDaysAhead ?? 14))
-      .input('minNotice', sql.Int, Number(t.MinNoticeMinutes ?? 30))
+      .input('minNotice', sql.Int, Number(t.MinNoticeMinutes ?? 60))
       .input(
         'defaultDur',
         sql.Int,

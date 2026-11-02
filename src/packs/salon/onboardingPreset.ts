@@ -46,7 +46,7 @@ export function buildSalonOnboardingPreset(input: {
       branchCode,
       defaultMode: 'nearest',
       slotIntervalMinutes: 15,
-      minNoticeMinutes: 30,
+      minNoticeMinutes: 60,
       maxBookingDaysAhead: 14,
       defaultServiceDurationMinutes: 30,
       allowSpecificBarber: true,

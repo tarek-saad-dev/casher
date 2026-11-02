@@ -65,7 +65,7 @@ const DEFAULT_BOOKING_SETTINGS: BookingSettings = {
   allowNearestBarber: true,
   defaultMode: "nearest",
   slotIntervalMinutes: 15,
-  minNoticeMinutes: 30,
+  minNoticeMinutes: 60,
   maxBookingDaysAhead: 14,
   defaultServiceDurationMinutes: 30,
 };

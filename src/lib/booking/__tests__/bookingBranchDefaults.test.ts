@@ -19,7 +19,7 @@ describe('Salon Pack — per-branch booking setup', () => {
       Timezone: 'Africa/Cairo',
       BookingEnabled: false,
       SlotIntervalMinutes: 15,
-      MinNoticeMinutes: 30,
+      MinNoticeMinutes: 60,
       MaxBookingDaysAhead: 14,
       DefaultServiceDurationMinutes: 30,
     });
