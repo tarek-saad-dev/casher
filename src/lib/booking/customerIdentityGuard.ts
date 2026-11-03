@@ -239,3 +239,14 @@ export function maskPhoneForLog(phone: string | null | undefined): string {
   if (cleaned.length <= 4) return '****';
   return `${'*'.repeat(Math.min(cleaned.length - 4, 8))}${cleaned.slice(-4)}`;
 }
+
+/**
+ * Real booking creates must leave TblClient.Name equal to the submitted form name
+ * (first-time insert and phone-reuse alike). Intentional smoke names are excluded.
+ */
+export function shouldPersistSubmittedCustomerName(
+  submittedName: string | null | undefined,
+): boolean {
+  const n = String(submittedName ?? '').trim();
+  return n.length >= 2 && !isTestOrSmokeCustomerName(n);
+}

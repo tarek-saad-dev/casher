@@ -25,6 +25,14 @@ describe('customer upsert smoke isolation (source contract)', () => {
     expect(src).toContain('evaluateCustomerIdentityForBooking');
     expect(src).toContain('appendBookingDiagnosticNote');
     expect(src).toContain('customer_identity_blocked');
-    expect(src).toContain('customer_identity_rename_failed');
+    expect(src).toContain('shouldPersistSubmittedCustomerName');
+    expect(src).toContain('customer_name_persist_failed');
+  });
+
+  it('hosted website booking create sends name+phone into public create API', () => {
+    const src = source('src/app/book/[branchCode]/HostedBookingFlow.tsx');
+    expect(src).toContain('/api/public/booking/create');
+    expect(src).toContain('customer: { name: name.trim(), phone: phone.trim() }');
   });
 });
+
