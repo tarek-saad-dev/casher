@@ -6,10 +6,13 @@ import { roundMoney } from '@/lib/reportMonthUtils';
 import {
   allocateEmployeeInvoiceRevenue,
   type DetailLineForAllocation,
-  type InvoiceHeaderInput,
 } from '@/lib/services/employeeInvoiceAllocation';
 import { aggregateEmployeeServiceBreakdown } from '@/lib/services/employeeServiceBreakdown';
 import { resolveTenantServiceCatalog } from '@/lib/services/tenantServiceCatalog.server';
+import {
+  excludePackageRevenueFromTargetAllocation,
+  type TargetInvoiceHeader,
+} from './excludePackageFromTargetSales';
 import { assertValidWorkDate } from './target.validation';
 
 /** Same line expression as GET /api/reports/employee-services */
@@ -33,10 +36,14 @@ export interface EmployeeNetServiceSalesRow {
 }
 
 /**
- * Shared sales core — parity with /admin/reports/employee-services
- * for an inclusive date range, scoped to one invoice branch (Phase 1L).
+ * Target sales core for an inclusive date range, scoped to one invoice branch (Phase 1L).
  *
- * Uses allocateEmployeeInvoiceRevenue so NetSalesAfterDiscount === actualInvoiceRevenue.
+ * Same allocation as /admin/reports/employee-services, except package (required)
+ * lines marked by [groomPackage] Notes2/Notes are excluded from the KPI —
+ * intentional divergence; employee-services still shows full package revenue.
+ *
+ * Uses allocateEmployeeInvoiceRevenue so NetSalesAfterDiscount === actualInvoiceRevenue
+ * on the filtered input.
  */
 export async function getEmployeesNetServiceSalesByDateRange(
   fromDate: string,
@@ -70,7 +77,9 @@ export async function getEmployeesNetServiceSalesByDateRange(
         h.invType,
         h.SubTotal,
         h.GrandTotal,
-        h.DisVal
+        h.DisVal,
+        h.Notes,
+        h.Notes2
       FROM dbo.TblinvServHead h
       WHERE CAST(h.invDate AS date) >= @fromDate
         AND CAST(h.invDate AS date) <= @toDate
@@ -78,12 +87,14 @@ export async function getEmployeesNetServiceSalesByDateRange(
         AND h.BranchID = @branchId
     `);
 
-  const headers: InvoiceHeaderInput[] = headersResult.recordset.map((row: Record<string, unknown>) => ({
+  const headers: TargetInvoiceHeader[] = headersResult.recordset.map((row: Record<string, unknown>) => ({
     invID: Number(row.invID),
     invType: String(row.invType),
     subTotal: row.SubTotal != null ? Number(row.SubTotal) : null,
     grandTotal: row.GrandTotal != null ? Number(row.GrandTotal) : null,
     disVal: row.DisVal != null ? Number(row.DisVal) : null,
+    notes: row.Notes != null ? String(row.Notes) : null,
+    notes2: row.Notes2 != null ? String(row.Notes2) : null,
   }));
 
   if (headers.length === 0) {
@@ -135,7 +146,8 @@ export async function getEmployeesNetServiceSalesByDateRange(
     lineTotal: row.lineTotal != null ? Number(row.lineTotal) : null,
   }));
 
-  const allocation = allocateEmployeeInvoiceRevenue(headers, detailLines);
+  const filtered = excludePackageRevenueFromTargetAllocation(headers, detailLines);
+  const allocation = allocateEmployeeInvoiceRevenue(filtered.headers, filtered.detailLines);
 
   let rows = allocation.employeeTotals.map((emp) => ({
     empId: emp.employeeId,
@@ -207,6 +219,8 @@ export async function getEmployeeDailyNetServiceSalesMap(
         h.SubTotal,
         h.GrandTotal,
         h.DisVal,
+        h.Notes,
+        h.Notes2,
         CONVERT(varchar(10), CAST(h.invDate AS date), 23) AS WorkDate
       FROM dbo.TblinvServHead h
       WHERE CAST(h.invDate AS date) >= @fromDate
@@ -216,7 +230,7 @@ export async function getEmployeeDailyNetServiceSalesMap(
     `);
 
   const invDateByKey = new Map<string, string>();
-  const headers: InvoiceHeaderInput[] = headersResult.recordset.map((row: Record<string, unknown>) => {
+  const headers: TargetInvoiceHeader[] = headersResult.recordset.map((row: Record<string, unknown>) => {
     const invID = Number(row.invID);
     const invType = String(row.invType);
     invDateByKey.set(`${invType}-${invID}`, String(row.WorkDate));
@@ -226,6 +240,8 @@ export async function getEmployeeDailyNetServiceSalesMap(
       subTotal: row.SubTotal != null ? Number(row.SubTotal) : null,
       grandTotal: row.GrandTotal != null ? Number(row.GrandTotal) : null,
       disVal: row.DisVal != null ? Number(row.DisVal) : null,
+      notes: row.Notes != null ? String(row.Notes) : null,
+      notes2: row.Notes2 != null ? String(row.Notes2) : null,
     };
   });
 
@@ -277,7 +293,8 @@ export async function getEmployeeDailyNetServiceSalesMap(
     lineTotal: row.lineTotal != null ? Number(row.lineTotal) : null,
   }));
 
-  const allocation = allocateEmployeeInvoiceRevenue(headers, detailLines);
+  const filtered = excludePackageRevenueFromTargetAllocation(headers, detailLines);
+  const allocation = allocateEmployeeInvoiceRevenue(filtered.headers, filtered.detailLines);
   for (const line of allocation.allocatedLines) {
     if (line.empId !== empId) continue;
     const date = invDateByKey.get(`${line.invType}-${line.invID}`);
