@@ -14,12 +14,16 @@
 
 This is the emerald “صافي بعد خصم الفاتورة” column in the report, produced by `allocateEmployeeInvoiceRevenue()`.
 
+**Package sales (intentional divergence from employee-services):**  
+Invoices tagged with `[groomPackage]` in `Notes2`/`Notes` drop **required** package service lines before target allocation (`excludePackageRevenueFromTargetAllocation`). Paid **addon** lines still count. The employee-services report continues to show full package revenue; only the daily-target KPI excludes the package body.
+
 **Not used for daily target (different product formulas):**
 | Source | Formula | Why excluded |
 |--------|---------|--------------|
 | Line-only `getEmployeeRevenueByDate` | `SValue − DisVal` | Ignores header-level invoice discount allocation |
 | `sp_GetMonthlyPayroll` SalesAgg | `SUM(SValue)` (no DisVal) + broader invTypes/categories | Legacy monthly commission; will remain untouched |
 | `/api/sales/today` rankings | `SUM(SPriceAfterDis)` | Parallel, not the employee-services report |
+| Package body lines (`[groomPackage]` required ProIDs) | Filtered in target sales service | Promo/package price must not inflate daily targets |
 
 ---
 
