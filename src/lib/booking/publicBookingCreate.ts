@@ -936,11 +936,45 @@ export async function createPublicBooking(
       branchNow.branchId,
     );
 
-    const notesPersist = [
-      notes,
+    // Defensive read-after-upsert: never persist a booking showing an old smoke
+    // customer's name. A mismatch is repaired and its observed cause recorded
+    // in booking notes for support (without exposing the customer's phone).
+    const customerNameCheck = await new sql.Request(transaction)
+      .input('clientId', sql.Int, clientId)
+      .query(`SELECT TOP 1 [Name], Mobile FROM dbo.TblClient WITH (UPDLOCK, HOLDLOCK)
+              WHERE ClientID = @clientId`);
+    const linkedCustomer = customerNameCheck.recordset[0] as
+      | { Name: string | null; Mobile: string | null }
+      | undefined;
+    if (!linkedCustomer) {
+      throw new Error('BOOKING_CUSTOMER_NOT_FOUND_AFTER_UPSERT');
+    }
+    let customerMismatchNote: string | null = null;
+    if (String(linkedCustomer.Name ?? '').trim() !== customerName) {
+      const previousName = String(linkedCustomer.Name ?? '').trim();
+      const placeholderMatch = !isUsableCustomerPhone(linkedCustomer.Mobile);
+      customerMismatchNote = [
+        '[customer-name-repair]',
+        `ClientID=${clientId}`,
+        `previousName=${JSON.stringify(previousName).slice(0, 75)}`,
+        `submittedName=${JSON.stringify(customerName).slice(0, 85)}`,
+        `phoneIdentity=${placeholderMatch ? 'missing-or-placeholder' : 'usable'}`,
+        'reason=stored customer name differed after upsert; possible stale phone match',
+        'action=corrected linked customer name before saving booking',
+      ].join(';');
+      await new sql.Request(transaction)
+        .input('clientId', sql.Int, clientId)
+        .input('name', sql.NVarChar(200), customerName)
+        .query(`UPDATE dbo.TblClient SET [Name] = @name WHERE ClientID = @clientId`);
+    }
+
+    const systemNotes = [
       `[p6] workDate=${precheck.workDate};dayOffset=${precheck.requestedDayOffset}`,
       precheck.packageBooking?.metadataNote ?? null,
-    ]
+    ].filter(Boolean).join(' ');
+    // Retain incident diagnostics even when user notes approach the limit.
+    const reserved = [systemNotes, customerMismatchNote].filter(Boolean).join(' ');
+    const notesPersist = [notes.slice(0, Math.max(0, MAX_NOTES - reserved.length - 1)), reserved]
       .filter(Boolean)
       .join(' ')
       .slice(0, MAX_NOTES);
