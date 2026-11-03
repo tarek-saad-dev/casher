@@ -153,6 +153,10 @@ jobs:
       - name: Apply DRVO migrations to staging only
         run: npm run drvo:migrate -- --expected-database=last132_agent
 
+      - name: DRVO-020 real ledger and manager SQL smoke (staging only)
+        if: github.event.pull_request.head.ref == 'feat/automatic-employee-late-deductions'
+        run: npx tsx scripts/drvo/drvo020-late-deduction-staging-smoke.ts
+
       - name: Verify migration 9 ledger
         run: |
           set -euo pipefail
