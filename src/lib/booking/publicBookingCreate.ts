@@ -70,6 +70,13 @@ import {
   bridgePublishCreatedEvent,
   bridgeUpsertCustomer,
 } from '@/lib/booking/schedulingPortLegacyBridge';
+import {
+  appendBookingDiagnosticNote,
+  evaluateCustomerIdentityForBooking,
+  isTestOrSmokeCustomerName,
+  maskPhoneForLog,
+  resolveBookingCreatePath,
+} from '@/lib/booking/customerIdentityGuard';
 
 const MAX_NOTES = 500;
 const MAX_SERVICES = 20;
@@ -936,14 +943,117 @@ export async function createPublicBooking(
       branchNow.branchId,
     );
 
-    const notesPersist = [
-      notes,
-      `[p6] workDate=${precheck.workDate};dayOffset=${precheck.requestedDayOffset}`,
-      precheck.packageBooking?.metadataNote ?? null,
-    ]
-      .filter(Boolean)
-      .join(' ')
-      .slice(0, MAX_NOTES);
+    // Final customer-identity guard: never persist a real booking under a smoke/test name.
+    const clientSnap = await new sql.Request(transaction)
+      .input('tenantId', sql.UniqueIdentifier, branchNow.tenantId)
+      .input('clientId', sql.Int, clientId)
+      .query(`
+        SELECT [Name], Mobile
+        FROM dbo.TblClient WITH (UPDLOCK, HOLDLOCK)
+        WHERE ClientID = @clientId AND TenantId = @tenantId
+      `);
+    const linked = clientSnap.recordset[0] as
+      | { Name?: string | null; Mobile?: string | null }
+      | undefined;
+    if (!linked) {
+      throw new PublicBookingCreateError('INVALID_CUSTOMER');
+    }
+
+    const bookingPath = resolveBookingCreatePath({
+      purpose: input.purpose,
+      bookingSource: input.bookingSource,
+    });
+    const identity = evaluateCustomerIdentityForBooking({
+      submittedName: customerName,
+      storedName: linked.Name ?? null,
+      clientId,
+      phone: customerPhone,
+      bookingPath,
+    });
+
+    if (!identity.ok) {
+      console.error('[publicBookingCreate] customer_identity_blocked', {
+        clientId,
+        bookingPath,
+        phoneKind: identity.diagnostic.phoneKind,
+        phoneMasked: maskPhoneForLog(customerPhone),
+        cause: identity.diagnostic.cause,
+        causeConfirmed: identity.diagnostic.causeConfirmed,
+        previousName: identity.diagnostic.previousName,
+      });
+      throw new PublicBookingCreateError('INVALID_CUSTOMER');
+    }
+
+    if (identity.renamed) {
+      await new sql.Request(transaction)
+        .input('tenantId', sql.UniqueIdentifier, branchNow.tenantId)
+        .input('clientId', sql.Int, clientId)
+        .input('name', sql.NVarChar(200), identity.finalName)
+        .query(`
+          UPDATE dbo.TblClient
+          SET [Name] = @name
+          WHERE ClientID = @clientId AND TenantId = @tenantId
+        `);
+      const verify = await new sql.Request(transaction)
+        .input('tenantId', sql.UniqueIdentifier, branchNow.tenantId)
+        .input('clientId', sql.Int, clientId)
+        .query(`
+          SELECT [Name] FROM dbo.TblClient
+          WHERE ClientID = @clientId AND TenantId = @tenantId
+        `);
+      const afterName =
+        verify.recordset[0]?.Name != null ? String(verify.recordset[0].Name).trim() : '';
+      if (
+        !afterName ||
+        (isTestOrSmokeCustomerName(afterName) && !isTestOrSmokeCustomerName(customerName))
+      ) {
+        console.error('[publicBookingCreate] customer_identity_rename_failed', {
+          clientId,
+          bookingPath,
+          phoneMasked: maskPhoneForLog(customerPhone),
+          afterName,
+          submittedName: customerName,
+        });
+        throw new PublicBookingCreateError('INVALID_CUSTOMER');
+      }
+    }
+
+    let identityDiagNote = '';
+    if (identity.diagnostic) {
+      const baseNotesForDiag = [
+        notes,
+        `[p6] workDate=${precheck.workDate};dayOffset=${precheck.requestedDayOffset}`,
+        precheck.packageBooking?.metadataNote ?? null,
+      ]
+        .filter(Boolean)
+        .join(' ');
+      const appended = appendBookingDiagnosticNote(
+        baseNotesForDiag,
+        identity.diagnostic,
+        MAX_NOTES,
+      );
+      identityDiagNote = appended.notes;
+      if (appended.overflowLog) {
+        console.warn('[publicBookingCreate] customer_identity_diag_overflow', {
+          diagRef: appended.diagRef,
+          clientId,
+          bookingPath,
+          phoneMasked: maskPhoneForLog(customerPhone),
+          detail: appended.overflowLog,
+        });
+      }
+    }
+
+    const notesPersist = (
+      identityDiagNote ||
+      [
+        notes,
+        `[p6] workDate=${precheck.workDate};dayOffset=${precheck.requestedDayOffset}`,
+        precheck.packageBooking?.metadataNote ?? null,
+      ]
+        .filter(Boolean)
+        .join(' ')
+    ).slice(0, MAX_NOTES);
 
     let bookingCode = generateBookingCodeWithInjection();
     let bookingId: number | null = null;

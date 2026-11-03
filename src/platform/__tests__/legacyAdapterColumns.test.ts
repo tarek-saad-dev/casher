@@ -23,6 +23,9 @@ describe('legacy adapter columns match live tables', () => {
     expect(src).toContain('INSERT INTO dbo.TblClient (TenantId, [Name], Mobile, RegisterDate)');
     expect(src).toContain('WHERE TenantId = @tenantId AND Mobile = @phone');
     expect(src).toContain('SELECT ClientID, [Name], Mobile');
+    expect(src).toContain('isUsableCustomerPhone');
+    expect(src).toContain('normalizePublicBookingPhone');
+    expect(src).toContain('SET [Name] = @name');
     expect(src).not.toContain('ClientName');
     expect(src).not.toContain('isDeleted');
   });
