@@ -13,7 +13,17 @@ mod._load = function (request: string, ...rest: unknown[]) {
   return origLoad.call(this, request, ...rest);
 };
 
-const PHONE = process.env.BM_SMOKE_PHONE || '201557994946';
+/**
+ * Isolation: do not default to a real customer phone.
+ * Set BM_SMOKE_PHONE to a disposable test number, and BM_SMOKE_ALLOW_REAL_PHONE=1
+ * only when you intentionally seed against a known smoke handset.
+ */
+const PHONE = process.env.BM_SMOKE_PHONE || '01000000000';
+if (!process.env.BM_SMOKE_ALLOW_REAL_PHONE && PHONE !== '01000000000') {
+  throw new Error(
+    'Refusing BM smoke seed on a non-placeholder phone. Set BM_SMOKE_ALLOW_REAL_PHONE=1 to override.',
+  );
+}
 
 function addDaysYmd(ymd: string, days: number): string {
   const [y, m, d] = ymd.split('-').map(Number);
