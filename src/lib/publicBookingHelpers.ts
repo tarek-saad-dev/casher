@@ -423,7 +423,16 @@ export async function upsertCustomer(
       );
 
     if (existing.recordset.length > 0) {
-      return existing.recordset[0].ClientID as number;
+      const clientId = Number(existing.recordset[0].ClientID);
+      if (name.trim()) {
+        await req()
+          .input('clientId', sql.Int, clientId)
+          .input('name', sql.NVarChar(200), name.trim())
+          .query(`UPDATE dbo.TblClient SET [Name] = @name
+                  WHERE TenantId = @tenantId AND ClientID = @clientId
+                    AND ([Name] IS NULL OR [Name] <> @name)`);
+      }
+      return clientId;
     }
   }
 
@@ -442,7 +451,18 @@ export async function upsertCustomer(
       const again = await req()
         .input('mobile', sql.NVarChar, usablePhone)
         .query(`SELECT TOP 1 ClientID FROM [dbo].[TblClient] WHERE TenantId = @tenantId AND Mobile = @mobile`);
-      if (again.recordset[0]?.ClientID) return again.recordset[0].ClientID as number;
+      if (again.recordset[0]?.ClientID) {
+        const clientId = Number(again.recordset[0].ClientID);
+        if (name.trim()) {
+          await req()
+            .input('clientId', sql.Int, clientId)
+            .input('name', sql.NVarChar(200), name.trim())
+            .query(`UPDATE dbo.TblClient SET [Name] = @name
+                    WHERE TenantId = @tenantId AND ClientID = @clientId
+                      AND ([Name] IS NULL OR [Name] <> @name)`);
+        }
+        return clientId;
+      }
     }
     throw err;
   }
