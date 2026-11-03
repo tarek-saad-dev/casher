@@ -27,6 +27,7 @@ import {
   scheduleFinalizeLateDeductionOnCheckIn,
 } from '@/lib/hr/late-deduction';
 import { shouldNotifyAttendanceTimeChange } from '@/lib/hr/attendance-whatsapp-message';
+import { enqueueLegacyEmployeeCheckInLateDeduction } from '@/lib/hr/late-deduction/legacyCheckIn';
 import { assertEmployeeEligibleForBranchAttendance } from '@/lib/hr/attendance/branchAttendance.service';
 import {
   unlockScheduleForWorkOnDayOff,
@@ -551,6 +552,18 @@ export async function saveLegacyEmployeeAttendance(
     await activeTxn.commit();
   }
 
+  if (checkInTime && row?.ID) {
+    await enqueueLegacyEmployeeCheckInLateDeduction({
+      attendanceId: Number(row.ID),
+      empId: Number(empId),
+      branchId,
+      workDate: payrollWorkDateFromOwnershipRow(row.WorkDate ?? workDate),
+    }).catch((err) => console.warn(
+      '[employee-attendance POST] late deduction enqueue failed:',
+      err instanceof Error ? err.message : err,
+    ));
+  }
+
   return { row: row ?? {}, isNew };
   } catch (err) {
     if (activeTxn) {
@@ -669,6 +682,18 @@ export async function updateLegacyEmployeeAttendanceById(
 
   if (activeTxn) {
     await activeTxn.commit();
+  }
+
+  if (checkInTime !== undefined && row?.CheckInTime && row?.ID) {
+    await enqueueLegacyEmployeeCheckInLateDeduction({
+      attendanceId: Number(row.ID),
+      empId: Number(row.EmpID),
+      branchId,
+      workDate,
+    }).catch((err) => console.warn(
+      '[employee-attendance PUT] late deduction enqueue failed:',
+      err instanceof Error ? err.message : err,
+    ));
   }
 
   return { row };
