@@ -2,6 +2,7 @@ import 'server-only';
 import { sql } from '@/lib/db';
 import { requireMasterDataTenantId } from '@/platform/masterData/tenantScope';
 import type { CustomerSnapshot, CustomersPort } from '../public/ports';
+import { isUsableCustomerPhone, normalizePublicBookingPhone } from '@/lib/publicBookingHelpers';
 
 /**
  * Anti-corruption adapter over legacy TblClient.
@@ -12,21 +13,38 @@ export function createLegacyCustomersAdapter(): CustomersPort {
   return {
     async upsertByPhone(tx, actor, input) {
       const tenantId = requireMasterDataTenantId(actor.tenantId, 'customers.upsertByPhone');
-      const existing = await new sql.Request(tx)
-        .input('tenantId', sql.UniqueIdentifier, tenantId)
-        .input('phone', sql.NVarChar(200), input.phone)
-        .query(`
-          SELECT TOP 1 ClientID
-          FROM dbo.TblClient WITH (UPDLOCK, HOLDLOCK)
-          WHERE TenantId = @tenantId AND Mobile = @phone;
-        `);
-      if (existing.recordset.length) {
-        return Number(existing.recordset[0].ClientID);
+      const normalizedPhone = normalizePublicBookingPhone(input.phone ?? '');
+      const usablePhone = isUsableCustomerPhone(normalizedPhone) ? normalizedPhone : null;
+      const displayName = String(input.displayName ?? '').trim() || normalizedPhone || 'عميل بدون اسم';
+
+      // Placeholder phone values are not customer identities: always create a new row.
+      if (usablePhone) {
+        const existing = await new sql.Request(tx)
+          .input('tenantId', sql.UniqueIdentifier, tenantId)
+          .input('phone', sql.NVarChar(200), usablePhone)
+          .query(`
+            SELECT TOP 1 ClientID, [Name]
+            FROM dbo.TblClient WITH (UPDLOCK, HOLDLOCK)
+            WHERE TenantId = @tenantId AND Mobile = @phone;
+          `);
+        if (existing.recordset.length) {
+          const clientId = Number(existing.recordset[0].ClientID);
+          if (String(input.displayName ?? '').trim() &&
+              String(existing.recordset[0].Name ?? '').trim() !== displayName) {
+            await new sql.Request(tx)
+              .input('tenantId', sql.UniqueIdentifier, tenantId)
+              .input('clientId', sql.Int, clientId)
+              .input('name', sql.NVarChar(200), displayName)
+              .query(`UPDATE dbo.TblClient SET [Name] = @name
+                      WHERE TenantId = @tenantId AND ClientID = @clientId;`);
+          }
+          return clientId;
+        }
       }
       const insert = await new sql.Request(tx)
         .input('tenantId', sql.UniqueIdentifier, tenantId)
-        .input('phone', sql.NVarChar(200), input.phone)
-        .input('name', sql.NVarChar(200), input.displayName ?? input.phone)
+        .input('phone', sql.NVarChar(200), usablePhone)
+        .input('name', sql.NVarChar(200), displayName)
         .query(`
           INSERT INTO dbo.TblClient (TenantId, [Name], Mobile, RegisterDate)
           OUTPUT INSERTED.ClientID AS id
