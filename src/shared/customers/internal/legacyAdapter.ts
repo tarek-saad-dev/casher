@@ -21,7 +21,10 @@ export function createLegacyCustomersAdapter(): CustomersPort {
       const tenantId = requireMasterDataTenantId(actor.tenantId, 'customers.upsertByPhone');
       const cleanedPhone = normalizePublicBookingPhone(input.phone ?? '');
       const usablePhone = isUsableCustomerPhone(cleanedPhone) ? cleanedPhone : '';
-      const displayName = String(input.displayName ?? '').trim() || usablePhone || cleanedPhone || 'عميل';
+      // Booking/public create always passes the form name; never register the phone digits as Name.
+      const rawName = String(input.displayName ?? '').trim();
+      const displayName =
+        rawName.length >= 2 ? rawName : usablePhone ? 'عميل' : cleanedPhone || 'عميل';
 
       if (usablePhone) {
         const existing = await new sql.Request(tx)

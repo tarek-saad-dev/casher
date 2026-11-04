@@ -76,6 +76,7 @@ import {
   isTestOrSmokeCustomerName,
   maskPhoneForLog,
   resolveBookingCreatePath,
+  shouldPersistSubmittedCustomerName,
 } from '@/lib/booking/customerIdentityGuard';
 
 const MAX_NOTES = 500;
@@ -984,16 +985,29 @@ export async function createPublicBooking(
       throw new PublicBookingCreateError('INVALID_CUSTOMER');
     }
 
-    if (identity.renamed) {
+    // Guarantee: first-time (and every) real booking registers/keeps the submitted
+    // name on TblClient — ops workspace, admin create, and public website API alike.
+    const nameToPersist = shouldPersistSubmittedCustomerName(customerName)
+      ? customerName
+      : identity.finalName.trim();
+    const storedNameNow =
+      linked.Name != null ? String(linked.Name).trim() : '';
+    if (
+      nameToPersist.length >= 2 &&
+      storedNameNow.localeCompare(nameToPersist, undefined, { sensitivity: 'accent' }) !== 0
+    ) {
       await new sql.Request(transaction)
         .input('tenantId', sql.UniqueIdentifier, branchNow.tenantId)
         .input('clientId', sql.Int, clientId)
-        .input('name', sql.NVarChar(200), identity.finalName)
+        .input('name', sql.NVarChar(200), nameToPersist)
         .query(`
           UPDATE dbo.TblClient
           SET [Name] = @name
           WHERE ClientID = @clientId AND TenantId = @tenantId
         `);
+    }
+
+    if (shouldPersistSubmittedCustomerName(customerName)) {
       const verify = await new sql.Request(transaction)
         .input('tenantId', sql.UniqueIdentifier, branchNow.tenantId)
         .input('clientId', sql.Int, clientId)
@@ -1004,10 +1018,10 @@ export async function createPublicBooking(
       const afterName =
         verify.recordset[0]?.Name != null ? String(verify.recordset[0].Name).trim() : '';
       if (
-        !afterName ||
-        (isTestOrSmokeCustomerName(afterName) && !isTestOrSmokeCustomerName(customerName))
+        afterName.localeCompare(customerName, undefined, { sensitivity: 'accent' }) !== 0 ||
+        isTestOrSmokeCustomerName(afterName)
       ) {
-        console.error('[publicBookingCreate] customer_identity_rename_failed', {
+        console.error('[publicBookingCreate] customer_name_persist_failed', {
           clientId,
           bookingPath,
           phoneMasked: maskPhoneForLog(customerPhone),

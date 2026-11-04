@@ -6,6 +6,7 @@ import {
   isTestOrSmokeCustomerName,
   maskPhoneForLog,
   resolveBookingCreatePath,
+  shouldPersistSubmittedCustomerName,
 } from '@/lib/booking/customerIdentityGuard';
 
 describe('isTestOrSmokeCustomerName', () => {
@@ -164,5 +165,15 @@ describe('maskPhoneForLog', () => {
   it('masks all but last 4 digits', () => {
     expect(maskPhoneForLog('01012345678')).toMatch(/\d{4}$/);
     expect(maskPhoneForLog('01012345678')).not.toContain('0101234');
+  });
+});
+
+describe('shouldPersistSubmittedCustomerName', () => {
+  it('persists real first-time booking names from ops and website', () => {
+    expect(shouldPersistSubmittedCustomerName('أحمد محمد')).toBe(true);
+    expect(shouldPersistSubmittedCustomerName('Ali')).toBe(true);
+    expect(shouldPersistSubmittedCustomerName('smoke test')).toBe(false);
+    expect(shouldPersistSubmittedCustomerName('[SMOKE P8C]')).toBe(false);
+    expect(shouldPersistSubmittedCustomerName('أ')).toBe(false);
   });
 });
