@@ -622,6 +622,11 @@ export function useBookingWorkspace({
             setCustomerName(fields.customerName);
             setCustomerPhone(fields.customerPhone);
             setClientSearch('');
+          } else if (data.status === 'new') {
+            // The phone is already in customerPhone. Clear the lookup field so
+            // the operator fills only the missing name, with no duplicate entry.
+            setClientSearch('');
+            document.getElementById('ops-booking-customer-name')?.focus();
           }
           setClients([]);
           setShowClients(false);
