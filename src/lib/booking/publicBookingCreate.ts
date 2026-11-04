@@ -436,11 +436,12 @@ export async function createPublicBooking(
   const rawPhone = String(input.customer?.phone ?? '');
   let customerPhone = normalizePublicBookingPhone(rawPhone);
   if (!customerPhone || !isValidPhone(customerPhone)) {
-    // Staff create may omit phone; placeholder skips WhatsApp + client upsert match.
-    if (isInternalPreview) {
+    // Only a genuinely blank staff phone is optional. Do not silently replace
+    // a non-empty, malformed number with a smoke placeholder and lose it.
+    if (isInternalPreview && !rawPhone.trim()) {
       customerPhone = [...PLACEHOLDER_CUSTOMER_PHONES][0]!;
     } else {
-      throw new PublicBookingCreateError('INVALID_CUSTOMER');
+      throw new PublicBookingCreateError('INVALID_CUSTOMER_PHONE');
     }
   }
 
@@ -960,6 +961,18 @@ export async function createPublicBooking(
     if (!linked) {
       throw new PublicBookingCreateError('INVALID_CUSTOMER');
     }
+    if (
+      isUsableCustomerPhone(customerPhone) &&
+      normalizePublicBookingPhone(linked.Mobile ?? '') !== customerPhone
+    ) {
+      // The number in the booking request must actually be stored on the
+      // linked customer row. Fail the TX rather than create a phone-less booking.
+      console.error('[publicBookingCreate] customer_phone_persist_failed', {
+        clientId,
+        phoneMasked: maskPhoneForLog(customerPhone),
+      });
+      throw new PublicBookingCreateError('INVALID_CUSTOMER_PHONE');
+    }
 
     const bookingPath = resolveBookingCreatePath({
       purpose: input.purpose,
@@ -1131,6 +1144,35 @@ export async function createPublicBooking(
       }
     }
     if (bookingId == null) {
+      throw new PublicBookingCreateError('BOOKING_CREATE_FAILED');
+    }
+
+    // Verify the actual booking -> tenant-scoped TblClient relationship before
+    // commit. A success response must never hide a missing customer or phone.
+    const linkCheck = await new sql.Request(transaction)
+      .input('bookingId', sql.Int, bookingId)
+      .input('tenantId', sql.UniqueIdentifier, branchNow.tenantId)
+      .query(`
+        SELECT b.ClientID, c.Mobile
+        FROM dbo.Bookings b
+        INNER JOIN dbo.TblClient c
+          ON c.ClientID = b.ClientID AND c.TenantId = @tenantId
+        WHERE b.BookingID = @bookingId
+      `);
+    const savedLink = linkCheck.recordset[0] as
+      | { ClientID: number; Mobile: string | null }
+      | undefined;
+    if (
+      !savedLink ||
+      Number(savedLink.ClientID) !== clientId ||
+      (isUsableCustomerPhone(customerPhone) &&
+        normalizePublicBookingPhone(savedLink.Mobile ?? '') !== customerPhone)
+    ) {
+      console.error('[publicBookingCreate] booking_customer_link_failed', {
+        bookingId,
+        clientId,
+        phoneMasked: maskPhoneForLog(customerPhone),
+      });
       throw new PublicBookingCreateError('BOOKING_CREATE_FAILED');
     }
 

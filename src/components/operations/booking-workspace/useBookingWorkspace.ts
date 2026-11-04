@@ -578,14 +578,74 @@ export function useBookingWorkspace({
   }, [open]);
 
   useEffect(() => {
-    if (clientSearch.length < 2) { setClients([]); return; }
-    const t = setTimeout(() => {
-      fetch(`/api/customers?q=${encodeURIComponent(clientSearch)}`)
-        .then((r) => r.json())
-        .then((d) => { setClients(Array.isArray(d) ? d : (d.clients ?? d.data ?? [])); setShowClients(true); })
-        .catch(() => {});
-    }, 300);
-    return () => clearTimeout(t);
+    const search = clientSearch.trim();
+    if (search.length < 2) { setClients([]); return; }
+
+    const controller = new AbortController();
+    const isPhoneSearch = /^[+\d٠-٩۰-۹\s-]+$/.test(search);
+    const normalizedPhone = search
+      .replace(/[٠-٩]/g, (digit) => String(digit.charCodeAt(0) - 0x0660))
+      .replace(/[۰-۹]/g, (digit) => String(digit.charCodeAt(0) - 0x06F0))
+      .replace(/[\s-]/g, '')
+      .replace(/^(?:\+20|0020)/, '0');
+
+    // The search box accepts phone numbers as well as names. A phone entered
+    // here must not vanish from the actual booking payload.
+    if (isPhoneSearch) {
+      setSelectedClient(null);
+      setCustomerPhone(normalizedPhone);
+      setClients([]);
+
+      // Wait for an Egyptian mobile number to be complete before exact lookup.
+      if (!/^01[0125]\d{8}$/.test(normalizedPhone)) {
+        setShowClients(false);
+        return () => controller.abort();
+      }
+    }
+
+    const timer = window.setTimeout(async () => {
+      try {
+        const url = isPhoneSearch
+          ? `/api/customers/lookup-phone?phone=${encodeURIComponent(normalizedPhone)}`
+          : `/api/customers?q=${encodeURIComponent(search)}`;
+        const response = await fetch(url, { cache: 'no-store', signal: controller.signal });
+        if (!response.ok) throw new Error('customer_lookup_failed');
+        const data = await response.json();
+        if (controller.signal.aborted) return;
+
+        if (isPhoneSearch) {
+          // An exact phone match pre-fills the name and binds the real ClientID.
+          if (data.status === 'existing' && data.customer) {
+            const client = data.customer as BookingClient;
+            const fields = hydrateCustomerFieldsFromClient(client);
+            setSelectedClient(client);
+            setCustomerName(fields.customerName);
+            setCustomerPhone(fields.customerPhone);
+            setClientSearch('');
+          } else if (data.status === 'new') {
+            // The phone is already in customerPhone. Clear the lookup field so
+            // the operator fills only the missing name, with no duplicate entry.
+            setClientSearch('');
+            document.getElementById('ops-booking-customer-name')?.focus();
+          }
+          setClients([]);
+          setShowClients(false);
+        } else {
+          setClients(Array.isArray(data) ? data : (data.clients ?? data.data ?? []));
+          setShowClients(true);
+        }
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        // Even if lookup fails, the entered phone remains in the booking form.
+        console.warn('[ops-booking] customer search failed', error instanceof Error ? error.message : error);
+        setClients([]);
+        setShowClients(false);
+      }
+    }, 350);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
   }, [clientSearch]);
 
   /** Targeted day refresh after write conflicts — no full 14-day reload. */
@@ -800,7 +860,7 @@ export function useBookingWorkspace({
       const payload = {
         customer: {
           name: selectedClient?.Name || customerName,
-          phone: selectedClient?.Mobile || customerPhone.trim() || '',
+          phone: customerPhone.trim() || selectedClient?.Mobile || '',
         },
         ...(packageFields ?? { serviceIds }),
         date: bookingDate,
