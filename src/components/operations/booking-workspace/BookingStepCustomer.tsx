@@ -2,6 +2,7 @@
 
 import { Search, X } from 'lucide-react';
 import { BORDER, SURFACE, type BookingClient } from './types';
+import { BookingPhoneStatus } from './BookingPhoneStatus';
 
 interface Props {
   customerName: string;
@@ -109,6 +110,13 @@ export function BookingStepCustomer({
             className="w-full min-h-[48px] rounded-xl border px-4 text-sm bg-transparent"
             style={{ borderColor: BORDER }}
             dir="ltr"
+            inputMode="tel"
+            autoComplete="tel"
+          />
+          <BookingPhoneStatus
+            phone={customerPhone}
+            selectedClient={selectedClient}
+            onSelectClient={onSelectClient}
           />
         </label>
         <label className="block">
