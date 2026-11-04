@@ -19,7 +19,7 @@ export default function PasswordChangeForm({forced}:{forced:boolean}) {
     } catch(e) {setError(e instanceof Error?e.message:'حدث خطأ');}
     finally {setBusy(false);}
   }
-  return <main dir="rtl" className="flex-1 flex items-center justify-center p-4 bg-zinc-950 text-white">
+  return <section dir="rtl" className="flex-1 flex items-center justify-center p-4 bg-zinc-950 text-white">
     <form onSubmit={submit} className="max-w-md w-full bg-zinc-900 border border-zinc-800 rounded-2xl p-6 space-y-4">
       <h1 className="text-2xl font-bold">{forced?'لازم تغيّر كلمة المرور أول مرة':'تغيير كلمة المرور'}</h1>
       <p className="text-zinc-400 text-sm">كلمة المرور الجديدة خاصة بيك. بعد الحفظ سجّل دخول تاني.</p>
@@ -29,5 +29,5 @@ export default function PasswordChangeForm({forced}:{forced:boolean}) {
       {error&&<p role="alert" className="text-rose-400 text-sm">{error}</p>}
       <button disabled={busy} className="bg-amber-500 text-zinc-950 font-semibold rounded-lg w-full p-3">{busy?'جاري الحفظ...':'حفظ كلمة المرور'}</button>
     </form>
-  </main>;
+  </section>;
 }
