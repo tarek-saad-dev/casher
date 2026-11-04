@@ -92,6 +92,7 @@ export function BookingStepCustomer({
         <label className="block">
           <span className="text-xs font-semibold text-muted-foreground mb-1.5 block">اسم العميل *</span>
           <input
+            id="ops-booking-customer-name"
             type="text"
             value={customerName}
             onChange={(e) => onCustomerNameChange(e.target.value)}
