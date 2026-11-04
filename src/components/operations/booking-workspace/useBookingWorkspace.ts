@@ -800,7 +800,7 @@ export function useBookingWorkspace({
       const payload = {
         customer: {
           name: selectedClient?.Name || customerName,
-          phone: selectedClient?.Mobile || customerPhone.trim() || '',
+          phone: customerPhone.trim() || selectedClient?.Mobile || '',
         },
         ...(packageFields ?? { serviceIds }),
         date: bookingDate,
