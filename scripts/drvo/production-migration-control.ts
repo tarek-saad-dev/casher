@@ -77,6 +77,13 @@ async function main() {
         approvedSha,
         database,
         plan,
+        // Help operators reconcile unknownApplied / checksum mismatches.
+        applied: appliedRows.map((row) => ({
+          migrationId: row.MigrationId,
+          migrationKey: row.MigrationKey,
+          checksum: row.Checksum,
+          appliedAtUtc: row.AppliedAtUtc,
+        })),
       }, null, 2));
       return;
     }

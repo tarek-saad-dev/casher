@@ -47,3 +47,7 @@ After a real booking, look for:
 - Android Chrome: notification permission granted for the site; battery restrictions not killing the PWA.
 - iOS: install CUT STAFF to Home Screen, open from the icon (standalone), iOS 16.4+.
 - Service worker scope: `/employee-portal` (`/employee-portal/sw.js`).
+
+## Production migration
+
+Deploy readiness requires the Drvo migration key `booking-cashier-handoff` applied via [MIGRATION-CONTROL-PLANE](./drvo/MIGRATION-CONTROL-PLANE.md) before VPS deploy succeeds. Risk: `LOW`. `requiresBackup`: `false`.

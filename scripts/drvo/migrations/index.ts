@@ -18,7 +18,8 @@ import { modularDraftSelectionCatalogMigration } from './016-modular-draft-selec
 import { modularQuoteRequestsMigration } from './017-modular-quote-requests';
 import { modularInquiryReviewsMigration } from './018-modular-inquiry-reviews';
 import { tariffResearchReviewMigration } from './019-tariff-research-review';
-import { bookingCashierHandoffMigration } from './020-booking-cashier-handoff';
+import { employeeLateDeductionMigration } from './020-employee-late-deduction';
+import { bookingCashierHandoffMigration } from './021-booking-cashier-handoff';
 import { drvoModuleRequiredMigrationsFromManifest } from '../../../src/platform/drvo/moduleManifest';
 
 /** Ordered DRVO migration manifest — single source of truth for migration order. */
@@ -42,6 +43,7 @@ export const DRVO_MIGRATIONS: DrvoMigrationDefinition[] = [
   modularQuoteRequestsMigration,
   modularInquiryReviewsMigration,
   tariffResearchReviewMigration,
+  employeeLateDeductionMigration,
   bookingCashierHandoffMigration,
 ];
 
