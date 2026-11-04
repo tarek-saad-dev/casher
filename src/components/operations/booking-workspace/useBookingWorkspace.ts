@@ -582,12 +582,12 @@ export function useBookingWorkspace({
     if (search.length < 2) { setClients([]); return; }
 
     const controller = new AbortController();
-    const isPhoneSearch = /^[+\\d٠-٩۰-۹\\s-]+$/.test(search);
+    const isPhoneSearch = /^[+\d٠-٩۰-۹\s-]+$/.test(search);
     const normalizedPhone = search
       .replace(/[٠-٩]/g, (digit) => String(digit.charCodeAt(0) - 0x0660))
       .replace(/[۰-۹]/g, (digit) => String(digit.charCodeAt(0) - 0x06F0))
-      .replace(/[\\s-]/g, '')
-      .replace(/^(?:\\+20|0020)/, '0');
+      .replace(/[\s-]/g, '')
+      .replace(/^(?:\+20|0020)/, '0');
 
     // The search box accepts phone numbers as well as names. A phone entered
     // here must not vanish from the actual booking payload.
@@ -597,7 +597,7 @@ export function useBookingWorkspace({
       setClients([]);
 
       // Wait for an Egyptian mobile number to be complete before exact lookup.
-      if (!/^01[0125]\\d{8}$/.test(normalizedPhone)) {
+      if (!/^01[0125]\d{8}$/.test(normalizedPhone)) {
         setShowClients(false);
         return () => controller.abort();
       }
