@@ -1,10 +1,6 @@
 {
-  "action": "APPLY",
+  "action": "PLAN",
   "requested_by": "tarek-saad-dev",
   "pr_number": 201,
-  "target_sha": "4d985259649eacd448ef3183fe95906ee30947a1",
-  "manifest_digest": "e2f0d8784ee36f07665787d1ec7ce9611bb7b4a9a56c9a35ca8c1ca1c15115af",
-  "migrations": ["booking-cashier-handoff"],
-  "backup_reference": "",
-  "approval": "TAREK_APPROVED_PRODUCTION_MIGRATION"
+  "target_sha": "8ad3f637cc5fb160b8456d2cb52bea9c66869c81"
 }
