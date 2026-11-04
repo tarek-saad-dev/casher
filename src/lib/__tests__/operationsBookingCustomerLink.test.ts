@@ -45,5 +45,8 @@ describe('operations booking customer registration safeguards', () => {
     expect(route).toContain("status: 'existing'");
     const bookingUi = read('src/components/operations/booking-workspace/BookingStepCustomer.tsx');
     expect(bookingUi).toContain('<BookingPhoneStatus');
+    const workspace = read('src/components/operations/booking-workspace/useBookingWorkspace.ts');
+    expect(workspace).toContain("phone: customerPhone.trim() || selectedClient?.Mobile || ''");
+    expect(workspace).toContain("fetch('/api/public/booking/create'");
   });
 });
