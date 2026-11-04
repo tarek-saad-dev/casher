@@ -21,6 +21,7 @@ describe('Salon booking staging acceptance safety', () => {
     const source = read('src/lib/booking/publicBookingCreate.ts');
     expect(source).toMatch(/if \(!input\.suppressNotification\)\s*\{\s*scheduleBookingTeamGroupNotify\(/);
     expect(source).toContain('!input.suppressNotification &&');
+    expect(source).toContain('scheduleStaffBookingPush(');
     const smoke = read('scripts/drvo/salon-booking-e2e-staging.ts');
     expect(smoke).toContain('suppressNotification: true');
   });

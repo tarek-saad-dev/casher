@@ -59,6 +59,7 @@ import {
 } from '@/lib/publicBookingHelpers';
 import { scheduleBookingWhatsAppAfterCommit } from '@/lib/bookingPostCommitNotification';
 import { scheduleBookingTeamGroupNotify } from '@/lib/bookingGroupWhatsAppNotify';
+import { scheduleStaffBookingPush } from '@/lib/employee-portal/staffBookingPush';
 import { invalidatePublicBookingAvailabilityCache } from '@/lib/booking/publicBookingAvailability';
 import { ensureBookingPublicWorkDateColumns } from '@/lib/booking/ensureBookingPublicWorkDateColumns';
 import type { SchedulingPortHooks } from '@/apps/booking/internal/schedulingPortAdapter';
@@ -1319,6 +1320,13 @@ export async function createPublicBooking(
         services: servicesNow.services.map((s) => s.nameAr),
         branchName: branchNow.branchName,
         branchId: branchNow.branchId,
+      });
+      scheduleStaffBookingPush({
+        assignedEmpId: selectedEmpId,
+        bookingTime: precheck.requestedTime,
+        customerName,
+        services: servicesNow.services.map((s) => s.nameAr),
+        branchName: branchNow.branchName,
       });
     }
 
