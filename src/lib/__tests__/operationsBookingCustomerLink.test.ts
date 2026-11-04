@@ -51,6 +51,9 @@ describe('operations booking customer registration safeguards', () => {
     expect(workspace).toContain("/api/customers/lookup-phone?phone=");
     expect(workspace).toContain('setSelectedClient(client)');
     expect(workspace).toContain('setCustomerName(fields.customerName)');
+    expect(workspace).toContain("data.status === 'new'");
+    expect(workspace).toContain("document.getElementById('ops-booking-customer-name')?.focus()");
+    expect(bookingUi).toContain('id="ops-booking-customer-name"');
     expect(workspace).toContain("fetch('/api/public/booking/create'");
   });
 });
