@@ -83,7 +83,13 @@ export function isUsableCustomerPhone(phone: string | null | undefined): boolean
  * Strips spaces; maps +20 / 0020 prefixes to leading 0.
  */
 export function normalizePublicBookingPhone(phone: string): string {
-  let p = phone.trim().replace(/\s+/g, '').replace(/-/g, '');
+  // Number pads on Arabic keyboards can emit Arabic-Indic / Eastern Arabic digits.
+  // Keep the stored and lookup phone format consistent regardless of input locale.
+  let p = phone
+    .trim()
+    .replace(/[٠-٩]/g, (digit) => String(digit.charCodeAt(0) - 0x0660))
+    .replace(/[۰-۹]/g, (digit) => String(digit.charCodeAt(0) - 0x06F0))
+    .replace(/[\s\u200e\u200f\u061c-]/g, '');
   if (p.startsWith('+20')) p = `0${p.slice(3)}`;
   else if (p.startsWith('0020')) p = `0${p.slice(4)}`;
   return p;
