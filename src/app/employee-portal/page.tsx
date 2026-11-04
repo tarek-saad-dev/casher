@@ -6,6 +6,7 @@ import EmployeePortalLogin from './portal-login';
 import EmployeeDailyChart from './EmployeeDailyChart';
 import DailyEfficiency from './DailyEfficiency';
 import { getPortalAttendance } from '@/lib/employee-portal/attendance';
+import EnablePushNotifications from '@/components/employee-portal/EnablePushNotifications';
 
 export const dynamic = 'force-dynamic';
 const money = (value: number) => new Intl.NumberFormat('ar-EG', { maximumFractionDigits: 2 }).format(value) + ' ج.م';
@@ -56,6 +57,10 @@ export default async function EmployeePortalPage({
               <span className="min-w-0"><span className="block text-xs font-black tracking-wider text-amber-300" dir="ltr">CUT SALON</span><span className="block text-[11px] text-zinc-400">بوابة الموظفين</span></span>
             </a>
             <div className="flex items-center gap-1.5">
+              <a href="/employee-portal/bookings" className="inline-flex min-h-10 items-center gap-1 rounded-xl border border-amber-400/30 bg-amber-400/10 px-3 text-xs font-semibold text-amber-100 hover:bg-amber-400/20 focus-visible:outline-2 focus-visible:outline-amber-400" aria-label="حجوزات اليوم">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                <span className="hidden min-[370px]:inline">الحجوزات</span>
+              </a>
               <a href="/employee-portal/account-settings" className="inline-flex min-h-10 items-center gap-1 rounded-xl border border-white/10 bg-white/5 px-3 text-xs font-semibold text-zinc-100 hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-amber-400" aria-label="إعدادات الحساب">
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06-2 2-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21h-2.82v-.08a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06-2-2 .06-.06a1.65 1.65 0 0 0 .33-1.82A1.65 1.65 0 0 0 6.09 14H6v-2.82h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06 2-2 .06.06a1.65 1.65 0 0 0 1.82.33 1.65 1.65 0 0 0 1-1.51V5h2.82v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06 2 2-.06.06a1.65 1.65 0 0 0-.33 1.82 1.65 1.65 0 0 0 1.51 1H21V14h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
                 <span className="hidden min-[370px]:inline">الإعدادات</span>
@@ -79,6 +84,7 @@ export default async function EmployeePortalPage({
             </form>
           </div>
         </header>
+        <EnablePushNotifications />
         <section aria-label="ملخص مستحقات الشهر" className="space-y-3">
           <div className="grid grid-cols-3 gap-2 md:gap-3">
             {[

@@ -1,6 +1,6 @@
-/* CUT STAFF service worker — scoped to /employee-portal, network-only HTML. */
+/* CUT STAFF service worker — scoped to /employee-portal, network-only HTML + Web Push. */
 const APP_ID = 'cut-staff';
-const VERSION = 'cut-staff-v1';
+const VERSION = 'cut-staff-v2-push';
 
 self.addEventListener('install', (event) => {
   event.waitUntil(self.skipWaiting());
@@ -38,4 +38,60 @@ self.addEventListener('fetch', (event) => {
       ),
     );
   }
+});
+
+self.addEventListener('push', (event) => {
+  let data = {
+    title: 'حجز جديد لك',
+    body: 'تمت إضافة حجز جديد إلى جدولك',
+    url: '/employee-portal/bookings',
+  };
+  try {
+    if (event.data) {
+      const parsed = event.data.json();
+      data = {
+        title: String(parsed.title || data.title),
+        body: String(parsed.body || data.body),
+        url: String(parsed.url || data.url),
+      };
+    }
+  } catch {
+    try {
+      const text = event.data ? event.data.text() : '';
+      if (text) data.body = text;
+    } catch {
+      /* keep defaults */
+    }
+  }
+
+  event.waitUntil(
+    self.registration.showNotification(data.title, {
+      body: data.body,
+      icon: '/icons/cut-staff/icon-192.png',
+      badge: '/icons/cut-staff/icon-192.png',
+      data: { url: data.url },
+      lang: 'ar',
+      dir: 'rtl',
+    }),
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const targetUrl = (event.notification.data && event.notification.data.url) || '/employee-portal/bookings';
+  event.waitUntil(
+    (async () => {
+      const allClients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      for (const client of allClients) {
+        if ('focus' in client && client.url.includes('/employee-portal')) {
+          await client.focus();
+          if ('navigate' in client) {
+            await client.navigate(targetUrl);
+          }
+          return;
+        }
+      }
+      await self.clients.openWindow(targetUrl);
+    })(),
+  );
 });
