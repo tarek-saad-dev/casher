@@ -383,6 +383,8 @@ export interface CreateSalePayload {
   notes: string;
   /** Optional long notes (e.g. [groomPackage] metadata) stored in Notes2 */
   notes2?: string;
+  /** Optional barber→cashier handoff id — marks handoff charged after successful sale */
+  handoffId?: number | null;
 }
 
 export interface CreateSaleResult {

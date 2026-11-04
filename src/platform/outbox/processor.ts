@@ -9,6 +9,7 @@ import {
   BOOKING_CANCELLATION_TEMPLATE_KEY,
   BOOKING_CONFIRMATION_TEMPLATE_KEY,
 } from '@/modules/messaging/templates/catalog';
+import { notifyStaffOfOutboxBookingCreated } from '@/platform/outbox/staffBookingPushNotify';
 
 type PlatformOutboxRow = {
   Id: number;
@@ -210,6 +211,16 @@ async function deliverBookingEvent(row: PlatformOutboxRow): Promise<void> {
         ? result.error
         : `WHATSAPP_SEND_FAILED:${result.reason}`,
     );
+  }
+
+  // Extracted booking path suppresses inline push; fire it here after WA succeeds.
+  // Push failures must not flip outbox back to pending.
+  if (row.EventType === 'booking.created') {
+    await notifyStaffOfOutboxBookingCreated({
+      eventType: row.EventType,
+      tenantId: String(row.TenantId),
+      contact,
+    });
   }
 }
 

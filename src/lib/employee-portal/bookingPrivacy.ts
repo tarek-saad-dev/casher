@@ -1,10 +1,15 @@
+export type PortalHandoffBadge = 'none' | 'pending' | 'charged';
+
 export type MaskedPortalBooking = {
+  bookingId: number;
   startTime: string;
   endTime: string;
   status: string;
   firstName: string;
   serviceNames: string[];
   branchName: string | null;
+  /** Optional cashier handoff badge — never includes PII beyond first name. */
+  handoffStatus: PortalHandoffBadge;
 };
 
 /** Cairo calendar date as YYYY-MM-DD. */
