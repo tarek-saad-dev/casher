@@ -11,7 +11,7 @@ const SCHEMA = path.join(
   '..',
   'db',
   'drvo-migrations',
-  '020-booking-cashier-handoff',
+  '021-booking-cashier-handoff',
   'schema.sql',
 );
 
@@ -86,7 +86,7 @@ export async function verifyBookingCashierHandoffSchema(
 }
 
 export const bookingCashierHandoffMigration: DrvoMigrationDefinition = {
-  migrationId: 20,
+  migrationId: 21,
   migrationKey: 'booking-cashier-handoff',
   name: 'Optional barber-to-cashier booking handoff for POS settlement',
   dependencies: ['tariff-research-review'],
