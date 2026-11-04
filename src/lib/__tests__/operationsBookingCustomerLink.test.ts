@@ -47,6 +47,10 @@ describe('operations booking customer registration safeguards', () => {
     expect(bookingUi).toContain('<BookingPhoneStatus');
     const workspace = read('src/components/operations/booking-workspace/useBookingWorkspace.ts');
     expect(workspace).toContain("phone: customerPhone.trim() || selectedClient?.Mobile || ''");
+    expect(workspace).toContain('setCustomerPhone(normalizedPhone)');
+    expect(workspace).toContain("/api/customers/lookup-phone?phone=");
+    expect(workspace).toContain('setSelectedClient(client)');
+    expect(workspace).toContain('setCustomerName(fields.customerName)');
     expect(workspace).toContain("fetch('/api/public/booking/create'");
   });
 });
