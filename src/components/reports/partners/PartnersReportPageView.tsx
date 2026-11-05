@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from 'react';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -11,7 +11,9 @@ import ExpensesByCategorySection from '@/components/reports/partners/ExpensesByC
 import PartnersOperatingNetFlowSection from '@/components/reports/partners/PartnersOperatingNetFlowSection';
 import PartnersFinalSettlementSection from '@/components/reports/partners/PartnersFinalSettlementSection';
 import FinancialClassificationPanel from '@/components/reports/FinancialClassificationPanel';
+import { usePermissions } from '@/components/providers/PermissionsProvider';
 import { ARABIC_MONTHS } from '@/components/reports/partners/partnersReportUtils';
+import { isStaffLayoutUser } from '@/lib/partnerAccess';
 import {
   clampPartnersReportMonth,
   getPartnersReportCurrentMonth,
@@ -63,6 +65,7 @@ function PartnersReportPageContent({
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
+  const { access } = usePermissions();
 
   const initialPeriod = resolvePartnersReportPeriod(
     searchParams.get('year'),
@@ -77,6 +80,12 @@ function PartnersReportPageContent({
   const [report, setReport] = useState<PartnersMonthlyReportResponse | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [printLoading, setPrintLoading] = useState(false);
+
+  /** Print is for manager/admin staff only — never partner-only or other roles. */
+  const showPrint = useMemo(() => {
+    if (!access || access.isPartnerOnly) return false;
+    return access.isSuperAdmin || isStaffLayoutUser(access.roles);
+  }, [access]);
 
   const fetchIdRef = useRef(0);
   const hasSyncedInitialUrlRef = useRef(false);
@@ -202,7 +211,7 @@ function PartnersReportPageContent({
   };
 
   const handlePrint = async () => {
-    if (!report || printLoading) return;
+    if (!showPrint || !report || printLoading) return;
 
     setPrintLoading(true);
     try {
@@ -293,6 +302,7 @@ function PartnersReportPageContent({
             void handlePrint();
           }}
           printLoading={printLoading}
+          showPrint={showPrint}
         />
 
         {error && !report && (

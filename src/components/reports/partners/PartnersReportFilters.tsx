@@ -27,6 +27,8 @@ interface PartnersReportFiltersProps {
   onRefresh: () => void;
   onPrint: () => void;
   printLoading?: boolean;
+  /** Manager/admin staff only — hidden from partners and other roles. */
+  showPrint?: boolean;
 }
 
 const touchButtonClass =
@@ -46,6 +48,7 @@ export default function PartnersReportFilters({
   onRefresh,
   onPrint,
   printLoading = false,
+  showPrint = false,
 }: PartnersReportFiltersProps) {
   const allowedYears = getPartnersReportAllowedYears();
   const allowedMonths = getPartnersReportAllowedMonths(year);
@@ -134,14 +137,20 @@ export default function PartnersReportFilters({
         </Button>
       </div>
 
-      {/* Row 3: refresh + print */}
+      {/* Row 3: refresh + print (print is manager/admin staff only) */}
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         {lastRefresh && (
           <span className="text-xs text-zinc-500 text-center sm:text-right">
             آخر تحديث: {lastRefresh.toLocaleTimeString('ar-EG')}
           </span>
         )}
-        <div className="grid grid-cols-2 gap-2 sm:flex sm:gap-2 sm:ms-auto">
+        <div
+          className={
+            showPrint
+              ? 'grid grid-cols-2 gap-2 sm:flex sm:gap-2 sm:ms-auto'
+              : 'flex sm:ms-auto'
+          }
+        >
           <Button
             type="button"
             variant="outline"
@@ -153,21 +162,23 @@ export default function PartnersReportFilters({
             <RefreshCw className={`h-4 w-4 shrink-0 ${loading ? 'animate-spin' : ''}`} aria-hidden />
             تحديث
           </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={onPrint}
-            disabled={loading || printLoading}
-            aria-label="طباعة التقرير"
-            aria-busy={printLoading}
-            className={`${touchButtonClass} w-full sm:w-auto text-sm`}
-          >
-            <Printer className={`h-4 w-4 shrink-0 ${printLoading ? 'animate-pulse' : ''}`} aria-hidden />
-            <span className="sm:hidden">{printLoading ? 'جارٍ…' : 'طباعة'}</span>
-            <span className="hidden sm:inline">
-              {printLoading ? 'جارٍ تجهيز ملف A4…' : 'طباعة التقرير'}
-            </span>
-          </Button>
+          {showPrint ? (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onPrint}
+              disabled={loading || printLoading}
+              aria-label="طباعة التقرير"
+              aria-busy={printLoading}
+              className={`${touchButtonClass} w-full sm:w-auto text-sm`}
+            >
+              <Printer className={`h-4 w-4 shrink-0 ${printLoading ? 'animate-pulse' : ''}`} aria-hidden />
+              <span className="sm:hidden">{printLoading ? 'جارٍ…' : 'طباعة'}</span>
+              <span className="hidden sm:inline">
+                {printLoading ? 'جارٍ تجهيز ملف A4…' : 'طباعة التقرير'}
+              </span>
+            </Button>
+          ) : null}
         </div>
       </div>
     </div>

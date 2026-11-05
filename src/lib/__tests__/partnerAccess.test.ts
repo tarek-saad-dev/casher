@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import fs from 'fs';
+import path from 'path';
 import {
   PARTNER_ROLE_KEY,
   PARTNERS_REPORT_PAGE_PATH,
@@ -9,6 +11,9 @@ import {
   normalizePagePath,
   shouldSkipShiftPrompt,
 } from '@/lib/partnerAccess';
+
+const root = path.join(__dirname, '..', '..', '..');
+const read = (rel: string) => fs.readFileSync(path.join(root, rel), 'utf8');
 
 describe('partnerAccess', () => {
   it('identifies partner-only users', () => {
@@ -70,5 +75,18 @@ describe('manager landing', () => {
     expect(shouldSkipShiftPrompt(['admin'])).toBe(false);
     expect(shouldSkipShiftPrompt(['manager'])).toBe(false);
     expect(getDefaultLandingPath({ roles: ['manager'], isSuperAdmin: false })).toBe('/income/pos');
+  });
+});
+
+describe('partners report print button visibility', () => {
+  it('gates print UI to staff layout / super-admin and hides it from partner-only users', () => {
+    const page = read('src/components/reports/partners/PartnersReportPageView.tsx');
+    const filters = read('src/components/reports/partners/PartnersReportFilters.tsx');
+    expect(page).toContain('showPrint');
+    expect(page).toContain('isPartnerOnly');
+    expect(page).toContain('isStaffLayoutUser');
+    expect(page).toContain('if (!showPrint || !report || printLoading) return');
+    expect(filters).toContain('showPrint');
+    expect(filters).toContain('{showPrint ? (');
   });
 });
