@@ -1,9 +1,14 @@
 import { describe, expect, it } from 'vitest';
+import fs from 'fs';
+import path from 'path';
 import { parseDailyPayrollEmployeeScope } from '@/lib/payroll/dailyPayrollEmployeeScope.shared';
 import {
   detectSameDayMultiBranchEmployees,
   mergeDailyPayrollAndTargetRows,
 } from '@/lib/payroll/employee-target/merge-daily-payroll-target-rows';
+
+const root = path.join(__dirname, '..', '..', '..');
+const read = (rel: string) => fs.readFileSync(path.join(root, rel), 'utf8');
 
 describe('parseDailyPayrollEmployeeScope', () => {
   it('defaults omitted to active (session branch)', () => {
@@ -139,5 +144,23 @@ describe('mergeDailyPayrollAndTargetRows multi-branch', () => {
       { empId: 2, empName: 'زياد', branchId: 1 },
     ]);
     expect(flags).toEqual([{ empId: 7, empName: 'أحمد', branchIds: [1, 3] }]);
+  });
+});
+
+describe('daily payroll UI excludes inactive employees', () => {
+  it('list/targets/readiness queries require active employees', () => {
+    const list = read('src/app/api/payroll/daily/route.ts');
+    const targets = read(
+      'src/lib/payroll/employee-target/employee-daily-target.repository.ts',
+    );
+    const readiness = read('src/lib/hr/dailyPayrollReadiness.service.ts');
+    expect(list).toContain('ISNULL(e.isActive, 1) = 1');
+    expect(targets).toContain('ISNULL(e.isActive, 1) = 1');
+    expect(readiness).toMatch(
+      /TblEmpDailyPayroll[\s\S]*ISNULL\(e\.isActive,\s*1\)\s*=\s*1/,
+    );
+    expect(readiness).toMatch(
+      /TblEmpDailyTarget[\s\S]*ISNULL\(e\.isActive,\s*1\)\s*=\s*1/,
+    );
   });
 });

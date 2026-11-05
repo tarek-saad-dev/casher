@@ -84,6 +84,7 @@ export async function GET(req: NextRequest) {
         INNER JOIN dbo.TblEmp e
           ON e.EmpID = p.EmpID
          AND e.TenantId = @tenantId
+         AND ISNULL(e.isActive, 1) = 1
         INNER JOIN dbo.TblBranch b
           ON b.BranchID = p.BranchID
         LEFT JOIN dbo.TblEmpAttendance a
