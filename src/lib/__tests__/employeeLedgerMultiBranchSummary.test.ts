@@ -116,4 +116,23 @@ describe('employee ledger multi-branch financial summary', () => {
     expect(route).toContain('mergeEmployeeLedgerBranchScope');
     expect(route).toContain('ledgerBranchScope');
   });
+
+  it('summary includes inactive employees who have ledger entries in the selected month', () => {
+    const svc = read('src/lib/services/employeeLedgerService.ts');
+    const summaryFn = svc.slice(svc.indexOf('export async function getEmployeeLedgerSummary'));
+    expect(summaryFn).toContain('ISNULL(e.isActive, 1) = 1');
+    expect(summaryFn).toContain('OR EXISTS (');
+    expect(summaryFn).toContain('FROM dbo.TblEmpLedgerEntry lx');
+    expect(summaryFn).toContain("buildMonthEntryFilter('lx')");
+    expect(summaryFn).not.toMatch(
+      /WHERE\s+ISNULL\(e\.isActive,\s*1\)\s*=\s*1\s*\n\s*AND e\.TenantId/,
+    );
+  });
+
+  it('panel dropdown merges month-summary employees with the active roster', () => {
+    const panel = read('src/components/hr/EmployeeLedgerPanel.tsx');
+    expect(panel).toContain('employeeOptions');
+    expect(panel).toContain('summary?.employees');
+    expect(panel).toContain('employeeOptions.map');
+  });
 });
