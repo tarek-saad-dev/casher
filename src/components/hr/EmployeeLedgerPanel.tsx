@@ -274,6 +274,20 @@ export default function EmployeeLedgerPanel() {
   }, [refresh]);
 
   const tableBranches = summary?.tableBranches ?? [];
+  /** Active roster plus anyone who appears in this month's summary (incl. inactive with ledger activity). */
+  const employeeOptions = useMemo(() => {
+    const byId = new Map<number, EmployeeOption>();
+    for (const e of employees) {
+      byId.set(e.EmpID, e);
+    }
+    for (const row of summary?.employees ?? []) {
+      if (!byId.has(row.empId)) {
+        byId.set(row.empId, { EmpID: row.empId, EmpName: row.empName });
+      }
+    }
+    return [...byId.values()].sort((a, b) => a.EmpName.localeCompare(b.EmpName, 'ar'));
+  }, [employees, summary?.employees]);
+
   const summaryRows = useMemo(() => {
     if (!summary) return [] as EmpLedgerEmployeeSummaryRow[];
     if (empId === 'all') return summary.employees;
@@ -463,7 +477,7 @@ export default function EmployeeLedgerPanel() {
             </SelectTrigger>
             <SelectContent className="bg-surface border-border max-h-64">
               <SelectItem value="all" className="text-foreground text-sm">كل الموظفين</SelectItem>
-              {employees.map((e) => (
+              {employeeOptions.map((e) => (
                 <SelectItem key={e.EmpID} value={String(e.EmpID)} className="text-foreground text-sm">
                   {e.EmpName}
                 </SelectItem>

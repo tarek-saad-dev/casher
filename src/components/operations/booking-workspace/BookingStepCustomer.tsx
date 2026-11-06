@@ -2,6 +2,7 @@
 
 import { Search, X } from 'lucide-react';
 import { BORDER, SURFACE, type BookingClient } from './types';
+import { BookingPhoneStatus } from './BookingPhoneStatus';
 
 interface Props {
   customerName: string;
@@ -40,11 +41,11 @@ export function BookingStepCustomer({
     <div className="space-y-5 max-w-xl">
       <div>
         <h3 className="text-base font-bold text-foreground">بيانات العميل</h3>
-        <p className="text-xs text-muted-foreground mt-0.5">ابحث عن عميل موجود أو أدخل بيانات جديدة</p>
+        <p className="text-xs text-muted-foreground mt-0.5">اكتب اسم العميل للبحث، أو رقم موبايله للتحقق وتعبئته تلقائيًا</p>
       </div>
 
       <div className="relative">
-        <p className="text-xs font-semibold text-muted-foreground mb-2">بحث عن عميل</p>
+        <p className="text-xs font-semibold text-muted-foreground mb-2">اسم العميل أو رقم الموبايل</p>
         {selectedClient ? (
           <div className="flex items-center justify-between p-4 rounded-xl border min-h-[52px]" style={{ borderColor: 'var(--success)', background: 'color-mix(in srgb, var(--success) 5%, transparent)' }}>
             <div>
@@ -61,7 +62,7 @@ export function BookingStepCustomer({
               <Search size={18} className="text-muted-foreground shrink-0" />
               <input
                 className="flex-1 bg-transparent text-sm outline-none"
-                placeholder="ابحث بالاسم أو الهاتف..."
+                placeholder="ابحث بالاسم أو اكتب رقم الموبايل..."
                 value={clientSearch}
                 onChange={(e) => { onClientSearchChange(e.target.value); onShowClients(true); }}
                 aria-label="بحث عن عميل"
@@ -91,6 +92,7 @@ export function BookingStepCustomer({
         <label className="block">
           <span className="text-xs font-semibold text-muted-foreground mb-1.5 block">اسم العميل *</span>
           <input
+            id="ops-booking-customer-name"
             type="text"
             value={customerName}
             onChange={(e) => onCustomerNameChange(e.target.value)}
@@ -109,6 +111,13 @@ export function BookingStepCustomer({
             className="w-full min-h-[48px] rounded-xl border px-4 text-sm bg-transparent"
             style={{ borderColor: BORDER }}
             dir="ltr"
+            inputMode="tel"
+            autoComplete="tel"
+          />
+          <BookingPhoneStatus
+            phone={customerPhone}
+            selectedClient={selectedClient}
+            onSelectClient={onSelectClient}
           />
         </label>
         <label className="block">

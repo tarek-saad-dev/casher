@@ -1,5 +1,9 @@
 import 'server-only';
 import { sql } from '@/lib/db';
+import {
+  isUsableCustomerPhone,
+  normalizePublicBookingPhone,
+} from '@/lib/publicBookingHelpers';
 import { requireMasterDataTenantId } from '@/platform/masterData/tenantScope';
 import type { CustomerSnapshot, CustomersPort } from '../public/ports';
 
@@ -7,30 +11,72 @@ import type { CustomerSnapshot, CustomersPort } from '../public/ports';
  * Anti-corruption adapter over legacy TblClient.
  * Live rows use [Name] and Mobile. Do not filter or write a deletion flag.
  * Every read/write is bound to the actor's authoritative TenantId (DRVO-015).
+ *
+ * Empty / placeholder phones never match existing rows (avoids smoke-client collision).
+ * On usable-phone match, displayName is applied when it differs from the stored name.
  */
 export function createLegacyCustomersAdapter(): CustomersPort {
   return {
     async upsertByPhone(tx, actor, input) {
       const tenantId = requireMasterDataTenantId(actor.tenantId, 'customers.upsertByPhone');
-      const existing = await new sql.Request(tx)
-        .input('tenantId', sql.UniqueIdentifier, tenantId)
-        .input('phone', sql.NVarChar(200), input.phone)
-        .query(`
-          SELECT TOP 1 ClientID
-          FROM dbo.TblClient WITH (UPDLOCK, HOLDLOCK)
-          WHERE TenantId = @tenantId AND Mobile = @phone;
-        `);
-      if (existing.recordset.length) {
-        return Number(existing.recordset[0].ClientID);
+      const cleanedPhone = normalizePublicBookingPhone(input.phone ?? '');
+      const usablePhone = isUsableCustomerPhone(cleanedPhone) ? cleanedPhone : '';
+      // Booking/public create always passes the form name; never register the phone digits as Name.
+      const rawName = String(input.displayName ?? '').trim();
+      const displayName =
+        rawName.length >= 2 ? rawName : usablePhone ? 'عميل' : cleanedPhone || 'عميل';
+
+      if (usablePhone) {
+        const existing = await new sql.Request(tx)
+          .input('tenantId', sql.UniqueIdentifier, tenantId)
+          .input('phone', sql.NVarChar(200), usablePhone)
+          .query(`
+            SELECT TOP 1 ClientID, [Name]
+            FROM dbo.TblClient WITH (UPDLOCK, HOLDLOCK)
+            WHERE TenantId = @tenantId AND Mobile = @phone;
+          `);
+        if (existing.recordset.length) {
+          const clientId = Number(existing.recordset[0].ClientID);
+          const previous = existing.recordset[0].Name != null
+            ? String(existing.recordset[0].Name)
+            : null;
+          if (
+            displayName.length >= 2 &&
+            displayName.localeCompare(previous ?? '', undefined, { sensitivity: 'accent' }) !== 0
+          ) {
+            await new sql.Request(tx)
+              .input('tenantId', sql.UniqueIdentifier, tenantId)
+              .input('id', sql.Int, clientId)
+              .input('name', sql.NVarChar(200), displayName)
+              .query(`
+                UPDATE dbo.TblClient
+                SET [Name] = @name
+                WHERE ClientID = @id AND TenantId = @tenantId;
+              `);
+          }
+          return clientId;
+        }
+
+        const insert = await new sql.Request(tx)
+          .input('tenantId', sql.UniqueIdentifier, tenantId)
+          .input('phone', sql.NVarChar(200), usablePhone)
+          .input('name', sql.NVarChar(200), displayName)
+          .query(`
+            INSERT INTO dbo.TblClient (TenantId, [Name], Mobile, RegisterDate)
+            OUTPUT INSERTED.ClientID AS id
+            VALUES (@tenantId, @name, @phone, GETDATE());
+          `);
+        return Number(insert.recordset[0].id);
       }
+
+      // Placeholder / empty phone: always create a new client (Mobile NULL).
       const insert = await new sql.Request(tx)
         .input('tenantId', sql.UniqueIdentifier, tenantId)
-        .input('phone', sql.NVarChar(200), input.phone)
-        .input('name', sql.NVarChar(200), input.displayName ?? input.phone)
+        .input('name', sql.NVarChar(200), displayName)
         .query(`
           INSERT INTO dbo.TblClient (TenantId, [Name], Mobile, RegisterDate)
           OUTPUT INSERTED.ClientID AS id
-          VALUES (@tenantId, @name, @phone, GETDATE());
+          VALUES (@tenantId, @name, NULL, GETDATE());
         `);
       return Number(insert.recordset[0].id);
     },
@@ -63,12 +109,14 @@ export function createLegacyCustomersAdapter(): CustomersPort {
 
     async findByPhone(actor, phone) {
       const tenantId = requireMasterDataTenantId(actor.tenantId, 'customers.findByPhone');
+      const cleanedPhone = normalizePublicBookingPhone(phone ?? '');
+      if (!isUsableCustomerPhone(cleanedPhone)) return null;
       const { getPool } = await import('@/lib/db');
       const db = await getPool();
       const result = await db
         .request()
         .input('tenantId', sql.UniqueIdentifier, tenantId)
-        .input('phone', sql.NVarChar(200), phone)
+        .input('phone', sql.NVarChar(200), cleanedPhone)
         .query(`
           SELECT TOP 1 ClientID, [Name], Mobile
           FROM dbo.TblClient WITH (NOLOCK)

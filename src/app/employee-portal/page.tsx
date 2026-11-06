@@ -1,3 +1,4 @@
+import EmployeePortalShell from '@/components/employee-portal/EmployeePortalShell';
 import { redirect } from 'next/navigation';
 import { getPool } from '@/lib/db';
 import { getEmployeePortalIdentity } from '@/lib/employee-portal/auth';
@@ -6,6 +7,7 @@ import EmployeePortalLogin from './portal-login';
 import EmployeeDailyChart from './EmployeeDailyChart';
 import DailyEfficiency from './DailyEfficiency';
 import { getPortalAttendance } from '@/lib/employee-portal/attendance';
+import EnablePushNotifications from '@/components/employee-portal/EnablePushNotifications';
 
 export const dynamic = 'force-dynamic';
 const money = (value: number) => new Intl.NumberFormat('ar-EG', { maximumFractionDigits: 2 }).format(value) + ' ج.م';
@@ -46,27 +48,10 @@ export default async function EmployeePortalPage({
   const deductions = sum(['deduction', 'settlement', 'adjustment'], 'debit');
   const payouts = sum(['payout'], 'debit');
   return (
-    <main dir="rtl" className="h-full overflow-y-auto bg-zinc-950 text-white px-4 pb-8 pt-4 md:px-10 md:pt-7">
-      <div className="mx-auto max-w-5xl space-y-4 md:space-y-6">
-        <header className="relative overflow-hidden rounded-[28px] border border-amber-500/20 bg-gradient-to-bl from-[#282018] via-[#171719] to-[#0d0d11] p-4 shadow-[0_18px_45px_rgba(0,0,0,0.25)] md:p-7">
+    <EmployeePortalShell>
+        <header className="relative overflow-hidden rounded-[24px] border border-amber-500/20 bg-gradient-to-bl from-[#282018] via-[#171719] to-[#0d0d11] p-4 shadow-[0_18px_45px_rgba(0,0,0,0.25)] md:p-7">
           <div aria-hidden="true" className="pointer-events-none absolute -left-14 -top-20 h-48 w-48 rounded-full bg-amber-500/10 blur-3xl"/>
-          <nav aria-label="التنقل في حساب الموظف" className="relative flex items-center justify-between gap-2 border-b border-white/10 pb-3">
-            <a href="/employee-portal" className="flex min-w-0 items-center gap-2" aria-label="الصفحة الرئيسية لبوابة الموظفين">
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-amber-400/30 bg-amber-400/10 text-sm font-black text-amber-300">C</span>
-              <span className="min-w-0"><span className="block text-xs font-black tracking-wider text-amber-300" dir="ltr">CUT SALON</span><span className="block text-[11px] text-zinc-400">بوابة الموظفين</span></span>
-            </a>
-            <div className="flex items-center gap-1.5">
-              <a href="/employee-portal/account-settings" className="inline-flex min-h-10 items-center gap-1 rounded-xl border border-white/10 bg-white/5 px-3 text-xs font-semibold text-zinc-100 hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-amber-400" aria-label="إعدادات الحساب">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06-2 2-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21h-2.82v-.08a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06-2-2 .06-.06a1.65 1.65 0 0 0 .33-1.82A1.65 1.65 0 0 0 6.09 14H6v-2.82h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06 2-2 .06.06a1.65 1.65 0 0 0 1.82.33 1.65 1.65 0 0 0 1-1.51V5h2.82v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06 2 2-.06.06a1.65 1.65 0 0 0-.33 1.82 1.65 1.65 0 0 0 1.51 1H21V14h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
-                <span className="hidden min-[370px]:inline">الإعدادات</span>
-              </a>
-              <form action="/employee-portal/logout" method="post"><button type="submit" className="inline-flex min-h-10 items-center gap-1 rounded-xl border border-white/10 px-3 text-xs font-semibold text-zinc-300 hover:border-rose-400/40 hover:text-rose-200 focus-visible:outline-2 focus-visible:outline-amber-400" aria-label="تسجيل الخروج">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5M21 12H9"/></svg>
-                <span className="hidden min-[370px]:inline">خروج</span>
-              </button></form>
-            </div>
-          </nav>
-          <div className="relative mt-4 flex flex-wrap items-end justify-between gap-3">
+          <div className="relative flex flex-wrap items-end justify-between gap-3">
             <div className="min-w-0">
               <p className="text-[11px] font-bold text-amber-300/90">حسابك الشخصي</p>
               <h1 className="mt-1 text-2xl font-extrabold leading-tight text-white md:text-3xl">أهلاً، {profile.EmpName} <span aria-hidden="true" className="text-amber-400">✦</span></h1>
@@ -79,6 +64,7 @@ export default async function EmployeePortalPage({
             </form>
           </div>
         </header>
+        <EnablePushNotifications />
         <section aria-label="ملخص مستحقات الشهر" className="space-y-3">
           <div className="grid grid-cols-3 gap-2 md:gap-3">
             {[
@@ -128,7 +114,6 @@ export default async function EmployeePortalPage({
         </section>
         <EmployeeDailyChart entries={ledger.entries} month={month} attendance={attendance} />
         <DailyEfficiency month={month} today={new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Cairo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())} entries={ledger.entries} attendance={attendance} />
-      </div>
-    </main>
+    </EmployeePortalShell>
   );
 }

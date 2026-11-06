@@ -304,7 +304,8 @@ export async function buildPartnersEmployeeControlSheet(
   };
 }
 
-function mapPartnersEmployeeRows(input: {
+/** Exported for unit tests: builds partners employee account rows from month inputs + ledger. */
+export function mapPartnersEmployeeRows(input: {
   year: number;
   month: number;
   actualRevenueByEmployee: Array<{

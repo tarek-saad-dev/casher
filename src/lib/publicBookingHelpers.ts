@@ -83,7 +83,13 @@ export function isUsableCustomerPhone(phone: string | null | undefined): boolean
  * Strips spaces; maps +20 / 0020 prefixes to leading 0.
  */
 export function normalizePublicBookingPhone(phone: string): string {
-  let p = phone.trim().replace(/\s+/g, '').replace(/-/g, '');
+  // Number pads on Arabic keyboards can emit Arabic-Indic / Eastern Arabic digits.
+  // Keep the stored and lookup phone format consistent regardless of input locale.
+  let p = phone
+    .trim()
+    .replace(/[٠-٩]/g, (digit) => String(digit.charCodeAt(0) - 0x0660))
+    .replace(/[۰-۹]/g, (digit) => String(digit.charCodeAt(0) - 0x06F0))
+    .replace(/[\s\u200e\u200f\u061c-]/g, '');
   if (p.startsWith('+20')) p = `0${p.slice(3)}`;
   else if (p.startsWith('0020')) p = `0${p.slice(4)}`;
   return p;
@@ -415,21 +421,37 @@ export async function upsertCustomer(
     (transaction ? new sql.Request(transaction) : (db as Awaited<ReturnType<typeof getPool>>).request())
       .input('tenantId', sql.UniqueIdentifier, tid);
 
+  const trimmedName = name.trim();
+
   if (usablePhone) {
     const existing = await req()
       .input('mobile', sql.NVarChar, usablePhone)
       .query(
-        `SELECT TOP 1 ClientID FROM [dbo].[TblClient] WHERE TenantId = @tenantId AND Mobile = @mobile`,
+        `SELECT TOP 1 ClientID, [Name] FROM [dbo].[TblClient] WHERE TenantId = @tenantId AND Mobile = @mobile`,
       );
 
     if (existing.recordset.length > 0) {
-      return existing.recordset[0].ClientID as number;
+      const clientId = existing.recordset[0].ClientID as number;
+      const previous =
+        existing.recordset[0].Name != null ? String(existing.recordset[0].Name) : null;
+      if (
+        trimmedName.length >= 2 &&
+        trimmedName.localeCompare(previous ?? '', undefined, { sensitivity: 'accent' }) !== 0
+      ) {
+        await req()
+          .input('id', sql.Int, clientId)
+          .input('name', sql.NVarChar, trimmedName)
+          .query(
+            `UPDATE [dbo].[TblClient] SET [Name] = @name WHERE ClientID = @id AND TenantId = @tenantId`,
+          );
+      }
+      return clientId;
     }
   }
 
   try {
     const inserted = await req()
-      .input('name', sql.NVarChar, name.trim())
+      .input('name', sql.NVarChar, trimmedName)
       .input('mobile', sql.NVarChar, usablePhone || null).query(`
       INSERT INTO [dbo].[TblClient] (TenantId, [Name], Mobile, RegisterDate)
       OUTPUT INSERTED.ClientID
@@ -437,12 +459,30 @@ export async function upsertCustomer(
     `);
     return inserted.recordset[0].ClientID as number;
   } catch (err: unknown) {
-    // Concurrent insert race — re-select by phone
+    // Concurrent insert race — re-select by phone and apply submitted name
     if (usablePhone) {
       const again = await req()
         .input('mobile', sql.NVarChar, usablePhone)
-        .query(`SELECT TOP 1 ClientID FROM [dbo].[TblClient] WHERE TenantId = @tenantId AND Mobile = @mobile`);
-      if (again.recordset[0]?.ClientID) return again.recordset[0].ClientID as number;
+        .query(
+          `SELECT TOP 1 ClientID, [Name] FROM [dbo].[TblClient] WHERE TenantId = @tenantId AND Mobile = @mobile`,
+        );
+      const row = again.recordset[0] as { ClientID?: number; Name?: string | null } | undefined;
+      if (row?.ClientID) {
+        const clientId = row.ClientID as number;
+        const previous = row.Name != null ? String(row.Name) : null;
+        if (
+          trimmedName.length >= 2 &&
+          trimmedName.localeCompare(previous ?? '', undefined, { sensitivity: 'accent' }) !== 0
+        ) {
+          await req()
+            .input('id', sql.Int, clientId)
+            .input('name', sql.NVarChar, trimmedName)
+            .query(
+              `UPDATE [dbo].[TblClient] SET [Name] = @name WHERE ClientID = @id AND TenantId = @tenantId`,
+            );
+        }
+        return clientId;
+      }
     }
     throw err;
   }

@@ -283,6 +283,26 @@ export async function POST(req: NextRequest) {
       ? await createSale(saleInput)
       : await createSaleLegacyFromRoute(saleInput);
 
+    const handoffId = Number(body.handoffId);
+    if (Number.isInteger(handoffId) && handoffId > 0) {
+      try {
+        const { markHandoffCharged } = await import('@/lib/booking/cashierHandoff');
+        await markHandoffCharged({
+          handoffId,
+          branchId,
+          tenantId: String(sessionUser.TenantId),
+          invId: result.invID,
+          invType: result.invType,
+        });
+      } catch (handoffErr) {
+        // Sale already succeeded — never fail the cashier path on handoff bookkeeping.
+        console.error(
+          '[pos-api] handoff charge link failed after sale',
+          handoffErr instanceof Error ? handoffErr.message : handoffErr,
+        );
+      }
+    }
+
     return NextResponse.json({ invID: result.invID, invType: result.invType }, { status: 201 });
   } catch (err: unknown) {
     const { InventoryDomainError } = await import(

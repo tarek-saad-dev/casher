@@ -684,9 +684,18 @@ export async function getEmployeeLedgerSummary(
            AND l.BranchID = b.BranchID
            AND l.IsVoided = 0
            AND ${buildMonthEntryFilter('l')}
-          WHERE ISNULL(e.isActive, 1) = 1
-            AND e.TenantId = @tenantId
+          WHERE e.TenantId = @tenantId
             AND b.BranchID IN (${scopeIds.join(',')})
+            AND (
+              ISNULL(e.isActive, 1) = 1
+              OR EXISTS (
+                SELECT 1
+                FROM dbo.TblEmpLedgerEntry lx
+                WHERE lx.EmpID = e.EmpID
+                  AND lx.IsVoided = 0
+                  AND ${buildMonthEntryFilter('lx')}
+              )
+            )
           GROUP BY e.EmpID, e.EmpName, b.BranchID, b.BranchCode, b.BranchName
           ORDER BY e.EmpName, b.BranchID
         `)

@@ -165,6 +165,7 @@ export async function evaluateDailyPayrollReadiness(args: {
         FROM dbo.TblEmpDailyPayroll p
         INNER JOIN dbo.TblEmp e ON e.EmpID = p.EmpID
           AND e.TenantId IN (SELECT tl.TenantId FROM dbo.Location tl WHERE tl.LegacyBranchId = @branchId)
+          AND ISNULL(e.isActive, 1) = 1
         LEFT JOIN dbo.TblEmpLedgerEntry l
           ON l.RefType = @refType
          AND l.RefID = p.ID
@@ -186,6 +187,7 @@ export async function evaluateDailyPayrollReadiness(args: {
         FROM dbo.TblEmpDailyTarget t
         INNER JOIN dbo.TblEmp e ON e.EmpID = t.EmpID
           AND e.TenantId IN (SELECT l.TenantId FROM dbo.Location l WHERE l.LegacyBranchId = @branchId)
+          AND ISNULL(e.isActive, 1) = 1
         WHERE t.BranchID = @branchId
           AND t.WorkDate = @workDate
           AND t.Status <> N'voided'
@@ -197,6 +199,9 @@ export async function evaluateDailyPayrollReadiness(args: {
       .query(`
         SELECT DISTINCT p.EmpID
         FROM dbo.TblEmpTargetPlan p
+        INNER JOIN dbo.TblEmp e ON e.EmpID = p.EmpID
+          AND ISNULL(e.isActive, 1) = 1
+          AND e.TenantId IN (SELECT l.TenantId FROM dbo.Location l WHERE l.LegacyBranchId = @branchId)
         WHERE p.BranchID = @branchId
           AND p.IsEnabled = 1
           AND p.EffectiveFrom <= @workDate

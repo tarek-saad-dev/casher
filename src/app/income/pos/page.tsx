@@ -29,6 +29,7 @@ import DayRolloverModal from '@/components/session/DayRolloverModal';
 import CloseDayModal from '@/components/session/CloseDayModal';
 import { useShiftOperationalGate } from '@/components/session/ShiftOperationalGateProvider';
 import TeamAttendanceWidget from '@/components/pos/TeamAttendanceWidget';
+import BarberHandoffInbox from '@/components/pos/BarberHandoffInbox';
 import { useTeamAttendance } from '@/hooks/useTeamAttendance';
 import { useSaleState } from '@/hooks/useSaleState';
 import { useSession } from '@/hooks/useSession';
@@ -135,6 +136,11 @@ export default function PosPage() {
   const bookingHydrateDoneRef = useRef(false);
   const [catalogTab, setCatalogTab] = useState<'services' | 'packages'>('services');
 
+  // Optional barber→cashier handoff (never required for manual POS)
+  const [activeHandoffId, setActiveHandoffId] = useState<number | null>(null);
+  const [handoffBanner, setHandoffBanner] = useState<string | null>(null);
+  const [claimingHandoffId, setClaimingHandoffId] = useState<number | null>(null);
+
   useEffect(() => {
     if (hydratePackageId) setCatalogTab('packages');
   }, [hydratePackageId]);
@@ -179,6 +185,107 @@ export default function PosPage() {
     setCustomerBase(c);
     if (!c) setVouchersOpen(false);
   }, [setCustomerBase]);
+
+  const clearHandoffLoad = useCallback(() => {
+    setActiveHandoffId(null);
+    setHandoffBanner(null);
+    clearItems();
+    setCustomer(null);
+  }, [clearItems, setCustomer]);
+
+  const handleClaimHandoff = useCallback(
+    async (handoffId: number) => {
+      setClaimingHandoffId(handoffId);
+      try {
+        const res = await fetch(`/api/pos/barber-handoffs/${handoffId}/claim`, { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) {
+          addToast('error', data.error || 'تعذر تحميل طلب الحلاق');
+          return;
+        }
+        clearItems();
+        if (data.client?.ClientID) {
+          setCustomer({
+            ClientID: Number(data.client.ClientID),
+            Name: String(data.client.Name ?? 'عميل'),
+            Mobile: data.client.Mobile != null ? String(data.client.Mobile) : null,
+            BirthDate: null,
+            Address: null,
+            RegisterDate: null,
+            Notes: null,
+            CameFrom: null,
+            CameFromDetails: null,
+            ReferralCode: null,
+          });
+        } else {
+          setCustomer(null);
+        }
+        const empId = Number(data.empId);
+        const empName = String(data.empName ?? 'حلاق');
+        const matchedBarber =
+          barbers.find((b) => b.EmpID === empId) ||
+          otherEmployees.find((b) => b.EmpID === empId) ||
+          null;
+        if (matchedBarber) setBarber(matchedBarber);
+        else if (Number.isInteger(empId) && empId > 0) {
+          setBarber({ EmpID: empId, EmpName: empName } as Barber);
+        }
+
+        const lines = Array.isArray(data.lines) ? data.lines : [];
+        const cartItems: CartItem[] = lines.map(
+          (
+            line: {
+              ProID: number;
+              ProName: string;
+              EmpID: number;
+              EmpName: string;
+              SPrice: number;
+              Bonus: number;
+              Qty: number;
+            },
+            index: number,
+          ) => {
+            const qty = Math.max(1, Number(line.Qty) || 1);
+            const sPrice = Number(line.SPrice) || 0;
+            return {
+              id: `handoff-${handoffId}-${line.ProID}-${index}`,
+              ProID: Number(line.ProID),
+              ProName: String(line.ProName ?? 'خدمة'),
+              EmpID: Number(line.EmpID) || empId,
+              EmpName: String(line.EmpName ?? empName),
+              SPrice: sPrice,
+              Bonus: Number(line.Bonus) || 0,
+              Qty: qty,
+              Dis: 0,
+              DisVal: 0,
+              SPriceAfterDis: sPrice * qty,
+            };
+          },
+        );
+        if (cartItems.length) addItems(cartItems, { homeVisitProIds });
+        setActiveHandoffId(Number(data.handoffId) || handoffId);
+        setHandoffBanner(
+          `من حجز الحلاق · ${empName}${data.startTime ? ` · ${data.startTime}` : ''}`,
+        );
+        setCatalogTab('services');
+        addToast('success', 'تم تحميل طلب الحلاق في الكارت');
+      } catch {
+        addToast('error', 'تعذر تحميل طلب الحلاق');
+      } finally {
+        setClaimingHandoffId(null);
+      }
+    },
+    [
+      addItems,
+      addToast,
+      barbers,
+      clearItems,
+      homeVisitProIds,
+      otherEmployees,
+      setBarber,
+      setCustomer,
+    ],
+  );
 
   // ───────────────── Auto-open completion modal for incomplete customers ─────────────────
   const handleCloseCompleteModal = useCallback(() => {
@@ -440,6 +547,7 @@ export default function PosPage() {
         notes: baseNotes.slice(0, 100),
         // Full [groomPackage] metadata (Notes is NVARCHAR(100) — too short)
         notes2: packageNotes,
+        handoffId: activeHandoffId,
       };
 
       // Use PUT for editing, POST for new sale
@@ -465,6 +573,8 @@ export default function PosPage() {
 
       // Reset everything (customer, barber, items, discount, payment, edit mode)
       reset();
+      setActiveHandoffId(null);
+      setHandoffBanner(null);
       setEditingSaleId(null);
       setSplitPaymentActive(false);
       setSaveError('');
@@ -606,6 +716,8 @@ export default function PosPage() {
   const handleNewSale = useCallback(() => {
     // Reset everything including barber selection and edit mode
     reset();
+    setActiveHandoffId(null);
+    setHandoffBanner(null);
     setEditingSaleId(null);
     setSplitPaymentActive(false);
     setSaveError('');
@@ -876,6 +988,13 @@ export default function PosPage() {
         />
 
         <div className="sticky top-0 z-30 shrink-0 border-b border-border bg-background/95 px-3 py-2 backdrop-blur-sm">
+          <div className="mb-2 flex justify-end">
+            <BarberHandoffInbox
+              enabled={Boolean(shift?.ID)}
+              onClaim={handleClaimHandoff}
+              claimingId={claimingHandoffId}
+            />
+          </div>
           <CustomerSearch
             selected={state.customer}
             onSelect={(c: Customer | null) => setCustomer(c)}
@@ -884,6 +1003,14 @@ export default function PosPage() {
             onEditCustomer={(c) => { setCompleteCustomerMode('edit'); setCompleteCustomer(c); }}
             updatedCustomer={lastUpdatedCustomer}
           />
+          {handoffBanner ? (
+            <div className="mt-2 flex items-center justify-between gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs font-semibold text-amber-950 dark:text-amber-100">
+              <span>{handoffBanner}</span>
+              <button type="button" className="underline" onClick={clearHandoffLoad}>
+                إلغاء التحميل
+              </button>
+            </div>
+          ) : null}
           {state.customer && !vouchersOpen && (
             <button
               type="button"
@@ -927,6 +1054,13 @@ export default function PosPage() {
       <div className="relative hidden h-full flex-1 flex-col overflow-hidden md:flex lg:flex-row">
         {/* ═══════ RIGHT PANEL: Customer + History ═══════ */}
         <aside className="order-1 flex w-full shrink-0 flex-col gap-3 overflow-y-auto border-l border-border p-3 scrollbar-luxury-v lg:order-1 lg:w-80 lg:gap-4 lg:p-4">
+          <div className="flex justify-end">
+            <BarberHandoffInbox
+              enabled={Boolean(shift?.ID)}
+              onClaim={handleClaimHandoff}
+              claimingId={claimingHandoffId}
+            />
+          </div>
           <CustomerSearch
             selected={state.customer}
             onSelect={(c: Customer | null) => setCustomer(c)}
@@ -935,6 +1069,14 @@ export default function PosPage() {
             onEditCustomer={(c) => { setCompleteCustomerMode('edit'); setCompleteCustomer(c); }}
             updatedCustomer={lastUpdatedCustomer}
           />
+          {handoffBanner ? (
+            <div className="flex items-center justify-between gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs font-semibold text-amber-950 dark:text-amber-100">
+              <span>{handoffBanner}</span>
+              <button type="button" className="underline" onClick={clearHandoffLoad}>
+                إلغاء التحميل
+              </button>
+            </div>
+          ) : null}
 
           {/* Vouchers button — shown when customer is selected and modal is closed */}
           {state.customer && !vouchersOpen && (
