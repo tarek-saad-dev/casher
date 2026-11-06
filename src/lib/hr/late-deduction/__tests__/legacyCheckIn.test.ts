@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const m = vi.hoisted(() => ({
   getConfig: vi.fn(), eligible: vi.fn(), enqueue: vi.fn(),
-  schedule: vi.fn(), loadSchedule: vi.fn(), getDb: vi.fn(),
+  schedule: vi.fn(), loadSchedule: vi.fn(), getDb: vi.fn(), voidExcluded: vi.fn(),
   queries: [] as string[], args: [] as Array<[string, unknown]>,
   attendance: { CheckInTime: '12:01:00', Status: 'Present',
     ScheduledStartTime: null, ScheduledEndTime: null } as Record<string, unknown>,
@@ -17,6 +17,9 @@ vi.mock('../config', () => ({
 vi.mock('../enqueueFinalize', () => ({ enqueueLateDeductionFinalize: m.enqueue }));
 vi.mock('../finalizeOnCheckIn', () => ({
   scheduleFinalizeLateDeductionOnCheckIn: m.schedule,
+}));
+vi.mock('../voidExcludedAttendance', () => ({
+  voidLateDeductionForExcludedAttendance: m.voidExcluded,
 }));
 vi.mock('@/modules/attendance/infra/AttendanceRepository', () => ({
   getAttendanceDb: m.getDb, loadEmployeeScheduleForAdminPut: m.loadSchedule,
@@ -34,6 +37,7 @@ describe('late deduction: legacy employee check-in bridge', () => {
     m.getConfig.mockResolvedValue({ enabled: true, activatedOn: '2026-11-03' });
     m.eligible.mockReturnValue(true);
     m.enqueue.mockResolvedValue({ enqueued: true });
+    m.voidExcluded.mockResolvedValue({ handled: true, voided: false });
     m.loadSchedule.mockResolvedValue({
       EmploymentType: 'full_time', ScheduleDayOfWeek: 2, IsWorkingDay: true,
       ScheduleStartTime: '12:00', ScheduleEndTime: '22:00',
@@ -72,7 +76,7 @@ describe('late deduction: legacy employee check-in bridge', () => {
     expect(m.enqueue).not.toHaveBeenCalled();
   });
 
-  it('skips approved day off and absent/leave statuses', async () => {
+  it('skips approved day off and voids excused statuses', async () => {
     m.loadSchedule.mockResolvedValueOnce({
       EmploymentType: 'full_time', ScheduleDayOfWeek: 2, IsWorkingDay: false,
       ScheduleStartTime: null, ScheduleEndTime: null,
@@ -80,9 +84,12 @@ describe('late deduction: legacy employee check-in bridge', () => {
     });
     await enqueueLegacyEmployeeCheckInLateDeduction(input);
     expect(m.enqueue).not.toHaveBeenCalled();
+    expect(m.voidExcluded).toHaveBeenCalled();
+    m.voidExcluded.mockClear();
     m.attendance.Status = 'Excused';
     await enqueueLegacyEmployeeCheckInLateDeduction(input);
     expect(m.enqueue).not.toHaveBeenCalled();
+    expect(m.voidExcluded).toHaveBeenCalledWith(expect.objectContaining({ status: 'Excused' }));
   });
 
   it('does not schedule finalize without a durable enqueue', async () => {

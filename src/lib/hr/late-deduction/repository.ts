@@ -232,8 +232,16 @@ export async function releaseThresholdNotified(
   `);
 }
 
-export async function markFinalNotified(db: DbLike, caseId: number): Promise<void> {
-  await db
+/**
+ * Atomically claim the final-notification slot (lease).
+ * Returns true only for the first claim — callers send only when claimed,
+ * then release on provider failure so recovery can retry.
+ */
+export async function claimFinalNotified(
+  db: DbLike,
+  caseId: number,
+): Promise<boolean> {
+  const result = await db
     .request()
     .input('caseId', sql.Int, caseId)
     .query(`
@@ -241,6 +249,24 @@ export async function markFinalNotified(db: DbLike, caseId: number): Promise<voi
       SET NotifiedFinalAt = SYSUTCDATETIME(), UpdatedAt = SYSUTCDATETIME()
       WHERE CaseID = @caseId AND NotifiedFinalAt IS NULL
     `);
+  return (result.rowsAffected[0] ?? 0) > 0;
+}
+
+/** @deprecated Prefer claimFinalNotified — kept for call-site compatibility. */
+export async function markFinalNotified(db: DbLike, caseId: number): Promise<void> {
+  await claimFinalNotified(db, caseId);
+}
+
+/** Release a failed final send so a worker can safely retry once. */
+export async function releaseFinalNotified(
+  db: DbLike,
+  caseId: number,
+): Promise<void> {
+  await db.request().input('caseId', sql.Int, caseId).query(`
+    UPDATE dbo.TblEmpLateDeductionCase
+    SET NotifiedFinalAt = NULL, UpdatedAt = SYSUTCDATETIME()
+    WHERE CaseID = @caseId AND NotifiedFinalAt IS NOT NULL
+  `);
 }
 
 export async function listPendingManagerCases(

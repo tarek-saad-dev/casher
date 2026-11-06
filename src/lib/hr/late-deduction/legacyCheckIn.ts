@@ -4,6 +4,8 @@ import { sql } from '@/lib/db';
 import { getLateDeductionConfig, isWorkDateEligibleForLateDeduction } from './config';
 import { enqueueLateDeductionFinalize } from './enqueueFinalize';
 import { scheduleFinalizeLateDeductionOnCheckIn } from './finalizeOnCheckIn';
+import { isLateDeductionExcludedAttendanceStatus } from './attendanceStatus';
+import { voidLateDeductionForExcludedAttendance } from './voidExcludedAttendance';
 import { calcLateMinutes, sqlTimeToHHmm } from '@/lib/timeUtils';
 import { resolveScheduleForDay } from '@/lib/hr/attendance-eligibility';
 import { normalizeEmploymentType } from '@/lib/hr/employee-hr-model';
@@ -11,8 +13,9 @@ import * as attendanceRepo from '@/modules/attendance/infra/AttendanceRepository
 
 /**
  * Bridge existing employee check-in writers to the late-deduction service.
- * Called AFTER attendance transaction commit, only for actual check-in edits.
- * Does nothing when the feature is off, on leave, or on a non-working day.
+ * Called AFTER attendance transaction commit, only for actual check-in edits
+ * or status corrections that may need to void an existing debit.
+ * Does nothing when the feature is off or on a non-working day (except void).
  * Keep attendance persistence independent of WhatsApp and ledger failures.
  */
 export async function enqueueLegacyEmployeeCheckInLateDeduction(params: {
@@ -42,8 +45,25 @@ export async function enqueueLegacyEmployeeCheckInLateDeduction(params: {
       'AND BranchID=@branchId AND WorkDate=@workDate'
     );
   const saved = result.recordset[0];
-  if (!saved || !saved.CheckInTime ||
-    ['Absent','DayOff','Excused','Leave','Holiday'].includes(String(saved.Status || ''))) return;
+  if (!saved) return;
+
+  const status = String(saved.Status ?? '');
+  if (isLateDeductionExcludedAttendanceStatus(status)) {
+    // Never charge absent/off/leave — and void any prior automatic debit.
+    await voidLateDeductionForExcludedAttendance({
+      empId,
+      branchId,
+      workDate,
+      attendanceId,
+      status,
+    }).catch((err) => console.warn(
+      '[legacy-late-deduction] excluded-status void failed:',
+      err instanceof Error ? err.message : err,
+    ));
+    return;
+  }
+
+  if (!saved.CheckInTime) return;
 
   const checkIn = sqlTimeToHHmm(saved.CheckInTime);
   if (!checkIn) return;
@@ -60,7 +80,20 @@ export async function enqueueLegacyEmployeeCheckInLateDeduction(params: {
     defaultStart: emp.DefaultCheckInTime || null,
     defaultEnd: emp.DefaultCheckOutTime || null,
   });
-  if (!schedule.isScheduledWorkingDay) return;
+  if (!schedule.isScheduledWorkingDay) {
+    // Approved non-working day: never create a debit; void if one exists.
+    await voidLateDeductionForExcludedAttendance({
+      empId,
+      branchId,
+      workDate,
+      attendanceId,
+      status: status || 'DayOff',
+    }).catch((err) => console.warn(
+      '[legacy-late-deduction] non-working-day void failed:',
+      err instanceof Error ? err.message : err,
+    ));
+    return;
+  }
   const scheduledStart = saved.ScheduledStartTime || schedule.scheduledStart;
   const scheduledEnd = saved.ScheduledEndTime || schedule.scheduledEnd;
   if (!scheduledStart) return;

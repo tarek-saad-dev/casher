@@ -29,6 +29,12 @@ export { enqueueLateDeductionFinalize } from './enqueueFinalize';
 export { recoverPendingLateDeductionFinalizations } from './recoverFinalizations';
 export { runLateDeductionAlertScan } from './alertScan';
 export { isLateDeductionSchemaReady } from './schema';
+export {
+  isLateDeductionExcludedAttendanceStatus,
+  isLateDeductionEligibleAttendanceStatus,
+  normalizeAttendanceStatus,
+} from './attendanceStatus';
+export { voidLateDeductionForExcludedAttendance } from './voidExcludedAttendance';
 
 export {
   listLateDeductionManagerQueue,

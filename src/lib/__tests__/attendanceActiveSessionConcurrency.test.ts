@@ -233,6 +233,15 @@ vi.mock('@/lib/hr/late-deduction', () => ({
   enqueueLateDeductionFinalize: vi.fn(async () => ({ enqueued: true })),
   scheduleFinalizeLateDeductionOnCheckIn: vi.fn(),
 }));
+vi.mock('@/lib/hr/late-deduction/voidExcludedAttendance', () => ({
+  voidLateDeductionForExcludedAttendance: vi.fn(async () => ({
+    handled: true,
+    voided: false,
+  })),
+}));
+vi.mock('@/lib/hr/late-deduction/legacyCheckIn', () => ({
+  enqueueLegacyEmployeeCheckInLateDeduction: vi.fn(async () => undefined),
+}));
 
 vi.mock('@/lib/hr/attendance-eligibility', () => ({
   resolveScheduleForDay: () => ({ scheduledStart: '10:00', scheduledEnd: '18:00' }),

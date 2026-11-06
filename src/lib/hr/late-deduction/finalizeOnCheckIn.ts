@@ -18,9 +18,10 @@ import {
   buildManagerReviewEmployeeAckMessage,
 } from './messages';
 import {
+  claimFinalNotified,
   findLateDeductionCase,
   isEmployeeLateDeductionExempt,
-  markFinalNotified,
+  releaseFinalNotified,
   upsertLateDeductionCase,
 } from './repository';
 import {
@@ -29,7 +30,53 @@ import {
   type LateDeductionBracket,
 } from './rules';
 import { isLateDeductionSchemaReady } from './schema';
-import { scheduleLateDeductionWhatsApp } from './whatsapp';
+import { sendLateDeductionWhatsApp } from './whatsapp';
+
+/**
+ * Send at most one financial/final confirmation per case unless the amount or
+ * lateness meaningfully changed (then release + re-claim for one new message).
+ * Claims the persistent slot before provider accept; releases on hard failure.
+ */
+async function sendFinalConfirmationOnce(params: {
+  db: Parameters<typeof claimFinalNotified>[0];
+  caseId: number;
+  empId: number;
+  branchId: number;
+  text: string;
+  event: string;
+  previousAmount?: number | null;
+  previousLateMinutes?: number | null;
+  nextAmount?: number | null;
+  nextLateMinutes?: number | null;
+  alreadyNotifiedAt?: string | null;
+}): Promise<void> {
+  const amountChanged =
+    params.previousAmount != null &&
+    params.nextAmount != null &&
+    Number(params.previousAmount) !== Number(params.nextAmount);
+  const lateChanged =
+    params.previousLateMinutes != null &&
+    params.nextLateMinutes != null &&
+    Number(params.previousLateMinutes) !== Number(params.nextLateMinutes);
+
+  if (params.alreadyNotifiedAt && (amountChanged || lateChanged)) {
+    await releaseFinalNotified(params.db, params.caseId).catch(() => undefined);
+  }
+
+  const claimed = await claimFinalNotified(params.db, params.caseId);
+  if (!claimed) return;
+
+  const result = await sendLateDeductionWhatsApp({
+    empId: params.empId,
+    branchId: params.branchId,
+    text: params.text,
+    metadata: { lateCaseId: params.caseId, event: params.event },
+  });
+  // missing_phone / skipped: keep claim to avoid endless stale replays
+  if (!result.sent && !result.skipped) {
+    await releaseFinalNotified(params.db, params.caseId).catch(() => undefined);
+  }
+}
 
 export interface FinalizeLateDeductionInput {
   empId: number;
@@ -166,16 +213,22 @@ export async function finalizeLateDeductionOnCheckIn(
       ledgerEntryId: null,
     });
     if (!input.suppressWhatsApp) {
-      scheduleLateDeductionWhatsApp({
+      await sendFinalConfirmationOnce({
+        db,
+        caseId: row.caseId,
         empId: input.empId,
         branchId: input.branchId,
         text: buildExemptCheckInLateMessage({
           checkInTime: input.checkInTime,
           lateMinutes,
         }),
-        metadata: { lateCaseId: row.caseId, event: 'exempt_checkin' },
+        event: 'exempt_checkin',
+        previousAmount: existing?.amount,
+        previousLateMinutes: existing?.lateMinutes,
+        nextAmount: null,
+        nextLateMinutes: lateMinutes,
+        alreadyNotifiedAt: existing?.notifiedFinalAt,
       });
-      await markFinalNotified(db, row.caseId).catch(() => undefined);
     }
     return {
       handled: true,
@@ -218,14 +271,21 @@ export async function finalizeLateDeductionOnCheckIn(
       ledgerEntryId: null,
     });
     if (!input.suppressWhatsApp) {
-      scheduleLateDeductionWhatsApp({
+      await sendFinalConfirmationOnce({
+        db,
+        caseId: row.caseId,
         empId: input.empId,
         branchId: input.branchId,
         text: buildManagerReviewEmployeeAckMessage({
           checkInTime: input.checkInTime,
           lateMinutes,
         }),
-        metadata: { lateCaseId: row.caseId, event: 'missing_pay_data' },
+        event: 'missing_pay_data',
+        previousAmount: existing?.amount,
+        previousLateMinutes: existing?.lateMinutes,
+        nextAmount: null,
+        nextLateMinutes: lateMinutes,
+        alreadyNotifiedAt: existing?.notifiedFinalAt,
       });
     }
     return {
@@ -262,14 +322,21 @@ export async function finalizeLateDeductionOnCheckIn(
       ledgerEntryId: null,
     });
     if (!input.suppressWhatsApp) {
-      scheduleLateDeductionWhatsApp({
+      await sendFinalConfirmationOnce({
+        db,
+        caseId: row.caseId,
         empId: input.empId,
         branchId: input.branchId,
         text: buildManagerReviewEmployeeAckMessage({
           checkInTime: input.checkInTime,
           lateMinutes,
         }),
-        metadata: { lateCaseId: row.caseId, event: 'manager_review' },
+        event: 'manager_review',
+        previousAmount: existing?.amount,
+        previousLateMinutes: existing?.lateMinutes,
+        nextAmount: null,
+        nextLateMinutes: lateMinutes,
+        alreadyNotifiedAt: existing?.notifiedFinalAt,
       });
     }
     return {
@@ -331,7 +398,9 @@ export async function finalizeLateDeductionOnCheckIn(
   });
 
   if (financialOk && !input.suppressWhatsApp && (calc.bracket === 'quarter' || calc.bracket === 'half')) {
-    scheduleLateDeductionWhatsApp({
+    await sendFinalConfirmationOnce({
+      db,
+      caseId: row.caseId,
       empId: input.empId,
       branchId: input.branchId,
       text: buildFinalDeductionMessage({
@@ -340,9 +409,13 @@ export async function finalizeLateDeductionOnCheckIn(
         amount: calc.amount,
         bracket: calc.bracket,
       }),
-      metadata: { lateCaseId: row.caseId, event: 'final_deduction' },
+      event: 'final_deduction',
+      previousAmount: existing?.amount,
+      previousLateMinutes: existing?.lateMinutes,
+      nextAmount: calc.amount,
+      nextLateMinutes: lateMinutes,
+      alreadyNotifiedAt: existing?.notifiedFinalAt,
     });
-    await markFinalNotified(db, row.caseId).catch(() => undefined);
   }
 
   return {

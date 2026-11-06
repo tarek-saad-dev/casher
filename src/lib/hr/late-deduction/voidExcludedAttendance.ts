@@ -1,0 +1,97 @@
+import 'server-only';
+
+import { getPool, sql } from '@/lib/db';
+import { withLateDeductionCaseLock } from './caseTransaction';
+import { voidLateDeductionLedgerEntry } from './ledger';
+import {
+  findLateDeductionCase,
+  upsertLateDeductionCase,
+} from './repository';
+import { isLateDeductionSchemaReady } from './schema';
+
+/**
+ * Void any automatic late-deduction debit when attendance is corrected to an
+ * excluded status (absent/off/leave/…). Keeps an audit trail on the case and
+ * leaves DoNotAutoRecreate=0 so a later restore-to-present can finalize again.
+ * Recovery must also skip excluded attendance statuses.
+ */
+export async function voidLateDeductionForExcludedAttendance(params: {
+  empId: number;
+  branchId: number;
+  workDate: string;
+  attendanceId: number;
+  status: string;
+}): Promise<{ handled: boolean; caseId?: number; voided: boolean; reason?: string }> {
+  const { empId, branchId, workDate, attendanceId, status } = params;
+  const db = await getPool();
+  if (!(await isLateDeductionSchemaReady(db))) {
+    return { handled: false, voided: false, reason: 'schema_unavailable' };
+  }
+
+  return withLateDeductionCaseLock(
+    { empId, branchId, workDate },
+    async (db) => {
+      const existing = await findLateDeductionCase(db, empId, branchId, workDate);
+      if (existing?.doNotAutoRecreate || existing?.status === 'cancelled') {
+        return {
+          handled: true,
+          caseId: existing.caseId,
+          voided: false,
+          reason: 'cancelled_do_not_recreate',
+        };
+      }
+      if (existing?.status === 'manager_applied') {
+        return {
+          handled: true,
+          caseId: existing.caseId,
+          voided: false,
+          reason: 'manager_decision_locked',
+        };
+      }
+
+      let voided = false;
+      if (existing?.ledgerEntryId || existing?.attendanceId || attendanceId > 0) {
+        const n = await voidLateDeductionLedgerEntry(db, {
+          attendanceId: existing?.attendanceId ?? attendanceId,
+          branchId,
+          voidReason: `إلغاء خصم التأخير — تصحيح الحضور إلى ${String(status).trim() || 'excluded'}`,
+        });
+        voided = n > 0;
+      }
+
+      // Clear lateness so recovery cannot re-apply from stale LateMinutes.
+      if (attendanceId > 0) {
+        await db
+          .request()
+          .input('attendanceId', sql.Int, attendanceId)
+          .input('empId', sql.Int, empId)
+          .input('branchId', sql.Int, branchId)
+          .query(`
+            UPDATE dbo.TblEmpAttendance
+            SET LateMinutes = 0, UpdatedAt = SYSDATETIME()
+            WHERE ID = @attendanceId AND EmpID = @empId AND BranchID = @branchId
+          `);
+      }
+
+      const row = await upsertLateDeductionCase(db, {
+        empId,
+        branchId,
+        workDate,
+        attendanceId,
+        lateMinutes: 0,
+        deductionKind: 'none',
+        status: 'skipped',
+        dailyBasePay: existing?.dailyBasePay ?? null,
+        amount: null,
+        ledgerEntryId: null,
+      });
+
+      return {
+        handled: true,
+        caseId: row.caseId,
+        voided,
+        reason: 'excluded_attendance_status',
+      };
+    },
+  );
+}

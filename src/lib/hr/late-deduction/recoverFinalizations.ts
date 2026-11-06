@@ -9,6 +9,7 @@ import {
 } from './config';
 import { finalizeLateDeductionOnCheckIn } from './finalizeOnCheckIn';
 import { isLateDeductionSchemaReady } from './schema';
+import { voidLateDeductionForExcludedAttendance } from './voidExcludedAttendance';
 
 export interface RecoverLateDeductionResult {
   scanned: number;
@@ -23,6 +24,7 @@ export interface RecoverLateDeductionResult {
  * Sources:
  *  - cases with Status = finalize_pending
  *  - attendance rows with LateMinutes > 0 and no non-cancelled case yet
+ *  - attendance corrected to absent/off with a still-active automatic debit
  */
 export async function recoverPendingLateDeductionFinalizations(params?: {
   businessDate?: string;
@@ -49,6 +51,58 @@ export async function recoverPendingLateDeductionFinalizations(params?: {
   }
 
   const limit = Math.min(Math.max(params?.limit ?? 100, 1), 500);
+  let recovered = 0;
+  let errors = 0;
+  let scanned = 0;
+
+  // Pass 1: void automatic debits when attendance was corrected to excluded status.
+  const excluded = await db
+    .request()
+    .input('workDate', sql.Date, workDate)
+    .input('branchId', sql.Int, params?.branchId ?? null)
+    .input('limit', sql.Int, limit)
+    .query(`
+      SELECT TOP (@limit)
+        a.ID AS AttendanceID,
+        a.EmpID,
+        a.BranchID,
+        CONVERT(VARCHAR(10), a.WorkDate, 23) AS WorkDate,
+        a.Status
+      FROM dbo.TblEmpAttendance a
+      INNER JOIN dbo.TblEmp e ON e.EmpID = a.EmpID
+      INNER JOIN dbo.TblEmpLateDeductionCase c
+        ON c.EmpID = a.EmpID
+       AND c.BranchID = a.BranchID
+       AND c.WorkDate = a.WorkDate
+      WHERE a.WorkDate = @workDate
+        AND @branchId IS NOT NULL AND a.BranchID = @branchId
+        AND e.TenantId IN (SELECT l.TenantId FROM dbo.Location l
+          WHERE l.LegacyBranchId = @branchId AND l.Status = N'active')
+        AND REPLACE(REPLACE(LOWER(LTRIM(RTRIM(ISNULL(a.Status, N'')))), N' ', N''), N'_', N'')
+            IN (N'absent', N'off', N'dayoff', N'excused', N'leave', N'holiday', N'vacation')
+        AND ISNULL(c.DoNotAutoRecreate, 0) = 0
+        AND c.Status IN (N'applied', N'finalize_pending', N'alerting', N'pending_manager')
+      ORDER BY a.ID ASC
+    `);
+
+  const excludedRows = excluded.recordset as Array<Record<string, unknown>>;
+  scanned += excludedRows.length;
+  for (const row of excludedRows) {
+    try {
+      const result = await voidLateDeductionForExcludedAttendance({
+        empId: Number(row.EmpID),
+        branchId: Number(row.BranchID),
+        workDate: String(row.WorkDate).slice(0, 10),
+        attendanceId: Number(row.AttendanceID),
+        status: String(row.Status ?? ''),
+      });
+      if (result.handled) recovered += 1;
+    } catch (err) {
+      errors += 1;
+      console.warn('[late-deduction-recover] excluded void failed:', err);
+    }
+  }
+
   const req = db
     .request()
     .input('workDate', sql.Date, workDate)
@@ -79,6 +133,9 @@ export async function recoverPendingLateDeductionFinalizations(params?: {
       AND @branchId IS NOT NULL AND a.BranchID = @branchId
       AND e.TenantId IN (SELECT l.TenantId FROM dbo.Location l
         WHERE l.LegacyBranchId = @branchId AND l.Status = N'active')
+      -- Never recreate deductions for absent / day-off / leave (any casing).
+      AND REPLACE(REPLACE(LOWER(LTRIM(RTRIM(ISNULL(a.Status, N'')))), N' ', N''), N'_', N'')
+          NOT IN (N'absent', N'off', N'dayoff', N'excused', N'leave', N'holiday', N'vacation')
       AND (
         (c.CaseID IS NULL AND ISNULL(a.LateMinutes, 0) > 0)
         OR c.Status IN (N'finalize_pending', N'alerting')
@@ -91,9 +148,8 @@ export async function recoverPendingLateDeductionFinalizations(params?: {
     ORDER BY a.ID ASC
   `);
 
-  let recovered = 0;
-  let errors = 0;
   const rows = pending.recordset as Array<Record<string, unknown>>;
+  scanned += rows.length;
 
   for (const row of rows) {
     try {
@@ -126,7 +182,7 @@ export async function recoverPendingLateDeductionFinalizations(params?: {
   }
 
   return {
-    scanned: rows.length,
+    scanned,
     recovered,
     errors,
     workDate,
