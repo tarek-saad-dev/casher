@@ -50,9 +50,10 @@ export async function voidLateDeductionForExcludedAttendance(params: {
       }
 
       let voided = false;
-      if (existing?.ledgerEntryId || existing?.attendanceId || attendanceId > 0) {
+      const voidAttendanceId = existing?.attendanceId ?? attendanceId;
+      if (voidAttendanceId != null && Number(voidAttendanceId) !== 0) {
         const n = await voidLateDeductionLedgerEntry(db, {
-          attendanceId: existing?.attendanceId ?? attendanceId,
+          attendanceId: Number(voidAttendanceId),
           branchId,
           voidReason: `إلغاء خصم التأخير — تصحيح الحضور إلى ${String(status).trim() || 'excluded'}`,
         });
@@ -60,7 +61,8 @@ export async function voidLateDeductionForExcludedAttendance(params: {
       }
 
       // Clear lateness so recovery cannot re-apply from stale LateMinutes.
-      if (attendanceId > 0) {
+      // Real attendance IDs are positive; synthetic smoke IDs may be negative.
+      if (Number.isFinite(attendanceId) && attendanceId !== 0) {
         await db
           .request()
           .input('attendanceId', sql.Int, attendanceId)
