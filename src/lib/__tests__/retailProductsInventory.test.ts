@@ -101,6 +101,22 @@ describe('Retail products & inventory module', () => {
     expect(nav).toContain('/admin/inventory');
   });
 
+  it('bulk import can apply the same retail category and brand to all confirmed products', () => {
+    const route = read('src/app/api/admin/products/import/route.ts');
+    const service = read('src/lib/inventory/productCatalog.service.ts');
+    const page = read('src/app/admin/products/page.tsx');
+    expect(route).toContain('ensureRetailImportCategory');
+    expect(route).toContain('categoryName');
+    expect(route).toContain('categoryId');
+    expect(route).toContain('brand');
+    expect(service).toContain("VALUES (@tenantId, @categoryName, N'pro')");
+    expect(service).toContain('catId: args.categoryId ?? null');
+    expect(service).toContain('brand: args.brand || null');
+    expect(page).toContain('تصنيف كل المنتجات في الدفعة');
+    expect(page).toContain('importCategoryName.trim()');
+    expect(page).toContain('importBrand.trim()');
+  });
+
   it('POS page exposes products catalog tab', () => {
     const pos = read('src/app/income/pos/page.tsx');
     expect(pos).toContain('ProductCatalog');

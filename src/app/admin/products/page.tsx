@@ -187,6 +187,8 @@ export default function AdminProductsPage() {
   // Import dialog
   const [importOpen, setImportOpen] = useState(false);
   const [importUseReference, setImportUseReference] = useState(true);
+  const [importCategoryName, setImportCategoryName] = useState('');
+  const [importBrand, setImportBrand] = useState('');
   const [importText, setImportText] = useState('');
   const [importUpdateExisting, setImportUpdateExisting] = useState(false);
   const [importBusy, setImportBusy] = useState<'preview' | 'commit' | null>(null);
@@ -491,6 +493,8 @@ export default function AdminProductsPage() {
           mode,
           useReference: importUseReference,
           updateExisting: importUpdateExisting,
+          categoryName: importCategoryName.trim(),
+          brand: importBrand.trim(),
           ...(rows ? { rows } : {}),
           ...(mode === 'commit' && importPreview ? { confirmedRows: importPreview } : {}),
         }),
@@ -1021,6 +1025,32 @@ export default function AdminProductsPage() {
                 onChange={(e) => { setImportUseReference(e.target.checked); setImportPreview(null); setImportSummary(null); }} />
               استخدام كتالوج المورد المرجعي (19 صنفًا)
             </label>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <Label className="text-zinc-300">تصنيف كل المنتجات في الدفعة</Label>
+                <Input
+                  value={importCategoryName}
+                  onChange={(e) => { setImportCategoryName(e.target.value); setImportPreview(null); setImportSummary(null); }}
+                  placeholder="مثال: شركة لورد"
+                  maxLength={100}
+                  className="bg-zinc-800 border-zinc-700 text-white mt-1"
+                />
+              </div>
+              <div>
+                <Label className="text-zinc-300">العلامة التجارية (اختياري)</Label>
+                <Input
+                  value={importBrand}
+                  onChange={(e) => { setImportBrand(e.target.value); setImportPreview(null); setImportSummary(null); }}
+                  placeholder="مثال: Lord"
+                  maxLength={100}
+                  className="bg-zinc-800 border-zinc-700 text-white mt-1"
+                />
+              </div>
+            </div>
+            <p className="text-xs text-zinc-400">
+              التصنيف والبراند المختاران يطبقان على كل صفوف الاستيراد. يُنشأ تصنيف المنتجات عند التأكيد فقط إن لم يكن موجوداً.
+            </p>
 
             {!importUseReference && (
               <div>
