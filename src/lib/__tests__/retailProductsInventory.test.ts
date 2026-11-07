@@ -101,6 +101,15 @@ describe('Retail products & inventory module', () => {
     expect(nav).toContain('/admin/inventory');
   });
 
+  it('bulk import supports a custom sale price above the supplier reference', () => {
+    const catalog = read('src/lib/inventory/productCatalog.service.ts');
+    expect(catalog).toContain('const suggestedRetailPrice = ref?.consumerPrice ?? consumerPrice');
+    expect(catalog).toContain('sellingPrice: consumerPrice');
+    expect(catalog).toContain('تكلفة المورد لا تطابق المرجع');
+    expect(catalog).not.toContain('const priceOk = Number(row.consumerPrice) === ref.consumerPrice');
+    expect(catalog).toContain('!Number.isFinite(consumerPrice)');
+  });
+
   it('bulk import can apply the same retail category and brand to all confirmed products', () => {
     const route = read('src/app/api/admin/products/import/route.ts');
     const service = read('src/lib/inventory/productCatalog.service.ts');
