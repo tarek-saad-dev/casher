@@ -30,8 +30,11 @@ export type InventoryMutationInput = {
   reason?: string | null;
   idempotencyKey: string;
   reversalOfMovementId?: number | null;
-  /** Override env policy for a single call (e.g. elevated adjustment). */
+  /** Override env/tenant policy for a single call (e.g. elevated adjustment). */
   allowNegativeOverride?: boolean;
+  /** Optional Arabic context for INSUFFICIENT_STOCK messages. */
+  productName?: string | null;
+  branchName?: string | null;
 };
 
 export type InventoryMutationResult = {
@@ -183,11 +186,13 @@ export async function applyInventoryMutation(
       : allowNegativeStock();
 
   if (!allowNeg && after < 0) {
-    throw new InventoryDomainError(
-      'INSUFFICIENT_STOCK',
-      'الكمية غير كافية في مخزون هذا الفرع',
-      409,
-    );
+    const productLabel = (input.productName || '').trim() || `المنتج ${input.proId}`;
+    const branchLabel = (input.branchName || '').trim();
+    const available = before;
+    const msg = branchLabel
+      ? `الكمية المتاحة من ${productLabel} ${available} فقط في فرع ${branchLabel}.`
+      : `الكمية المتاحة من ${productLabel} ${available} فقط في هذا الفرع.`;
+    throw new InventoryDomainError('INSUFFICIENT_STOCK', msg, 409);
   }
 
   await new sql.Request(transaction)
@@ -269,13 +274,59 @@ export async function applySaleStockDecrements(
     lines: SaleStockLine[];
     /** Disambiguates re-apply after SALE_REVERSAL (default 0 for create). */
     generation?: number;
+    allowNegativeOverride?: boolean;
+    branchName?: string | null;
   },
 ): Promise<InventoryMutationResult[]> {
   const generation = args.generation ?? 0;
   const results: InventoryMutationResult[] = [];
+
+  let branchName = args.branchName ?? null;
+  if (!branchName) {
+    const br = await new sql.Request(transaction)
+      .input('branchId', sql.Int, args.branchId)
+      .query(`SELECT BranchName FROM dbo.TblBranch WHERE BranchID = @branchId`);
+    branchName = br.recordset[0]?.BranchName
+      ? String(br.recordset[0].BranchName)
+      : null;
+  }
+
+  let allowNegativeOverride = args.allowNegativeOverride;
+  if (allowNegativeOverride === undefined) {
+    try {
+      const tenantRes = await new sql.Request(transaction)
+        .input('branchId', sql.Int, args.branchId)
+        .query(`
+          SELECT TOP 1 TenantId
+          FROM dbo.Location
+          WHERE LegacyBranchId = @branchId AND Status = N'active'
+        `);
+      const tenantId = tenantRes.recordset[0]?.TenantId
+        ? String(tenantRes.recordset[0].TenantId)
+        : null;
+      if (tenantId) {
+        const { allowNegativeStockForTenant } = await import('./stockPolicy.service');
+        allowNegativeOverride = await allowNegativeStockForTenant(tenantId);
+      }
+    } catch {
+      // Fall back to env policy inside applyInventoryMutation
+    }
+  }
+
   for (const line of args.lines) {
     const qty = round2(Number(line.qty));
     if (!Number.isFinite(qty) || qty <= 0) continue;
+
+    const nameRes = await new sql.Request(transaction)
+      .input('proId', sql.Int, line.proId)
+      .query(`
+        SELECT ISNULL(NULLIF(LTRIM(RTRIM(ProNameAr)), N''), ProName) AS DisplayName
+        FROM dbo.TblPro WHERE ProID = @proId
+      `);
+    const productName = nameRes.recordset[0]?.DisplayName
+      ? String(nameRes.recordset[0].DisplayName)
+      : null;
+
     const res = await applyInventoryMutation(transaction, {
       branchId: args.branchId,
       proId: line.proId,
@@ -289,6 +340,9 @@ export async function applySaleStockDecrements(
       userId: args.userId,
       reason: 'POS sale',
       idempotencyKey: `SALE:${args.branchId}:${args.invType}:${args.invId}:g${generation}:${line.lineKey}`,
+      allowNegativeOverride,
+      productName,
+      branchName,
     });
     results.push(res);
   }
@@ -354,6 +408,73 @@ export async function reverseSaleStockMovements(
     results.push(res);
   }
   return { results, nextGeneration: maxId };
+}
+
+/**
+ * Restore stock for a verified customer return against an original sale invoice.
+ * Caps restore qty by unrevesed SALE quantity for the product on that invoice.
+ */
+export async function applyCustomerReturnStockIncrements(
+  transaction: Tx,
+  args: {
+    branchId: number;
+    originalInvId: number;
+    originalInvType: string;
+    returnInvId: number;
+    returnInvType: string;
+    userId?: number | null;
+    lines: SaleStockLine[];
+  },
+): Promise<InventoryMutationResult[]> {
+  const sold = await new sql.Request(transaction)
+    .input('branchId', sql.Int, args.branchId)
+    .input('refType', sql.NVarChar(40), 'SALE_INVOICE')
+    .input('refId', sql.NVarChar(64), `${args.originalInvType}:${args.originalInvId}`)
+    .query(`
+      SELECT m.ProID, SUM(-m.QuantityDelta) AS SoldQty
+      FROM dbo.TblInventoryMovement m
+      WHERE m.BranchID = @branchId
+        AND m.ReferenceType = @refType
+        AND m.ReferenceID = @refId
+        AND m.MovementType = N'SALE'
+        AND NOT EXISTS (
+          SELECT 1 FROM dbo.TblInventoryMovement r
+          WHERE r.ReversalOfMovementID = m.MovementID
+        )
+      GROUP BY m.ProID
+    `);
+  const soldMap = new Map<number, number>();
+  for (const row of sold.recordset as Array<{ ProID: number; SoldQty: number }>) {
+    soldMap.set(Number(row.ProID), Number(row.SoldQty));
+  }
+
+  const results: InventoryMutationResult[] = [];
+  for (const line of args.lines) {
+    const qty = round2(Number(line.qty));
+    if (!Number.isFinite(qty) || qty <= 0) continue;
+    const maxQty = soldMap.get(line.proId) ?? 0;
+    if (qty > maxQty) {
+      throw new InventoryDomainError(
+        'RETURN_QTY_EXCEEDS',
+        `لا يمكن إرجاع أكثر من الكمية المباعة (${maxQty}) للمنتج ${line.proId}`,
+        409,
+      );
+    }
+    const res = await applyInventoryMutation(transaction, {
+      branchId: args.branchId,
+      proId: line.proId,
+      quantityDelta: qty,
+      movementType: 'SALE_REVERSAL',
+      referenceType: 'CUSTOMER_RETURN',
+      referenceId: `${args.returnInvType}:${args.returnInvId}`,
+      referenceLineId: line.lineKey,
+      userId: args.userId,
+      reason: `Customer return of ${args.originalInvType}:${args.originalInvId}`,
+      idempotencyKey: `CUSTOMER_RETURN:${args.branchId}:${args.returnInvType}:${args.returnInvId}:${line.lineKey}`,
+    });
+    results.push(res);
+  }
+  return results;
 }
 
 export async function getBranchQtyOnHand(
