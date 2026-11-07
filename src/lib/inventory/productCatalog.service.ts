@@ -514,25 +514,24 @@ export async function previewSupplierCatalogImport(args: {
     seen.add(key);
 
     const ref = refByCode.get(key);
-    if (ref) {
-      const priceOk = Number(row.consumerPrice) === ref.consumerPrice;
-      const costOk = Number(row.netSupplierCost) === ref.netSupplierCost;
-      if (
-        row.consumerPrice != null &&
-        row.netSupplierCost != null &&
-        (!priceOk || !costOk)
-      ) {
-        out.push({
-          code,
-          nameAr: row.nameAr || code,
-          consumerPrice: Number(row.consumerPrice),
-          netSupplierCost: Number(row.netSupplierCost),
-          unit: row.unit || ref.unit,
-          status: 'invalid',
-          message: `لا يطابق المرجع: سعر المستهلك ${ref.consumerPrice} / تكلفة ${ref.netSupplierCost}`,
-        });
-        continue;
-      }
+    // The reference catalog provides a suggested retail price, NOT a fixed
+    // selling price. Shops may choose their own retail price (e.g. +25%).
+    // Preserve the supplier net cost validation independently.
+    if (
+      ref &&
+      row.netSupplierCost != null &&
+      Number(row.netSupplierCost) !== ref.netSupplierCost
+    ) {
+      out.push({
+        code,
+        nameAr: row.nameAr || code,
+        consumerPrice: Number(row.consumerPrice ?? ref.consumerPrice),
+        netSupplierCost: Number(row.netSupplierCost),
+        unit: row.unit || ref.unit,
+        status: 'invalid',
+        message: `تكلفة المورد لا تطابق المرجع: ${ref.netSupplierCost}`,
+      });
+      continue;
     }
 
     const match = byCode.get(key);
@@ -546,6 +545,23 @@ export async function previewSupplierCatalogImport(args: {
         : ref?.netSupplierCost ?? 0;
     const unit = row.unit || ref?.unit || 'piece';
     const nameAr = (row.nameAr || '').trim() || code;
+    if (
+      !Number.isFinite(consumerPrice) || consumerPrice < 0 ||
+      !Number.isFinite(netSupplierCost) || netSupplierCost < 0
+    ) {
+      out.push({
+        code,
+        nameAr,
+        consumerPrice,
+        netSupplierCost,
+        unit,
+        status: 'invalid',
+        message: 'سعر البيع أو تكلفة الشراء غير صالحة',
+      });
+      continue;
+    }
+    // Keep the supplier's listed consumer price as a separate reference.
+    const suggestedRetailPrice = ref?.consumerPrice ?? consumerPrice;
 
     if (match) {
       out.push({
@@ -561,8 +577,8 @@ export async function previewSupplierCatalogImport(args: {
           productCode: code,
           nameAr,
           purchaseCost: netSupplierCost,
-          sellingPrice: match.sellingPrice,
-          suggestedRetailPrice: consumerPrice,
+          sellingPrice: consumerPrice,
+          suggestedRetailPrice,
           stockUnit: unit,
         },
       });
@@ -579,7 +595,7 @@ export async function previewSupplierCatalogImport(args: {
           nameAr,
           purchaseCost: netSupplierCost,
           sellingPrice: consumerPrice,
-          suggestedRetailPrice: consumerPrice,
+          suggestedRetailPrice,
           stockUnit: unit,
         },
       });
