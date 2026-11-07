@@ -129,27 +129,7 @@ jobs:
       - name: Prove staging identity
         run: |
           set -euo pipefail
-          npx tsx -e "
-            import sql from 'mssql';
-            const cfg = {
-              server: '127.0.0.1',
-              port: 14330,
-              database: 'last132_agent',
-              user: 'drvo_agent',
-              password: process.env.DRVO_STAGING_DB_PASSWORD!,
-              options: { encrypt: false, trustServerCertificate: true }
-            };
-            const p = await sql.connect(cfg);
-            try {
-              const r = await p.request().query('SELECT DB_NAME() AS db, SUSER_SNAME() AS login;');
-              const row = r.recordset[0];
-              console.log('DB identity:', row.db, '/', row.login);
-              if (row.db !== 'last132_agent') throw new Error('Refusing unexpected database: ' + row.db);
-              if (String(row.login).toLowerCase() !== 'drvo_agent') throw new Error('Refusing unexpected login: ' + row.login);
-            } finally {
-              await p.close();
-            }
-          "
+          npx tsx scripts/drvo/staging-gate-preflight.ts identity
 
       - name: Apply DRVO migrations to staging only
         run: npm run drvo:migrate -- --expected-database=last132_agent
@@ -161,32 +141,7 @@ jobs:
       - name: Verify migration 9 ledger
         run: |
           set -euo pipefail
-          npx tsx -e "
-            import sql from 'mssql';
-            const expected = 'a711f08b6e4ff2954611145120ed6d26634e55d0c67a9ecbc35bc3b792f96427';
-            const p = await sql.connect({
-              server: '127.0.0.1',
-              port: 14330,
-              database: 'last132_agent',
-              user: 'drvo_agent',
-              password: process.env.DRVO_STAGING_DB_PASSWORD!,
-              options: { encrypt: false, trustServerCertificate: true }
-            });
-            try {
-              const r = await p.request().query(`
-                SELECT MigrationId, MigrationKey, Checksum, AppCommitSha
-                FROM dbo.DrvoSchemaMigration
-                WHERE MigrationId = 9;
-              `);
-              if (r.recordset.length !== 1) throw new Error('Migration 9 ledger row missing');
-              const row = r.recordset[0];
-              console.log('Migration 9:', row.MigrationKey, row.Checksum, row.AppCommitSha);
-              if (row.MigrationKey !== 'commercial-subscription-tenant-apps') throw new Error('Unexpected migration key');
-              if (String(row.Checksum).toLowerCase() !== expected) throw new Error('Migration 9 checksum mismatch');
-            } finally {
-              await p.close();
-            }
-          "
+          npx tsx scripts/drvo/staging-gate-preflight.ts migration9
 
       - name: Verify DRVO after migration
         id: verify_after_migration
@@ -209,48 +164,7 @@ jobs:
       - name: Cleanup proof
         run: |
           set -euo pipefail
-          npx tsx -e "
-            import sql from 'mssql';
-            const p = await sql.connect({
-              server: '127.0.0.1',
-              port: 14330,
-              database: 'last132_agent',
-              user: 'drvo_agent',
-              password: process.env.DRVO_STAGING_DB_PASSWORD!,
-              options: { encrypt: false, trustServerCertificate: true }
-            });
-            try {
-              const tenant = await p.request().query(`
-                SELECT COUNT(*) AS cnt
-                FROM dbo.Tenant
-                WHERE Code LIKE N'DRVO011[_]%' OR Code LIKE N'DRVO012[_]%';
-              `);
-              const cnt = Number(tenant.recordset[0].cnt);
-              console.log('Synthetic tenant residue:', cnt);
-              if (cnt !== 0) throw new Error('Synthetic DRVO011/DRVO012 tenant residue remains');
-
-              const orphanChecks = [
-                ['TenantSubscription', 'TenantId'],
-                ['TenantIndustryPack', 'TenantId'],
-                ['TenantAppEntitlement', 'TenantId'],
-                ['PlatformOutbox', 'TenantId']
-              ];
-              for (const [table, col] of orphanChecks) {
-                const q = await p.request().query(`
-                  SELECT COUNT(*) AS cnt
-                  FROM dbo.[${table}] x
-                  WHERE NOT EXISTS (
-                    SELECT 1 FROM dbo.Tenant t WHERE t.TenantId = x.[${col}]
-                  );
-                `);
-                const n = Number(q.recordset[0].cnt);
-                console.log(table + ' orphan rows:', n);
-                if (n !== 0) throw new Error(table + ' has orphan rows');
-              }
-            } finally {
-              await p.close();
-            }
-          "
+          npx tsx scripts/drvo/staging-gate-preflight.ts cleanup
 
       - name: Final DRVO verify
         run: npm run drvo:verify
