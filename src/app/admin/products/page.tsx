@@ -1054,13 +1054,13 @@ export default function AdminProductsPage() {
 
             {!importUseReference && (
               <div>
-                <Label className="text-zinc-300">الصفوف (كود، اسم، سعر المستهلك، تكلفة المورد، الوحدة)</Label>
+                <Label className="text-zinc-300">الصفوف (كود، اسم، سعر البيع، تكلفة المورد، الوحدة)</Label>
                 <Textarea
                   dir="ltr"
                   value={importText}
                   onChange={(e) => { setImportText(e.target.value); setImportPreview(null); setImportSummary(null); }}
                   className="bg-zinc-800 border-zinc-700 text-white mt-1 min-h-[120px] font-mono text-xs"
-                  placeholder={'LH.5097, Hair Color, 500, 250, card\nML147#, Shampoo, 160, 81, piece'}
+                  placeholder={'LH.5097, ماكينة حلاقة لورد, 625, 250, card\nML147#, شفرات لورد, 200, 81, piece'}
                 />
               </div>
             )}
