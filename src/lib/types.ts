@@ -67,6 +67,7 @@ export interface CartItem {
   id: string;           // unique key for React (uuid-like)
   ProID: number;
   ProName: string;
+  /** Staff member for the line. `0` = retail product sale (no barber required). */
   EmpID: number;
   EmpName: string;
   SPrice: number;
@@ -361,6 +362,7 @@ export interface CreateSalePayload {
   clientId: number | null;
   items: {
     proId: number;
+    /** `0` for retail product lines (no barber). */
     empId: number;
     sPrice: number;
     bonus: number;

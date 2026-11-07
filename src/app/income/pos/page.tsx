@@ -18,6 +18,7 @@ import CompleteCustomerModal from '@/components/pos/CompleteCustomerModal';
 import BarberCarousel from '@/components/pos/luxury/BarberCarousel';
 import ServiceCatalog from '@/components/pos/luxury/ServiceCatalog';
 import PackagesSection from '@/components/pos/luxury/PackagesSection';
+import ProductCatalog, { type CatalogProduct } from '@/components/pos/luxury/ProductCatalog';
 import { cn } from '@/lib/utils';
 import PosInvoicePanel, { PosInvoiceSaveActions } from '@/components/pos/PosInvoicePanel';
 import MobilePosHeader from '@/components/pos/mobile/MobilePosHeader';
@@ -134,7 +135,9 @@ export default function PosPage() {
   const [hydratePackageId, setHydratePackageId] = useState<number | null>(null);
   const [hydrateAddonProIds, setHydrateAddonProIds] = useState<number[]>([]);
   const bookingHydrateDoneRef = useRef(false);
-  const [catalogTab, setCatalogTab] = useState<'services' | 'packages'>('services');
+  const [catalogTab, setCatalogTab] = useState<'services' | 'packages' | 'products'>('services');
+  const [retailProducts, setRetailProducts] = useState<CatalogProduct[]>([]);
+  const [retailProductsLoading, setRetailProductsLoading] = useState(false);
 
   // Optional barber→cashier handoff (never required for manual POS)
   const [activeHandoffId, setActiveHandoffId] = useState<number | null>(null);
@@ -378,6 +381,63 @@ export default function PosPage() {
     })();
   }, [addToast, barbers, setBarber, setNotes]);
 
+  // ───────────────── Retail products (branch stock) ─────────────────
+  const loadRetailProducts = useCallback(async () => {
+    setRetailProductsLoading(true);
+    try {
+      const res = await fetch('/api/inventory/branch', { cache: 'no-store' });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data || !Array.isArray(data.items)) {
+        setRetailProducts([]);
+        return;
+      }
+      type BranchStockApiItem = {
+        productId: number | string;
+        name?: string | null;
+        productCode?: string | null;
+        barcode?: string | null;
+        sellingPrice?: number | string | null;
+        imageUrl?: string | null;
+        stockStatus?: string;
+        inventory?: { qtyOnHand?: number | string | null };
+      };
+      const mapped: CatalogProduct[] = (data.items as BranchStockApiItem[]).map((it) => ({
+        ProID: Number(it.productId),
+        ProName: String(it.name ?? ''),
+        ProNameAr: it.name ?? null,
+        ProductCode: it.productCode ?? null,
+        Barcode: it.barcode ?? null,
+        SPrice1: Number(it.sellingPrice ?? 0),
+        ImageUrl: it.imageUrl ?? null,
+        qtyOnHand: Number(it.inventory?.qtyOnHand ?? 0),
+        stockStatus: it.stockStatus === 'out' || it.stockStatus === 'low' ? it.stockStatus : 'ok',
+      }));
+      setRetailProducts(mapped);
+    } catch {
+      setRetailProducts([]);
+    } finally {
+      setRetailProductsLoading(false);
+    }
+  }, []);
+
+  // Retail line: no barber needed. Guards against selling more than the branch holds.
+  const addRetailProductItem = useCallback(
+    (item: CartItem) => {
+      const product = retailProducts.find((p) => p.ProID === item.ProID);
+      if (product) {
+        const inCart = state.items
+          .filter((i) => i.ProID === item.ProID && i.EmpID === 0)
+          .reduce((sum, i) => sum + (Number(i.Qty) || 0), 0);
+        if (inCart + (Number(item.Qty) || 1) > product.qtyOnHand) {
+          addToast('error', `الكمية المتاحة من "${item.ProName}" في الفرع هي ${product.qtyOnHand} فقط`);
+          return;
+        }
+      }
+      addItem(item);
+    },
+    [retailProducts, state.items, addItem, addToast],
+  );
+
   // ───────────────── Load branch-scoped lookup data when ViewBranch changes ─────────────────
   useEffect(() => {
     if (sessionLoading || viewBranch?.branchId == null) return;
@@ -385,6 +445,7 @@ export default function PosPage() {
     setBarbers([]);
     setOtherEmployees([]);
     setServices([]);
+    setRetailProducts([]);
     setOtherEmployeesLoading(true);
 
     fetch('/api/barbers?scope=barber')
@@ -408,6 +469,8 @@ export default function PosPage() {
       .then((d) => {
         if (Array.isArray(d)) setPaymentMethods(d);
       });
+    void loadRetailProducts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionLoading, viewBranch?.branchId, revision]);
 
   // ───────────────── Fresh invoice when ViewBranch changes ─────────────────
@@ -582,6 +645,7 @@ export default function PosPage() {
       // Show success toast
       addToast('success', isEditing ? 'تم تحديث الفاتورة بنجاح' : 'تم حفظ الفاتورة بنجاح');
       invalidateRecentInvoicesCache();
+      void loadRetailProducts(); // stock changed after sale
 
       if (forcePrint || isEditing) {
         // Double-click (forcePrint) or edit always opens the browser modal directly
@@ -686,7 +750,7 @@ export default function PosPage() {
       setSaving(false);
       console.log('[POS SAVE] END', { requestId });
     }
-  }, [state, totals, reset, addToast, paymentMethods, editingSaleId, saveLockRef, ensureShiftWrite]);
+  }, [state, totals, reset, addToast, paymentMethods, editingSaleId, saveLockRef, ensureShiftWrite, loadRetailProducts]);
 
   // ───────────────── Keyboard shortcuts ─────────────────
   useEffect(() => {
@@ -927,6 +991,7 @@ export default function PosPage() {
         {([
           { key: 'services', label: 'الخدمات', sub: 'Services' },
           { key: 'packages', label: 'الباقات', sub: 'Packages' },
+          { key: 'products', label: 'منتجات', sub: 'Products' },
         ] as const).map((tab) => (
           <button
             key={tab.key}
@@ -962,6 +1027,14 @@ export default function PosPage() {
           onToast={addToast}
           hydratePackageId={hydratePackageId}
           hydrateAddonProIds={hydrateAddonProIds}
+        />
+      </div>
+      <div className={cn(catalogTab !== 'products' && 'hidden')}>
+        <ProductCatalog
+          products={retailProducts}
+          loading={retailProductsLoading}
+          onAddItem={addRetailProductItem}
+          onToast={addToast}
         />
       </div>
     </>

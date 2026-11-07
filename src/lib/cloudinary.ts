@@ -162,3 +162,26 @@ export async function uploadServiceImageBuffer(args: {
     publicIdBase,
   });
 }
+
+/** Upload image buffer to Cloudinary folder `products/`. */
+export async function uploadProductImageBuffer(args: {
+  buffer: Buffer;
+  mimeType?: string;
+  productId?: number | null;
+  slug?: string | null;
+  fileName?: string | null;
+}): Promise<CloudinaryUploadResult> {
+  const slug =
+    args.slug?.trim().replace(/[^a-zA-Z0-9_.#-]+/g, '-').replace(/^-+|-+$/g, '') ||
+    null;
+  const publicIdBase =
+    slug ||
+    (args.productId && Number.isFinite(args.productId)
+      ? `pro-${args.productId}-${Date.now()}`
+      : `pro-${Date.now()}`);
+  return uploadImageBuffer({
+    buffer: args.buffer,
+    folder: 'products',
+    publicIdBase,
+  });
+}
