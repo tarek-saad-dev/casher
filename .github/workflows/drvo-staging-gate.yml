@@ -26,7 +26,8 @@ jobs:
       )
     runs-on: ubuntu-latest
     environment: drvo-staging
-    timeout-minutes: 45
+    # Reconcile + 011/012 smokes can exceed 30m on staging; keep headroom after DRVO-020.
+    timeout-minutes: 70
 
     env:
       DRVO_STAGING_SSH_HOST: ${{ secrets.DRVO_STAGING_SSH_HOST || secrets.STAGING_HOST || secrets.VPS_HOST }}

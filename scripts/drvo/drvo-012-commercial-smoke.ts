@@ -388,11 +388,28 @@ async function main() {
     } catch {
       /* best effort */
     }
-    await pool.close();
+    try {
+      await pool.close();
+    } catch {
+      /* ignore */
+    }
+    // provisionTenant / commercial services open the shared @/lib/db pool.
+    // Without closing it, Node never exits and the staging gate hangs until job timeout
+    // (observed: PASS at T+5m, cancel at job 45m).
+    try {
+      const { closePool } = await import('../../src/lib/db');
+      await closePool();
+    } catch {
+      /* ignore */
+    }
   }
 }
 
-main().catch((err) => {
-  console.error('DRVO-012 smoke FAIL:', err instanceof Error ? err.message : err);
-  process.exit(1);
-});
+main()
+  .then(() => {
+    process.exit(0);
+  })
+  .catch((err) => {
+    console.error('DRVO-012 smoke FAIL:', err instanceof Error ? err.message : err);
+    process.exit(1);
+  });
