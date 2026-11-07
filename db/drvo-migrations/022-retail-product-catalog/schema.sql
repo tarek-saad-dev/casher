@@ -80,7 +80,7 @@ IF NOT EXISTS (
 BEGIN
     CREATE UNIQUE NONCLUSTERED INDEX UQ_TblPro_Tenant_ProductCode
         ON dbo.TblPro (TenantId, ProductCode)
-        WHERE ProductCode IS NOT NULL AND LTRIM(RTRIM(ProductCode)) <> N'';
+        WHERE ProductCode IS NOT NULL AND ProductCode <> N'';
     PRINT N'Created UQ_TblPro_Tenant_ProductCode';
 END;
 GO
@@ -93,7 +93,7 @@ IF NOT EXISTS (
 BEGIN
     CREATE NONCLUSTERED INDEX IX_TblPro_Tenant_Barcode
         ON dbo.TblPro (TenantId, Barcode)
-        WHERE Barcode IS NOT NULL AND LTRIM(RTRIM(Barcode)) <> N'';
+        WHERE Barcode IS NOT NULL AND Barcode <> N'';
     PRINT N'Created IX_TblPro_Tenant_Barcode';
 END;
 GO
