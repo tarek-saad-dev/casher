@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin, isAuthResult } from '@/lib/api-auth';
 import {
   commitSupplierCatalogImport,
+  ensureRetailImportCategory,
   previewSupplierCatalogImport,
   SUPPLIER_CATALOG_REFERENCE,
   type ImportPreviewRow,
@@ -32,6 +33,11 @@ export async function POST(req: NextRequest) {
     const mode = String(body.mode || 'preview');
     const useReference = Boolean(body.useReference);
     const updateExisting = Boolean(body.updateExisting);
+    const categoryName = String(body.categoryName || '').trim();
+    const brand = String(body.brand || '').trim();
+    if (categoryName.length > 100 || brand.length > 100) {
+      return NextResponse.json({ error: 'اسم التصنيف أو العلامة التجارية طويل جداً' }, { status: 400 });
+    }
 
     const rows = useReference
       ? SUPPLIER_CATALOG_REFERENCE.map((r) => ({
@@ -72,13 +78,22 @@ export async function POST(req: NextRequest) {
 
     // Prefer client-confirmed preview rows when provided (after admin review).
     const confirmed = (body.confirmedRows as ImportPreviewRow[] | undefined) || preview;
+    // Never create categories during preview or when there is nothing to import.
+    const hasActionableRows = confirmed.some(
+      (r) => r.status === 'new' || (updateExisting && r.status === 'existing'),
+    );
+    const categoryId = hasActionableRows
+      ? await ensureRetailImportCategory(auth.tenantId, categoryName)
+      : null;
     const result = await commitSupplierCatalogImport({
       tenantId: auth.tenantId,
       rows: confirmed,
       updateExisting,
+      categoryId,
+      brand,
     });
 
-    return NextResponse.json({ ok: true, ...result, preview: confirmed });
+    return NextResponse.json({ ok: true, ...result, categoryId, categoryName, brand, preview: confirmed });
   } catch (err: unknown) {
     if (err instanceof InventoryDomainError) {
       return NextResponse.json(
