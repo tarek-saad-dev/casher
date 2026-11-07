@@ -14,6 +14,10 @@ NIGHTLY_SERVICE_SRC="$APP_DIR/deploy/nightly-close.service"
 NIGHTLY_SERVICE_DST="/etc/systemd/system/nightly-close.service"
 NIGHTLY_TIMER_SRC="$APP_DIR/deploy/nightly-close.timer"
 NIGHTLY_TIMER_DST="/etc/systemd/system/nightly-close.timer"
+LATE_ALERT_SERVICE_SRC="$APP_DIR/deploy/late-deduction-alerts.service"
+LATE_ALERT_SERVICE_DST="/etc/systemd/system/late-deduction-alerts.service"
+LATE_ALERT_TIMER_SRC="$APP_DIR/deploy/late-deduction-alerts.timer"
+LATE_ALERT_TIMER_DST="/etc/systemd/system/late-deduction-alerts.timer"
 
 load_github_deploy_token() {
   if [[ -n "${GITHUB_DEPLOY_TOKEN:-}" ]]; then
@@ -276,6 +280,10 @@ if [[ -f "$NIGHTLY_SERVICE_SRC" && -f "$NIGHTLY_TIMER_SRC" ]]; then
   install -m 644 "$NIGHTLY_SERVICE_SRC" "$NIGHTLY_SERVICE_DST"
   install -m 644 "$NIGHTLY_TIMER_SRC" "$NIGHTLY_TIMER_DST"
 fi
+if [[ -f "$LATE_ALERT_SERVICE_SRC" && -f "$LATE_ALERT_TIMER_SRC" ]]; then
+  install -m 644 "$LATE_ALERT_SERVICE_SRC" "$LATE_ALERT_SERVICE_DST"
+  install -m 644 "$LATE_ALERT_TIMER_SRC" "$LATE_ALERT_TIMER_DST"
+fi
 systemctl daemon-reload || true
 if [[ -f "$WORKER_UNIT_DST" ]]; then
   systemctl enable messaging-worker.service || true
@@ -287,6 +295,9 @@ if [[ -f "$NIGHTLY_TIMER_DST" ]]; then
   # Nightly close at 02:00 is paused — keep the unit installed but do not arm it.
   systemctl stop nightly-close.timer 2>/dev/null || true
   systemctl disable nightly-close.timer 2>/dev/null || true
+fi
+if [[ -f "$LATE_ALERT_TIMER_DST" ]]; then
+  systemctl enable --now late-deduction-alerts.timer || true
 fi
 
 echo

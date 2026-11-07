@@ -1,0 +1,17 @@
+[Unit]
+Description=Casher late deduction alerts + finalize recovery (one shot)
+After=network-online.target casher.service mssql-server.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=casher
+Group=casher
+WorkingDirectory=/home/casher/app
+Environment=NODE_ENV=production
+Environment=HOME=/home/casher
+Environment=NIGHTLY_CLOSE_BASE_URL=http://127.0.0.1:3000
+ExecStart=/usr/bin/npm run late-deduction:alerts
+StandardOutput=journal
+StandardError=journal
+TimeoutStartSec=180

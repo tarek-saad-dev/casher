@@ -229,6 +229,20 @@ vi.mock('@/lib/services/employeeAttendanceWhatsAppNotify', () => ({
   scheduleAttendanceCheckInOutWhatsApp: vi.fn(),
 }));
 
+vi.mock('@/lib/hr/late-deduction', () => ({
+  enqueueLateDeductionFinalize: vi.fn(async () => ({ enqueued: true })),
+  scheduleFinalizeLateDeductionOnCheckIn: vi.fn(),
+}));
+vi.mock('@/lib/hr/late-deduction/voidExcludedAttendance', () => ({
+  voidLateDeductionForExcludedAttendance: vi.fn(async () => ({
+    handled: true,
+    voided: false,
+  })),
+}));
+vi.mock('@/lib/hr/late-deduction/legacyCheckIn', () => ({
+  enqueueLegacyEmployeeCheckInLateDeduction: vi.fn(async () => undefined),
+}));
+
 vi.mock('@/lib/hr/attendance-eligibility', () => ({
   resolveScheduleForDay: () => ({ scheduledStart: '10:00', scheduledEnd: '18:00' }),
 }));
@@ -240,6 +254,7 @@ vi.mock('@/lib/hr/employee-hr-model', () => ({
 vi.mock('@/lib/timeUtils', () => ({
   calcLateMinutes: () => 0,
   calcEarlyLeaveMinutes: () => 0,
+  sqlTimeToHHmm: (v: unknown) => (v == null || v === '' ? null : String(v).slice(0, 5)),
 }));
 
 import { saveAdminAttendance } from '@/modules/attendance';

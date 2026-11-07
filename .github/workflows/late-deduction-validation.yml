@@ -1,0 +1,57 @@
+name: Late Deduction — PR Validation
+
+on:
+  push:
+    branches:
+      - feat/automatic-employee-late-deductions
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/lib/hr/late-deduction/**'
+      - 'src/app/api/admin/hr/late-deduction/**'
+      - 'src/components/hr/LateDeductionPanel.tsx'
+      - 'scripts/run-late-deduction-alerts.ts'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  targeted-validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Late-deduction and attendance regression tests
+        run: >
+          npx vitest run
+          src/lib/hr/late-deduction/__tests__
+          src/modules/attendance/__tests__/AttendanceCommandService.test.ts
+          src/lib/__tests__/adminAttendancePut.characterization.test.ts
+          src/lib/__tests__/adminAttendanceBulk.characterization.test.ts
+          scripts/drvo/__tests__/drvo020LateDeductionMigration.test.ts
+      - name: TypeScript scope check (report legacy errors separately)
+        shell: bash
+        run: |
+          set +e
+          npx tsc --noEmit --pretty false > /tmp/late-deduction-tsc.log 2>&1
+          type_status=$?
+          set -e
+          if [[ "$type_status" -eq 0 ]]; then
+            echo "Entire repo TypeScript check passed."
+            exit 0
+          fi
+          grep -E '^((src/lib/hr/late-deduction/)|(src/app/api/admin/hr/late-deduction/)|(src/components/hr/LateDeductionPanel)|(scripts/run-late-deduction-alerts)|(scripts/drvo/drvo020-late-deduction-staging-smoke))' /tmp/late-deduction-tsc.log > /tmp/late-deduction-scope-errors.log || true
+          if [[ -s /tmp/late-deduction-scope-errors.log ]]; then
+            cat /tmp/late-deduction-scope-errors.log
+            echo "Late deduction code has TypeScript errors." >&2
+            exit 1
+          fi
+          count="$(grep -c 'error TS' /tmp/late-deduction-tsc.log || true)"
+          echo "::warning::Whole-repo TypeScript check has $count pre-existing/out-of-scope errors; no late-deduction errors."
+          echo "Out-of-scope TypeScript errors: $count" >> "$GITHUB_STEP_SUMMARY"
