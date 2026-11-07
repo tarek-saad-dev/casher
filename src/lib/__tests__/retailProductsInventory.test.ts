@@ -34,6 +34,10 @@ describe('Retail products & inventory module', () => {
     expect(sql).toContain('UQ_TblPro_Tenant_ProductCode');
     expect(sql).toContain('TblInventoryStockPolicy');
     expect(sql).toContain('UnitCostSnapshot');
+    // SQL Server filtered-index predicates cannot contain scalar functions.
+    expect(sql).not.toMatch(/WHERE[^;]*LTRIM\s*\(/i);
+    expect(sql).toContain("ProductCode IS NOT NULL AND ProductCode <> N''");
+    expect(sql).toContain("Barcode IS NOT NULL AND Barcode <> N''");
     expect(sql).not.toMatch(/UPDATE\s+.*TblPro\.Qty/i);
     expect(sql).not.toMatch(/SET\s+Qty\s*=/i);
 
