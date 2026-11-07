@@ -588,10 +588,57 @@ export async function previewSupplierCatalogImport(args: {
   return out;
 }
 
+/**
+ * Retail-only category assignment during a confirmed bulk import.
+ * Preview is read-only; this is called only after admin confirmation.
+ */
+export async function ensureRetailImportCategory(
+  tenantId: string,
+  categoryName: string,
+): Promise<number | null> {
+  const name = String(categoryName || '').trim();
+  if (!name) return null;
+  if (name.length > 100) {
+    throw new InventoryDomainError('CATEGORY_NAME_TOO_LONG', 'اسم التصنيف طويل جداً', 400);
+  }
+  const db = await getPool();
+  const existing = await db.request()
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
+    .input('categoryName', sql.NVarChar(100), name)
+    .query(`
+      SELECT TOP (1) CatID, CatType
+      FROM dbo.TblCat
+      WHERE TenantId = @tenantId AND CatName = @categoryName
+      ORDER BY CatID
+    `);
+  if (existing.recordset[0]) {
+    const categoryType = String(existing.recordset[0].CatType || '').toLowerCase();
+    if (categoryType !== 'pro') {
+      throw new InventoryDomainError(
+        'CATEGORY_TYPE_MISMATCH',
+        'اسم التصنيف مستخدم بالفعل لغير المنتجات، اختر تصنيف منتجات مختلفاً',
+        409,
+      );
+    }
+    return Number(existing.recordset[0].CatID);
+  }
+  const inserted = await db.request()
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
+    .input('categoryName', sql.NVarChar(100), name)
+    .query(`
+      INSERT INTO dbo.TblCat (TenantId, CatName, CatType)
+      OUTPUT INSERTED.CatID
+      VALUES (@tenantId, @categoryName, N'pro')
+    `);
+  return Number(inserted.recordset[0].CatID);
+}
+
 export async function commitSupplierCatalogImport(args: {
   tenantId: string;
   rows: ImportPreviewRow[];
   updateExisting: boolean;
+  categoryId?: number | null;
+  brand?: string | null;
 }): Promise<{ created: number; updated: number; skipped: number }> {
   let created = 0;
   let updated = 0;
@@ -606,7 +653,11 @@ export async function commitSupplierCatalogImport(args: {
         skipped += 1;
         continue;
       }
-      await updateRetailProduct(args.tenantId, row.existingProductId, row.proposedChanges);
+      await updateRetailProduct(args.tenantId, row.existingProductId, {
+        ...row.proposedChanges,
+        ...(args.categoryId != null ? { catId: args.categoryId } : {}),
+        ...(args.brand ? { brand: args.brand } : {}),
+      });
       updated += 1;
       continue;
     }
@@ -618,6 +669,8 @@ export async function commitSupplierCatalogImport(args: {
         purchaseCost: row.proposedChanges.purchaseCost,
         suggestedRetailPrice: row.proposedChanges.suggestedRetailPrice,
         stockUnit: row.proposedChanges.stockUnit,
+        catId: args.categoryId ?? null,
+        brand: args.brand || null,
       });
       created += 1;
     }
