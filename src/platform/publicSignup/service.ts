@@ -84,6 +84,20 @@ export function parsePublicSignupInput(body: unknown): PublicSignupInput {
     throw new PublicSignupError('BODY_INVALID', 'بيانات التسجيل غير صحيحة.', 400);
   }
   const x = body as Record<string, unknown>;
+  // Anonymous signup cannot control tenant identity or commercial activation.
+  // Reject rather than silently ignore spoofed control-plane fields.
+  const serverOnlyFields = [
+    'tenantId', 'tenantCode', 'actorUserId', 'ownerUserId',
+    'planCode', 'subscriptionStatus', 'subscription', 'trialEndsAt',
+    'isPaid', 'paymentStatus', 'appEntitlements',
+  ];
+  if (serverOnlyFields.some((key) => Object.prototype.hasOwnProperty.call(x, key))) {
+    throw new PublicSignupError(
+      'SYSTEM_FIELDS_FORBIDDEN',
+      'بيانات الخطة أو المنشأة يتم تحديدها من النظام.',
+      400,
+    );
+  }
   const industry = normalizeIndustry(x.industry);
   const contactName = cleanText(x.contactName, 100);
   const businessName = cleanText(x.businessName, 200);
