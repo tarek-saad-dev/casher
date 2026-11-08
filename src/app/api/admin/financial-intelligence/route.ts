@@ -97,6 +97,27 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ok:true,id:Number(r.recordset[0]?.ID)},{status:201});
     } catch(err){return errorResponse(err);}
   }
+  if (action==='confirmLiquidity') {
+    const branchId=Number(body.branchId);
+    const available=Number(body.available);
+    if (!Number.isInteger(branchId) || branchId<=0 || !Number.isFinite(available) || available<0 || available>1000000000) {
+      return NextResponse.json({error:'راجع الفرع والرصيد المتاح'},{status:400});
+    }
+    const scope=await permittedScope(req,branchId);
+    if (scope instanceof NextResponse) return scope;
+    try {
+      await assertFinanceBranches(auth.tenantId,scope);
+      const db=await getPool();
+      await db.request()
+        .input('tenant',sql.UniqueIdentifier,auth.tenantId)
+        .input('branch',sql.Int,branchId)
+        .input('day',sql.Date,getCairoCalendarDate())
+        .input('available',sql.Decimal(18,2),available)
+        .input('actor',sql.Int,auth.userId)
+        .query('INSERT INTO dbo.TblFinInsightLiquidityCheck (TenantId,BranchID,AsOfDate,AvailableAmount,CreatedByUserID) VALUES (@tenant,@branch,@day,@available,@actor)');
+      return NextResponse.json({ok:true,warning:'تم تسجيل السيولة المؤكدة لليوم بدون أي تعديل في رصيد الخزنة الدفتري.'},{status:201});
+    }catch(err){return errorResponse(err);}
+  }
   if (action==='settle') {
     const branchId=Number(body.branchId), commitmentId=Number(body.commitmentId), amount=Number(body.amount);
     const dueDate=body.dueDate;
