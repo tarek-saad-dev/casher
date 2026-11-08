@@ -11,10 +11,10 @@ export interface FinanceOverview {
   asOf: string;
   scopeKey: string;
   branches: Array<BranchForFinance & {
-    bookCash: number; servicesRevenueMTD: number; treasuryNetMTD: number;
+    bookCash: number; confirmedAvailableCash: number | null; servicesRevenueMTD: number; treasuryNetMTD: number;
     payrollAccruedMTD: number; recentCashIn: number; recentCashOut: number; recentTransactions: number; recentObservedDays: number;
   }>;
-  totals: { bookCash: number; servicesRevenueMTD: number; treasuryNetMTD: number; payrollAccruedMTD: number };
+  totals: { bookCash: number; confirmedAvailableCash: number | null; servicesRevenueMTD: number; treasuryNetMTD: number; payrollAccruedMTD: number };
   forecast: ReturnType<typeof buildCashForecast>;
   warnings: string[];
   snapshots: Array<{ id: number; asOfDate: string; createdAt: string }>;
@@ -73,7 +73,7 @@ export async function loadFinanceOverview(tenantId: string, branches: BranchForF
   const db = await getPool();
   const [perBranch, ledger, snapshotRows] = await Promise.all([
     Promise.all(branches.map(async (b) => {
-      const [mtd, recent, sales, payroll, balance, observed] = await Promise.all([
+      const [mtd, recent, sales, payroll, balance, observed, liquidity] = await Promise.all([
         getFinancialSummary({ fromDate: monthStart, toDate: asOf, branchId: b.branchId }),
         getFinancialSummary({ fromDate: historyStart, toDate: asOf, branchId: b.branchId }),
         getAllEmployeesRevenueTotal(monthStart, addDays(asOf,1), b.branchId),
@@ -82,9 +82,12 @@ export async function loadFinanceOverview(tenantId: string, branches: BranchForF
           'SELECT COALESCE(SUM(CASE WHEN inOut=N\'in\' THEN GrandTolal WHEN inOut=N\'out\' THEN -GrandTolal ELSE 0 END),0) AS BookCash FROM dbo.TblCashMove WHERE BranchID=@branchId'
         ),
         getDailyFinancialData(historyStart, asOf, b.branchId),
+        db.request().input('tenant', sql.UniqueIdentifier, tenantId).input('branchId', sql.Int, b.branchId).input('day', sql.Date, asOf)
+          .query('SELECT TOP 1 AvailableAmount FROM dbo.TblFinInsightLiquidityCheck WHERE TenantId=@tenant AND BranchID=@branchId AND AsOfDate=@day ORDER BY ID DESC'),
       ]);
       return {
         ...b, bookCash: Number(balance.recordset[0]?.BookCash || 0),
+        confirmedAvailableCash: liquidity.recordset[0] ? Number(liquidity.recordset[0].AvailableAmount) : null,
         servicesRevenueMTD: sales, treasuryNetMTD: mtd.netAmount,
         payrollAccruedMTD: payroll.totalPayrollExpense,
         recentCashIn: recent.totalIncoming, recentCashOut: recent.totalOutgoing,
@@ -98,8 +101,9 @@ export async function loadFinanceOverview(tenantId: string, branches: BranchForF
       .query('SELECT TOP 8 ID, AsOfDate, CreatedAt FROM dbo.TblFinInsightSnapshot WHERE TenantId=@tenant AND ScopeKey=@scope ORDER BY AsOfDate DESC'),
   ]);
   const sum = (pick: (row: (typeof perBranch)[number]) => number) => Math.round(perBranch.reduce((s,r)=>s+pick(r),0)*100)/100;
+  const confirmedAvailableCash = perBranch.every(b=>b.confirmedAvailableCash!==null) ? sum(b=>b.confirmedAvailableCash ?? 0) : null;
   const totals = {
-    bookCash: sum(b=>b.bookCash),
+    bookCash: sum(b=>b.bookCash), confirmedAvailableCash,
     servicesRevenueMTD: sum(b=>b.servicesRevenueMTD),
     treasuryNetMTD: sum(b=>b.treasuryNetMTD),
     payrollAccruedMTD: sum(b=>b.payrollAccruedMTD),
@@ -110,17 +114,18 @@ export async function loadFinanceOverview(tenantId: string, branches: BranchForF
   const dailyOperatingOutflowEstimate = sufficientHistory ? sum(b=>b.recentCashOut)/14 : null;
   const forecast = buildCashForecast({
     today: asOf,
-    bookCash: totals.bookCash,
+    bookCash: confirmedAvailableCash,
     dailyReceiptsEstimate,
     dailyOperatingOutflowEstimate,
     commitments: ledger.commitments, settlements: ledger.settlements,
   });
   const warnings = [
-    'رصيد الخزنة دفتري ولم يتم التحقق هنا من رصيد النقد والبنك والمحافظ القابل للاستخدام.',
+    'رصيد الخزنة الدفتري ليس بديلًا عن الرصيد القابل للصرف؛ توقع السيولة يتطلب تأكيد رصيد كل فرع بتاريخ اليوم.',
     'التوقع يستخدم متوسط حركة الخزنة لآخر 14 يومًا مع الالتزامات المسجلة؛ قد يحدث تكرار لتكاليف دورية ضمن المتوسط. راجع النتائج قبل اتخاذ قرار.',
     'الالتزامات غير المسجلة وتغيرات الإيراد المستقبلية غير مضمونة ضمن التوقع.',
     'رواتب دفتر الموظفين المعروضة تكلفة مستحقة مسجلة وليست بالضرورة مبلغ الرواتب غير المدفوعة؛ لا تُخصم تلقائيًا مرة ثانية.',
   ];
+  if (confirmedAvailableCash === null) warnings.push('لا يوجد تأكيد حديث لسيولة كل الفروع المعروضة؛ توقع العجز غير مكتمل حتى تتم المطابقة.');
   if (!sufficientHistory) warnings.push('لا تتوفر حركة مسجلة في 7 أيام مختلفة على الأقل لكل فرع خلال آخر 14 يومًا؛ توقع السيولة غير مكتمل.');
   if (ledger.commitments.length === 0) warnings.push('لم يتم تسجيل أي إيجار أو دين أو قسط حتى الآن، وبالتالي التنبيه على الاستحقاقات غير مكتمل.');
   return {
