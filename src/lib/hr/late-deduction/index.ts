@@ -38,11 +38,13 @@ export { voidLateDeductionForExcludedAttendance } from './voidExcludedAttendance
 
 export {
   listLateDeductionManagerQueue,
+  listActiveEmployeesForLateDeduction,
   applyManagerLatePenalty,
   cancelLateDeductionCase,
   setEmployeeLateDeductionExempt,
   LateDeductionActionError,
 } from './managerActions';
+export type { LateDeductionEmployeeRow } from './managerActions';
 
 export {
   buildLateAlertMessage,
