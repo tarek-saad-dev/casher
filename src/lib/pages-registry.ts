@@ -44,6 +44,7 @@ export const SYSTEM_PAGES: PageDefinition[] = [
   { key: 'treasury.summary',        name: 'ملخص حسب الدفع',          path: '/treasury/summary',                section: 'الخزنة',            accessMode: 'roles', sort: 53,  defaultRoles: ['super_admin','admin','accountant'] },
   { key: 'treasury.shift_close',    name: 'تقفيل الوردية',           path: '/treasury/shift-close',            section: 'الخزنة',            accessMode: 'roles', sort: 54,  defaultRoles: ['super_admin','admin','accountant'] },
   { key: 'treasury.monthly_close',  name: 'تقفيل الشهر',             path: '/admin/monthly-closing',           section: 'الخزنة',            accessMode: 'roles', sort: 55,  defaultRoles: ['super_admin','admin','accountant'] },
+  { key: 'reports.financial_intelligence', name: 'مركز القيادة المالية', path: '/admin/financial-intelligence', section: 'تقارير مدير', accessMode: 'roles', sort: 28.5, defaultRoles: ['super_admin','admin','manager','accountant'] },
   // ── Budget ───────────────────────────────────────────────────────────────────
   { key: 'budget.main',             name: 'الميزانية الشهرية',       path: '/budget',                          section: 'الميزانية',         accessMode: 'roles', sort: 60,  defaultRoles: ['super_admin','admin','accountant'] },
   // ── Queue ────────────────────────────────────────────────────────────────────
