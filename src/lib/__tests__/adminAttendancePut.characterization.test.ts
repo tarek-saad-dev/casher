@@ -409,6 +409,20 @@ vi.mock('@/lib/services/employeeAttendanceWhatsAppNotify', () => ({
     harness.scheduleAttendanceCheckInOutWhatsApp(...args),
 }));
 
+vi.mock('@/lib/hr/late-deduction', () => ({
+  enqueueLateDeductionFinalize: vi.fn(async () => ({ enqueued: true })),
+  scheduleFinalizeLateDeductionOnCheckIn: vi.fn(),
+}));
+vi.mock('@/lib/hr/late-deduction/voidExcludedAttendance', () => ({
+  voidLateDeductionForExcludedAttendance: vi.fn(async () => ({
+    handled: true,
+    voided: false,
+  })),
+}));
+vi.mock('@/lib/hr/late-deduction/legacyCheckIn', () => ({
+  enqueueLegacyEmployeeCheckInLateDeduction: vi.fn(async () => undefined),
+}));
+
 vi.mock('@/lib/payroll/syncPayrollHoursFromAttendance', () => ({
   syncNonPostedPayrollHoursFromAttendance: (...args: unknown[]) =>
     harness.syncNonPostedPayrollHoursFromAttendance(...args),

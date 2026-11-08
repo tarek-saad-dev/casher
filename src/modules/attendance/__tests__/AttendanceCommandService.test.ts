@@ -219,6 +219,19 @@ vi.mock('@/lib/services/employeeAttendanceWhatsAppNotify', () => ({
   scheduleAttendanceCheckInOutWhatsApp: (...a: unknown[]) =>
     scheduleAttendanceCheckInOutWhatsApp(...a),
 }));
+vi.mock('@/lib/hr/late-deduction', () => ({
+  enqueueLateDeductionFinalize: vi.fn(async () => ({ enqueued: true })),
+  scheduleFinalizeLateDeductionOnCheckIn: vi.fn(),
+}));
+vi.mock('@/lib/hr/late-deduction/legacyCheckIn', () => ({
+  enqueueLegacyEmployeeCheckInLateDeduction: vi.fn(async () => undefined),
+}));
+vi.mock('@/lib/hr/late-deduction/voidExcludedAttendance', () => ({
+  voidLateDeductionForExcludedAttendance: vi.fn(async () => ({
+    handled: true,
+    voided: false,
+  })),
+}));
 vi.mock('@/lib/booking/AvailabilityMutationNotifier', () => ({
   AvailabilityMutationNotifier: {
     employeeDayChanged: (...a: unknown[]) => availabilityEmployeeDayChanged(...a),
@@ -232,9 +245,21 @@ vi.mock('@/lib/hr/employee-hr-model', () => ({
   normalizeEmploymentType: vi.fn(() => 'full_time'),
 }));
 vi.mock('@/lib/hr/attendance-eligibility', () => ({
-  resolveScheduleForDay: vi.fn(() => ({
-    scheduledStart: '10:00',
-    scheduledEnd: '18:00',
+  resolveScheduleForDay: vi.fn((_type: unknown, opts: {
+    hasScheduleRow?: boolean;
+    isWorkingDayFromSchedule?: boolean | null;
+    scheduleStart?: string | null;
+    scheduleEnd?: string | null;
+    defaultStart?: string | null;
+    defaultEnd?: string | null;
+  }) => ({
+    isScheduledWorkingDay: opts.isWorkingDayFromSchedule !== false,
+    scheduledStart: opts.hasScheduleRow
+      ? (opts.scheduleStart || opts.defaultStart || null)
+      : (opts.defaultStart || null),
+    scheduledEnd: opts.hasScheduleRow
+      ? (opts.scheduleEnd || opts.defaultEnd || null)
+      : (opts.defaultEnd || null),
   })),
 }));
 vi.mock('@/lib/timeUtils', () => ({
@@ -256,6 +281,11 @@ vi.mock('@/lib/timeUtils', () => ({
     const scheduled = eh * 60 + (em || 0);
     return mins < scheduled ? scheduled - mins : 0;
   }),
+  sqlTimeToHHmm: (v: unknown) => {
+    if (v == null || v === '') return null;
+    const s = String(v);
+    return s.length >= 5 ? s.slice(0, 5) : s;
+  },
 }));
 
 function hhmm(v: unknown): string | null {
@@ -338,17 +368,20 @@ function makeRequest() {
         };
       }
       if (/FROM dbo\.TblEmp\b/i.test(sql) && /OUTER APPLY/i.test(sql)) {
+        const empId = Number(inputs.empId);
+        const def = store.empDefaults.get(empId);
         return {
           recordset: [
             {
-              EmpName: 'Test Emp',
+              EmpName: def?.EmpName ?? 'Test Emp',
               EmploymentType: 'full_time',
-              DefaultCheckInTime: '10:00',
-              DefaultCheckOutTime: '18:00',
-              ScheduleDayOfWeek: 1,
-              IsWorkingDay: true,
-              ScheduleStartTime: '10:00',
-              ScheduleEndTime: '18:00',
+              DefaultCheckInTime: def?.DefaultCheckInTime ?? '10:00',
+              DefaultCheckOutTime: def?.DefaultCheckOutTime ?? '18:00',
+              // No active branch schedule row → fall back to emp defaults (admin PUT parity).
+              ScheduleDayOfWeek: null,
+              IsWorkingDay: null,
+              ScheduleStartTime: null,
+              ScheduleEndTime: null,
             },
           ],
         };
@@ -1430,7 +1463,7 @@ describe('saveAdminAttendanceBulk', () => {
     expect(store.rows.every((r) => r.BranchID === 10)).toBe(true);
   });
 
-  it('calculates Late from TblEmp DefaultCheckInTime, not branch work-schedule JOIN', async () => {
+  it('calculates Late from resolved schedule (emp defaults when no branch schedule)', async () => {
     store.empDefaults.set(42, {
       EmpID: 42,
       EmpName: 'Test Emp',

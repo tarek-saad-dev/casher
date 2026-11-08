@@ -22,6 +22,14 @@ import {
   syncAttendanceAbsenceToDayOffOverride,
 } from '@/lib/hr/attendance-shift-schedule-sync';
 import { scheduleAttendanceCheckInOutWhatsApp } from '@/lib/services/employeeAttendanceWhatsAppNotify';
+import {
+  enqueueLateDeductionFinalize,
+  scheduleFinalizeLateDeductionOnCheckIn,
+} from '@/lib/hr/late-deduction';
+import { isLateDeductionExcludedAttendanceStatus } from '@/lib/hr/late-deduction/attendanceStatus';
+import { enqueueLegacyEmployeeCheckInLateDeduction } from '@/lib/hr/late-deduction/legacyCheckIn';
+import { voidLateDeductionForExcludedAttendance } from '@/lib/hr/late-deduction/voidExcludedAttendance';
+import { shouldNotifyAttendanceTimeChange } from '@/lib/hr/attendance-whatsapp-message';
 import { assertEmployeeEligibleForBranchAttendance } from '@/lib/hr/attendance/branchAttendance.service';
 import {
   unlockScheduleForWorkOnDayOff,
@@ -379,6 +387,21 @@ export async function saveAdminAttendance(
     branchId,
   });
 
+  const lateFinalizeInput =
+    CheckInTime && shouldNotifyAttendanceTimeChange(previousCheckIn, CheckInTime)
+      ? {
+          empId: Number(EmpID),
+          empName: employeeName,
+          branchId,
+          workDate: WorkDate,
+          attendanceId,
+          checkInTime: CheckInTime,
+          scheduledStart: schedStart,
+          scheduledEnd: schedEnd,
+          userId: input.userId ?? null,
+        }
+      : null;
+
   if (CheckInTime && CheckOutTime) {
     try {
       const { syncNonPostedPayrollHoursFromAttendance } = await import(
@@ -401,6 +424,27 @@ export async function saveAdminAttendance(
 
   if (activeTxn) {
     await activeTxn.commit();
+  }
+
+  // After commit only — durable enqueue + async finalize (never against rolled-back attendance).
+  const checkInCleared = Boolean(previousCheckIn) && !CheckInTime;
+  if (isLateDeductionExcludedAttendanceStatus(finalStatus) || checkInCleared) {
+    await voidLateDeductionForExcludedAttendance({
+      empId: Number(EmpID),
+      branchId,
+      workDate: WorkDate,
+      attendanceId,
+      status: checkInCleared && !isLateDeductionExcludedAttendanceStatus(finalStatus)
+        ? 'cleared_checkin'
+        : finalStatus,
+    }).catch((err) => {
+      console.warn('[api/admin/attendance] late-deduction excluded void failed', err);
+    });
+  } else if (lateFinalizeInput) {
+    await enqueueLateDeductionFinalize(lateFinalizeInput).catch((err) => {
+      console.warn('[api/admin/attendance] late-deduction enqueue failed', err);
+    });
+    scheduleFinalizeLateDeductionOnCheckIn(lateFinalizeInput);
   }
 
   return {
@@ -523,6 +567,23 @@ export async function saveLegacyEmployeeAttendance(
     await activeTxn.commit();
   }
 
+  if (
+    row?.ID &&
+    (checkInTime ||
+      (status !== undefined &&
+        (isLateDeductionExcludedAttendanceStatus(status) || row.CheckInTime)))
+  ) {
+    await enqueueLegacyEmployeeCheckInLateDeduction({
+      attendanceId: Number(row.ID),
+      empId: Number(empId),
+      branchId,
+      workDate: payrollWorkDateFromOwnershipRow(row.WorkDate ?? workDate),
+    }).catch((err) => console.warn(
+      '[employee-attendance POST] late deduction enqueue failed:',
+      err instanceof Error ? err.message : err,
+    ));
+  }
+
   return { row: row ?? {}, isNew };
   } catch (err) {
     if (activeTxn) {
@@ -641,6 +702,22 @@ export async function updateLegacyEmployeeAttendanceById(
 
   if (activeTxn) {
     await activeTxn.commit();
+  }
+
+  // Reconcile on check-in edits (including clear) and status corrections (absent/off void).
+  if (
+    row?.ID &&
+    (checkInTime !== undefined || status !== undefined)
+  ) {
+    await enqueueLegacyEmployeeCheckInLateDeduction({
+      attendanceId: Number(row.ID),
+      empId: Number(row.EmpID),
+      branchId,
+      workDate,
+    }).catch((err) => console.warn(
+      '[employee-attendance PUT] late deduction enqueue failed:',
+      err instanceof Error ? err.message : err,
+    ));
   }
 
   return { row };
@@ -778,6 +855,24 @@ export async function saveAdminAttendanceBulk(
     checkOutTime?: string | null;
     branchId?: number;
   }> = [];
+  const lateDeductionJobs: Array<{
+    empId: number;
+    empName?: string;
+    branchId: number;
+    workDate: string;
+    attendanceId: number;
+    checkInTime: string;
+    scheduledStart: string | null;
+    scheduledEnd: string | null;
+    userId?: number | null;
+  }> = [];
+  const excludedVoidJobs: Array<{
+    empId: number;
+    branchId: number;
+    workDate: string;
+    attendanceId: number;
+    status: string;
+  }> = [];
 
   try {
     for (const empId of openEmpIds) {
@@ -822,8 +917,30 @@ export async function saveAdminAttendanceBulk(
         throw eligErr;
       }
 
-      const schedStart = empDef?.schedStart ?? null;
-      const schedEnd = empDef?.schedEnd ?? null;
+      // Match single admin PUT: branch-effective schedule, not emp defaults alone.
+      const empSchedule = await attendanceRepo.loadEmployeeScheduleForAdminPut(
+        txDb,
+        item.EmpID,
+        WorkDate,
+        branchId,
+      );
+      const employmentType =
+        normalizeEmploymentType(String(empSchedule?.EmploymentType || '')) ?? 'full_time';
+      const resolved = resolveScheduleForDay(employmentType, {
+        hasScheduleRow: empSchedule?.ScheduleDayOfWeek != null,
+        isWorkingDayFromSchedule:
+          empSchedule?.ScheduleDayOfWeek == null
+            ? null
+            : Boolean(empSchedule.IsWorkingDay),
+        scheduleStart: empSchedule?.ScheduleStartTime || null,
+        scheduleEnd: empSchedule?.ScheduleEndTime || null,
+        defaultStart:
+          empSchedule?.DefaultCheckInTime || empDef?.schedStart || null,
+        defaultEnd:
+          empSchedule?.DefaultCheckOutTime || empDef?.schedEnd || null,
+      });
+      const schedStart = resolved.scheduledStart ?? empDef?.schedStart ?? null;
+      const schedEnd = resolved.scheduledEnd ?? empDef?.schedEnd ?? null;
       const checkIn = (item.CheckInTime || null) as string | null;
       const checkOut = (item.CheckOutTime || null) as string | null;
       const lateMinutes = calcLateMinutes(checkIn, schedStart);
@@ -953,12 +1070,49 @@ export async function saveAdminAttendanceBulk(
         checkOutTime: checkOut,
         branchId,
       });
+
+      const bulkCheckInCleared = Boolean(previousCheckIn) && !checkIn;
+      if (isLateDeductionExcludedAttendanceStatus(finalStatus) || bulkCheckInCleared) {
+        excludedVoidJobs.push({
+          empId: Number(item.EmpID),
+          branchId,
+          workDate: WorkDate,
+          attendanceId,
+          status:
+            bulkCheckInCleared && !isLateDeductionExcludedAttendanceStatus(finalStatus)
+              ? 'cleared_checkin'
+              : finalStatus,
+        });
+      } else if (checkIn && shouldNotifyAttendanceTimeChange(previousCheckIn, checkIn)) {
+        lateDeductionJobs.push({
+          empId: Number(item.EmpID),
+          empName: empDef?.empName,
+          branchId,
+          workDate: WorkDate,
+          attendanceId,
+          checkInTime: checkIn,
+          scheduledStart: schedStart,
+          scheduledEnd: schedEnd,
+          userId: input.userId ?? null,
+        });
+      }
     }
 
     await transaction.commit();
 
     for (const job of whatsappJobs) {
       scheduleAttendanceCheckInOutWhatsApp(job);
+    }
+    for (const job of excludedVoidJobs) {
+      await voidLateDeductionForExcludedAttendance(job).catch((err) => {
+        console.warn('[api/admin/attendance/bulk] late-deduction excluded void failed', err);
+      });
+    }
+    for (const job of lateDeductionJobs) {
+      await enqueueLateDeductionFinalize(job).catch((err) => {
+        console.warn('[api/admin/attendance/bulk] late-deduction enqueue failed', err);
+      });
+      scheduleFinalizeLateDeductionOnCheckIn(job);
     }
   } catch (innerErr) {
     await transaction.rollback();
@@ -1026,6 +1180,25 @@ export async function workOnDayOff(
       /* ignore */
     }
     throw err;
+  }
+
+  // After unlock + Present punch — finalize lateness if scheduled and eligible.
+  const punched = await attendanceRepo.findBranchDayAttendance(
+    dbPool,
+    input.empId,
+    input.date,
+    input.branchId,
+  );
+  if (punched?.ID && punched.CheckInTime) {
+    await enqueueLegacyEmployeeCheckInLateDeduction({
+      attendanceId: Number(punched.ID),
+      empId: input.empId,
+      branchId: input.branchId,
+      workDate: input.date,
+    }).catch((err) => console.warn(
+      '[workOnDayOff] late deduction enqueue failed:',
+      err instanceof Error ? err.message : err,
+    ));
   }
 
   return {
@@ -1116,6 +1289,25 @@ export async function restorePresent(
         /* ignore */
       }
       throw err;
+    }
+
+    // Only when a real today check-in was written; bridge skips non-working days.
+    const punched = await attendanceRepo.findBranchDayAttendance(
+      dbPool,
+      empId,
+      date,
+      branch.branchId,
+    );
+    if (punched?.ID && punched.CheckInTime) {
+      await enqueueLegacyEmployeeCheckInLateDeduction({
+        attendanceId: Number(punched.ID),
+        empId,
+        branchId: branch.branchId,
+        workDate: date,
+      }).catch((err) => console.warn(
+        '[restorePresent] late deduction enqueue failed:',
+        err instanceof Error ? err.message : err,
+      ));
     }
   }
 

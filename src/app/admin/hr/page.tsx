@@ -59,6 +59,10 @@ const PayrollGapReviewPanel = dynamic(
   () => import('@/components/hr/PayrollGapReviewPanel'),
   { ssr: false, loading: () => <TabLoader /> },
 );
+const LateDeductionPanel = dynamic(
+  () => import('@/components/hr/LateDeductionPanel'),
+  { ssr: false, loading: () => <TabLoader /> },
+);
 
 /* ─── types ─────────────────────────────────────────── */
 interface Employee extends HrEmployeeListRow {
@@ -120,6 +124,7 @@ const MAIN_TABS = [
   { id: 'emp-advances',    label: 'سلف الموظفين',     icon: Wallet },
   { id: 'employee-ledger', label: 'دفتر الموظفين',    icon: BookOpen },
   { id: 'employee-ledger-reconciliation', label: 'مراجعة الدفتر', icon: Scale },
+  { id: 'late-deduction', label: 'خصم التأخير', icon: Clock },
 ] as const;
 type MainTabId = typeof MAIN_TABS[number]['id'];
 
@@ -129,6 +134,7 @@ const LEGACY_TAB_ALIASES: Record<string, MainTabId> = {
   salaries: 'employees',
   settings: 'employees',
   'employee-settings': 'employees',
+  'emplyee-ledger': 'employee-ledger',
 };
 
 /* ══════════════════════════════════════════════════════ */
@@ -209,6 +215,7 @@ export default function HRPage() {
       {mainTab === 'emp-advances'     && <AdvancesReportPanel />}
       {mainTab === 'employee-ledger'  && <EmployeeLedgerPanel />}
       {mainTab === 'employee-ledger-reconciliation' && <EmployeeLedgerReconciliationPanel />}
+      {mainTab === 'late-deduction' && <LateDeductionPanel />}
     </div>
   );
 }

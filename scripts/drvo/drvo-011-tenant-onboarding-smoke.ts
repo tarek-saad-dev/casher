@@ -279,11 +279,25 @@ async function main() {
     } catch {
       /* best effort */
     }
-    await pool.close();
+    try {
+      await pool.close();
+    } catch {
+      /* ignore */
+    }
+    try {
+      const { closePool } = await import('../../src/lib/db');
+      await closePool();
+    } catch {
+      /* ignore */
+    }
   }
 }
 
-main().catch((err) => {
-  console.error('DRVO-011 smoke FAIL:', err instanceof Error ? err.message : err);
-  process.exit(1);
-});
+main()
+  .then(() => {
+    process.exit(0);
+  })
+  .catch((err) => {
+    console.error('DRVO-011 smoke FAIL:', err instanceof Error ? err.message : err);
+    process.exit(1);
+  });
