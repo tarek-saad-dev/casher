@@ -1,8 +1,9 @@
 import 'server-only';
 
-import { getPool } from '@/lib/db';
+import { getPool, sql } from '@/lib/db';
 import { withLateDeductionCaseLock } from './caseTransaction';
-import { calcLateMinutes } from '@/lib/timeUtils';
+import { isLateDeductionExcludedAttendanceStatus } from './attendanceStatus';
+import { calcLateMinutes, sqlTimeToHHmm } from '@/lib/timeUtils';
 import {
   getLateDeductionConfig,
   isWorkDateEligibleForLateDeduction,
@@ -125,7 +126,6 @@ export async function finalizeLateDeductionOnCheckIn(
     return { handled: false, reason: 'missing_checkin_or_schedule' };
   }
 
-  const lateMinutes = calcLateMinutes(input.checkInTime, input.scheduledStart);
   return withLateDeductionCaseLock(input, async (db) => {
   const existing = await findLateDeductionCase(
     db,
@@ -133,6 +133,96 @@ export async function finalizeLateDeductionOnCheckIn(
     input.branchId,
     input.workDate,
   );
+
+  // Re-read attendance under the case lock so a fire-and-forget finalize cannot
+  // re-charge after a later absent/off / cleared-check-in correction voided it.
+  const liveAtt = await db
+    .request()
+    .input('attendanceId', sql.Int, input.attendanceId)
+    .input('empId', sql.Int, input.empId)
+    .input('branchId', sql.Int, input.branchId)
+    .query(`
+      SELECT TOP 1
+        CONVERT(VARCHAR(8), CheckInTime, 108) AS CheckInTime,
+        CONVERT(VARCHAR(5), ScheduledStartTime, 108) AS ScheduledStartTime,
+        CONVERT(VARCHAR(5), ScheduledEndTime, 108) AS ScheduledEndTime,
+        Status
+      FROM dbo.TblEmpAttendance
+      WHERE ID = @attendanceId AND EmpID = @empId AND BranchID = @branchId
+    `);
+  const live = (liveAtt.recordset?.[0] ?? null) as
+    | {
+        CheckInTime: string | null;
+        ScheduledStartTime: string | null;
+        ScheduledEndTime: string | null;
+        Status: string | null;
+      }
+    | null;
+  const liveCheckIn =
+    sqlTimeToHHmm(live?.CheckInTime) ||
+    (live?.CheckInTime ? String(live.CheckInTime).slice(0, 5) : null);
+  const liveStatus = live?.Status ?? null;
+  const scheduledStart =
+    sqlTimeToHHmm(live?.ScheduledStartTime) || input.scheduledStart || null;
+  const scheduledEnd =
+    sqlTimeToHHmm(live?.ScheduledEndTime) || input.scheduledEnd || null;
+
+  if (
+    !live ||
+    !liveCheckIn ||
+    isLateDeductionExcludedAttendanceStatus(liveStatus)
+  ) {
+    if (existing?.doNotAutoRecreate || existing?.status === 'cancelled') {
+      return {
+        handled: true,
+        reason: 'cancelled_do_not_recreate',
+        caseId: existing.caseId,
+        status: existing.status,
+      };
+    }
+    const voidAttendanceId = existing?.attendanceId ?? input.attendanceId;
+    if (voidAttendanceId != null && Number(voidAttendanceId) !== 0) {
+      await voidLateDeductionLedgerEntry(db, {
+        attendanceId: Number(voidAttendanceId),
+        branchId: input.branchId,
+        voidReason: !liveCheckIn
+          ? 'إلغاء خصم التأخير — حذف وقت الحضور'
+          : `إلغاء خصم التأخير — تصحيح الحضور إلى ${String(liveStatus ?? 'excluded').trim() || 'excluded'}`,
+      });
+    }
+    const row = await upsertLateDeductionCase(db, {
+      empId: input.empId,
+      branchId: input.branchId,
+      workDate: input.workDate,
+      attendanceId: input.attendanceId,
+      scheduledStart,
+      scheduledEnd,
+      lateMinutes: 0,
+      deductionKind: 'none',
+      status: 'skipped',
+      dailyBasePay: existing?.dailyBasePay ?? null,
+      amount: null,
+      ledgerEntryId: null,
+    });
+    return {
+      handled: true,
+      reason: !liveCheckIn
+        ? 'checkin_cleared'
+        : 'excluded_attendance_status',
+      caseId: row.caseId,
+      status: 'skipped',
+      bracket: 'none' as LateDeductionBracket,
+      amount: null,
+      lateMinutes: 0,
+    };
+  }
+
+  if (!scheduledStart) {
+    return { handled: false, reason: 'missing_checkin_or_schedule' };
+  }
+
+  const lateMinutes = calcLateMinutes(liveCheckIn, scheduledStart);
+  const checkInTime = liveCheckIn;
 
   if (existing?.doNotAutoRecreate || existing?.status === 'cancelled') {
     return {
@@ -170,8 +260,8 @@ export async function finalizeLateDeductionOnCheckIn(
       branchId: input.branchId,
       workDate: input.workDate,
       attendanceId: input.attendanceId,
-      scheduledStart: input.scheduledStart,
-      scheduledEnd: input.scheduledEnd ?? null,
+      scheduledStart,
+      scheduledEnd,
       lateMinutes: 0,
       deductionKind: 'none',
       status: 'skipped',
@@ -203,8 +293,8 @@ export async function finalizeLateDeductionOnCheckIn(
       branchId: input.branchId,
       workDate: input.workDate,
       attendanceId: input.attendanceId,
-      scheduledStart: input.scheduledStart,
-      scheduledEnd: input.scheduledEnd ?? null,
+      scheduledStart,
+      scheduledEnd,
       lateMinutes,
       deductionKind: 'exempt',
       status: 'exempt',
@@ -219,7 +309,7 @@ export async function finalizeLateDeductionOnCheckIn(
         empId: input.empId,
         branchId: input.branchId,
         text: buildExemptCheckInLateMessage({
-          checkInTime: input.checkInTime,
+          checkInTime,
           lateMinutes,
         }),
         event: 'exempt_checkin',
@@ -244,8 +334,8 @@ export async function finalizeLateDeductionOnCheckIn(
     empId: input.empId,
     branchId: input.branchId,
     workDate: input.workDate,
-    scheduledStart: input.scheduledStart,
-    scheduledEnd: input.scheduledEnd,
+    scheduledStart,
+    scheduledEnd,
   });
 
   if (pay.dailyBasePay == null || !(pay.dailyBasePay > 0)) {
@@ -261,8 +351,8 @@ export async function finalizeLateDeductionOnCheckIn(
       branchId: input.branchId,
       workDate: input.workDate,
       attendanceId: input.attendanceId,
-      scheduledStart: input.scheduledStart,
-      scheduledEnd: input.scheduledEnd ?? null,
+      scheduledStart,
+      scheduledEnd,
       lateMinutes,
       deductionKind: 'missing_pay_data',
       status: 'pending_manager',
@@ -277,7 +367,7 @@ export async function finalizeLateDeductionOnCheckIn(
         empId: input.empId,
         branchId: input.branchId,
         text: buildManagerReviewEmployeeAckMessage({
-          checkInTime: input.checkInTime,
+          checkInTime,
           lateMinutes,
         }),
         event: 'missing_pay_data',
@@ -312,8 +402,8 @@ export async function finalizeLateDeductionOnCheckIn(
       branchId: input.branchId,
       workDate: input.workDate,
       attendanceId: input.attendanceId,
-      scheduledStart: input.scheduledStart,
-      scheduledEnd: input.scheduledEnd ?? null,
+      scheduledStart,
+      scheduledEnd,
       lateMinutes,
       deductionKind: 'manager_review',
       status: 'pending_manager',
@@ -328,7 +418,7 @@ export async function finalizeLateDeductionOnCheckIn(
         empId: input.empId,
         branchId: input.branchId,
         text: buildManagerReviewEmployeeAckMessage({
-          checkInTime: input.checkInTime,
+          checkInTime,
           lateMinutes,
         }),
         event: 'manager_review',
@@ -387,8 +477,8 @@ export async function finalizeLateDeductionOnCheckIn(
     branchId: input.branchId,
     workDate: input.workDate,
     attendanceId: input.attendanceId,
-    scheduledStart: input.scheduledStart,
-    scheduledEnd: input.scheduledEnd ?? null,
+    scheduledStart,
+    scheduledEnd,
     lateMinutes,
     deductionKind: calc.bracket,
     status: financialOk ? 'applied' : failureStatus,
@@ -404,7 +494,7 @@ export async function finalizeLateDeductionOnCheckIn(
       empId: input.empId,
       branchId: input.branchId,
       text: buildFinalDeductionMessage({
-        checkInTime: input.checkInTime,
+        checkInTime,
         lateMinutes,
         amount: calc.amount,
         bracket: calc.bracket,

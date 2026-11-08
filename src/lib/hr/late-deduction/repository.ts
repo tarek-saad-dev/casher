@@ -158,12 +158,15 @@ export async function upsertLateDeductionCase(
     .input('ledgerEntryId', sql.Int, input.ledgerEntryId ?? null)
     .query(`
       -- Single WHEN MATCHED only: some SQL Server builds reject two WHEN MATCHED arms (error 10714).
+      -- cancelled stays locked. manager_applied stays locked except status=skipped
+      -- (excluded/cleared attendance correction must void the debit).
       MERGE dbo.TblEmpLateDeductionCase AS t
       USING (SELECT @empId AS EmpID, @branchId AS BranchID, @workDate AS WorkDate) AS s
       ON t.EmpID = s.EmpID AND t.BranchID = s.BranchID AND t.WorkDate = s.WorkDate
       WHEN MATCHED THEN UPDATE SET
         AttendanceID = CASE
-          WHEN t.Status IN (N'cancelled', N'manager_applied')
+          WHEN t.Status = N'cancelled'
+            OR (t.Status = N'manager_applied' AND @status <> N'skipped')
             OR (@status = N'alerting' AND t.Status IN (
               N'applied', N'pending_manager', N'exempt', N'skipped', N'finalize_pending'
             ))
@@ -171,7 +174,8 @@ export async function upsertLateDeductionCase(
           ELSE COALESCE(@attendanceId, t.AttendanceID)
         END,
         ScheduledStartTime = CASE
-          WHEN t.Status IN (N'cancelled', N'manager_applied')
+          WHEN t.Status = N'cancelled'
+            OR (t.Status = N'manager_applied' AND @status <> N'skipped')
             OR (@status = N'alerting' AND t.Status IN (
               N'applied', N'pending_manager', N'exempt', N'skipped', N'finalize_pending'
             ))
@@ -179,7 +183,8 @@ export async function upsertLateDeductionCase(
           ELSE COALESCE(TRY_CAST(@scheduledStart AS TIME), t.ScheduledStartTime)
         END,
         ScheduledEndTime = CASE
-          WHEN t.Status IN (N'cancelled', N'manager_applied')
+          WHEN t.Status = N'cancelled'
+            OR (t.Status = N'manager_applied' AND @status <> N'skipped')
             OR (@status = N'alerting' AND t.Status IN (
               N'applied', N'pending_manager', N'exempt', N'skipped', N'finalize_pending'
             ))
@@ -187,7 +192,8 @@ export async function upsertLateDeductionCase(
           ELSE COALESCE(TRY_CAST(@scheduledEnd AS TIME), t.ScheduledEndTime)
         END,
         LateMinutes = CASE
-          WHEN t.Status IN (N'cancelled', N'manager_applied')
+          WHEN t.Status = N'cancelled'
+            OR (t.Status = N'manager_applied' AND @status <> N'skipped')
             OR (@status = N'alerting' AND t.Status IN (
               N'applied', N'pending_manager', N'exempt', N'skipped', N'finalize_pending'
             ))
@@ -195,7 +201,8 @@ export async function upsertLateDeductionCase(
           ELSE @lateMinutes
         END,
         DeductionKind = CASE
-          WHEN t.Status IN (N'cancelled', N'manager_applied')
+          WHEN t.Status = N'cancelled'
+            OR (t.Status = N'manager_applied' AND @status <> N'skipped')
             OR (@status = N'alerting' AND t.Status IN (
               N'applied', N'pending_manager', N'exempt', N'skipped', N'finalize_pending'
             ))
@@ -203,7 +210,8 @@ export async function upsertLateDeductionCase(
           ELSE @deductionKind
         END,
         Status = CASE
-          WHEN t.Status IN (N'cancelled', N'manager_applied')
+          WHEN t.Status = N'cancelled'
+            OR (t.Status = N'manager_applied' AND @status <> N'skipped')
             OR (@status = N'alerting' AND t.Status IN (
               N'applied', N'pending_manager', N'exempt', N'skipped', N'finalize_pending'
             ))
@@ -211,7 +219,8 @@ export async function upsertLateDeductionCase(
           ELSE @status
         END,
         DailyBasePay = CASE
-          WHEN t.Status IN (N'cancelled', N'manager_applied')
+          WHEN t.Status = N'cancelled'
+            OR (t.Status = N'manager_applied' AND @status <> N'skipped')
             OR (@status = N'alerting' AND t.Status IN (
               N'applied', N'pending_manager', N'exempt', N'skipped', N'finalize_pending'
             ))
@@ -219,7 +228,8 @@ export async function upsertLateDeductionCase(
           ELSE COALESCE(@dailyBasePay, t.DailyBasePay)
         END,
         Amount = CASE
-          WHEN t.Status IN (N'cancelled', N'manager_applied')
+          WHEN t.Status = N'cancelled'
+            OR (t.Status = N'manager_applied' AND @status <> N'skipped')
             OR (@status = N'alerting' AND t.Status IN (
               N'applied', N'pending_manager', N'exempt', N'skipped', N'finalize_pending'
             ))
@@ -228,7 +238,8 @@ export async function upsertLateDeductionCase(
           ELSE @amount
         END,
         LedgerEntryID = CASE
-          WHEN t.Status IN (N'cancelled', N'manager_applied')
+          WHEN t.Status = N'cancelled'
+            OR (t.Status = N'manager_applied' AND @status <> N'skipped')
             OR (@status = N'alerting' AND t.Status IN (
               N'applied', N'pending_manager', N'exempt', N'skipped', N'finalize_pending'
             ))

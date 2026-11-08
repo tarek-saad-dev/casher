@@ -85,7 +85,9 @@ export async function recoverPendingLateDeductionFinalizations(params?: {
           OR a.CheckInTime IS NULL
         )
         AND ISNULL(c.DoNotAutoRecreate, 0) = 0
-        AND c.Status IN (N'applied', N'finalize_pending', N'alerting', N'pending_manager')
+        AND c.Status IN (
+          N'applied', N'finalize_pending', N'alerting', N'pending_manager', N'manager_applied'
+        )
       ORDER BY a.ID ASC
     `);
 

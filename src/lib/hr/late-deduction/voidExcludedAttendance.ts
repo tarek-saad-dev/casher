@@ -40,14 +40,8 @@ export async function voidLateDeductionForExcludedAttendance(params: {
           reason: 'cancelled_do_not_recreate',
         };
       }
-      if (existing?.status === 'manager_applied') {
-        return {
-          handled: true,
-          caseId: existing.caseId,
-          voided: false,
-          reason: 'manager_decision_locked',
-        };
-      }
+      // manager_applied is also voided: correcting to absent/off/cleared check-in
+      // must never leave a penalty debit active (explicit cancel remains for other cases).
 
       let voided = false;
       const voidAttendanceId = existing?.attendanceId ?? attendanceId;
