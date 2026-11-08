@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import { ArrowRight, Copy, Clock, Loader2, Save, AlertTriangle } from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
 import { Badge } from '@/components/ui/badge';
@@ -59,7 +59,9 @@ function branchBadgeClass(code: string, branches: readonly BranchOpt[]) {
 
 export default function EmployeeBranchSchedulePage() {
   const params = useParams<{ empId: string }>();
+  const searchParams = useSearchParams();
   const empId = params.empId;
+  const embed = searchParams.get('embed') === '1';
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -330,23 +332,42 @@ export default function EmployeeBranchSchedulePage() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl p-4 sm:p-6" dir="rtl">
-      <Link
-        href="/admin/hr?tab=employees"
-        className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-      >
-        <ArrowRight className="h-4 w-4" />
-        الموظفون
-      </Link>
+    <div
+      className={cn('mx-auto max-w-5xl', embed ? 'p-3 sm:p-4' : 'p-4 sm:p-6')}
+      dir="rtl"
+    >
+      {!embed && (
+        <Link
+          href="/admin/hr?tab=employees"
+          className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+        >
+          <ArrowRight className="h-4 w-4" />
+          الموظفون
+        </Link>
+      )}
 
-      <PageHeader
-        title="مواعيد وفروع الموظف"
-        description={employee?.empName ?? `EmpID ${empId}`}
-      >
-        <Badge variant={employee?.isActive ? 'default' : 'outline'}>
-          الحالة: {employee?.isActive ? 'نشط' : 'موقوف'}
-        </Badge>
-      </PageHeader>
+      {embed ? (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 border-b border-border pb-3">
+          <div>
+            <h2 className="text-base font-semibold">مواعيد وفروع الموظف</h2>
+            <p className="text-xs text-muted-foreground">
+              {employee?.empName ?? `EmpID ${empId}`}
+            </p>
+          </div>
+          <Badge variant={employee?.isActive ? 'default' : 'outline'}>
+            الحالة: {employee?.isActive ? 'نشط' : 'موقوف'}
+          </Badge>
+        </div>
+      ) : (
+        <PageHeader
+          title="مواعيد وفروع الموظف"
+          description={employee?.empName ?? `EmpID ${empId}`}
+        >
+          <Badge variant={employee?.isActive ? 'default' : 'outline'}>
+            الحالة: {employee?.isActive ? 'نشط' : 'موقوف'}
+          </Badge>
+        </PageHeader>
+      )}
 
       {!hasActiveAssignment && (
         <div className="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
