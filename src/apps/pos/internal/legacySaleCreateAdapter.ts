@@ -13,7 +13,8 @@ import type { InvoicePaymentAllocationInput } from './legacySaleRepository';
 
 export type LegacySaleCreateItemInput = {
   proId: number;
-  empId: number;
+  /** 0/null = retail product line (no barber commission). */
+  empId: number | null;
   sPrice: number;
   bonus: number;
   qty: number;
@@ -173,35 +174,50 @@ export async function executeLegacySaleCreateTransaction(
   for (let i = 0; i < items.length; i++) {
     const item = items[i]!;
     const line = computed.lines[i]!;
-    const detReq = new sql.Request(transaction);
-    detReq
+    const qty = item.qty > 0 ? item.qty : 1;
+    const retailEmp = item.empId == null || item.empId <= 0;
+    // Snapshot catalog purchase cost into line PPrice/PValue at sale time.
+    const costRes = await new sql.Request(transaction)
+      .input('ProID', sql.Int, item.proId)
+      .query(`SELECT ISNULL(PPrice, 0) AS unitCost FROM dbo.TblPro WHERE ProID = @ProID`);
+    const unitCost = Number(costRes.recordset[0]?.unitCost ?? 0);
+
+    await new sql.Request(transaction)
       .input('invID', sql.Int, newInvID)
       .input('invType', sql.NVarChar(20), invType)
-      .input('EmpID', sql.Int, item.empId)
+      .input('EmpID', sql.Int, retailEmp ? null : item.empId)
       .input('ProID', sql.Int, item.proId)
       .input('Dis', sql.Decimal(8, 2), line.discountPercent)
       .input('DisVal', sql.Decimal(8, 2), line.discountValue)
       .input('SPrice', sql.Decimal(10, 2), item.sPrice)
       .input('SValue', sql.Decimal(10, 2), line.grossAmount)
       .input('SPriceAfterDis', sql.Decimal(10, 2), line.netAmount)
-      .input('PPrice', sql.Decimal(10, 2), 0)
-      .input('PValue', sql.Decimal(10, 2), 0)
-      .input('Qty', sql.Decimal(8, 2), item.qty > 0 ? item.qty : 1)
+      .input('PPrice', sql.Decimal(10, 2), unitCost)
+      .input('PValue', sql.Decimal(10, 2), unitCost * qty)
+      .input('Qty', sql.Decimal(8, 2), qty)
       .input('Notes', sql.NVarChar(50), (item.notes || '').substring(0, 50))
-      .input('Bonus', sql.Decimal(8, 2), item.bonus)
-      .input('ReservDate', sql.Date, null);
+      .input('Bonus', sql.Decimal(8, 2), retailEmp ? 0 : item.bonus)
+      .input('ReservDate', sql.Date, null)
+      .input('unitCost', sql.Decimal(10, 2), unitCost)
+      .query(`
+        INSERT INTO [dbo].[TblinvServDetail] (
+          invID, invType, EmpID, ProID,
+          Dis, DisVal, SPrice, SValue, SPriceAfterDis,
+          PPrice, PValue, Qty, ProType, Notes, Bonus, ReservDate
+        ) VALUES (
+          @invID, @invType, @EmpID, @ProID,
+          @Dis, @DisVal, @SPrice, @SValue, @SPriceAfterDis,
+          @PPrice, @PValue, @Qty, NULL, @Notes, @Bonus, @ReservDate
+        );
 
-    await detReq.query(`
-      INSERT INTO [dbo].[TblinvServDetail] (
-        invID, invType, EmpID, ProID,
-        Dis, DisVal, SPrice, SValue, SPriceAfterDis,
-        PPrice, PValue, Qty, ProType, Notes, Bonus, ReservDate
-      ) VALUES (
-        @invID, @invType, @EmpID, @ProID,
-        @Dis, @DisVal, @SPrice, @SValue, @SPriceAfterDis,
-        @PPrice, @PValue, @Qty, NULL, @Notes, @Bonus, @ReservDate
-      )
-    `);
+        IF COL_LENGTH(N'dbo.TblinvServDetail', N'UnitCostSnapshot') IS NOT NULL
+        BEGIN
+          UPDATE TOP (1) dbo.TblinvServDetail
+          SET UnitCostSnapshot = @unitCost
+          WHERE invID = @invID AND invType = @invType AND ProID = @ProID
+            AND UnitCostSnapshot IS NULL;
+        END
+      `);
     detailCount++;
   }
   console.log(

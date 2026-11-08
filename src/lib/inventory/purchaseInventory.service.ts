@@ -98,6 +98,112 @@ export async function postPurchaseReceipt(
     `);
 }
 
+/**
+ * Post a purchase return against an original POSTED purchase.
+ * Emits PURCHASE_RETURN negative movements; cannot return more than received.
+ */
+export async function postPurchaseReturn(
+  transaction: sql.Transaction,
+  args: {
+    branchId: number;
+    originalPurchaseInvId: number;
+    originalPurchaseInvType: string;
+    returnInvId: number;
+    returnInvType: string;
+    userId: number | null;
+    lines: PurchaseLineInput[];
+  },
+): Promise<void> {
+  const head = await new sql.Request(transaction)
+    .input('invId', sql.Int, args.originalPurchaseInvId)
+    .input('invType', sql.NVarChar(20), args.originalPurchaseInvType)
+    .query(`
+      SELECT BranchID, PostStatus
+      FROM dbo.TblinvPurchaseHead
+      WHERE invID = @invId AND invType = @invType
+    `);
+  const row = head.recordset[0] as
+    | { BranchID: number; PostStatus: string }
+    | undefined;
+  if (!row || Number(row.BranchID) !== Number(args.branchId)) {
+    throw new InventoryDomainError('PURCHASE_NOT_FOUND', 'فاتورة المشتريات غير موجودة', 404);
+  }
+  if (String(row.PostStatus).toUpperCase() !== 'POSTED') {
+    throw new InventoryDomainError(
+      'PURCHASE_NOT_POSTED',
+      'لا يمكن إرجاع مشتريات غير مرحلة',
+      409,
+    );
+  }
+
+  const received = await new sql.Request(transaction)
+    .input('invId', sql.Int, args.originalPurchaseInvId)
+    .input('invType', sql.NVarChar(20), args.originalPurchaseInvType)
+    .query(`
+      SELECT ProID, SUM(Qty) AS Qty
+      FROM dbo.TblinvPurchaseDetail
+      WHERE invID = @invId AND invType = @invType
+      GROUP BY ProID
+    `);
+  const receivedMap = new Map<number, number>();
+  for (const r of received.recordset as Array<{ ProID: number; Qty: number }>) {
+    receivedMap.set(Number(r.ProID), Number(r.Qty));
+  }
+
+  for (let i = 0; i < args.lines.length; i++) {
+    const line = args.lines[i]!;
+    const qty = Number(line.qty);
+    if (!Number.isFinite(qty) || qty <= 0) continue;
+    const maxQty = receivedMap.get(line.proId) ?? 0;
+    if (qty > maxQty) {
+      throw new InventoryDomainError(
+        'RETURN_QTY_EXCEEDS',
+        `كمية الإرجاع للمنتج ${line.proId} تتجاوز الكمية المشتراة (${maxQty})`,
+        409,
+      );
+    }
+
+    const flags = await new sql.Request(transaction)
+      .input('proId', sql.Int, line.proId)
+      .query(`
+        SELECT p.ProType, c.CatType
+        FROM dbo.TblPro p
+        LEFT JOIN dbo.TblCat c ON c.CatID = p.CatID
+        WHERE p.ProID = @proId
+      `);
+    const f = flags.recordset[0] as { ProType: string | null; CatType: string | null } | undefined;
+    if (!f || !isStockTrackedProduct({ proId: line.proId, proType: f.ProType, catType: f.CatType })) {
+      continue;
+    }
+
+    await applyInventoryMutation(transaction, {
+      branchId: args.branchId,
+      proId: line.proId,
+      quantityDelta: -qty,
+      movementType: 'PURCHASE_RETURN',
+      referenceType: 'PURCHASE_RETURN',
+      referenceId: `${args.returnInvType}:${args.returnInvId}`,
+      referenceLineId: `${i}:${line.proId}`,
+      userId: args.userId,
+      reason: `Return of ${args.originalPurchaseInvType}:${args.originalPurchaseInvId}`,
+      idempotencyKey: `PURCHASE_RETURN:${args.branchId}:${args.returnInvType}:${args.returnInvId}:${i}:${line.proId}`,
+      allowNegativeOverride: false,
+    });
+  }
+
+  await new sql.Request(transaction)
+    .input('invId', sql.Int, args.returnInvId)
+    .input('invType', sql.NVarChar(20), args.returnInvType)
+    .input('branchId', sql.Int, args.branchId)
+    .input('origId', sql.Int, args.originalPurchaseInvId)
+    .query(`
+      UPDATE dbo.TblinvPurchaseHead
+      SET PostStatus = N'POSTED',
+          ReturnOfPurchaseInvID = @origId
+      WHERE invID = @invId AND invType = @invType AND BranchID = @branchId
+    `);
+}
+
 export async function applyManualStockAdjustment(
   transaction: sql.Transaction,
   args: {
@@ -117,6 +223,7 @@ export async function applyManualStockAdjustment(
   }
 
   let delta = Number(args.quantityDelta);
+  let quantityBeforeForKey: number | null = null;
   if (args.setCountedTo != null && Number.isFinite(Number(args.setCountedTo))) {
     const { ensureBranchInventoryBalance } = await import('./inventoryMutation.service');
     await ensureBranchInventoryBalance(transaction, args.branchId, args.proId);
@@ -128,6 +235,7 @@ export async function applyManualStockAdjustment(
         WHERE BranchID = @branchId AND ProID = @proId
       `);
     const before = Number(cur.recordset[0]?.QtyOnHand ?? 0);
+    quantityBeforeForKey = before;
     delta = Number(args.setCountedTo) - before;
   }
 
@@ -143,10 +251,11 @@ export async function applyManualStockAdjustment(
         : 'MANUAL_ADJUSTMENT_OUT';
 
   const key = `ADJ:${args.branchId}:${args.proId}:${args.userId}:${Date.now()}:${delta}:${args.reason.slice(0, 40)}`;
-  // Prefer deterministic key when caller retries — include rounded target
+  // Physical count: include quantity-before so a later identical target after
+  // intervening sales is a new legitimate adjustment (not an idempotent replay).
   const idem =
     args.setCountedTo != null
-      ? `ADJ_SET:${args.branchId}:${args.proId}:${Number(args.setCountedTo)}:${args.reason.trim()}`
+      ? `ADJ_SET:${args.branchId}:${args.proId}:${quantityBeforeForKey}->${Number(args.setCountedTo)}:${args.reason.trim()}`
       : key;
 
   const res = await applyInventoryMutation(transaction, {

@@ -67,6 +67,8 @@ export const SYSTEM_PAGES: PageDefinition[] = [
   { key: 'admin.branches',          name: 'الفروع',                  path: '/admin/branches',                  section: 'الإدارة',           accessMode: 'roles', sort: 101, defaultRoles: ['super_admin','admin'] },
   { key: 'admin.users',             name: 'المستخدمون',              path: '/admin/users',                     section: 'الإدارة',           accessMode: 'roles', sort: 102, defaultRoles: ['super_admin','admin'] },
   { key: 'admin.services',          name: 'الخدمات',                 path: '/admin/services',                  section: 'الإدارة',           accessMode: 'roles', sort: 103, defaultRoles: ['super_admin','admin'] },
+  { key: 'admin.products',          name: 'المنتجات',                path: '/admin/products',                  section: 'الإدارة',           accessMode: 'roles', sort: 1035, defaultRoles: ['super_admin','admin'] },
+  { key: 'admin.inventory',         name: 'المخزون',                 path: '/admin/inventory',                 section: 'الإدارة',           accessMode: 'roles', sort: 1036, defaultRoles: ['super_admin','admin'] },
   { key: 'admin.packages',          name: 'الباكدجات',               path: '/admin/packages',                  section: 'الإدارة',           accessMode: 'roles', sort: 104, defaultRoles: ['super_admin','admin'] },
   { key: 'admin.payment_methods',   name: 'طرق الدفع',               path: '/admin/payment-methods',           section: 'الإدارة',           accessMode: 'roles', sort: 105, defaultRoles: ['super_admin','admin'] },
   { key: 'admin.categories',        name: 'التصنيفات',               path: '/admin/categories',                section: 'الإدارة',           accessMode: 'roles', sort: 106, defaultRoles: ['super_admin','admin'] },
