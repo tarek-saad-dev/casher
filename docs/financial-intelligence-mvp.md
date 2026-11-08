@@ -8,7 +8,7 @@ This is an incremental management-risk dashboard, not a replacement for the exis
 - Branch-scoped/all-branches reads, with the existing report-permission checks plus explicit tenant-to-location validation.
 - MTD service revenue, treasury movement, accrued salary/commission entries, and all-time *book* treasury movement.
 - One-time/monthly recurring commitments with optional final due date, partial settlement records, overdue alerts, 7/14/30-day dues.
-- 30-day indicative cash line from a 14-day treasury movement average. The engine requires activity on 7 distinct days per branch in that period; otherwise it reports an incomplete forecast.
+- A manager-confirmed available-liquidity snapshot per branch and day (separate from book treasury). The 30-day indicative cash line **requires a confirmed same-day amount for every included branch**, plus 7 distinct observed activity days within the last 14 per branch; otherwise it reports an incomplete forecast and hides the chart.
 - Manual immutable dated snapshot.
 - Optional Gemini analysis. All calculated metrics stay server-authoritative; AI sees only aggregated metrics and type/due/amount (no customer or employee IDs).
 
@@ -18,7 +18,7 @@ After a verified SQL Server backup and staging verification, run:
 
 `scripts/financial-intelligence/001-create-tables.sql`
 
-This creates 3 isolated dbo tables; it does **not** mutate old cash/employee/budget tables. The UI intentionally fails with `FINANCE_SCHEMA_REQUIRED` until the schema is installed.
+This creates 4 isolated dbo tables; it does **not** mutate old cash/employee/budget tables. The UI intentionally fails with `FINANCE_SCHEMA_REQUIRED` until the schema is installed.
 
 Register/sync the new page in `TblSystemPages` and assigned role permissions through the existing pages-registry sync. The registry change includes manager read-access and admin/accountant read/write (mutation checked separately).
 
@@ -34,7 +34,7 @@ No API key is sent to the browser. Do not add the key to `NEXT_PUBLIC_*` variabl
 
 ## Source of truth and accuracy warnings
 
-- Book treasury balance is the net signed movement of **all time** by branch; it is **not reconciled available cash**. A negative or positive book balance should not be used to authorize payouts without reconciliation.
+- Book treasury balance is the net signed movement of **all time** by branch; it is **not reconciled available cash**. A manager must confirm available liquidity separately for each branch. This is a manual input and should be checked against cash, bank and wallet records.
 - MTD service revenue excludes products and potentially non-service revenue.
 - Treasury movement includes transfers, borrowing, settlements and other non-profit flows, so treasury net is **not** net profit.
 - Payroll accrued is read from the employee ledger and is **not** the exact unpaid payroll liability.
@@ -48,7 +48,7 @@ No API key is sent to the browser. Do not add the key to `NEXT_PUBLIC_*` variabl
 - `npx vitest run src/lib/financial-intelligence/__tests__/forecast.test.ts`
 - `npx tsc --noEmit`
 - `npm run lint`
-- Staging smoke test after migration: log in as manager/admin/accountant; check one branch vs all, tenant isolation, add rent monthly, add partial settlement, save snapshot, try duplicate save, verify disabled AI, then test with a limited-scope Gemini key.
+- Staging smoke test after migration: log in as manager/admin/accountant; check one branch vs all, tenant isolation, confirm cash available for each branch, add rent monthly, add partial settlement, save snapshot, try duplicate save, verify disabled AI, then test with a limited-scope Gemini key.
 - Never enable on production before reconciliation and authorization smoke tests.
 
 ## Next phase
