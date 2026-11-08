@@ -96,6 +96,7 @@ jobs:
           src/apps/treasury/__tests__/deployMigration.test.ts
           src/apps/treasury/__tests__/importBoundaries.test.ts
           src/apps/pos/__tests__
+          src/lib/financial-intelligence/__tests__/forecast.test.ts
           src/modules/messaging/__tests__/saleCustomerReceiptSend.test.ts
           src/modules/messaging/__tests__/phase5aCallersUnchanged.test.ts
           src/modules/messaging/__tests__/phase6SendTemplateMessage.test.ts
