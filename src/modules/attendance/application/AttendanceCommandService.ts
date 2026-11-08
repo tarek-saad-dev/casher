@@ -917,8 +917,30 @@ export async function saveAdminAttendanceBulk(
         throw eligErr;
       }
 
-      const schedStart = empDef?.schedStart ?? null;
-      const schedEnd = empDef?.schedEnd ?? null;
+      // Match single admin PUT: branch-effective schedule, not emp defaults alone.
+      const empSchedule = await attendanceRepo.loadEmployeeScheduleForAdminPut(
+        txDb,
+        item.EmpID,
+        WorkDate,
+        branchId,
+      );
+      const employmentType =
+        normalizeEmploymentType(String(empSchedule?.EmploymentType || '')) ?? 'full_time';
+      const resolved = resolveScheduleForDay(employmentType, {
+        hasScheduleRow: empSchedule?.ScheduleDayOfWeek != null,
+        isWorkingDayFromSchedule:
+          empSchedule?.ScheduleDayOfWeek == null
+            ? null
+            : Boolean(empSchedule.IsWorkingDay),
+        scheduleStart: empSchedule?.ScheduleStartTime || null,
+        scheduleEnd: empSchedule?.ScheduleEndTime || null,
+        defaultStart:
+          empSchedule?.DefaultCheckInTime || empDef?.schedStart || null,
+        defaultEnd:
+          empSchedule?.DefaultCheckOutTime || empDef?.schedEnd || null,
+      });
+      const schedStart = resolved.scheduledStart ?? empDef?.schedStart ?? null;
+      const schedEnd = resolved.scheduledEnd ?? empDef?.schedEnd ?? null;
       const checkIn = (item.CheckInTime || null) as string | null;
       const checkOut = (item.CheckOutTime || null) as string | null;
       const lateMinutes = calcLateMinutes(checkIn, schedStart);
