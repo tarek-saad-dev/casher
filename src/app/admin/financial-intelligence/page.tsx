@@ -55,6 +55,7 @@ export default function FinancialIntelligencePage() {
   const [title,setTitle]=useState('');
   const [kind,setKind]=useState<CommitmentKind>('rent');
   const [amount,setAmount]=useState('');
+  const [available,setAvailable]=useState('');
   const [dueDate,setDueDate]=useState(todayCairo);
   const [frequency,setFrequency]=useState<'once'|'monthly'>('monthly');
   const [endDate,setEndDate]=useState('');
@@ -131,12 +132,12 @@ export default function FinancialIntelligencePage() {
     {view && forecast && <>
       <div className="flex flex-wrap items-center gap-3">
         <span className={'rounded-full px-3 py-1 text-sm font-semibold '+(risk?'bg-amber-500/10 text-amber-700 dark:text-amber-400':'bg-muted text-foreground')}>
-          {risk?'إنذار: عجز دفتري متوقع يوم '+risk:'لم يظهر عجز ضمن الأرقام المتاحة'}
+          {forecast.dataQuality==='incomplete'?'البيانات غير مكتملة — يلزم تأكيد السيولة والتاريخ':risk?'إنذار: عجز محتمل يوم '+risk:'لم يظهر عجز في التوقع التقديري'}
         </span>
         <span className="text-xs text-muted-foreground">التاريخ: {view.asOf} • التوقع {forecast.dataQuality==='estimated'?'تقديري':'غير مكتمل'}</span>
       </div>
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
-        <Tile label="رصيد الخزنة الدفتري" value={fmt(view.totals.bookCash)} note="ليس بالضرورة سيولة قابلة للصرف" icon={<Wallet className="h-4 w-4"/>}/>
+        <Tile label="السيولة القابلة للصرف (مؤكدة)" value={view.totals.confirmedAvailableCash===null?'غير مؤكدة':fmt(view.totals.confirmedAvailableCash)} note={'رصيد الخزنة الدفتري: '+fmt(view.totals.bookCash)} icon={<Wallet className="h-4 w-4"/>}/>
         <Tile label="التزامات حتى 7 أيام" value={fmt(forecast.due7)} note="شامل المستحقات المتأخرة" icon={<CalendarClock className="h-4 w-4"/>}/>
         <Tile label="إيراد الخدمات المسجل هذا الشهر" value={fmt(view.totals.servicesRevenueMTD)} note="لا يشمل بالضرورة جميع أنواع الإيرادات" icon={<ArrowUpRight className="h-4 w-4"/>}/>
         <Tile label="تكلفة الرواتب المسجلة" value={fmt(view.totals.payrollAccruedMTD)} note="من دفتر الرواتب، ليست المستحقات غير المدفوعة" icon={<ArrowDownRight className="h-4 w-4"/>}/>
@@ -147,7 +148,7 @@ export default function FinancialIntelligencePage() {
             <h2 className="font-semibold text-lg">توقع السيولة خلال 30 يومًا</h2>
             <span className="text-xs text-muted-foreground">أقل رصيد متوقع: {forecast.minimumCash30===null?'غير متاح':fmt(forecast.minimumCash30)}</span>
           </div>
-          <Trend data={forecast.days}/>
+          {forecast.dataQuality==='estimated' ? <Trend data={forecast.days}/> : <div className="rounded-xl border border-dashed border-border bg-muted/40 p-6 text-sm text-muted-foreground">لن نعرض رسم توقع نقدي موثوق قبل تأكيد سيولة كل فرع ووجود سجل نشاط في 7 أيام مختلفة على الأقل خلال آخر 14 يومًا.</div>}
           <div className="grid grid-cols-2 gap-3">
             <Tile label="التزامات 14 يومًا" value={fmt(forecast.due14)} icon={<CalendarClock className="h-4 w-4"/>}/>
             <Tile label="التزامات 30 يومًا" value={fmt(forecast.due30)} icon={<ShieldAlert className="h-4 w-4"/>}/>
@@ -172,10 +173,26 @@ export default function FinancialIntelligencePage() {
         <h2 className="text-lg font-semibold">مؤشرات الفروع</h2>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="text-muted-foreground border-b border-border"><tr><th className="p-3 text-right">الفرع</th><th className="p-3 text-right">رصيد دفتري</th><th className="p-3 text-right">إيراد الخدمات</th><th className="p-3 text-right">صافي حركة الخزنة</th><th className="p-3 text-right">تكلفة الرواتب المسجلة</th></tr></thead>
-            <tbody>{view.branches.map(b=><tr key={b.branchId} className="border-b border-border/60"><td className="p-3 font-medium">{b.branchName}</td><td className="p-3">{fmt(b.bookCash)}</td><td className="p-3">{fmt(b.servicesRevenueMTD)}</td><td className="p-3">{fmt(b.treasuryNetMTD)}</td><td className="p-3">{fmt(b.payrollAccruedMTD)}</td></tr>)}</tbody>
+            <thead className="text-muted-foreground border-b border-border"><tr><th className="p-3 text-right">الفرع</th><th className="p-3 text-right">رصيد دفتري</th><th className="p-3 text-right">سيولة مؤكدة اليوم</th><th className="p-3 text-right">إيراد الخدمات</th><th className="p-3 text-right">صافي حركة الخزنة</th><th className="p-3 text-right">تكلفة الرواتب المسجلة</th></tr></thead>
+            <tbody>{view.branches.map(b=><tr key={b.branchId} className="border-b border-border/60"><td className="p-3 font-medium">{b.branchName}</td><td className="p-3">{fmt(b.bookCash)}</td><td className="p-3">{b.confirmedAvailableCash===null?'لم تُؤكد':fmt(b.confirmedAvailableCash)}</td><td className="p-3">{fmt(b.servicesRevenueMTD)}</td><td className="p-3">{fmt(b.treasuryNetMTD)}</td><td className="p-3">{fmt(b.payrollAccruedMTD)}</td></tr>)}</tbody>
           </table>
         </div>
+      </section>
+      <section className="rounded-2xl border border-border bg-card p-4 sm:p-5 space-y-3">
+        <h2 className="text-lg font-semibold">مطابقة السيولة المتاحة</h2>
+        <p className="text-sm text-muted-foreground">قبل عرض أي توقع، أكد المبلغ القابل للصرف فعلًا بعد مراجعة النقد والبنك والمحافظ في كل فرع. الرقم لا يغيّر رصيد الخزنة المحاسبي.</p>
+        {result.canManage ? <form className="grid gap-2 sm:grid-cols-[1fr_1fr_auto] items-end print:hidden"
+          onSubmit={async e=>{e.preventDefault();if(!branchId)return;const ok=await write({action:'confirmLiquidity',branchId,available:Number(available)},'liquidity');if(ok)setAvailable('');}}>
+          <label className="block text-sm">الفرع
+            <select className={baseInput+' mt-1'} value={branchId||''} onChange={e=>setBranchId(Number(e.target.value))} required>
+              {view.branches.map(b=><option key={b.branchId} value={b.branchId}>{b.branchName}</option>)}
+            </select>
+          </label>
+          <label className="block text-sm">السيولة المؤكدة اليوم (جنيه)
+            <input className={baseInput+' mt-1'} type="number" min="0" step="0.01" value={available} onChange={e=>setAvailable(e.target.value)} required/>
+          </label>
+          <button disabled={busy==='liquidity'} className="rounded-lg bg-primary px-4 py-2.5 text-primary-foreground disabled:opacity-60" type="submit">{busy==='liquidity'?'جاري التأكيد…':'تأكيد السيولة'}</button>
+        </form> : <p className="text-sm text-muted-foreground">تأكيد السيولة متاح للإدارة المالية.</p>}
       </section>
       <section className="grid gap-4 lg:grid-cols-[minmax(0,1.3fr)_minmax(300px,1fr)]">
         <div className="rounded-2xl border border-border bg-card p-4 sm:p-5 space-y-4">
