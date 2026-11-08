@@ -1,7 +1,7 @@
 import 'server-only';
 import { getPool, sql } from '@/lib/db';
 import { assertLegacyBranchInTenant } from '@/platform/tenant/tenantContext';
-import { getFinancialSummary } from '@/lib/services/TreasurySummaryService';
+import { getFinancialSummary, getDailyFinancialData } from '@/lib/services/TreasurySummaryService';
 import { getAllEmployeesRevenueTotal } from '@/lib/reports/employeeServicesRevenue';
 import { getPayrollExpenseFromLedger } from '@/lib/accounting/payrollExpenseFromLedger';
 import { addDays, buildCashForecast, type Commitment, type Settlement, type CommitmentKind, type Frequency } from './forecast';
@@ -12,7 +12,7 @@ export interface FinanceOverview {
   scopeKey: string;
   branches: Array<BranchForFinance & {
     bookCash: number; servicesRevenueMTD: number; treasuryNetMTD: number;
-    payrollAccruedMTD: number; recentCashIn: number; recentCashOut: number; recentTransactions: number;
+    payrollAccruedMTD: number; recentCashIn: number; recentCashOut: number; recentTransactions: number; recentObservedDays: number;
   }>;
   totals: { bookCash: number; servicesRevenueMTD: number; treasuryNetMTD: number; payrollAccruedMTD: number };
   forecast: ReturnType<typeof buildCashForecast>;
@@ -73,7 +73,7 @@ export async function loadFinanceOverview(tenantId: string, branches: BranchForF
   const db = await getPool();
   const [perBranch, ledger, snapshotRows] = await Promise.all([
     Promise.all(branches.map(async (b) => {
-      const [mtd, recent, sales, payroll, balance] = await Promise.all([
+      const [mtd, recent, sales, payroll, balance, observed] = await Promise.all([
         getFinancialSummary({ fromDate: monthStart, toDate: asOf, branchId: b.branchId }),
         getFinancialSummary({ fromDate: historyStart, toDate: asOf, branchId: b.branchId }),
         getAllEmployeesRevenueTotal(monthStart, addDays(asOf,1), b.branchId),
@@ -81,6 +81,7 @@ export async function loadFinanceOverview(tenantId: string, branches: BranchForF
         db.request().input('branchId', sql.Int, b.branchId).query(
           'SELECT COALESCE(SUM(CASE WHEN inOut=N\'in\' THEN GrandTolal WHEN inOut=N\'out\' THEN -GrandTolal ELSE 0 END),0) AS BookCash FROM dbo.TblCashMove WHERE BranchID=@branchId'
         ),
+        getDailyFinancialData(historyStart, asOf, b.branchId),
       ]);
       return {
         ...b, bookCash: Number(balance.recordset[0]?.BookCash || 0),
@@ -88,6 +89,7 @@ export async function loadFinanceOverview(tenantId: string, branches: BranchForF
         payrollAccruedMTD: payroll.totalPayrollExpense,
         recentCashIn: recent.totalIncoming, recentCashOut: recent.totalOutgoing,
         recentTransactions: recent.transactionsCount,
+        recentObservedDays: observed.filter(d=>d.incoming!==0||d.outgoing!==0).length,
       };
     })),
     readCommitments(tenantId, branches),
@@ -103,8 +105,9 @@ export async function loadFinanceOverview(tenantId: string, branches: BranchForF
     payrollAccruedMTD: sum(b=>b.payrollAccruedMTD),
   };
   const seenTransactions = perBranch.reduce((s,b)=>s+b.recentTransactions,0);
-  const dailyReceiptsEstimate = seenTransactions ? sum(b=>b.recentCashIn)/14 : null;
-  const dailyOperatingOutflowEstimate = seenTransactions ? sum(b=>b.recentCashOut)/14 : null;
+  const sufficientHistory = seenTransactions>0 && perBranch.every(b=>b.recentObservedDays>=7);
+  const dailyReceiptsEstimate = sufficientHistory ? sum(b=>b.recentCashIn)/14 : null;
+  const dailyOperatingOutflowEstimate = sufficientHistory ? sum(b=>b.recentCashOut)/14 : null;
   const forecast = buildCashForecast({
     today: asOf,
     bookCash: totals.bookCash,
@@ -118,7 +121,7 @@ export async function loadFinanceOverview(tenantId: string, branches: BranchForF
     'الالتزامات غير المسجلة وتغيرات الإيراد المستقبلية غير مضمونة ضمن التوقع.',
     'رواتب دفتر الموظفين المعروضة تكلفة مستحقة مسجلة وليست بالضرورة مبلغ الرواتب غير المدفوعة؛ لا تُخصم تلقائيًا مرة ثانية.',
   ];
-  if (!seenTransactions) warnings.push('لا توجد حركة خزنة كافية لحساب اتجاه يومي: توقع السيولة غير مكتمل.');
+  if (!sufficientHistory) warnings.push('لا تتوفر حركة مسجلة في 7 أيام مختلفة على الأقل لكل فرع خلال آخر 14 يومًا؛ توقع السيولة غير مكتمل.');
   if (ledger.commitments.length === 0) warnings.push('لم يتم تسجيل أي إيجار أو دين أو قسط حتى الآن، وبالتالي التنبيه على الاستحقاقات غير مكتمل.');
   return {
     asOf, scopeKey: financeScopeKey(branches), branches: perBranch, totals, forecast, warnings,
