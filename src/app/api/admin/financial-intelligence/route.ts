@@ -11,7 +11,11 @@ export const dynamic = 'force-dynamic';
 const PAGE = '/admin/financial-intelligence';
 const KIND = new Set<CommitmentKind>(['rent','payroll','installment','debt','supplier','utilities','other']);
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
-const validDate = (s: unknown): s is string => typeof s === 'string' && DATE.test(s) && !Number.isNaN(Date.parse(s));
+const validDate = (s: unknown): s is string => {
+  if (typeof s !== 'string' || !DATE.test(s)) return false;
+  const d = new Date(s + 'T12:00:00Z');
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0,10) === s;
+};
 function errorResponse(err: unknown) {
   const message = err instanceof Error ? err.message : String(err);
   console.error('[financial-intelligence]', message);
