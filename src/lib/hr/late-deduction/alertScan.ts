@@ -5,6 +5,7 @@ import { getCairoBusinessDate, getCairoTimeStr, SALON_TZ } from '@/lib/businessD
 import { calcLateMinutes } from '@/lib/timeUtils';
 import { resolveScheduleForDay } from '@/lib/hr/attendance-eligibility';
 import { normalizeEmploymentType } from '@/lib/hr/employee-hr-model';
+import { isLateDeductionExcludedAttendanceStatus } from './attendanceStatus';
 import {
   getLateDeductionConfig,
   isWorkDateEligibleForLateDeduction,
@@ -241,8 +242,8 @@ export async function runLateDeductionAlertScan(params?: {
 
         if (!schedule.isScheduledWorkingDay || !schedule.scheduledStart) continue;
 
-        const status = String(row.AttendanceStatus ?? '');
-        if (['DayOff', 'Absent', 'Excused', 'Leave', 'Holiday', 'إجازة', 'غائب'].includes(status)) {
+        // Employee AttendanceTab stores lowercase absent/off; admin uses PascalCase.
+        if (isLateDeductionExcludedAttendanceStatus(row.AttendanceStatus)) {
           continue;
         }
 
@@ -279,8 +280,12 @@ export async function runLateDeductionAlertScan(params?: {
           });
         } else if (caseRow.status === 'cancelled' || caseRow.doNotAutoRecreate) {
           continue;
-        } else if (['applied', 'manager_applied', 'pending_manager', 'exempt'].includes(caseRow.status)) {
-          // Already finalized somehow — do not keep alerting
+        } else if (
+          ['applied', 'manager_applied', 'pending_manager', 'exempt', 'skipped'].includes(
+            caseRow.status,
+          )
+        ) {
+          // Already finalized / excluded somehow — do not keep alerting
           continue;
         } else {
           caseRow = await upsertLateDeductionCase(db, {

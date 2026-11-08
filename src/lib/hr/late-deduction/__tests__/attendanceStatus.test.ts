@@ -18,6 +18,8 @@ describe('late deduction attendance status classification', () => {
     expect(isLateDeductionExcludedAttendanceStatus('Absent')).toBe(true);
     expect(isLateDeductionExcludedAttendanceStatus('DayOff')).toBe(true);
     expect(isLateDeductionExcludedAttendanceStatus('Excused')).toBe(true);
+    expect(isLateDeductionExcludedAttendanceStatus('غائب')).toBe(true);
+    expect(isLateDeductionExcludedAttendanceStatus('إجازة')).toBe(true);
   });
 
   it('keeps present/late eligible for lateness calculation', () => {
