@@ -46,14 +46,14 @@ export async function GET(req: NextRequest) {
   try {
     const today = getCairoCalendarDate();
     const data = await loadFinanceOverview(auth.tenantId, scope, today);
-    return NextResponse.json({ok:true, data}, {headers:{'Cache-Control':'no-store'}});
+    return NextResponse.json({ok:true, data, canManage: auth.isSuperAdmin || auth.userLevel==='admin' || auth.roles.some(r=>r==='admin'||r==='accountant')}, {headers:{'Cache-Control':'no-store'}});
   } catch(err) { return errorResponse(err); }
 }
 
 export async function POST(req: NextRequest) {
   const auth = await requirePageAccess(PAGE);
   if (!isAuthResult(auth)) return auth;
-  if (!auth.isSuperAdmin && !auth.roles.some(x=>['admin','accountant'].includes(x))) {
+  if (!auth.isSuperAdmin && auth.userLevel!=='admin' && !auth.roles.some(x=>['admin','accountant'].includes(x))) {
     return NextResponse.json({error:'تسجيل أو تسوية الالتزامات متاح للإدارة المالية فقط'},{status:403});
   }
   let body: Record<string,unknown>;
