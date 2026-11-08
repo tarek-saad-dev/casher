@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { useSession } from '@/hooks/useSession';
 import Link from 'next/link';
@@ -39,6 +40,33 @@ export default function AuthenticatedAppShell({
 }: AuthenticatedAppShellProps) {
   const pathname = usePathname();
   const { logout } = useSession();
+  const [inIframe, setInIframe] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      return window.self !== window.top;
+    } catch {
+      return true;
+    }
+  });
+  useEffect(() => {
+    try {
+      setInIframe(window.self !== window.top);
+    } catch {
+      setInIframe(true);
+    }
+  }, []);
+
+  // Embedded editor iframes (e.g. late-deduction schedule modal) — content only.
+  if (inIframe) {
+    return (
+      <TenantShellProvider>
+        <TenantShellGate>
+          <div className="min-h-0 flex-1 overflow-auto bg-background">{children}</div>
+        </TenantShellGate>
+      </TenantShellProvider>
+    );
+  }
+
   if (pathname === '/manager') {
     return (
       <TenantShellProvider>
