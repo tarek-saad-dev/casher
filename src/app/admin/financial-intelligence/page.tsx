@@ -194,7 +194,7 @@ export default function FinancialIntelligencePage() {
                       onChange={e=>setPayAmounts(prev=>({...prev,[key]:e.target.value}))}
                       placeholder="مبلغ مسدد فعليًا" className={baseInput+' max-w-44'}/>
                     <button type="button" disabled={busy==='settle'+key || !(Number(payAmounts[key])>0)}
-                      onClick={()=>void write({action:'settle',branchId:item.branchId,commitmentId:item.id,dueDate:item.occurrenceDate,amount:Number(payAmounts[key])},'settle'+key)}
+                      onClick={async()=>{const ok=await write({action:'settle',branchId:item.branchId,commitmentId:item.id,dueDate:item.occurrenceDate,amount:Number(payAmounts[key])},'settle'+key);if(ok)setPayAmounts(p=>({...p,[key]:''}));}}
                       className="rounded-lg border border-border px-3 py-2 text-sm hover:bg-accent disabled:opacity-40">تسجيل سداد</button>
                   </div>}
                 </div>;
