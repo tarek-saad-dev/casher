@@ -63,7 +63,20 @@ export async function enqueueLegacyEmployeeCheckInLateDeduction(params: {
     return;
   }
 
-  if (!saved.CheckInTime) return;
+  if (!saved.CheckInTime) {
+    // Check-in cleared — void any automatic debit left from an earlier punch.
+    await voidLateDeductionForExcludedAttendance({
+      empId,
+      branchId,
+      workDate,
+      attendanceId,
+      status: status || 'cleared_checkin',
+    }).catch((err) => console.warn(
+      '[legacy-late-deduction] cleared-checkin void failed:',
+      err instanceof Error ? err.message : err,
+    ));
+    return;
+  }
 
   const checkIn = sqlTimeToHHmm(saved.CheckInTime);
   if (!checkIn) return;

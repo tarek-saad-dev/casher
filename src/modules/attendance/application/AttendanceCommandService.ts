@@ -427,13 +427,16 @@ export async function saveAdminAttendance(
   }
 
   // After commit only — durable enqueue + async finalize (never against rolled-back attendance).
-  if (isLateDeductionExcludedAttendanceStatus(finalStatus)) {
+  const checkInCleared = Boolean(previousCheckIn) && !CheckInTime;
+  if (isLateDeductionExcludedAttendanceStatus(finalStatus) || checkInCleared) {
     await voidLateDeductionForExcludedAttendance({
       empId: Number(EmpID),
       branchId,
       workDate: WorkDate,
       attendanceId,
-      status: finalStatus,
+      status: checkInCleared && !isLateDeductionExcludedAttendanceStatus(finalStatus)
+        ? 'cleared_checkin'
+        : finalStatus,
     }).catch((err) => {
       console.warn('[api/admin/attendance] late-deduction excluded void failed', err);
     });
@@ -701,11 +704,10 @@ export async function updateLegacyEmployeeAttendanceById(
     await activeTxn.commit();
   }
 
-  // Reconcile on check-in edits and on status corrections (absent/off must void).
+  // Reconcile on check-in edits (including clear) and status corrections (absent/off void).
   if (
     row?.ID &&
-    (checkInTime !== undefined || status !== undefined) &&
-    (row.CheckInTime || (status !== undefined && isLateDeductionExcludedAttendanceStatus(status)))
+    (checkInTime !== undefined || status !== undefined)
   ) {
     await enqueueLegacyEmployeeCheckInLateDeduction({
       attendanceId: Number(row.ID),
@@ -1047,13 +1049,17 @@ export async function saveAdminAttendanceBulk(
         branchId,
       });
 
-      if (isLateDeductionExcludedAttendanceStatus(finalStatus)) {
+      const bulkCheckInCleared = Boolean(previousCheckIn) && !checkIn;
+      if (isLateDeductionExcludedAttendanceStatus(finalStatus) || bulkCheckInCleared) {
         excludedVoidJobs.push({
           empId: Number(item.EmpID),
           branchId,
           workDate: WorkDate,
           attendanceId,
-          status: finalStatus,
+          status:
+            bulkCheckInCleared && !isLateDeductionExcludedAttendanceStatus(finalStatus)
+              ? 'cleared_checkin'
+              : finalStatus,
         });
       } else if (checkIn && shouldNotifyAttendanceTimeChange(previousCheckIn, checkIn)) {
         lateDeductionJobs.push({

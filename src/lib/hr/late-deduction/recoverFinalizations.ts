@@ -55,7 +55,7 @@ export async function recoverPendingLateDeductionFinalizations(params?: {
   let errors = 0;
   let scanned = 0;
 
-  // Pass 1: void automatic debits when attendance was corrected to excluded status.
+  // Pass 1: void automatic debits when attendance is excluded OR check-in was cleared.
   const excluded = await db
     .request()
     .input('workDate', sql.Date, workDate)
@@ -67,7 +67,8 @@ export async function recoverPendingLateDeductionFinalizations(params?: {
         a.EmpID,
         a.BranchID,
         CONVERT(VARCHAR(10), a.WorkDate, 23) AS WorkDate,
-        a.Status
+        a.Status,
+        CASE WHEN a.CheckInTime IS NULL THEN 1 ELSE 0 END AS CheckInCleared
       FROM dbo.TblEmpAttendance a
       INNER JOIN dbo.TblEmp e ON e.EmpID = a.EmpID
       INNER JOIN dbo.TblEmpLateDeductionCase c
@@ -78,8 +79,11 @@ export async function recoverPendingLateDeductionFinalizations(params?: {
         AND @branchId IS NOT NULL AND a.BranchID = @branchId
         AND e.TenantId IN (SELECT l.TenantId FROM dbo.Location l
           WHERE l.LegacyBranchId = @branchId AND l.Status = N'active')
-        AND REPLACE(REPLACE(LOWER(LTRIM(RTRIM(ISNULL(a.Status, N'')))), N' ', N''), N'_', N'')
+        AND (
+          REPLACE(REPLACE(LOWER(LTRIM(RTRIM(ISNULL(a.Status, N'')))), N' ', N''), N'_', N'')
             IN (N'absent', N'off', N'dayoff', N'excused', N'leave', N'holiday', N'vacation')
+          OR a.CheckInTime IS NULL
+        )
         AND ISNULL(c.DoNotAutoRecreate, 0) = 0
         AND c.Status IN (N'applied', N'finalize_pending', N'alerting', N'pending_manager')
       ORDER BY a.ID ASC
@@ -94,7 +98,9 @@ export async function recoverPendingLateDeductionFinalizations(params?: {
         branchId: Number(row.BranchID),
         workDate: String(row.WorkDate).slice(0, 10),
         attendanceId: Number(row.AttendanceID),
-        status: String(row.Status ?? ''),
+        status: Number(row.CheckInCleared) === 1
+          ? 'cleared_checkin'
+          : String(row.Status ?? ''),
       });
       if (result.handled) recovered += 1;
     } catch (err) {
