@@ -3,6 +3,7 @@ import 'server-only';
 import { getPool, sql } from '@/lib/db';
 import { sendMessage } from '@/modules/messaging';
 import { resolveEmployeeWhatsAppPhone } from '@/lib/integrations/whatsapp/payload-builders';
+import { runWithMessagingTenantForBranch } from '@/modules/messaging/tenancy/branchTenantScope';
 
 let lateDeductionWhatsAppChain: Promise<void> = Promise.resolve();
 const QUEUE_GAP_MS = 2000;
@@ -40,6 +41,35 @@ async function fetchEmployeePhone(
   };
 }
 
+async function deliverLateDeductionWhatsApp(params: {
+  empId: number;
+  branchId?: number;
+  text: string;
+  metadata?: Record<string, unknown>;
+}): Promise<{ sent: boolean; skipped?: boolean; reason?: string }> {
+  const contact = await fetchEmployeePhone(params.empId, params.branchId);
+  if (!contact) {
+    return { sent: false, skipped: true, reason: 'missing_phone' };
+  }
+  const result = await sendMessage({
+    channel: 'whatsapp',
+    recipient: { phone: contact.phone },
+    content: { text: params.text },
+    metadata: {
+      employeeId: params.empId,
+      feature: 'late_deduction',
+      ...(params.metadata ?? {}),
+      ...(typeof params.branchId === 'number' ? { branchId: params.branchId } : {}),
+    },
+  });
+  if (result.sent) return { sent: true };
+  return {
+    sent: false,
+    skipped: Boolean(result.skipped),
+    reason: 'reason' in result ? String(result.reason) : 'not_sent',
+  };
+}
+
 export async function sendLateDeductionWhatsApp(params: {
   empId: number;
   branchId?: number;
@@ -47,27 +77,16 @@ export async function sendLateDeductionWhatsApp(params: {
   metadata?: Record<string, unknown>;
 }): Promise<{ sent: boolean; skipped?: boolean; reason?: string }> {
   try {
-    const contact = await fetchEmployeePhone(params.empId, params.branchId);
-    if (!contact) {
-      return { sent: false, skipped: true, reason: 'missing_phone' };
+    // Messaging transport requires an explicit tenant scope (DRVO-018).
+    // Attendance/cron callers often have none — bind by operating branch.
+    if (typeof params.branchId === 'number' && params.branchId > 0) {
+      return await runWithMessagingTenantForBranch(
+        params.branchId,
+        'late-deduction-whatsapp',
+        () => deliverLateDeductionWhatsApp(params),
+      );
     }
-    const result = await sendMessage({
-      channel: 'whatsapp',
-      recipient: { phone: contact.phone },
-      content: { text: params.text },
-      metadata: {
-        employeeId: params.empId,
-        feature: 'late_deduction',
-        ...(params.metadata ?? {}),
-        ...(typeof params.branchId === 'number' ? { branchId: params.branchId } : {}),
-      },
-    });
-    if (result.sent) return { sent: true };
-    return {
-      sent: false,
-      skipped: Boolean(result.skipped),
-      reason: 'reason' in result ? String(result.reason) : 'not_sent',
-    };
+    return await deliverLateDeductionWhatsApp(params);
   } catch (err) {
     console.warn(
       '[late-deduction-whatsapp] send failed (non-critical):',

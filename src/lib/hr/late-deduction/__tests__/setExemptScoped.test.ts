@@ -25,6 +25,7 @@ vi.mock('../ledger', () => ({
 }));
 vi.mock('../whatsapp', () => ({
   scheduleLateDeductionWhatsApp: vi.fn(),
+  sendLateDeductionWhatsApp: vi.fn(async () => ({ sent: true })),
 }));
 vi.mock('../messages', () => ({
   buildManagerDecisionEmployeeMessage: vi.fn(),

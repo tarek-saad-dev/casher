@@ -9,7 +9,7 @@ import {
   type LateDeductionCaseRow,
 } from './repository';
 import { isLateDeductionSchemaReady } from './schema';
-import { scheduleLateDeductionWhatsApp } from './whatsapp';
+import { sendLateDeductionWhatsApp } from './whatsapp';
 import { roundMoney } from '@/lib/reportMonthUtils';
 import type { LateCaseDb } from './caseTransaction';
 import { withLateDeductionCaseLock } from './caseTransaction';
@@ -125,7 +125,8 @@ export async function applyManagerLatePenalty(params: {
   if (!updated) throw new LateDeductionActionError('فشل تحديث الحالة');
 
   if (!params.suppressWhatsApp) {
-    scheduleLateDeductionWhatsApp({
+    // Await so the HTTP request keeps the process alive until WhatsApp is attempted.
+    const wa = await sendLateDeductionWhatsApp({
       empId: updated.empId,
       branchId: updated.branchId,
       text: buildManagerDecisionEmployeeMessage({
@@ -134,6 +135,12 @@ export async function applyManagerLatePenalty(params: {
       }),
       metadata: { lateCaseId: updated.caseId, event: 'manager_decision' },
     });
+    if (!wa.sent && !wa.skipped) {
+      console.warn(
+        '[late-deduction] manager apply WhatsApp not sent:',
+        wa.reason ?? 'unknown',
+      );
+    }
   }
 
   return updated;

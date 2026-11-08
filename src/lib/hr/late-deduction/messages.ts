@@ -115,18 +115,26 @@ export function buildFinalDeductionMessage(params: {
   amount: number;
   bracket: Exclude<LateDeductionBracket, 'none' | 'manager_review'>;
 }): string {
+  const kindAr =
+    params.bracket === 'quarter' ? 'ربع يوم' : params.bracket === 'half' ? 'نصف يوم' : labelForBracket(params.bracket);
   return [
+    '✅ *تم تسجيل الحضور | CUT SALON*',
+    '',
+    `وقت الحضور: ${timeLabel(params.checkInTime)}`,
+    '',
+    `مدة التأخير: ${params.lateMinutes} دقيقة`,
+    '',
+    `الخصم المُطبَّق: *${money(params.amount)} ج.م*`,
+    '',
+    `نوع الخصم: ${kindAr}`,
+    '',
+    'تم تسجيل الخصم في حسابك الوظيفي.',
+    '',
+    '—',
+    '',
     '✅ *Attendance Recorded | CUT SALON*',
-    '',
     `Check-in: ${timeLabel(params.checkInTime)}`,
-    '',
-    `Late duration: ${params.lateMinutes} minutes`,
-    '',
-    `Applied deduction: *${money(params.amount)} EGP*`,
-    '',
-    `Deduction type: ${labelForBracket(params.bracket)}`,
-    '',
-    'The deduction has been recorded in your employee account.',
+    `Late: ${params.lateMinutes} min · Deduction: *${money(params.amount)} EGP* (${labelForBracket(params.bracket)})`,
   ].join('\n');
 }
 
@@ -150,14 +158,18 @@ export function buildManagerDecisionEmployeeMessage(params: {
   amount: number;
 }): string {
   return [
+    '✅ *قرار خصم التأخير | CUT SALON*',
+    '',
+    `مدة التأخير: ${params.lateMinutes} دقيقة`,
+    '',
+    `الخصم المُطبَّق: *${money(params.amount)} ج.م*`,
+    '',
+    'تم اعتماد خصم التأخير من الإدارة وتسجيله في حسابك.',
+    '',
+    '—',
+    '',
     '✅ *Late Attendance Decision | CUT SALON*',
-    '',
-    `Late duration: ${params.lateMinutes} minutes`,
-    '',
-    `Applied deduction: *${money(params.amount)} EGP*`,
-    '',
-    'Management has finalized your late attendance penalty.',
-    'The deduction has been recorded in your employee account.',
+    `Late: ${params.lateMinutes} min · Deduction: *${money(params.amount)} EGP*`,
   ].join('\n');
 }
 

@@ -67,9 +67,10 @@ describe('late deduction WhatsApp message builders', () => {
       amount: 75,
       bracket: 'quarter',
     });
+    expect(msg).toContain('تم تسجيل الحضور');
     expect(msg).toContain('Attendance Recorded');
-    expect(msg).toContain('75.00 EGP');
-    expect(msg).toContain('Quarter-day');
+    expect(msg).toContain('75.00');
+    expect(msg).toContain('ربع يوم');
   });
 
   it('exempt check-in message does not claim a deduction', () => {
