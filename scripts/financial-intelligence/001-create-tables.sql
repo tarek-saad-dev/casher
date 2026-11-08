@@ -48,6 +48,22 @@ END;
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id=OBJECT_ID(N'dbo.TblFinInsightSettlement') AND name=N'IX_FinInsightSettlementDue')
   CREATE INDEX IX_FinInsightSettlementDue ON dbo.TblFinInsightSettlement(CommitmentID, DueDate) INCLUDE (Amount);
 
+IF OBJECT_ID(N'dbo.TblFinInsightLiquidityCheck', N'U') IS NULL
+BEGIN
+  CREATE TABLE dbo.TblFinInsightLiquidityCheck (
+    ID bigint IDENTITY(1,1) NOT NULL PRIMARY KEY,
+    TenantId uniqueidentifier NOT NULL,
+    BranchID int NOT NULL,
+    AsOfDate date NOT NULL,
+    AvailableAmount decimal(18,2) NOT NULL,
+    CreatedByUserID int NOT NULL,
+    CreatedAt datetime2(3) NOT NULL CONSTRAINT DF_FinInsightLiquidityCreatedAt DEFAULT (sysutcdatetime()),
+    CONSTRAINT CK_FinInsightLiquidityAvailable CHECK (AvailableAmount >= 0)
+  );
+END;
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id=OBJECT_ID(N'dbo.TblFinInsightLiquidityCheck') AND name=N'IX_FinInsightLiquidityLatest')
+  CREATE INDEX IX_FinInsightLiquidityLatest ON dbo.TblFinInsightLiquidityCheck(TenantId, BranchID, AsOfDate DESC, ID DESC) INCLUDE(AvailableAmount);
+
 IF OBJECT_ID(N'dbo.TblFinInsightSnapshot', N'U') IS NULL
 BEGIN
   CREATE TABLE dbo.TblFinInsightSnapshot (
