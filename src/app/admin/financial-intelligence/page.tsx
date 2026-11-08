@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, ArrowDownRight, ArrowUpRight, BrainCircuit, CalendarClock, CircleCheck, CircleHelp, Download, Loader2, Plus, RefreshCw, ShieldAlert, Wallet } from 'lucide-react';
+import { AlertTriangle, ArrowDownRight, ArrowUpRight, BrainCircuit, CalendarClock, CircleCheck, Download, Loader2, Plus, RefreshCw, ShieldAlert, Wallet } from 'lucide-react';
 import type { FinanceOverview } from '@/lib/financial-intelligence/data';
 import type { CommitmentKind } from '@/lib/financial-intelligence/forecast';
 
