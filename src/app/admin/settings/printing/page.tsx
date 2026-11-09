@@ -125,10 +125,20 @@ export default function PrinterControlPage() {
           <h1 className="text-2xl font-bold tracking-tight text-foreground">إدارة الطباعة</h1>
           <p className="mt-1 text-sm text-muted-foreground">تحكم بسيط في طباعة إيصالات CUT من الكمبيوتر الحالي.</p>
         </div>
-        <Button variant="outline" onClick={() => void refresh()} disabled={loading || saving || testing}>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href="/cut-compact-receipt.html"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center justify-center rounded-md border border-border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+          >
+            معاينة الفاتورة المختصرة
+          </Link>
+          <Button variant="outline" onClick={() => void refresh()} disabled={loading || saving || testing}>
           <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-          تحديث الحالة
-        </Button>
+            تحديث الحالة
+          </Button>
+        </div>
       </div>
 
       <section className="rounded-2xl border border-border bg-surface p-5 sm:p-6">
