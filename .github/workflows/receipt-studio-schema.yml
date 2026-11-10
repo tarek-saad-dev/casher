@@ -58,12 +58,14 @@ jobs:
         run: |
           set -euo pipefail
           # Do not execute a PR checkout on the server; only the deployed main files.
+          # VPS_USER can already be casher. runuser requires root and must not be
+          # invoked from an ordinary SSH account.
           if [[ "$MODE" == "APPLY" ]]; then
             echo "APPLY: explicitly approved schema-only Receipt Studio migration"
             ssh -i ~/.ssh/id_ed25519 -o BatchMode=yes "$VPS_USER@$VPS_HOST" \
-              "cd /home/casher/app && runuser -u casher -- npx tsx scripts/receipt-studio/apply-migration.ts --apply --backup-verified"
+              "cd /home/casher/app && if [ \"\$(id -un)\" = casher ]; then npx tsx scripts/receipt-studio/apply-migration.ts --apply --backup-verified; else sudo -n -u casher npx tsx scripts/receipt-studio/apply-migration.ts --apply --backup-verified; fi"
           else
             echo "PLAN: dry run; no database writes"
             ssh -i ~/.ssh/id_ed25519 -o BatchMode=yes "$VPS_USER@$VPS_HOST" \
-              "cd /home/casher/app && runuser -u casher -- npx tsx scripts/receipt-studio/apply-migration.ts"
+              "cd /home/casher/app && if [ \"\$(id -un)\" = casher ]; then npx tsx scripts/receipt-studio/apply-migration.ts; else sudo -n -u casher npx tsx scripts/receipt-studio/apply-migration.ts; fi"
           fi
