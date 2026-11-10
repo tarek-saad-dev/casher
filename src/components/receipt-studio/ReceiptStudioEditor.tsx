@@ -4,21 +4,24 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, ty
 import Link from 'next/link';
 import {
   ArrowDown, ArrowLeft, ArrowUp, Check, ChevronDown, FileText, GripVertical,
-  Layers, LayoutTemplate, LockKeyhole, Plus, Redo2, RotateCcw, Ruler,
-  Settings2, Type, Undo2, Eye, EyeOff, Info, Printer, Image as ImageIcon, Minus,
+  Layers, LayoutTemplate, LockKeyhole, Plus, Redo2, RotateCcw, Ruler, FolderPlus,
+  Settings2, Type, Undo2, Eye, EyeOff, Info, Printer, Image as ImageIcon, Minus, Copy, Ungroup, Group,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import {
-  COMPACT_CUT_RECEIPT_V1, validateReceiptTemplateV1,
-  type ReceiptBlockV1, type ReceiptBlockKind, type ReceiptTemplateV1,
+  COMPACT_CUT_RECEIPT_V1, DEFAULT_RECEIPT_FIELDS, RECEIPT_FIELDS_BY_KIND, validateReceiptTemplateV1,
+  type ReceiptField, type ReceiptBlockV1, type ReceiptBlockKind, type ReceiptTemplateV1,
 } from '@/lib/receipt-studio/template';
 import {
   addReceiptDecoration, addReceiptImage, deleteReceiptDecoration, getSampleReceipt, reorderReceiptBlocks, setReceiptMinHeight,
   updateReceiptBlock, type SampleScenario,
 } from '@/lib/receipt-studio/editor';
 import ReceiptStudioPreview from './ReceiptStudioPreview';
+import ReceiptStudioLayerTree from './ReceiptStudioLayerTree';
+import { allReceiptNodes, duplicateTreeNode, findReceiptNode, groupReceiptNodes, moveTreeNode, removeTreeNode, treeNodeParentId, ungroupReceiptNode, updateTreeNode, addTreeNode, type TreePlacement } from '@/lib/receipt-studio/tree';
+import { prepareThermalImage } from './prepareImage';
 import { renderStudioReceiptHtml, type StudioInvoiceModel } from '@/lib/receipt-studio/render';
 import { createPrintRequestId, printHtmlViaLocalService } from '@/lib/localPrintClient';
 
@@ -32,6 +35,7 @@ const LABELS: Record<ReceiptBlockKind, string> = {
   text: 'نص إضافي',
   image: 'صورة PNG',
   footer: 'رسالة الشكر',
+  group: 'مجموعة',
 };
 const REQUIRED: ReadonlySet<ReceiptBlockKind> = new Set(['items', 'totals']);
 const FIXTURES: Array<{ value: SampleScenario; label: string }> = [
@@ -70,6 +74,7 @@ export default function ReceiptStudioEditor() {
     past: [], current: freshTemplate(), future: [],
   }));
   const [selectedId, setSelectedId] = useState<string | null>('brand');
+  const [selectedIds, setSelectedIds] = useState<string[]>(['brand']);
   const [scenario, setScenario] = useState<SampleScenario>('three');
   const [zoom, setZoom] = useState(110);
   const [heightMm, setHeightMm] = useState(0);
@@ -90,7 +95,7 @@ export default function ReceiptStudioEditor() {
   const [rollbackTarget, setRollbackTarget] = useState<number | null>(null);
 
   const template = history.current;
-  const selected = template.blocks.find((block) => block.id === selectedId) ?? null;
+  const selected = selectedId ? findReceiptNode(template.blocks, selectedId) : null;
   const modified = JSON.stringify(template) !== JSON.stringify(COMPACT_CUT_RECEIPT_V1);
   const proofHtml = useMemo(() => renderStudioReceiptHtml(template, sampleAsInvoice(scenario), assets), [template, scenario, assets]);
 
@@ -115,6 +120,7 @@ export default function ReceiptStudioEditor() {
       setDbReady(true);
       setDirty(false);
       setSelectedId(data.draft.blocks[0]?.id ?? null);
+      setSelectedIds(data.draft.blocks[0] ? [data.draft.blocks[0].id] : []);
       setTestSent(false);
       setPhysicalVerified(false);
     }).catch((error) => {
@@ -163,6 +169,8 @@ export default function ReceiptStudioEditor() {
     setVersions(data.history);
     setAssets(data.assets);
     setDirty(false);
+    setSelectedIds([]);
+    setSelectedId(null);
     setTestSent(false);
     setPhysicalVerified(false);
   }
@@ -258,6 +266,71 @@ export default function ReceiptStudioEditor() {
     }));
     setDirty(true); setTestSent(false); setPhysicalVerified(false);
     setMessage(null);
+  }
+
+  function selectLayer(id: string, additive = false) {
+    if (!additive) {
+      setSelectedId(id);
+      setSelectedIds([id]);
+      return;
+    }
+    setSelectedIds((previous) => {
+      const next = previous.includes(id) ? previous.filter((key) => key !== id) : [...previous, id];
+      setSelectedId(next[next.length - 1] ?? null);
+      return next;
+    });
+  }
+  function findInserted(candidate: ReceiptTemplateV1) {
+    const previous = new Set(allReceiptNodes(template.blocks).map((b) => b.id));
+    return allReceiptNodes(candidate.blocks).find((b) => !previous.has(b.id))?.id ?? null;
+  }
+  function commitAdded(candidate: ReceiptTemplateV1) {
+    if (candidate === template) return commit(candidate);
+    const id = findInserted(candidate);
+    commit(candidate);
+    if (id) selectLayer(id);
+  }
+  function changeLabel(id: string, field: ReceiptField, value: string) {
+    const target = findReceiptNode(template.blocks, id);
+    if (!target) return;
+    commit(updateTreeNode(template, id, { fields: { ...target.fields, [field]: value } }));
+    selectLayer(id);
+  }
+  function changeText(id: string, value: string) {
+    commit(updateTreeNode(template, id, { text: value }));
+    selectLayer(id);
+  }
+  function groupSelected() {
+    const next = groupReceiptNodes(template, selectedIds);
+    if (next === template) {
+      setMessage('لازم تختار عنصرين أو أكثر من نفس المستوى، والمجموعة تفضل صالحة للطباعة.');
+      return;
+    }
+    commitAdded(next);
+  }
+  function ungroupSelected() {
+    if (!selected || selected.kind !== 'group') return;
+    const parent = treeNodeParentId(template.blocks, selected.id);
+    commit(ungroupReceiptNode(template, selected.id));
+    const target = parent ? findReceiptNode(template.blocks, parent) : null;
+    if (target) selectLayer(target.id);
+    else { setSelectedId(null); setSelectedIds([]); }
+  }
+  function addNewNode(kind: 'text' | 'divider' | 'group') {
+    const parentId = selected?.kind === 'group' ? selected.id : null;
+    commitAdded(addTreeNode(template, kind, parentId));
+  }
+  function moveLayer(source: string, target: string, placement: TreePlacement) {
+    commit(moveTreeNode(template, source, target, placement));
+  }
+  function duplicateLayer(id: string) {
+    commitAdded(duplicateTreeNode(template, id));
+  }
+  function deleteSelected() {
+    if (!selected) return;
+    const candidate = removeTreeNode(template, selected.id);
+    commit(candidate);
+    if (candidate !== template) { setSelectedIds([]); setSelectedId(null); }
   }
 
   function changeBlock(patch: Partial<ReceiptBlockV1>) {
