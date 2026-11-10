@@ -3,6 +3,7 @@ import type { Request, Transaction } from 'mssql';
 import { getPool, sql } from '@/lib/db';
 import {
   COMPACT_CUT_RECEIPT_V1,
+  flattenReceiptBlocks,
   validateReceiptTemplateV1,
   type ReceiptTemplateV1,
 } from './template';
@@ -135,7 +136,7 @@ export async function saveStudioDraft(
   } catch (error) { await tx.rollback(); throw error; }
 }
 async function assertAssets(tenantId: string, design: ReceiptTemplateV1, tx: Transaction) {
-  const ids = [...new Set(design.blocks.filter((b) => b.kind === 'image' && b.enabled).map((b) => b.assetId!))];
+  const ids = [...new Set(flattenReceiptBlocks(design.blocks).filter((b) => b.kind === 'image').map((b) => b.assetId!))];
   for (const id of ids) {
     if (!/^[0-9a-f-]{36}$/i.test(id)) throw new StudioError('Image must be uploaded from Receipt Studio', 400, 'INVALID_ASSET');
     const match = await new sql.Request(tx)
@@ -243,7 +244,7 @@ export async function uploadStudioPng(tenantId: string, actor: number, bytes: Bu
   return String(inserted.recordset[0].AssetId);
 }
 export async function assetUrisForTemplate(tenantId: string, template: ReceiptTemplateV1) {
-  const ids = [...new Set(template.blocks.filter((b) => b.enabled && b.kind === 'image' && b.assetId).map((b) => b.assetId!))];
+  const ids = [...new Set(flattenReceiptBlocks(template.blocks).filter((b) => b.kind === 'image' && b.assetId).map((b) => b.assetId!))];
   const out: Record<string, string> = {};
   if (!ids.length) return out;
   await assertStudioSchema();

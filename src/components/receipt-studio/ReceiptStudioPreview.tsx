@@ -1,161 +1,168 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
-import type { ReceiptBlockV1, ReceiptTemplateV1 } from '@/lib/receipt-studio/template';
-import { formatMoney, getSampleReceipt, type SampleScenario } from '@/lib/receipt-studio/editor';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { getSampleReceipt, type SampleScenario } from '@/lib/receipt-studio/editor';
+import { renderStudioReceiptHtml, type StudioInvoiceModel } from '@/lib/receipt-studio/render';
+import type { ReceiptField, ReceiptTemplateV1 } from '@/lib/receipt-studio/template';
 
 type Props = {
   template: ReceiptTemplateV1;
   scenario: SampleScenario;
   selectedId: string | null;
-  onSelect: (id: string) => void;
+  selectedIds?: string[];
+  onSelect: (id: string, additive?: boolean) => void;
+  onEditText?: (id: string, text: string) => void;
+  onEditField?: (id: string, field: ReceiptField, text: string) => void;
   onHeight: (millimeters: number) => void;
   assets?: Record<string, string>;
 };
 
-function blockStyle(block: ReceiptBlockV1): React.CSSProperties {
+function invoiceFixture(scenario: SampleScenario): StudioInvoiceModel {
+  const d = getSampleReceipt(scenario);
   return {
-    textAlign: block.style?.align ?? 'left',
-    fontSize: block.style?.fontSizePx ?? 12,
-    fontWeight: block.style?.fontWeight ?? 600,
-    letterSpacing: block.style?.letterSpacingPx ?? 0,
-    marginBottom: `${block.style?.gapAfterMm ?? 1}mm`,
+    invoiceNo: d.invoiceNo.replace('#', ''),
+    date: d.date, time: d.time, branch: d.branch,
+    brand: 'CUT SALON', customer: d.customer,
+    items: d.items.map((item) => ({ name: item.name, price: item.price * item.qty })),
+    subtotal: d.subtotal,
+    discounts: d.discount > 0 ? [{ label: 'Discount', amount: d.discount }] : [],
+    grandTotal: d.total, payments: [{ label: d.payment }],
+    footer: 'شكراً لزيارتكم',
   };
 }
 
+/**
+ * The canvas IS the production HTML renderer (not a second approximation).
+ * The sandbox disables scripts; the parent listens for selections/double clicks
+ * on the same-origin srcDoc. Real invoice fields never become contentEditable.
+ */
 export default function ReceiptStudioPreview({
-  template, scenario, selectedId, onSelect, onHeight, assets = {},
+  template, scenario, selectedId, selectedIds = [],
+  onSelect, onEditText, onEditField, onHeight, assets = {},
 }: Props) {
-  const receipt = getSampleReceipt(scenario);
-  const receiptRef = useRef<HTMLDivElement>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const cleanupRef = useRef<() => void>(() => {});
+  const callbacks = useRef({ onSelect, onEditText, onEditField, onHeight });
+  callbacks.current = { onSelect, onEditText, onEditField, onHeight };
+  const [height, setHeight] = useState(390);
+  const html = useMemo(
+    () => renderStudioReceiptHtml(template, invoiceFixture(scenario), assets),
+    [template, scenario, assets],
+  );
 
-  useEffect(() => {
-    const element = receiptRef.current;
-    if (!element) return;
+  const install = () => {
+    cleanupRef.current();
+    const frame = iframeRef.current;
+    const doc = frame?.contentDocument;
+    if (!doc?.body) return;
+    let disposed = false;
+
     const measure = () => {
-      const h = element.offsetHeight;
-      onHeight(Math.round(h / (96 / 25.4)));
+      if (disposed) return;
+      const pixels = Math.max(doc.body.scrollHeight, doc.documentElement.scrollHeight, 40);
+      setHeight((before) => before === pixels ? before : pixels);
+      callbacks.current.onHeight(Math.ceil(pixels / (96 / 25.4)));
     };
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [template, scenario, onHeight]);
+    const highlight = () => {
+      const selected = new Set(selectedIds.length ? selectedIds : selectedId ? [selectedId] : []);
+      doc.querySelectorAll<HTMLElement>('[data-block-id]').forEach((el) => {
+        const active = selected.has(el.dataset.blockId ?? '');
+        el.style.outline = active ? '2px solid #0ea5e9' : '';
+        el.style.outlineOffset = active ? '2px' : '';
+      });
+    };
 
-  function renderBlock(block: ReceiptBlockV1) {
-    const styles = blockStyle(block);
-    if (block.kind === 'brand') {
-      return (
-        <div style={{ ...styles, textAlign: 'center' }}>
-          <div style={{ fontFamily: 'Georgia, serif', fontSize: styles.fontSize, fontWeight: 900, lineHeight: 0.95, letterSpacing: '-2px' }}>CUT</div>
-          <div style={{ fontSize: 13, fontWeight: 900, letterSpacing: '5px', paddingLeft: 5, marginTop: 4 }}>SALON</div>
-          <div style={{ fontSize: 8, fontWeight: 500, letterSpacing: '2px', marginTop: 4 }}>MEN&apos;S GROOMING CLUB</div>
-        </div>
-      );
-    }
-    if (block.kind === 'invoice-meta') {
-      return (
-        <div style={{ ...styles, padding: '7px 0', borderTop: '1px solid #242424', borderBottom: '1px solid #d8d8d8', lineHeight: 1.55 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}><b>RECEIPT {receipt.invoiceNo}</b><span>{receipt.branch}</span></div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 10, fontWeight: 500 }}><span>{receipt.date}</span><span>{receipt.time}</span></div>
-          <div style={{ fontSize: 11, fontWeight: 500 }}>Customer: {receipt.customer}</div>
-        </div>
-      );
-    }
-    if (block.kind === 'items') {
-      return (
-        <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', ...styles, textAlign: 'left', direction: 'ltr' }}>
-          <colgroup><col style={{ width: 24 }}/><col/><col style={{ width: 68 }}/></colgroup>
-          <thead><tr style={{ background: '#171717', color: '#fff', fontSize: 11 }}>
-            <th style={{ padding: '7px 4px', textAlign: 'center' }}>NO.</th>
-            <th style={{ padding: '7px 5px' }}>SERVICE</th>
-            <th style={{ padding: '7px 5px', textAlign: 'right' }}>PRICE</th>
-          </tr></thead>
-          <tbody>
-            {receipt.items.map((item, i) => (
-              <tr key={i} style={{ borderBottom: '1px dashed #c6c6c6', verticalAlign: 'top' }}>
-                <td style={{ padding: '6px 4px', fontSize: 11, textAlign: 'center' }}>{i + 1}</td>
-                <td style={{ padding: '6px 5px', overflowWrap: 'anywhere', lineHeight: 1.35 }}>{item.name}</td>
-                <td style={{ padding: '6px 4px', textAlign: 'right', whiteSpace: 'nowrap' }}>{formatMoney(item.price * item.qty)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      );
-    }
-    if (block.kind === 'totals') {
-      return (
-        <div style={{ ...styles, textAlign: 'left' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, fontWeight: 500, padding: '3px 2px' }}>
-            <span>Subtotal</span><span>{formatMoney(receipt.subtotal)} EGP</span>
-          </div>
-          {receipt.discount > 0 && (
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, fontWeight: 500, padding: '2px 2px 6px' }}>
-              <span>Discount</span><span>-{formatMoney(receipt.discount)} EGP</span>
-            </div>
-          )}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#111', color: '#fff', padding: '9px 10px', borderRadius: 3, fontSize: 14, fontWeight: 900 }}>
-            <span>TOTAL</span><span style={{ fontSize: styles.fontSize, whiteSpace: 'nowrap' }}>{formatMoney(receipt.total)} EGP</span>
-          </div>
-        </div>
-      );
-    }
-    if (block.kind === 'payment') {
-      return (
-        <div style={{ ...styles, display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed #aaa', paddingBottom: 6, fontSize: 11 }}>
-          <span>Payment Method</span><strong>{receipt.payment}</strong>
-        </div>
-      );
-    }
-    if (block.kind === 'footer') {
-      return (
-        <div style={{ ...styles, textAlign: 'center', lineHeight: 1.5 }}>
-          <div style={{ fontFamily: 'Tahoma, Arial, sans-serif', fontSize: 13 }}>شكراً لزيارتكم</div>
-          <div style={{ fontSize: 9, fontWeight: 500, letterSpacing: 1 }}>MORE THAN A HAIRCUT</div>
-        </div>
-      );
-    }
-    if (block.kind === 'divider') {
-      return <div style={{ ...styles, height: 1, borderBottom: '1px dashed #777' }} />;
-    }
-    if (block.kind === 'text') {
-      return <div style={{ ...styles, overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>{block.text}</div>;
-    }
-    const src = block.assetId ? assets[block.assetId] : null;
-    return src ? (
-      <div style={{ ...styles, textAlign: 'center' }}>
-        <img src={src} alt="Uploaded receipt decoration" style={{ display: 'block', maxWidth: '100%', maxHeight: '28mm', width: 'auto', margin: '0 auto', filter: 'grayscale(1) contrast(2)' }} />
-      </div>
-    ) : <div style={{ ...styles, fontSize: 10, border: '1px dashed #999', padding: 8 }}>صورة غير متاحة</div>;
-  }
+    const selectedBlock = (target: EventTarget | null) => {
+      return target && (target as Node).nodeType === 1
+        ? (target as Element).closest<HTMLElement>('[data-block-id]') : null;
+    };
+    const onClick = (event: MouseEvent) => {
+      const el = selectedBlock(event.target);
+      if (el?.dataset.blockId) callbacks.current.onSelect(el.dataset.blockId, event.shiftKey || event.ctrlKey || event.metaKey);
+    };
+    const onDblClick = (event: MouseEvent) => {
+      const block = selectedBlock(event.target);
+      if (!block?.dataset.blockId) return;
+      const target = event.target;
+      if (!target || (target as Node).nodeType !== 1) return;
+      const editable = (target as Element).closest<HTMLElement>('[data-edit-field], [data-text-node]');
+      if (!editable) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const field = editable.dataset.editField as ReceiptField | undefined;
+      const isTextNode = editable.hasAttribute('data-text-node');
+      if (!isTextNode && !field) return;
+      const original = editable.textContent ?? '';
+      editable.contentEditable = 'true';
+      editable.spellcheck = false;
+      editable.focus();
+      const range = doc.createRange();
+      range.selectNodeContents(editable);
+      const selection = doc.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+      let canceled = false;
+      const keyDown = (key: KeyboardEvent) => {
+        if (key.key === 'Escape') {
+          canceled = true;
+          editable.textContent = original;
+          editable.blur();
+        }
+        if (key.key === 'Enter') {
+          key.preventDefault();
+          editable.blur();
+        }
+      };
+      const blur = () => {
+        editable.removeEventListener('keydown', keyDown);
+        editable.removeEventListener('blur', blur);
+        editable.contentEditable = 'false';
+        if (canceled) return;
+        const value = (editable.textContent ?? '').trim();
+        if (value === original) return;
+        if (isTextNode) callbacks.current.onEditText?.(block.dataset.blockId!, value.slice(0, 500));
+        else if (field) callbacks.current.onEditField?.(block.dataset.blockId!, field, value.slice(0, 90));
+      };
+      editable.addEventListener('keydown', keyDown);
+      editable.addEventListener('blur', blur);
+    };
+    const resizeObserver = new ResizeObserver(measure);
+    resizeObserver.observe(doc.body);
+    doc.addEventListener('click', onClick);
+    doc.addEventListener('dblclick', onDblClick);
+    doc.addEventListener('load', measure, true);
+    highlight();
+    measure();
+    cleanupRef.current = () => {
+      disposed = true;
+      resizeObserver.disconnect();
+      doc.removeEventListener('click', onClick);
+      doc.removeEventListener('dblclick', onDblClick);
+      doc.removeEventListener('load', measure, true);
+    };
+  };
+
+  useEffect(() => () => cleanupRef.current(), []);
+  useEffect(() => {
+    const doc = iframeRef.current?.contentDocument;
+    if (!doc) return;
+    const selected = new Set(selectedIds.length ? selectedIds : selectedId ? [selectedId] : []);
+    doc.querySelectorAll<HTMLElement>('[data-block-id]').forEach((el) => {
+      const active = selected.has(el.dataset.blockId ?? '');
+      el.style.outline = active ? '2px solid #0ea5e9' : '';
+      el.style.outlineOffset = active ? '2px' : '';
+    });
+  }, [selectedId, selectedIds]);
 
   return (
-    <div
-      ref={receiptRef}
-      data-testid="receipt-studio-paper"
-      className="relative overflow-hidden bg-white text-black"
-      style={{
-        width: '72mm', minWidth: '72mm', maxWidth: '72mm',
-        minHeight: `${template.paper.minHeightMm ?? 0}mm`,
-        padding: '3.5mm 3mm 3mm', boxSizing: 'border-box',
-        fontFamily: 'Arial, Tahoma, sans-serif', direction: 'ltr',
-      }}
-    >
-      {template.blocks.filter((b) => b.enabled).map((block) => (
-        <div
-          key={block.id}
-          role="button"
-          tabIndex={0}
-          aria-label={`تعديل عنصر ${block.kind}`}
-          onClick={() => onSelect(block.id)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect(block.id); }
-          }}
-          className={`relative cursor-pointer rounded-[2px] outline outline-2 outline-offset-[2px] transition-colors hover:outline-slate-400 ${selectedId === block.id ? 'outline-sky-500' : 'outline-transparent'}`}
-        >
-          {renderBlock(block)}
-        </div>
-      ))}
-    </div>
+    <iframe
+      ref={iframeRef}
+      title="CUT Salon · live receipt design"
+      sandbox="allow-same-origin"
+      srcDoc={html}
+      onLoad={install}
+      className="block border-none bg-white"
+      style={{ width: '72mm', height: `${height}px`, maxWidth: '72mm' }}
+    />
   );
 }

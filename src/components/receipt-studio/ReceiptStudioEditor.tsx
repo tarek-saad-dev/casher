@@ -4,21 +4,24 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, ty
 import Link from 'next/link';
 import {
   ArrowDown, ArrowLeft, ArrowUp, Check, ChevronDown, FileText, GripVertical,
-  Layers, LayoutTemplate, LockKeyhole, Plus, Redo2, RotateCcw, Ruler,
-  Settings2, Type, Undo2, Eye, EyeOff, Info, Printer, Image as ImageIcon, Minus,
+  Layers, LayoutTemplate, LockKeyhole, Plus, Redo2, RotateCcw, Ruler, FolderPlus,
+  Settings2, Type, Undo2, Eye, EyeOff, Info, Printer, Image as ImageIcon, Minus, Copy, Ungroup, Group,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import {
-  COMPACT_CUT_RECEIPT_V1, validateReceiptTemplateV1,
-  type ReceiptBlockV1, type ReceiptBlockKind, type ReceiptTemplateV1,
+  COMPACT_CUT_RECEIPT_V1, DEFAULT_RECEIPT_FIELDS, RECEIPT_FIELDS_BY_KIND, validateReceiptTemplateV1,
+  type ReceiptField, type ReceiptBlockV1, type ReceiptBlockKind, type ReceiptTemplateV1,
 } from '@/lib/receipt-studio/template';
 import {
   addReceiptDecoration, addReceiptImage, deleteReceiptDecoration, getSampleReceipt, reorderReceiptBlocks, setReceiptMinHeight,
   updateReceiptBlock, type SampleScenario,
 } from '@/lib/receipt-studio/editor';
 import ReceiptStudioPreview from './ReceiptStudioPreview';
+import ReceiptStudioLayerTree from './ReceiptStudioLayerTree';
+import { allReceiptNodes, duplicateTreeNode, findReceiptNode, groupReceiptNodes, moveTreeNode, removeTreeNode, treeNodeParentId, ungroupReceiptNode, updateTreeNode, addTreeNode, type TreePlacement } from '@/lib/receipt-studio/tree';
+import { prepareThermalImage } from './prepareImage';
 import { renderStudioReceiptHtml, type StudioInvoiceModel } from '@/lib/receipt-studio/render';
 import { createPrintRequestId, printHtmlViaLocalService } from '@/lib/localPrintClient';
 
@@ -32,6 +35,22 @@ const LABELS: Record<ReceiptBlockKind, string> = {
   text: 'نص إضافي',
   image: 'صورة PNG',
   footer: 'رسالة الشكر',
+  group: 'مجموعة',
+};
+const FIELD_TITLES: Record<ReceiptField, string> = {
+  brandName: 'اسم البراند',
+  brandTagline: 'الوصف تحت الشعار',
+  receiptLabel: 'عنوان الفاتورة',
+  customerLabel: 'عنوان العميل',
+  numberHeader: 'عنوان رقم الخدمة',
+  serviceHeader: 'عنوان عمود الخدمات',
+  priceHeader: 'عنوان عمود الأسعار',
+  subtotalLabel: 'عنوان المجموع',
+  discountLabel: 'عنوان الخصومات',
+  totalLabel: 'عنوان الإجمالي النهائي',
+  paymentLabel: 'عنوان طريقة الدفع',
+  thanksText: 'عبارة الشكر',
+  footerTagline: 'السطر السفلي',
 };
 const REQUIRED: ReadonlySet<ReceiptBlockKind> = new Set(['items', 'totals']);
 const FIXTURES: Array<{ value: SampleScenario; label: string }> = [
@@ -70,6 +89,7 @@ export default function ReceiptStudioEditor() {
     past: [], current: freshTemplate(), future: [],
   }));
   const [selectedId, setSelectedId] = useState<string | null>('brand');
+  const [selectedIds, setSelectedIds] = useState<string[]>(['brand']);
   const [scenario, setScenario] = useState<SampleScenario>('three');
   const [zoom, setZoom] = useState(110);
   const [heightMm, setHeightMm] = useState(0);
@@ -90,7 +110,7 @@ export default function ReceiptStudioEditor() {
   const [rollbackTarget, setRollbackTarget] = useState<number | null>(null);
 
   const template = history.current;
-  const selected = template.blocks.find((block) => block.id === selectedId) ?? null;
+  const selected = selectedId ? findReceiptNode(template.blocks, selectedId) : null;
   const modified = JSON.stringify(template) !== JSON.stringify(COMPACT_CUT_RECEIPT_V1);
   const proofHtml = useMemo(() => renderStudioReceiptHtml(template, sampleAsInvoice(scenario), assets), [template, scenario, assets]);
 
@@ -115,6 +135,7 @@ export default function ReceiptStudioEditor() {
       setDbReady(true);
       setDirty(false);
       setSelectedId(data.draft.blocks[0]?.id ?? null);
+      setSelectedIds(data.draft.blocks[0] ? [data.draft.blocks[0].id] : []);
       setTestSent(false);
       setPhysicalVerified(false);
     }).catch((error) => {
@@ -163,6 +184,8 @@ export default function ReceiptStudioEditor() {
     setVersions(data.history);
     setAssets(data.assets);
     setDirty(false);
+    setSelectedIds([]);
+    setSelectedId(null);
     setTestSent(false);
     setPhysicalVerified(false);
   }
@@ -208,34 +231,37 @@ export default function ReceiptStudioEditor() {
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file || busyRef.current) return;
-    if (file.type !== 'image/png' || file.size > 153600) {
-      setMessage('ارفع PNG فقط بحجم أقل من 150KB وبعرض لا يتجاوز 576px.');
-      return;
-    }
     busyRef.current = true; setBusy(true);
     try {
-      const body = new FormData(); body.append('file', file);
-      const response = await fetch('/api/admin/receipt-studio/assets', { method: 'POST', body });
-      const json = await response.json();
-      if (!response.ok || !json.ok) throw new Error(json.error || 'فشل رفع الصورة');
-      const assetId: string = json.assetId;
-      const dataUri: string = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result));
-        reader.onerror = () => reject(new Error('فشل قراءة الصورة'));
-        reader.readAsDataURL(file);
-      });
-      setAssets((old) => ({ ...old, [assetId]: dataUri }));
-      const candidate = addReceiptImage(template, assetId);
-      if (candidate === template) throw new Error('لا يمكن إضافة صور أكثر أو الصورة غير صالحة');
-      // Upload and layout update are a single intentional editor action.
+      const image = await prepareThermalImage(file);
+      let assetId: string;
+      if (dbReady) {
+        const body = new FormData();
+        body.append('file', image.png);
+        const response = await fetch('/api/admin/receipt-studio/assets', { method: 'POST', body });
+        const json = await response.json();
+        if (!response.ok || !json.ok) throw new Error(json.error || 'فشل رفع الصورة');
+        assetId = String(json.assetId);
+      } else {
+        // Allow visual experimentation when the optional SQL schema is not installed.
+        // This UUID cannot be published or saved without first uploading to the backend.
+        assetId = crypto.randomUUID();
+      }
+      const parent = selected?.kind === 'group' ? selected.id : null;
+      const candidate = addTreeNode(template, 'image', parent, assetId);
+      if (candidate === template) throw new Error('الحد الأقصى 6 صور أو عمق المجموعة أكبر من المسموح');
+      setAssets((previous) => ({ ...previous, [assetId]: image.dataUri }));
+      const id = findInserted(candidate);
       busyRef.current = false;
       commit(candidate);
       busyRef.current = true;
-      setSelectedId(candidate.blocks[candidate.blocks.length-1].id);
-      setMessage('تم رفع PNG وإضافتها للتصميم. احفظ المسودة للاحتفاظ بها.');
-    } catch (error) { setMessage(error instanceof Error ? error.message : 'فشل رفع الصورة'); }
-    finally { busyRef.current = false; setBusy(false); }
+      if (id) selectLayer(id);
+      setMessage(dbReady
+        ? 'تم إضافة الصورة وتحويلها لأبيض وأسود مناسب للطابعة. احفظ المسودة.'
+        : 'الصورة موجودة في المعاينة مؤقتًا. حفظها يحتاج تفعيل قاعدة بيانات Receipt Studio.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'تعذر تجهيز الصورة');
+    } finally { busyRef.current = false; setBusy(false); }
   }
 
   const updateHeight = useCallback((mm: number) => setHeightMm((previous) => previous === mm ? previous : mm), []);
@@ -258,6 +284,69 @@ export default function ReceiptStudioEditor() {
     }));
     setDirty(true); setTestSent(false); setPhysicalVerified(false);
     setMessage(null);
+  }
+
+  function selectLayer(id: string, additive = false) {
+    if (!additive) {
+      setSelectedId(id);
+      setSelectedIds([id]);
+      return;
+    }
+    const next = selectedIds.includes(id) ? selectedIds.filter((key) => key !== id) : [...selectedIds, id];
+    setSelectedIds(next);
+    setSelectedId(next[next.length - 1] ?? null);
+  }
+  function findInserted(candidate: ReceiptTemplateV1) {
+    const previous = new Set(allReceiptNodes(template.blocks).map((b) => b.id));
+    return allReceiptNodes(candidate.blocks).find((b) => !previous.has(b.id))?.id ?? null;
+  }
+  function commitAdded(candidate: ReceiptTemplateV1) {
+    if (candidate === template) return commit(candidate);
+    const id = findInserted(candidate);
+    commit(candidate);
+    if (id) selectLayer(id);
+  }
+  function changeLabel(id: string, field: ReceiptField, value: string) {
+    const target = findReceiptNode(template.blocks, id);
+    if (!target) return;
+    commit(updateTreeNode(template, id, { fields: { ...target.fields, [field]: value } }));
+    selectLayer(id);
+  }
+  function changeText(id: string, value: string) {
+    commit(updateTreeNode(template, id, { text: value }));
+    selectLayer(id);
+  }
+  function groupSelected() {
+    const next = groupReceiptNodes(template, selectedIds);
+    if (next === template) {
+      setMessage('لازم تختار عنصرين أو أكثر من نفس المستوى، والمجموعة تفضل صالحة للطباعة.');
+      return;
+    }
+    commitAdded(next);
+  }
+  function ungroupSelected() {
+    if (!selected || selected.kind !== 'group') return;
+    const parent = treeNodeParentId(template.blocks, selected.id);
+    commit(ungroupReceiptNode(template, selected.id));
+    const target = parent ? findReceiptNode(template.blocks, parent) : null;
+    if (target) selectLayer(target.id);
+    else { setSelectedId(null); setSelectedIds([]); }
+  }
+  function addNewNode(kind: 'text' | 'divider' | 'group') {
+    const parentId = selected?.kind === 'group' ? selected.id : null;
+    commitAdded(addTreeNode(template, kind, parentId));
+  }
+  function moveLayer(source: string, target: string, placement: TreePlacement) {
+    commit(moveTreeNode(template, source, target, placement));
+  }
+  function duplicateLayer(id: string) {
+    commitAdded(duplicateTreeNode(template, id));
+  }
+  function deleteSelected() {
+    if (!selected) return;
+    const candidate = removeTreeNode(template, selected.id);
+    commit(candidate);
+    if (candidate !== template) { setSelectedIds([]); setSelectedId(null); }
   }
 
   function changeBlock(patch: Partial<ReceiptBlockV1>) {
@@ -418,46 +507,56 @@ export default function ReceiptStudioEditor() {
       </section>
 
       <div className="grid items-start gap-4 xl:grid-cols-[260px_minmax(360px,1fr)_275px]">
-        {/* Block palette and layers */}
+        {/* True nested layers with multi-select, grouping and DnD */}
         <aside className="rounded-2xl border border-border bg-surface p-4 xl:sticky xl:top-4">
-          <div className="mb-3 flex items-center gap-2"><Layers className="size-4 text-primary"/><h2 className="font-bold">طبقات الفاتورة</h2></div>
-          <p className="mb-4 text-xs leading-relaxed text-muted-foreground">اسحب الأقسام لتغيير ترتيبها أو استخدم الأسهم. جدول الخدمات يفضل قبل الإجمالي دائمًا.</p>
-          <div className="space-y-2">
-            {template.blocks.map((block, index) => {
-              const active = selectedId === block.id;
-              return (
-                <div
-                  key={block.id}
-                  draggable
-                  onDragStart={(event) => onDragStart(event, block.id)}
-                  onDragEnd={() => setDraggedId(null)}
-                  onDragOver={(event) => event.preventDefault()}
-                  onDrop={(event) => onDrop(event, block.id)}
-                  className={`flex items-center gap-2 rounded-xl border p-2 transition-colors ${active ? 'border-primary bg-primary/5' : 'border-border bg-background hover:bg-muted/50'} ${draggedId === block.id ? 'opacity-50' : ''}`}
-                >
-                  <GripVertical className="size-4 shrink-0 cursor-grab text-muted-foreground" aria-hidden/>
-                  <button type="button" onClick={() => setSelectedId(block.id)} className="min-w-0 flex-1 text-right">
-                    <span className="block truncate text-xs font-semibold">{LABELS[block.kind]}</span>
-                    <span className="text-[10px] text-muted-foreground">{REQUIRED.has(block.kind) ? 'أساسي' : block.enabled ? 'ظاهر' : 'مخفي'}</span>
-                  </button>
-                  <div className="flex shrink-0 flex-col gap-0.5">
-                    <button type="button" aria-label={`رفع ${LABELS[block.kind]}`} onClick={() => nudge(block.id, -1)} disabled={index === 0} className="rounded p-0.5 hover:bg-muted disabled:opacity-20"><ArrowUp className="size-3.5"/></button>
-                    <button type="button" aria-label={`خفض ${LABELS[block.kind]}`} onClick={() => nudge(block.id, 1)} disabled={index === template.blocks.length - 1} className="rounded p-0.5 hover:bg-muted disabled:opacity-20"><ArrowDown className="size-3.5"/></button>
-                  </div>
-                </div>
-              );
-            })}
+          <div className="mb-1 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2"><Layers className="size-4 text-primary"/><h2 className="font-bold">Layers</h2></div>
+            <span className="rounded-full bg-muted px-2 py-1 text-[11px] text-muted-foreground">
+              {allReceiptNodes(template.blocks).length} عنصر
+            </span>
           </div>
+          <p className="mb-3 text-xs leading-relaxed text-muted-foreground">
+            اختار عناصر متعددة بـ Ctrl أو Shift، واسحب لإعادة ترتيبها. اسحب على مساحة داخل Group لإضافة عنصر لها.
+          </p>
+          <div className="mb-3 grid grid-cols-2 gap-2">
+            <Button variant="outline" size="sm" disabled={selectedIds.length < 2 || busy} onClick={groupSelected}>
+              <Group className="size-4"/> Group
+            </Button>
+            <Button variant="outline" size="sm" disabled={selected?.kind !== 'group' || busy} onClick={ungroupSelected}>
+              <Ungroup className="size-4"/> Ungroup
+            </Button>
+          </div>
+          <ReceiptStudioLayerTree
+            nodes={template.blocks} selectedIds={selectedIds}
+            draggingId={draggedId} onDrag={setDraggedId} onSelect={selectLayer}
+            onMove={moveLayer}
+            onToggle={(id,enabled) => commit(updateTreeNode(template,id,{enabled}))}
+            onLock={(id,locked) => commit(updateTreeNode(template,id,{locked}))}
+            onDuplicate={duplicateLayer}
+          />
           <div className="mt-5 border-t border-border pt-4">
-            <h3 className="mb-3 text-xs font-bold text-muted-foreground">إضافة عنصر</h3>
+            <h3 className="mb-3 text-xs font-bold text-muted-foreground">
+              إضافة عنصر {selected?.kind === 'group' ? 'داخل المجموعة المختارة' : 'للفاتورة'}
+            </h3>
             <div className="grid grid-cols-2 gap-2">
-              <Button variant="outline" size="sm" onClick={() => add('text')}><Type className="size-4"/> نص</Button>
-              <Button variant="outline" size="sm" onClick={() => add('divider')}><Minus className="size-4"/> فاصل</Button>
+              <Button variant="outline" size="sm" disabled={busy} onClick={() => addNewNode('text')}>
+                <Type className="size-4"/> Text
+              </Button>
+              <Button variant="outline" size="sm" disabled={busy} onClick={() => addNewNode('divider')}>
+                <Minus className="size-4"/> Divider
+              </Button>
+              <Button variant="outline" size="sm" disabled={busy} onClick={() => addNewNode('group')}>
+                <FolderPlus className="size-4"/> Group
+              </Button>
+              <label className="inline-flex cursor-pointer items-center justify-center gap-1 rounded-lg border border-border px-2 py-1 text-xs font-medium hover:bg-muted">
+                <ImageIcon className="size-4"/> Image
+                <input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only"
+                  disabled={busy} onChange={(event) => void uploadPng(event)}/>
+              </label>
             </div>
-            <label className="mt-2 flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-border p-2 text-xs text-muted-foreground hover:bg-muted">
-              <ImageIcon className="size-4"/><span>رفع PNG (أقل من 150KB)</span>
-              <input type="file" accept="image/png" className="sr-only" disabled={!dbReady || busy} onChange={(event) => void uploadPng(event)}/>
-            </label>
+            <p className="mt-3 text-[11px] leading-relaxed text-muted-foreground">
+              PNG / JPG / WebP — يتحول تلقائيًا لأبيض وأسود قبل الحفظ، بحد أقصى 576px عرضًا و150KB.
+            </p>
           </div>
         </aside>
 
@@ -466,7 +565,7 @@ export default function ReceiptStudioEditor() {
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border p-4">
             <div>
               <h2 className="font-bold">معاينة حية</h2>
-              <p className="mt-1 text-xs text-muted-foreground">معاينة شاشة قابلة للتعديل — لا تُرسل للطابعة</p>
+              <p className="mt-1 text-xs text-muted-foreground">اضغط لتحديد العنصر، واضغط مرتين على أي كتابة لتعديلها مباشرة. المعاينة تستخدم نفس HTML الطباعة</p>
             </div>
             <div className="flex items-center gap-2 text-xs">
               <Ruler className="size-4 text-muted-foreground"/>
@@ -503,8 +602,12 @@ export default function ReceiptStudioEditor() {
                     border: 0, display: 'block', filter: 'grayscale(1) contrast(2.5)', background: '#fff',
                   }}/>
                 ) : (
-                  <ReceiptStudioPreview template={template} scenario={scenario} selectedId={selectedId}
-                    onSelect={setSelectedId} onHeight={updateHeight} assets={assets}/>
+                  <ReceiptStudioPreview template={template} scenario={scenario}
+                    selectedId={selectedId} selectedIds={selectedIds} onHeight={updateHeight} assets={assets}
+                    onSelect={selectLayer}
+                    onEditText={changeText}
+                    onEditField={changeLabel}
+                  />
                 )}
               </div>
               <div className="mt-3 flex items-center gap-1 text-xs text-muted-foreground"><Printer className="size-3.5"/> الطول بيتحسب تلقائيًا حسب المحتوى</div>
@@ -535,78 +638,170 @@ export default function ReceiptStudioEditor() {
 
           {selected ? (
             <div key={selected.id} className="space-y-4 border-t border-border pt-4">
-              <div>
-                <div className="text-sm font-bold">{LABELS[selected.kind]}</div>
-                <p className="text-xs text-muted-foreground">اختار عنصر من الفاتورة أو قائمة الطبقات.</p>
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <div className="text-sm font-bold">{LABELS[selected.kind]}</div>
+                  <p className="font-mono text-[10px] text-muted-foreground">{selected.id}</p>
+                </div>
+                <button type="button" aria-label={selected.locked ? 'فك قفل العنصر' : 'قفل العنصر'}
+                  onClick={() => commit(updateTreeNode(template, selected.id, { locked: !selected.locked }))}
+                  className="rounded-lg border border-border p-2 text-muted-foreground hover:bg-muted">
+                  <LockKeyhole className="size-4"/>
+                </button>
               </div>
+              <label className="block text-xs">
+                <span className="mb-2 block font-semibold">اسم الطبقة (Layers)</span>
+                <Input
+                  value={selected.name ?? ''}
+                  maxLength={70}
+                  placeholder={LABELS[selected.kind]}
+                  disabled={selected.locked || busy}
+                  onChange={(event) => changeBlock({ name: event.target.value })}
+                />
+              </label>
               <label className="flex items-center justify-between gap-2 text-sm">
                 <span className="flex items-center gap-2">{selected.enabled ? <Eye className="size-4"/> : <EyeOff className="size-4"/>} إظهار العنصر</span>
-                <Switch checked={selected.enabled} onCheckedChange={(checked) => changeBlock({ enabled: checked })} disabled={REQUIRED.has(selected.kind)}/>
+                <Switch checked={selected.enabled} disabled={selected.locked || REQUIRED.has(selected.kind) || busy}
+                  onCheckedChange={(checked) => changeBlock({ enabled: checked })}/>
               </label>
+              {selected.locked && (
+                <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs">
+                  الطبقة مقفولة. فك القفل لتعديل محتواها.
+                </p>
+              )}
               {selected.kind === 'text' && (
                 <label className="block text-xs">
-                  <span className="mb-2 block font-semibold">النص</span>
-                  <Input
-                    value={selected.text ?? ''}
-                    maxLength={180}
+                  <span className="mb-2 block font-semibold">تحرير النص</span>
+                  <textarea value={selected.text ?? ''} maxLength={500} rows={3}
+                    disabled={selected.locked || busy} dir="auto"
                     onChange={(event) => changeBlock({ text: event.target.value })}
-                    dir="auto"
-                    aria-label="النص داخل الإيصال"
+                    className="min-h-20 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
                   />
                 </label>
               )}
-              <div>
-                <label htmlFor="block-font" className="mb-2 flex justify-between text-xs font-semibold">
-                  <span>حجم الخط</span><span>{selected.style?.fontSizePx ?? 12} px</span>
-                </label>
-                <input id="block-font" type="range" min={9} max={30} step={1}
-                  value={selected.style?.fontSizePx ?? 12}
-                  onChange={(event) => changeStyle({ fontSizePx: Number(event.target.value) })}
-                  className="w-full accent-primary"
-                />
-              </div>
-              <label className="block text-xs">
-                <span className="mb-2 block font-semibold">سُمك الخط</span>
-                <select value={selected.style?.fontWeight ?? 600}
-                  onChange={(event) => changeStyle({ fontWeight: Number(event.target.value) as 400 | 600 | 700 | 800 | 900 })}
-                  className="h-9 w-full rounded-lg border border-border bg-background px-2 text-sm"
-                >
-                  <option value={400}>Regular</option><option value={600}>Semi Bold</option>
-                  <option value={700}>Bold</option><option value={800}>Extra Bold</option><option value={900}>Black</option>
-                </select>
-              </label>
-              <div>
-                <label htmlFor="block-gap" className="mb-2 flex justify-between text-xs font-semibold">
-                  <span>المسافة بعد العنصر</span><span>{selected.style?.gapAfterMm ?? 1} mm</span>
-                </label>
-                <input id="block-gap" type="range" min={0} max={8} step={0.5}
-                  value={selected.style?.gapAfterMm ?? 1}
-                  onChange={(event) => changeStyle({ gapAfterMm: Number(event.target.value) })}
-                  className="w-full accent-primary"
-                />
-              </div>
-              <div>
-                <p className="mb-2 text-xs font-semibold">المحاذاة</p>
-                <div className="grid grid-cols-3 gap-1" dir="ltr">
-                  {(['left', 'center', 'right'] as const).map((align) => (
-                    <button key={align} type="button"
-                      className={`${miniButton} ${(selected.style?.align ?? 'left') === align ? 'border-foreground bg-foreground text-background hover:bg-foreground' : ''}`}
-                      onClick={() => changeStyle({ align })}
-                    >{align}</button>
+              {RECEIPT_FIELDS_BY_KIND[selected.kind].length > 0 && (
+                <section className="space-y-3 rounded-xl border border-border bg-muted/30 p-3">
+                  <h3 className="text-xs font-bold">تعديل النصوص وعناوين الفاتورة</h3>
+                  {RECEIPT_FIELDS_BY_KIND[selected.kind].map((field) => (
+                    <label key={field} className="block text-xs">
+                      <span className="mb-1 block text-muted-foreground">{FIELD_TITLES[field]}</span>
+                      <Input
+                        value={selected.fields?.[field] ?? DEFAULT_RECEIPT_FIELDS[field]}
+                        maxLength={90}
+                        disabled={selected.locked || busy}
+                        dir="auto"
+                        onChange={(event) => changeLabel(selected.id, field, event.target.value)}
+                      />
+                    </label>
                   ))}
-                </div>
-              </div>
-              {['text', 'divider', 'image'].includes(selected.kind) && (
-                <Button variant="destructive" size="sm" className="w-full" onClick={() => {
-                  commit(deleteReceiptDecoration(template, selected.id));
-                  setSelectedId(null);
-                }}>حذف العنصر</Button>
+                  <p className="text-[11px] text-muted-foreground">
+                    النصوص الثابتة قابلة للتغيير؛ الأسعار والخدمات والتواريخ تتحمل من الفاتورة الحقيقية تلقائيًا.
+                  </p>
+                </section>
               )}
-              {REQUIRED.has(selected.kind) && <p className="flex gap-2 text-[11px] text-muted-foreground"><LockKeyhole className="size-3.5 shrink-0"/> العنصر أساسي لضمان فاتورة صحيحة.</p>}
+              {selected.kind === 'image' && (
+                <section className="space-y-3 rounded-xl border border-border bg-muted/30 p-3">
+                  <h3 className="text-xs font-bold">خصائص الصورة</h3>
+                  {selected.assetId && assets[selected.assetId] && (
+                    <div className="flex justify-center rounded-lg bg-white p-3">
+                      <img src={assets[selected.assetId]} alt="صورة التصميم" className="max-h-24 max-w-full object-contain"/>
+                    </div>
+                  )}
+                  <label className="block text-xs">
+                    <span className="mb-2 flex justify-between"><span>عرض الصورة</span><span>{selected.style?.imageWidthMm ?? 36} mm</span></span>
+                    <input type="range" min={8} max={66} step={1} value={selected.style?.imageWidthMm ?? 36}
+                      disabled={selected.locked || busy}
+                      onChange={(event) => changeStyle({ imageWidthMm: Number(event.target.value) })}
+                      className="w-full accent-primary"/>
+                  </label>
+                </section>
+              )}
+              {selected.kind === 'group' && (
+                <section className="space-y-3 rounded-xl border border-border bg-muted/30 p-3">
+                  <h3 className="text-xs font-bold">Nested Group</h3>
+                  <p className="text-[11px] text-muted-foreground">
+                    عناصر المجموعة بتتحرك مع بعض، وبتتمدد مع عدد الخدمات من غير قص أو تداخل.
+                  </p>
+                  <label className="block text-xs">
+                    <span className="mb-1 flex justify-between"><span>الحواف الداخلية</span><span>{selected.style?.paddingMm ?? 0}mm</span></span>
+                    <input type="range" min={0} max={5} step={0.5} value={selected.style?.paddingMm ?? 0}
+                      disabled={selected.locked || busy}
+                      onChange={(event) => changeStyle({ paddingMm: Number(event.target.value) })}
+                      className="w-full accent-primary"/>
+                  </label>
+                  <label className="block text-xs">
+                    <span className="mb-1 flex justify-between"><span>المسافة بين العناصر</span><span>{selected.style?.groupGapMm ?? 0}mm</span></span>
+                    <input type="range" min={0} max={6} step={0.5} value={selected.style?.groupGapMm ?? 0}
+                      disabled={selected.locked || busy}
+                      onChange={(event) => changeStyle({ groupGapMm: Number(event.target.value) })}
+                      className="w-full accent-primary"/>
+                  </label>
+                  <Button variant="outline" size="sm" className="w-full" disabled={selected.locked || busy} onClick={ungroupSelected}>
+                    <Ungroup className="size-4"/> فك المجموعة
+                  </Button>
+                </section>
+              )}
+              <section className="space-y-3 border-t border-border pt-4">
+                <div>
+                  <label htmlFor="block-font" className="mb-1 flex justify-between text-xs font-semibold">
+                    <span>حجم الخط</span><span>{selected.style?.fontSizePx ?? 12}px</span>
+                  </label>
+                  <input id="block-font" type="range" min={9} max={42} step={1}
+                    disabled={selected.locked || busy}
+                    value={selected.style?.fontSizePx ?? 12}
+                    onChange={(event) => changeStyle({ fontSizePx: Number(event.target.value) })}
+                    className="w-full accent-primary"/>
+                </div>
+                <label className="block text-xs">
+                  <span className="mb-2 block font-semibold">سُمك الخط</span>
+                  <select value={selected.style?.fontWeight ?? 600} disabled={selected.locked || busy}
+                    onChange={(event) => changeStyle({ fontWeight: Number(event.target.value) as 400 | 600 | 700 | 800 | 900 })}
+                    className="h-9 w-full rounded-lg border border-border bg-background px-2 text-sm">
+                    <option value={400}>Regular</option><option value={600}>Semi Bold</option>
+                    <option value={700}>Bold</option><option value={800}>Extra Bold</option><option value={900}>Black</option>
+                  </select>
+                </label>
+                <label className="block text-xs">
+                  <span className="mb-1 flex justify-between"><span>المسافة بعد العنصر</span><span>{selected.style?.gapAfterMm ?? 1}mm</span></span>
+                  <input type="range" min={0} max={8} step={0.5}
+                    disabled={selected.locked || busy}
+                    value={selected.style?.gapAfterMm ?? 1}
+                    onChange={(event) => changeStyle({ gapAfterMm: Number(event.target.value) })}
+                    className="w-full accent-primary"/>
+                </label>
+                <div>
+                  <p className="mb-2 text-xs font-semibold">المحاذاة</p>
+                  <div className="grid grid-cols-3 gap-1" dir="ltr">
+                    {(['left', 'center', 'right'] as const).map((align) => (
+                      <button key={align} type="button" disabled={selected.locked || busy}
+                        className={`${miniButton} ${(selected.style?.align ?? 'left') === align ? 'border-foreground bg-foreground text-background hover:bg-foreground' : ''}`}
+                        onClick={() => changeStyle({ align })}
+                      >{align}</button>
+                    ))}
+                  </div>
+                </div>
+              </section>
+              {['text', 'image', 'divider'].includes(selected.kind) && (
+                <Button variant="outline" size="sm" disabled={selected.locked || busy} className="w-full"
+                  onClick={() => duplicateLayer(selected.id)}>
+                  <Copy className="size-4"/> نسخة من العنصر
+                </Button>
+              )}
+              {['text', 'divider', 'image', 'group'].includes(selected.kind) && (
+                <Button variant="destructive" size="sm" disabled={selected.locked || busy} className="w-full"
+                  onClick={deleteSelected}>
+                  حذف العنصر
+                </Button>
+              )}
+              {REQUIRED.has(selected.kind) && (
+                <p className="flex gap-2 text-[11px] text-muted-foreground">
+                  <LockKeyhole className="size-3.5 shrink-0"/> العنصر أساسي، مينفعش تحذفه أو تخفيه.
+                </p>
+              )}
             </div>
           ) : (
             <div className="rounded-xl border border-dashed border-border p-5 text-center text-xs text-muted-foreground">
-              اختار عنصر من التصميم علشان تعدّل خصائصه.
+              اختار عنصر من التصميم علشان تعدّل نصوصه وخصائصه.
             </div>
           )}
         </aside>
