@@ -65,7 +65,7 @@ export function updateTreeNode(
   patch: Partial<ReceiptBlockV1>,
 ): ReceiptTemplateV1 {
   const original = findReceiptNode(template.blocks, id);
-  if (!original || original.locked) return template;
+  if (!original || (original.locked && !(patch.locked === false && Object.keys(patch).length === 1))) return template;
   // A caller must never move children via an unchecked patch.
   if (patch.children !== undefined || patch.id !== undefined || patch.kind !== undefined) return template;
   const tree = withChildren(template.blocks, id, (b) => ({
