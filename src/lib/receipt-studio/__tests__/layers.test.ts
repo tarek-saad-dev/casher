@@ -48,7 +48,7 @@ describe('Receipt Studio nested groups and real layers', () => {
     let t = groupReceiptNodes(fresh(), ['meta', 'items']);
     const g = t.blocks[1].id;
     expect(updateTreeNode(t, g, { enabled: false })).toBe(t);
-    expect(moveTreeNode(t, 'totals', g, 'inside')).toBe(t);
+    expect(moveTreeNode(t, 'totals', 'items', 'before')).toBe(t);
     expect(removeTreeNode(t, g)).toBe(t);
   });
 
