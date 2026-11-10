@@ -73,7 +73,7 @@ export default function ReceiptStudioPreview({
     };
 
     const selectedBlock = (target: EventTarget | null) => {
-      return target instanceof doc.defaultView!.Element
+      return target && (target as Node).nodeType === 1
         ? (target as Element).closest<HTMLElement>('[data-block-id]') : null;
     };
     const onClick = (event: MouseEvent) => {
@@ -84,7 +84,7 @@ export default function ReceiptStudioPreview({
       const block = selectedBlock(event.target);
       if (!block?.dataset.blockId) return;
       const target = event.target;
-      if (!(target instanceof doc.defaultView!.Element)) return;
+      if (!target || (target as Node).nodeType !== 1) return;
       const editable = (target as Element).closest<HTMLElement>('[data-edit-field], [data-text-node]');
       if (!editable) return;
       event.preventDefault();
