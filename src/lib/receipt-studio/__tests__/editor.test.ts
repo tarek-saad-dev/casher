@@ -26,7 +26,7 @@ describe('Receipt Studio visual editor actions', () => {
 
   it('moves safe sections but rejects totals before items', () => {
     const initial = copy();
-    const moved = reorderReceiptBlocks(initial, 'footer', 'brand');
+    const moved = reorderReceiptBlocks(initial, 'thanks', 'brand');
     expect(moved.blocks[0].id).toBe('thanks');
     const rejected = reorderReceiptBlocks(initial, 'totals', 'items');
     expect(rejected).toBe(initial);
