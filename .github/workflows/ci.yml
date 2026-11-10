@@ -133,6 +133,9 @@ jobs:
       - name: Deploy script shell syntax
         run: bash -n deploy/deploy-casher
 
+      - name: Receipt Studio layout contract and thermal safety
+        run: npx vitest run src/lib/receipt-studio/__tests__/template.test.ts
+
       - name: Local print client and receipt interaction regressions
         run: npx vitest run src/lib/__tests__/localPrintClient.test.ts src/components/expenses/__tests__/ExpenseReceiptPopup.print.test.tsx
 
