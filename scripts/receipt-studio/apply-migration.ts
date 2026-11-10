@@ -1,7 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import dotenv from 'dotenv';
-import { getPool } from '../../src/lib/db';
 
 const args = new Set(process.argv.slice(2));
 const apply = args.has('--apply');
@@ -22,6 +21,7 @@ async function main() {
     return;
   }
   if (!backedUp) throw new Error('Refusing to change DB without --backup-verified');
+  const { getPool } = await import('../../src/lib/db');
   const db = await getPool();
   const existing = await db.request().query(`
     SELECT DB_NAME() AS db, OBJECT_ID(N'dbo.ReceiptStudioTemplate', N'U') AS templateTable
