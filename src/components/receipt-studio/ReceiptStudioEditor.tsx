@@ -1,0 +1,397 @@
+'use client';
+
+import { useCallback, useState, type DragEvent } from 'react';
+import Link from 'next/link';
+import {
+  ArrowDown, ArrowLeft, ArrowUp, Check, ChevronDown, FileText, GripVertical,
+  Layers, LayoutTemplate, LockKeyhole, Plus, Redo2, RotateCcw, Ruler,
+  Settings2, Type, Undo2, Eye, EyeOff, Info, Printer, Image as ImageIcon, Minus,
+} from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
+import {
+  COMPACT_CUT_RECEIPT_V1, validateReceiptTemplateV1,
+  type ReceiptBlockV1, type ReceiptBlockKind, type ReceiptTemplateV1,
+} from '@/lib/receipt-studio/template';
+import {
+  addReceiptDecoration, deleteReceiptDecoration, reorderReceiptBlocks, setReceiptMinHeight,
+  updateReceiptBlock, type SampleScenario,
+} from '@/lib/receipt-studio/editor';
+import ReceiptStudioPreview from './ReceiptStudioPreview';
+
+const LABELS: Record<ReceiptBlockKind, string> = {
+  brand: 'الشعار والهوية',
+  'invoice-meta': 'بيانات الفاتورة',
+  items: 'جدول الخدمات',
+  totals: 'الإجمالي والخصومات',
+  payment: 'طريقة الدفع',
+  divider: 'فاصل',
+  text: 'نص إضافي',
+  image: 'صورة PNG',
+  footer: 'رسالة الشكر',
+};
+const REQUIRED: ReadonlySet<ReceiptBlockKind> = new Set(['items', 'totals']);
+const FIXTURES: Array<{ value: SampleScenario; label: string }> = [
+  { value: 'one', label: 'خدمة واحدة' },
+  { value: 'three', label: '3 خدمات' },
+  { value: 'twelve', label: '12 خدمة' },
+  { value: 'long', label: 'أسماء طويلة' },
+];
+type HistoryState = { past: ReceiptTemplateV1[]; current: ReceiptTemplateV1; future: ReceiptTemplateV1[] };
+
+function freshTemplate(): ReceiptTemplateV1 {
+  return structuredClone(COMPACT_CUT_RECEIPT_V1);
+}
+
+export default function ReceiptStudioEditor() {
+  const [history, setHistory] = useState<HistoryState>(() => ({
+    past: [], current: freshTemplate(), future: [],
+  }));
+  const [selectedId, setSelectedId] = useState<string | null>('brand');
+  const [scenario, setScenario] = useState<SampleScenario>('three');
+  const [zoom, setZoom] = useState(110);
+  const [heightMm, setHeightMm] = useState(0);
+  const [message, setMessage] = useState<string | null>(null);
+  const [draggedId, setDraggedId] = useState<string | null>(null);
+
+  const template = history.current;
+  const selected = template.blocks.find((block) => block.id === selectedId) ?? null;
+  const modified = JSON.stringify(template) !== JSON.stringify(COMPACT_CUT_RECEIPT_V1);
+
+  const updateHeight = useCallback((mm: number) => setHeightMm((previous) => previous === mm ? previous : mm), []);
+
+  function commit(candidate: ReceiptTemplateV1, rejectedMessage = 'الحركة دي هتخالف ترتيب الفاتورة الآمن.') {
+    if (candidate === template || JSON.stringify(candidate) === JSON.stringify(template)) {
+      setMessage(rejectedMessage);
+      return;
+    }
+    const validated = validateReceiptTemplateV1(candidate);
+    if (!validated.ok) {
+      setMessage(validated.errors[0] ?? 'التصميم غير صالح');
+      return;
+    }
+    setHistory((current) => ({
+      past: [...current.past.slice(-29), current.current],
+      current: validated.template,
+      future: [],
+    }));
+    setMessage(null);
+  }
+
+  function changeBlock(patch: Partial<ReceiptBlockV1>) {
+    if (!selected) return;
+    commit(updateReceiptBlock(template, selected.id, patch));
+  }
+
+  function changeStyle(patch: NonNullable<ReceiptBlockV1['style']>) {
+    if (!selected) return;
+    changeBlock({ style: { ...selected.style, ...patch } });
+  }
+
+  function move(sourceId: string, targetId: string) {
+    commit(reorderReceiptBlocks(template, sourceId, targetId));
+  }
+
+  function nudge(id: string, by: number) {
+    const index = template.blocks.findIndex((block) => block.id === id);
+    const next = template.blocks[index + by];
+    if (index < 0 || !next) return;
+    move(id, next.id);
+  }
+
+  function onDragStart(event: DragEvent<HTMLDivElement>, id: string) {
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', id);
+    setDraggedId(id);
+  }
+
+  function onDrop(event: DragEvent<HTMLDivElement>, targetId: string) {
+    event.preventDefault();
+    const source = event.dataTransfer.getData('text/plain') || draggedId;
+    setDraggedId(null);
+    if (source && source !== targetId) move(source, targetId);
+  }
+
+  function add(kind: 'text' | 'divider') {
+    const candidate = addReceiptDecoration(template, kind);
+    if (candidate === template) {
+      setMessage('وصلت للحد الأقصى من عناصر الفاتورة.');
+      return;
+    }
+    commit(candidate);
+    setSelectedId(candidate.blocks[candidate.blocks.length - 1].id);
+  }
+
+  function undo() {
+    setHistory((state) => {
+      if (!state.past.length) return state;
+      const previous = state.past[state.past.length - 1];
+      return { past: state.past.slice(0, -1), current: previous, future: [state.current, ...state.future] };
+    });
+    setMessage(null);
+  }
+
+  function redo() {
+    setHistory((state) => {
+      if (!state.future.length) return state;
+      return { past: [...state.past, state.current], current: state.future[0], future: state.future.slice(1) };
+    });
+    setMessage(null);
+  }
+
+  function reset() {
+    commit(freshTemplate(), 'أنت بالفعل على التصميم الافتراضي.');
+    setSelectedId('brand');
+  }
+
+  const miniButton = 'inline-flex h-8 items-center justify-center rounded-lg border border-border bg-background px-2.5 text-xs font-medium transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40';
+
+  return (
+    <div dir="rtl" className="flex min-h-[calc(100vh-10rem)] flex-col gap-4">
+      <header className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-surface p-4 sm:p-5">
+        <div className="flex items-center gap-3">
+          <div className="flex size-11 items-center justify-center rounded-xl bg-foreground text-background">
+            <LayoutTemplate className="size-5"/>
+          </div>
+          <div>
+            <div className="mb-1 flex flex-wrap items-center gap-2">
+              <h1 className="text-xl font-black text-foreground">Receipt Studio</h1>
+              <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] font-semibold text-amber-700 dark:text-amber-300">
+                تجربة — غير منشور
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground">تصميم فواتير CUT الحرارية — 80mm رول / 72mm طباعة</p>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" onClick={undo} disabled={!history.past.length} title="تراجع">
+            <Undo2 className="size-4"/> تراجع
+          </Button>
+          <Button variant="outline" size="sm" onClick={redo} disabled={!history.future.length} title="إعادة">
+            <Redo2 className="size-4"/> إعادة
+          </Button>
+          <Button variant="outline" size="sm" onClick={reset} disabled={!modified}><RotateCcw className="size-4"/> استعادة</Button>
+          <Link href="/admin/settings/printing" className="inline-flex h-8 items-center gap-2 rounded-lg border border-border px-3 text-xs font-medium hover:bg-muted">
+            <ArrowLeft className="size-4"/> إدارة الطباعة
+          </Link>
+        </div>
+      </header>
+
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-muted/30 px-4 py-3 text-sm">
+        <div className="flex items-center gap-2 text-muted-foreground">
+          <Info className="size-4 shrink-0"/>
+          <span>مسودة مؤقتة داخل الصفحة فقط. لا حفظ على السيرفر ولا تغيير للفواتير الحقيقية.</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="rounded-full border border-border px-2 py-1 text-xs text-muted-foreground">
+            {modified ? 'تعديلات غير محفوظة' : 'التصميم الافتراضي'}
+          </span>
+          <Button size="sm" disabled title="الحفظ والنشر سيُضافان بعد ربط SQL Server">
+            <LockKeyhole className="size-4"/> حفظ ونشر — قريبًا
+          </Button>
+        </div>
+      </div>
+
+      <div className="grid items-start gap-4 xl:grid-cols-[260px_minmax(360px,1fr)_275px]">
+        {/* Block palette and layers */}
+        <aside className="rounded-2xl border border-border bg-surface p-4 xl:sticky xl:top-4">
+          <div className="mb-3 flex items-center gap-2"><Layers className="size-4 text-primary"/><h2 className="font-bold">طبقات الفاتورة</h2></div>
+          <p className="mb-4 text-xs leading-relaxed text-muted-foreground">اسحب الأقسام لتغيير ترتيبها أو استخدم الأسهم. جدول الخدمات يفضل قبل الإجمالي دائمًا.</p>
+          <div className="space-y-2">
+            {template.blocks.map((block, index) => {
+              const active = selectedId === block.id;
+              return (
+                <div
+                  key={block.id}
+                  draggable
+                  onDragStart={(event) => onDragStart(event, block.id)}
+                  onDragEnd={() => setDraggedId(null)}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={(event) => onDrop(event, block.id)}
+                  className={`flex items-center gap-2 rounded-xl border p-2 transition-colors ${active ? 'border-primary bg-primary/5' : 'border-border bg-background hover:bg-muted/50'} ${draggedId === block.id ? 'opacity-50' : ''}`}
+                >
+                  <GripVertical className="size-4 shrink-0 cursor-grab text-muted-foreground" aria-hidden/>
+                  <button type="button" onClick={() => setSelectedId(block.id)} className="min-w-0 flex-1 text-right">
+                    <span className="block truncate text-xs font-semibold">{LABELS[block.kind]}</span>
+                    <span className="text-[10px] text-muted-foreground">{REQUIRED.has(block.kind) ? 'أساسي' : block.enabled ? 'ظاهر' : 'مخفي'}</span>
+                  </button>
+                  <div className="flex shrink-0 flex-col gap-0.5">
+                    <button type="button" aria-label={`رفع ${LABELS[block.kind]}`} onClick={() => nudge(block.id, -1)} disabled={index === 0} className="rounded p-0.5 hover:bg-muted disabled:opacity-20"><ArrowUp className="size-3.5"/></button>
+                    <button type="button" aria-label={`خفض ${LABELS[block.kind]}`} onClick={() => nudge(block.id, 1)} disabled={index === template.blocks.length - 1} className="rounded p-0.5 hover:bg-muted disabled:opacity-20"><ArrowDown className="size-3.5"/></button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <div className="mt-5 border-t border-border pt-4">
+            <h3 className="mb-3 text-xs font-bold text-muted-foreground">إضافة عنصر</h3>
+            <div className="grid grid-cols-2 gap-2">
+              <Button variant="outline" size="sm" onClick={() => add('text')}><Type className="size-4"/> نص</Button>
+              <Button variant="outline" size="sm" onClick={() => add('divider')}><Minus className="size-4"/> فاصل</Button>
+            </div>
+            <div className="mt-2 flex items-center gap-2 rounded-lg border border-dashed border-border p-2 text-xs text-muted-foreground">
+              <ImageIcon className="size-4"/><span>رفع PNG والعناصر الحرة في PR-4</span>
+            </div>
+          </div>
+        </aside>
+
+        {/* Canvas */}
+        <main className="min-w-0 overflow-hidden rounded-2xl border border-border bg-surface">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border p-4">
+            <div>
+              <h2 className="font-bold">معاينة حية</h2>
+              <p className="mt-1 text-xs text-muted-foreground">معاينة شاشة قابلة للتعديل — لا تُرسل للطابعة</p>
+            </div>
+            <div className="flex items-center gap-2 text-xs">
+              <Ruler className="size-4 text-muted-foreground"/>
+              <span className="font-mono">{`72 × ${heightMm || '—'} mm`}</span>
+              <select
+                aria-label="تكبير المعاينة"
+                value={zoom}
+                onChange={(event) => setZoom(Number(event.target.value))}
+                className="h-8 rounded-lg border border-border bg-background px-2 text-xs"
+              >
+                <option value={80}>80%</option><option value={100}>100%</option>
+                <option value={110}>110%</option><option value={125}>125%</option>
+                <option value={150}>150%</option>
+              </select>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2 border-b border-border p-3" aria-label="عدد الخدمات في معاينة الفاتورة">
+            {FIXTURES.map(({ value, label }) => (
+              <button key={value} type="button" onClick={() => setScenario(value)} className={`${miniButton} ${scenario === value ? 'border-foreground bg-foreground text-background hover:bg-foreground' : ''}`}>
+                {scenario === value && <Check className="ml-1 size-3"/>}{label}
+              </button>
+            ))}
+          </div>
+          <div
+            className="min-h-[650px] overflow-auto px-4 py-8 sm:px-6"
+            style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(140,140,140,0.24) 1px, transparent 0)', backgroundSize: '18px 18px' }}
+          >
+            <div className="flex min-w-max flex-col items-center">
+              <div className="mb-3 text-[11px] font-semibold tracking-wider text-muted-foreground">THERMAL PAPER · XP-80</div>
+              <div style={{ zoom: zoom / 100, width: '80mm', padding: '0 4mm', backgroundColor: '#efefef', boxShadow: '0 18px 40px rgba(0,0,0,.17)' }}>
+                <ReceiptStudioPreview
+                  template={template}
+                  scenario={scenario}
+                  selectedId={selectedId}
+                  onSelect={setSelectedId}
+                  onHeight={updateHeight}
+                />
+              </div>
+              <div className="mt-3 flex items-center gap-1 text-xs text-muted-foreground"><Printer className="size-3.5"/> الطول بيتحسب تلقائيًا حسب المحتوى</div>
+            </div>
+          </div>
+        </main>
+
+        {/* Inspector */}
+        <aside className="rounded-2xl border border-border bg-surface p-4 xl:sticky xl:top-4">
+          <div className="mb-4 flex items-center gap-2"><Settings2 className="size-4 text-primary"/><h2 className="font-bold">خصائص التصميم</h2></div>
+          <div className="mb-4 rounded-xl border border-border bg-muted/30 p-3">
+            <div className="mb-2 flex items-center justify-between text-sm font-semibold">
+              <span>طول الفاتورة</span>
+              <span className="font-mono text-xs">Auto</span>
+            </div>
+            <p className="mb-3 text-xs leading-relaxed text-muted-foreground">الطول تلقائي لتجنب الفراغ أو قص الخدمات. تقدر تحدد حد أدنى بس.</p>
+            <label htmlFor="minimum-paper" className="mb-2 flex items-center justify-between text-xs">
+              <span>الحد الأدنى</span><span className="font-mono">{template.paper.minHeightMm ?? 0} mm</span>
+            </label>
+            <input
+              id="minimum-paper" type="range" min={0} max={260} step={5}
+              value={template.paper.minHeightMm ?? 0}
+              onChange={(event) => commit(setReceiptMinHeight(template, Number(event.target.value)))}
+              className="w-full accent-primary"
+            />
+            <div className="mt-2 text-[11px] text-muted-foreground">الطول الفعلي للمعاينة: {heightMm}mm</div>
+          </div>
+
+          {selected ? (
+            <div key={selected.id} className="space-y-4 border-t border-border pt-4">
+              <div>
+                <div className="text-sm font-bold">{LABELS[selected.kind]}</div>
+                <p className="text-xs text-muted-foreground">اختار عنصر من الفاتورة أو قائمة الطبقات.</p>
+              </div>
+              <label className="flex items-center justify-between gap-2 text-sm">
+                <span className="flex items-center gap-2">{selected.enabled ? <Eye className="size-4"/> : <EyeOff className="size-4"/>} إظهار العنصر</span>
+                <Switch checked={selected.enabled} onCheckedChange={(checked) => changeBlock({ enabled: checked })} disabled={REQUIRED.has(selected.kind)}/>
+              </label>
+              {selected.kind === 'text' && (
+                <label className="block text-xs">
+                  <span className="mb-2 block font-semibold">النص</span>
+                  <Input
+                    value={selected.text ?? ''}
+                    maxLength={180}
+                    onChange={(event) => changeBlock({ text: event.target.value })}
+                    dir="auto"
+                    aria-label="النص داخل الإيصال"
+                  />
+                </label>
+              )}
+              <div>
+                <label htmlFor="block-font" className="mb-2 flex justify-between text-xs font-semibold">
+                  <span>حجم الخط</span><span>{selected.style?.fontSizePx ?? 12} px</span>
+                </label>
+                <input id="block-font" type="range" min={9} max={30} step={1}
+                  value={selected.style?.fontSizePx ?? 12}
+                  onChange={(event) => changeStyle({ fontSizePx: Number(event.target.value) })}
+                  className="w-full accent-primary"
+                />
+              </div>
+              <label className="block text-xs">
+                <span className="mb-2 block font-semibold">سُمك الخط</span>
+                <select value={selected.style?.fontWeight ?? 600}
+                  onChange={(event) => changeStyle({ fontWeight: Number(event.target.value) as 400 | 600 | 700 | 800 | 900 })}
+                  className="h-9 w-full rounded-lg border border-border bg-background px-2 text-sm"
+                >
+                  <option value={400}>Regular</option><option value={600}>Semi Bold</option>
+                  <option value={700}>Bold</option><option value={800}>Extra Bold</option><option value={900}>Black</option>
+                </select>
+              </label>
+              <div>
+                <label htmlFor="block-gap" className="mb-2 flex justify-between text-xs font-semibold">
+                  <span>المسافة بعد العنصر</span><span>{selected.style?.gapAfterMm ?? 1} mm</span>
+                </label>
+                <input id="block-gap" type="range" min={0} max={8} step={0.5}
+                  value={selected.style?.gapAfterMm ?? 1}
+                  onChange={(event) => changeStyle({ gapAfterMm: Number(event.target.value) })}
+                  className="w-full accent-primary"
+                />
+              </div>
+              <div>
+                <p className="mb-2 text-xs font-semibold">المحاذاة</p>
+                <div className="grid grid-cols-3 gap-1" dir="ltr">
+                  {(['left', 'center', 'right'] as const).map((align) => (
+                    <button key={align} type="button"
+                      className={`${miniButton} ${(selected.style?.align ?? 'left') === align ? 'border-foreground bg-foreground text-background hover:bg-foreground' : ''}`}
+                      onClick={() => changeStyle({ align })}
+                    >{align}</button>
+                  ))}
+                </div>
+              </div>
+              {['text', 'divider'].includes(selected.kind) && (
+                <Button variant="destructive" size="sm" className="w-full" onClick={() => {
+                  commit(deleteReceiptDecoration(template, selected.id));
+                  setSelectedId(null);
+                }}>حذف العنصر</Button>
+              )}
+              {REQUIRED.has(selected.kind) && <p className="flex gap-2 text-[11px] text-muted-foreground"><LockKeyhole className="size-3.5 shrink-0"/> العنصر أساسي لضمان فاتورة صحيحة.</p>}
+            </div>
+          ) : (
+            <div className="rounded-xl border border-dashed border-border p-5 text-center text-xs text-muted-foreground">
+              اختار عنصر من التصميم علشان تعدّل خصائصه.
+            </div>
+          )}
+        </aside>
+      </div>
+
+      {message && (
+        <div role="status" className="flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm">
+          <Info className="size-4"/>{message}
+          <button type="button" className="mr-auto text-xs underline" onClick={() => setMessage(null)}>إغلاق</button>
+        </div>
+      )}
+      <p className="text-center text-xs text-muted-foreground">Studio V1 · تعديل بصري آمن · حفظ المسودات ورفع الصور والطباعة التجريبية في المراحل التالية</p>
+    </div>
+  );
+}

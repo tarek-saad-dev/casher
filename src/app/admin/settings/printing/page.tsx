@@ -127,6 +127,12 @@ export default function PrinterControlPage() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Link
+            href="/admin/settings/printing/studio"
+            className="inline-flex items-center justify-center rounded-md bg-foreground px-4 py-2 text-sm font-bold text-background transition-opacity hover:opacity-85"
+          >
+            تصميم الفاتورة — Receipt Studio
+          </Link>
+          <Link
             href="/cut-compact-receipt.html"
             target="_blank"
             rel="noopener noreferrer"
