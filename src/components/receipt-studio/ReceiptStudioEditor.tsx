@@ -216,34 +216,37 @@ export default function ReceiptStudioEditor() {
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file || busyRef.current) return;
-    if (file.type !== 'image/png' || file.size > 153600) {
-      setMessage('ارفع PNG فقط بحجم أقل من 150KB وبعرض لا يتجاوز 576px.');
-      return;
-    }
     busyRef.current = true; setBusy(true);
     try {
-      const body = new FormData(); body.append('file', file);
-      const response = await fetch('/api/admin/receipt-studio/assets', { method: 'POST', body });
-      const json = await response.json();
-      if (!response.ok || !json.ok) throw new Error(json.error || 'فشل رفع الصورة');
-      const assetId: string = json.assetId;
-      const dataUri: string = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result));
-        reader.onerror = () => reject(new Error('فشل قراءة الصورة'));
-        reader.readAsDataURL(file);
-      });
-      setAssets((old) => ({ ...old, [assetId]: dataUri }));
-      const candidate = addReceiptImage(template, assetId);
-      if (candidate === template) throw new Error('لا يمكن إضافة صور أكثر أو الصورة غير صالحة');
-      // Upload and layout update are a single intentional editor action.
+      const image = await prepareThermalImage(file);
+      let assetId: string;
+      if (dbReady) {
+        const body = new FormData();
+        body.append('file', image.png);
+        const response = await fetch('/api/admin/receipt-studio/assets', { method: 'POST', body });
+        const json = await response.json();
+        if (!response.ok || !json.ok) throw new Error(json.error || 'فشل رفع الصورة');
+        assetId = String(json.assetId);
+      } else {
+        // Allow visual experimentation when the optional SQL schema is not installed.
+        // This UUID cannot be published or saved without first uploading to the backend.
+        assetId = crypto.randomUUID();
+      }
+      const parent = selected?.kind === 'group' ? selected.id : null;
+      const candidate = addTreeNode(template, 'image', parent, assetId);
+      if (candidate === template) throw new Error('الحد الأقصى 6 صور أو عمق المجموعة أكبر من المسموح');
+      setAssets((previous) => ({ ...previous, [assetId]: image.dataUri }));
+      const id = findInserted(candidate);
       busyRef.current = false;
       commit(candidate);
       busyRef.current = true;
-      setSelectedId(candidate.blocks[candidate.blocks.length-1].id);
-      setMessage('تم رفع PNG وإضافتها للتصميم. احفظ المسودة للاحتفاظ بها.');
-    } catch (error) { setMessage(error instanceof Error ? error.message : 'فشل رفع الصورة'); }
-    finally { busyRef.current = false; setBusy(false); }
+      if (id) selectLayer(id);
+      setMessage(dbReady
+        ? 'تم إضافة الصورة وتحويلها لأبيض وأسود مناسب للطابعة. احفظ المسودة.'
+        : 'الصورة موجودة في المعاينة مؤقتًا. حفظها يحتاج تفعيل قاعدة بيانات Receipt Studio.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'تعذر تجهيز الصورة');
+    } finally { busyRef.current = false; setBusy(false); }
   }
 
   const updateHeight = useCallback((mm: number) => setHeightMm((previous) => previous === mm ? previous : mm), []);
