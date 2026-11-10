@@ -87,7 +87,7 @@ export function addReceiptDecoration(
 
 export function deleteReceiptDecoration(template: ReceiptTemplateV1, id: string): ReceiptTemplateV1 {
   const selected = template.blocks.find((b) => b.id === id);
-  if (!selected || !['text', 'divider'].includes(selected.kind)) return template;
+  if (!selected || !['text', 'divider', 'image'].includes(selected.kind)) return template;
   const candidate = { ...template, blocks: template.blocks.filter((b) => b.id !== id) };
   return validateReceiptTemplateV1(candidate).ok ? candidate : template;
 }
