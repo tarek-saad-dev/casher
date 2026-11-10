@@ -42,7 +42,8 @@ describe('Receipt Studio browser + ESC/POS HTML', () => {
     template.blocks.push({ id: 'safe_text', kind: 'text', enabled: true, text: '<svg onload=alert(1)>' });
     const html = renderStudioReceiptHtml(template, input);
     expect(html).not.toContain('<script>');
-    expect(html).not.toContain('src=x onerror');
+    expect(html).not.toContain('<img src=x onerror');
+    expect(html).toContain('&lt;img src=x onerror=alert(1)&gt;');
     expect(html).not.toContain('<svg onload');
     expect(html).toContain('&lt;script&gt;');
     expect(html).toContain('&amp;');
