@@ -1,4 +1,5 @@
 import 'server-only';
+import type { Request, Transaction } from 'mssql';
 import { getPool, sql } from '@/lib/db';
 import {
   COMPACT_CUT_RECEIPT_V1,
@@ -58,7 +59,7 @@ export async function assertStudioSchema(): Promise<void> {
     throw new StudioError('Receipt Studio database migration has not been applied', 503, 'SCHEMA_NOT_READY');
   }
 }
-function args(req: sql.Request, tenantId: string, branch: number) {
+function args(req: Request, tenantId: string, branch: number) {
   return req
     .input('tenantId', sql.UniqueIdentifier, tenantId)
     .input('branch', sql.Int, branch)
@@ -132,7 +133,7 @@ export async function saveStudioDraft(
     return next;
   } catch (error) { await tx.rollback(); throw error; }
 }
-async function assertAssets(tenantId: string, design: ReceiptTemplateV1, tx: sql.Transaction) {
+async function assertAssets(tenantId: string, design: ReceiptTemplateV1, tx: Transaction) {
   const ids = [...new Set(design.blocks.filter((b) => b.kind === 'image' && b.enabled).map((b) => b.assetId!))];
   for (const id of ids) {
     if (!/^[0-9a-f-]{36}$/i.test(id)) throw new StudioError('Image must be uploaded from Receipt Studio', 400, 'INVALID_ASSET');
