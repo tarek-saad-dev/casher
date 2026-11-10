@@ -13,7 +13,7 @@ export async function GET() {
     if (!published) return NextResponse.json({ ok: true, published: null }, { headers: { 'Cache-Control': 'no-store' } });
     const assets = await assetUrisForTemplate(auth.tenantId, published.template);
     return NextResponse.json(
-      { ok: true, published: published.template, version: published.version, scope: published.branchScope, assets },
+      { ok: true, published: published.template, version: published.version, scope: published.branchScope, branchCode: auth.activeBranchCode, assets },
       { headers: { 'Cache-Control': 'no-store' } },
     );
   } catch (error) {
