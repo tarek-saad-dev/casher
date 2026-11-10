@@ -596,7 +596,7 @@ export default function ReceiptStudioEditor() {
                   ))}
                 </div>
               </div>
-              {['text', 'divider'].includes(selected.kind) && (
+              {['text', 'divider', 'image'].includes(selected.kind) && (
                 <Button variant="destructive" size="sm" className="w-full" onClick={() => {
                   commit(deleteReceiptDecoration(template, selected.id));
                   setSelectedId(null);
