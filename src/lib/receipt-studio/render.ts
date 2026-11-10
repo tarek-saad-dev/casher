@@ -46,21 +46,24 @@ export function renderStudioReceiptHtml(
   const safe = escapeReceiptHtml;
   const render = (blocks: ReceiptBlockV1[]): string => blocks.filter((b) => b.enabled).map((b) => {
     const style = cssStyle(b);
+    const marker = 'data-block-id="' + b.id + '"';
+    const editable = (key: ReceiptField, fallback?: string) => '<span data-edit-field="' + key + '">' + label(b, key, fallback) + '</span>';
+
     if (b.kind === 'group') {
       const padding = b.style?.paddingMm ?? 0;
       const spacing = b.style?.groupGapMm ?? 0;
-      return `<section class="studio-block studio-group" style="${style}padding:${padding}mm;row-gap:${spacing}mm">
+      return `<section class="studio-block studio-group" ${marker} style="${style}padding:${padding}mm;row-gap:${spacing}mm">
         ${render(b.children ?? [])}
       </section>`;
     }
-    if (b.kind === 'brand') return `<section class="studio-block brand" style="${style}">
-      <strong>${label(b, 'brandName', model.brand)}</strong>
-      <div class="brand-caption">${label(b, 'brandTagline')}</div>
+    if (b.kind === 'brand') return `<section class="studio-block brand" ${marker} style="${style}">
+      <strong>${editable('brandName', model.brand)}</strong>
+      <div class="brand-caption">${editable('brandTagline')}</div>
       <div class="brand-branch">${safe(model.branch)}</div>
     </section>`;
-    if (b.kind === 'invoice-meta') return `<section class="studio-block meta" style="${style}">
-      <div class="pair"><b>${label(b, 'receiptLabel')} #${safe(model.invoiceNo)}</b><span>${safe(model.date)}</span></div>
-      <div class="pair"><span>${label(b, 'customerLabel')}: ${safe(model.customer)}</span><span>${safe(model.time)}</span></div>
+    if (b.kind === 'invoice-meta') return `<section class="studio-block meta" ${marker} style="${style}">
+      <div class="pair"><b>${editable('receiptLabel')} #${safe(model.invoiceNo)}</b><span>${safe(model.date)}</span></div>
+      <div class="pair"><span>${editable('customerLabel')}: ${safe(model.customer)}</span><span>${safe(model.time)}</span></div>
     </section>`;
     if (b.kind === 'items') {
       const rows = model.items.map((item, index) => `<tr><td>${index + 1}</td>
@@ -68,40 +71,40 @@ export function renderStudioReceiptHtml(
         ${item.sublabel ? `<small>${safe(item.sublabel)}</small>` : ''}
         ${item.employee ? `<small>${safe(item.employee)}</small>` : ''}
         </td><td class="item-price">${item.price != null ? money(item.price) : ''}</td></tr>`).join('');
-      return `<section class="studio-block items" style="${style}">
+      return `<section class="studio-block items" ${marker} style="${style}">
         <table><colgroup><col style="width:24px"><col><col style="width:72px"></colgroup>
           <thead><tr>
-            <th>${label(b, 'numberHeader')}</th>
-            <th>${label(b, 'serviceHeader')}</th>
-            <th>${label(b, 'priceHeader')}</th>
+            <th>${editable('numberHeader')}</th>
+            <th>${editable('serviceHeader')}</th>
+            <th>${editable('priceHeader')}</th>
           </tr></thead><tbody>${rows}</tbody></table></section>`;
     }
     if (b.kind === 'totals') {
       const discounts = model.discounts.filter((d) => d.amount > 0)
-        .map((d) => `<div class="pair line"><span>${label(b, 'discountLabel')}: ${safe(d.label)}</span><span>-${money(d.amount)} EGP</span></div>`).join('');
-      return `<section class="studio-block totals" style="${style}">
-        <div class="pair line"><span>${label(b, 'subtotalLabel')}</span><span>${money(model.subtotal)} EGP</span></div>
+        .map((d) => `<div class="pair line"><span>${editable('discountLabel')}: ${safe(d.label)}</span><span>-${money(d.amount)} EGP</span></div>`).join('');
+      return `<section class="studio-block totals" ${marker} style="${style}">
+        <div class="pair line"><span>${editable('subtotalLabel')}</span><span>${money(model.subtotal)} EGP</span></div>
         ${discounts}
-        <div class="pair grand"><strong>${label(b, 'totalLabel')}</strong><strong>${money(model.grandTotal)} EGP</strong></div>
+        <div class="pair grand"><strong>${editable('totalLabel')}</strong><strong>${money(model.grandTotal)} EGP</strong></div>
       </section>`;
     }
-    if (b.kind === 'payment') return `<section class="studio-block payment" style="${style}">
-      ${model.payments.map((p) => `<div class="pair"><span>${label(b, 'paymentLabel')}: ${safe(p.label)}</span>
+    if (b.kind === 'payment') return `<section class="studio-block payment" ${marker} style="${style}">
+      ${model.payments.map((p) => `<div class="pair"><span>${editable('paymentLabel')}: ${safe(p.label)}</span>
         ${p.amount == null ? '' : `<span>${money(p.amount)} EGP</span>`}</div>`).join('')}
       </section>`;
-    if (b.kind === 'divider') return `<div class="studio-block divider" style="${style}"></div>`;
-    if (b.kind === 'text') return `<section class="studio-block custom" style="${style}">${safe(b.text)}</section>`;
+    if (b.kind === 'divider') return `<div class="studio-block divider" ${marker} style="${style}"></div>`;
+    if (b.kind === 'text') return `<section class="studio-block custom" ${marker} style="${style}"><span data-text-node>${safe(b.text)}</span></section>`;
     if (b.kind === 'image') {
       const src = b.assetId && assets[b.assetId];
       if (!src || !/^data:image\/png;base64,[a-zA-Z0-9+/=]+$/.test(src)) return '';
       const width = b.style?.imageWidthMm ?? 36;
-      return `<section class="studio-block image" style="${style}">
+      return `<section class="studio-block image" ${marker} style="${style}">
         <img src="${src}" style="width:${width}mm" alt="" />
       </section>`;
     }
-    if (b.kind === 'footer') return `<section class="studio-block footer" style="${style}">
-      <strong>${label(b, 'thanksText', model.footer || undefined)}</strong>
-      <small>${label(b, 'footerTagline')}</small>
+    if (b.kind === 'footer') return `<section class="studio-block footer" ${marker} style="${style}">
+      <strong>${editable('thanksText', model.footer || undefined)}</strong>
+      <small>${editable('footerTagline')}</small>
       ${model.phone ? `<span>${safe(model.phone)}</span>` : ''}
     </section>`;
     return '';
@@ -113,7 +116,9 @@ export function renderStudioReceiptHtml(
     html,body{width:72mm;max-width:72mm;margin:0;padding:0;background:#fff;color:#111;overflow:hidden}
     body{font-family:Arial,Tahoma,sans-serif;direction:ltr;font-size:12px;line-height:1.35;
       min-height:${template.paper.minHeightMm ?? 0}mm;padding:3mm 2.5mm 2.5mm}
-    .studio-block{min-width:0;overflow-wrap:anywhere}
+    .studio-block{min-width:0;overflow-wrap:anywhere;cursor:pointer}
+    [data-edit-field],[data-text-node]{cursor:text}
+    [contenteditable="true"]{outline:1px dashed #555;white-space:pre-wrap}
     .studio-group{display:flex;flex-direction:column;min-width:0}
     .brand{text-align:center;border-bottom:1px solid #111;padding-bottom:5px}
     .brand strong{font-size:inherit;font-family:Georgia,Arial,sans-serif;letter-spacing:-1.5px}
