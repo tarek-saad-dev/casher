@@ -8,6 +8,9 @@ export async function POST(req: NextRequest) {
   if (!isAuthResult(auth)) return auth;
   try {
     const body = await req.json();
+    if (body.physicalProofConfirmed !== true) {
+      return NextResponse.json({ ok: false, code: 'PHYSICAL_PROOF_REQUIRED', error: 'تأكيد تجربة الطباعة على XP-80 مطلوب قبل الاعتماد' }, { status: 400 });
+    }
     const scope = branchScope(parseScope(body.scope), auth.activeBranchId);
     const version = await publishStudio(auth.tenantId, scope, auth.userId, body.expectedDraftRevision);
     return NextResponse.json({ ok: true, publishedVersion: version });
