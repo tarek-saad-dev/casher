@@ -3,6 +3,7 @@
  * The v1 UI keeps its draft in React memory until SQL drafts are introduced.
  */
 import { validateReceiptTemplateV1, type ReceiptBlockV1, type ReceiptTemplateV1 } from './template';
+import { addTreeNode, moveTreeNode, updateTreeNode, removeTreeNode } from './tree';
 
 export type SampleScenario = 'one' | 'three' | 'twelve' | 'long';
 export type SampleLine = { name: string; price: number; qty: number };
@@ -48,65 +49,27 @@ export function formatMoney(amount: number): string {
   return amount.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 }
 
-export function reorderReceiptBlocks(
-  template: ReceiptTemplateV1, sourceId: string, targetId: string,
-): ReceiptTemplateV1 {
-  const from = template.blocks.findIndex((b) => b.id === sourceId);
-  const to = template.blocks.findIndex((b) => b.id === targetId);
-  if (from < 0 || to < 0 || from === to) return template;
-  const blocks = [...template.blocks];
-  const [block] = blocks.splice(from, 1);
-  blocks.splice(to, 0, block);
-  const candidate = { ...template, blocks };
+export function reorderReceiptBlocks(template: ReceiptTemplateV1, sourceId: string, targetId: string) {
+  return moveTreeNode(template, sourceId, targetId, 'before');
+}
+
+export function updateReceiptBlock(template: ReceiptTemplateV1, id: string, patch: Partial<ReceiptBlockV1>) {
+  return updateTreeNode(template, id, patch);
+}
+
+export function addReceiptDecoration(template: ReceiptTemplateV1, kind: 'text' | 'divider', parentId: string | null = null) {
+  return addTreeNode(template, kind, parentId);
+}
+
+export function deleteReceiptDecoration(template: ReceiptTemplateV1, id: string) {
+  return removeTreeNode(template, id);
+}
+
+export function setReceiptMinHeight(template: ReceiptTemplateV1, mm: number) {
+  const candidate = { ...template, paper: { ...template.paper, minHeightMm: mm } };
   return validateReceiptTemplateV1(candidate).ok ? candidate : template;
 }
 
-export function updateReceiptBlock(
-  template: ReceiptTemplateV1, id: string, patch: Partial<ReceiptBlockV1>,
-): ReceiptTemplateV1 {
-  if (!template.blocks.some((b) => b.id === id)) return template;
-  const blocks = template.blocks.map((b) => b.id === id
-    ? { ...b, ...patch, style: patch.style === undefined ? b.style : { ...b.style, ...patch.style } }
-    : b);
-  const candidate = { ...template, blocks };
-  return validateReceiptTemplateV1(candidate).ok ? candidate : template;
-}
-
-export function addReceiptDecoration(
-  template: ReceiptTemplateV1, kind: 'text' | 'divider',
-): ReceiptTemplateV1 {
-  const used = new Set(template.blocks.map((b) => b.id));
-  let index = 1;
-  while (used.has(`block_${index}`)) index++;
-  const block: ReceiptBlockV1 = kind === 'text'
-    ? { id: `block_${index}`, kind: 'text', enabled: true, text: 'MORE THAN A HAIRCUT', style: { align: 'center', fontSizePx: 11, gapAfterMm: 1 } }
-    : { id: `block_${index}`, kind: 'divider', enabled: true, style: { gapAfterMm: 1 } };
-  const candidate = { ...template, blocks: [...template.blocks, block] };
-  return validateReceiptTemplateV1(candidate).ok ? candidate : template;
-}
-
-export function deleteReceiptDecoration(template: ReceiptTemplateV1, id: string): ReceiptTemplateV1 {
-  const selected = template.blocks.find((b) => b.id === id);
-  if (!selected || !['text', 'divider', 'image'].includes(selected.kind)) return template;
-  const candidate = { ...template, blocks: template.blocks.filter((b) => b.id !== id) };
-  return validateReceiptTemplateV1(candidate).ok ? candidate : template;
-}
-
-export function setReceiptMinHeight(template: ReceiptTemplateV1, mm: number): ReceiptTemplateV1 {
-  const candidate: ReceiptTemplateV1 = { ...template, paper: { ...template.paper, minHeightMm: mm } };
-  return validateReceiptTemplateV1(candidate).ok ? candidate : template;
-}
-
-/** Adds only a registered, uploaded image identifier; content is resolved by the tenant-scoped API. */
-export function addReceiptImage(template: ReceiptTemplateV1, assetId: string): ReceiptTemplateV1 {
-  if (!/^[0-9a-f-]{36}$/i.test(assetId)) return template;
-  const ids = new Set(template.blocks.map((b) => b.id));
-  let i = 1;
-  while (ids.has(`image_${i}`)) i++;
-  const block: ReceiptBlockV1 = {
-    id: `image_${i}`, kind: 'image', enabled: true,
-    assetId, style: { align: 'center', gapAfterMm: 1 },
-  };
-  const candidate = { ...template, blocks: [...template.blocks, block] };
-  return validateReceiptTemplateV1(candidate).ok ? candidate : template;
+export function addReceiptImage(template: ReceiptTemplateV1, assetId: string, parentId: string | null = null) {
+  return addTreeNode(template, 'image', parentId, assetId);
 }
