@@ -29,6 +29,16 @@ export function treeNodeParentId(blocks: ReceiptBlockV1[], id: string, parentId:
   }
   return undefined;
 }
+function hasLockedAncestor(blocks: ReceiptBlockV1[], id: string, locked = false): boolean {
+  for (const block of blocks) {
+    if (block.id === id) return locked;
+    if (block.children) {
+      const found = findReceiptNode(block.children, id);
+      if (found) return hasLockedAncestor(block.children, id, locked || Boolean(block.locked));
+    }
+  }
+  return false;
+}
 function withChildren(blocks: ReceiptBlockV1[], id: string, transform: (node: ReceiptBlockV1) => ReceiptBlockV1): ReceiptBlockV1[] {
   return blocks.map((b) => {
     if (b.id === id) return transform(b);
@@ -65,7 +75,7 @@ export function updateTreeNode(
   patch: Partial<ReceiptBlockV1>,
 ): ReceiptTemplateV1 {
   const original = findReceiptNode(template.blocks, id);
-  if (!original || (original.locked && !(patch.locked === false && Object.keys(patch).length === 1))) return template;
+  if (!original || hasLockedAncestor(template.blocks, id) || (original.locked && !(patch.locked === false && Object.keys(patch).length === 1))) return template;
   // A caller must never move children via an unchecked patch.
   if (patch.children !== undefined || patch.id !== undefined || patch.kind !== undefined) return template;
   const tree = withChildren(template.blocks, id, (b) => ({
@@ -80,7 +90,7 @@ export function moveTreeNode(
   if (sourceId === targetId) return template;
   const source = findReceiptNode(template.blocks, sourceId);
   const target = findReceiptNode(template.blocks, targetId);
-  if (!source || !target || source.locked || target.locked) return template;
+  if (!source || !target || source.locked || target.locked || hasLockedAncestor(template.blocks, sourceId) || hasLockedAncestor(template.blocks, targetId)) return template;
   if (allReceiptNodes(source.children ?? []).some((x) => x.id === targetId)) return template;
   if (placement === 'inside' && target.kind !== 'group') return template;
   const without = removeRec(template.blocks, sourceId);
@@ -105,7 +115,7 @@ export function addTreeNode(
 ): ReceiptTemplateV1 {
   if (kind === 'image' && (!assetId || !/^[0-9a-f-]{36}$/i.test(assetId))) return template;
   const parent = parentId ? findReceiptNode(template.blocks, parentId) : null;
-  if (parentId && (parent?.kind !== 'group' || parent.locked)) return template;
+  if (parentId && (parent?.kind !== 'group' || parent.locked || hasLockedAncestor(template.blocks, parentId))) return template;
   const node: ReceiptBlockV1 = {
     id: newUniqueId(template.blocks, kind),
     name: kind === 'group' ? 'New Group' : undefined,
@@ -122,7 +132,7 @@ export function addTreeNode(
 
 export function removeTreeNode(template: ReceiptTemplateV1, id: string): ReceiptTemplateV1 {
   const node = findReceiptNode(template.blocks, id);
-  if (!node || node.locked || ['items', 'totals'].includes(node.kind)) return template;
+  if (!node || node.locked || hasLockedAncestor(template.blocks, id) || ['items', 'totals'].includes(node.kind)) return template;
   // Never silently delete mandatory descendants (the validator also rejects that).
   return verified(template, removeRec(template.blocks, id).blocks);
 }
@@ -135,7 +145,7 @@ export function groupReceiptNodes(template: ReceiptTemplateV1, selectedIds: stri
   const siblings = parentId === null ? template.blocks : findReceiptNode(template.blocks, parentId)?.children;
   if (!siblings) return template;
   const picked = siblings.filter((b) => selected.includes(b.id));
-  if (picked.length !== selected.length || picked.some((b) => b.locked)) return template;
+  if (picked.length !== selected.length || picked.some((b) => b.locked || hasLockedAncestor(template.blocks, b.id))) return template;
   const group: ReceiptBlockV1 = {
     id: newUniqueId(template.blocks, 'group'), kind: 'group', name: 'New Group',
     enabled: true, style: { paddingMm: 1, groupGapMm: 1 },
@@ -154,7 +164,7 @@ export function groupReceiptNodes(template: ReceiptTemplateV1, selectedIds: stri
 }
 export function ungroupReceiptNode(template: ReceiptTemplateV1, id: string): ReceiptTemplateV1 {
   const node = findReceiptNode(template.blocks, id);
-  if (!node || node.kind !== 'group' || node.locked) return template;
+  if (!node || node.kind !== 'group' || node.locked || hasLockedAncestor(template.blocks, id)) return template;
   const visit = (blocks: ReceiptBlockV1[]): ReceiptBlockV1[] => blocks.flatMap((b) => {
     if (b.id === id) return b.children ?? [];
     return [b.children ? { ...b, children: visit(b.children) } : b];
@@ -163,7 +173,7 @@ export function ungroupReceiptNode(template: ReceiptTemplateV1, id: string): Rec
 }
 export function duplicateTreeNode(template: ReceiptTemplateV1, id: string): ReceiptTemplateV1 {
   const node = findReceiptNode(template.blocks, id);
-  if (!node || node.locked || !['text', 'image', 'divider'].includes(node.kind)) return template;
+  if (!node || node.locked || hasLockedAncestor(template.blocks, id) || !['text', 'image', 'divider'].includes(node.kind)) return template;
   const duplicate: ReceiptBlockV1 = { ...structuredClone(node), id: newUniqueId(template.blocks, node.kind) };
   // Insert before original, can subsequently reorder.
   return verified(template, insertBefore(template.blocks, id, duplicate));
