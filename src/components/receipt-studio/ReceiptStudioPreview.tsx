@@ -10,6 +10,7 @@ type Props = {
   selectedId: string | null;
   onSelect: (id: string) => void;
   onHeight: (millimeters: number) => void;
+  assets?: Record<string, string>;
 };
 
 function blockStyle(block: ReceiptBlockV1): React.CSSProperties {
@@ -23,7 +24,7 @@ function blockStyle(block: ReceiptBlockV1): React.CSSProperties {
 }
 
 export default function ReceiptStudioPreview({
-  template, scenario, selectedId, onSelect, onHeight,
+  template, scenario, selectedId, onSelect, onHeight, assets = {},
 }: Props) {
   const receipt = getSampleReceipt(scenario);
   const receiptRef = useRef<HTMLDivElement>(null);
@@ -120,7 +121,12 @@ export default function ReceiptStudioPreview({
     if (block.kind === 'text') {
       return <div style={{ ...styles, overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>{block.text}</div>;
     }
-    return <div style={{ ...styles, fontSize: 10, border: '1px dashed #999', padding: 8 }}>PNG assets available in phase 4</div>;
+    const src = block.assetId ? assets[block.assetId] : null;
+    return src ? (
+      <div style={{ ...styles, textAlign: 'center' }}>
+        <img src={src} alt="Uploaded receipt decoration" style={{ display: 'block', maxWidth: '100%', maxHeight: '28mm', width: 'auto', margin: '0 auto', filter: 'grayscale(1) contrast(2)' }} />
+      </div>
+    ) : <div style={{ ...styles, fontSize: 10, border: '1px dashed #999', padding: 8 }}>صورة غير متاحة</div>;
   }
 
   return (
