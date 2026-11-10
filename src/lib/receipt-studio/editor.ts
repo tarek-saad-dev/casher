@@ -96,3 +96,17 @@ export function setReceiptMinHeight(template: ReceiptTemplateV1, mm: number): Re
   const candidate: ReceiptTemplateV1 = { ...template, paper: { ...template.paper, minHeightMm: mm } };
   return validateReceiptTemplateV1(candidate).ok ? candidate : template;
 }
+
+/** Adds only a registered, uploaded image identifier; content is resolved by the tenant-scoped API. */
+export function addReceiptImage(template: ReceiptTemplateV1, assetId: string): ReceiptTemplateV1 {
+  if (!/^[0-9a-f-]{36}$/i.test(assetId)) return template;
+  const ids = new Set(template.blocks.map((b) => b.id));
+  let i = 1;
+  while (ids.has(`image_${i}`)) i++;
+  const block: ReceiptBlockV1 = {
+    id: `image_${i}`, kind: 'image', enabled: true,
+    assetId, style: { align: 'center', gapAfterMm: 1 },
+  };
+  const candidate = { ...template, blocks: [...template.blocks, block] };
+  return validateReceiptTemplateV1(candidate).ok ? candidate : template;
+}
