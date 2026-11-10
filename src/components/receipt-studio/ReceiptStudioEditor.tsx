@@ -292,11 +292,9 @@ export default function ReceiptStudioEditor() {
       setSelectedIds([id]);
       return;
     }
-    setSelectedIds((previous) => {
-      const next = previous.includes(id) ? previous.filter((key) => key !== id) : [...previous, id];
-      setSelectedId(next[next.length - 1] ?? null);
-      return next;
-    });
+    const next = selectedIds.includes(id) ? selectedIds.filter((key) => key !== id) : [...selectedIds, id];
+    setSelectedIds(next);
+    setSelectedId(next[next.length - 1] ?? null);
   }
   function findInserted(candidate: ReceiptTemplateV1) {
     const previous = new Set(allReceiptNodes(template.blocks).map((b) => b.id));
