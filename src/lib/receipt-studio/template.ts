@@ -192,7 +192,7 @@ export function validateReceiptTemplateV1(input: unknown): ReceiptTemplateValida
       }
       if (b.kind === 'image') {
         images++;
-        if (typeof b.assetId !== 'string' || !/^[0-9a-fA-F-]{36}$/.test(b.assetId)) errors.push(`${at}.assetId: expected registered UUID`);
+        if (typeof b.assetId !== 'string' || !/^[0-9a-fA-F-]{36}$/.test(b.assetId)) errors.push(`${at}.assetId: invalid asset identifier (expected registered UUID)`);
       } else if (b.assetId !== undefined) errors.push(`${at}.assetId: only image blocks`);
       if (b.kind === 'text') {
         if (typeof b.text !== 'string' || b.text.length > 500) errors.push(`${at}.text: maximum 500 characters`);
