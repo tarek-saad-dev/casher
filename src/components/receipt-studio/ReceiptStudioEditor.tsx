@@ -228,7 +228,10 @@ export default function ReceiptStudioEditor() {
       setAssets((old) => ({ ...old, [assetId]: dataUri }));
       const candidate = addReceiptImage(template, assetId);
       if (candidate === template) throw new Error('لا يمكن إضافة صور أكثر أو الصورة غير صالحة');
+      // Upload and layout update are a single intentional editor action.
+      busyRef.current = false;
       commit(candidate);
+      busyRef.current = true;
       setSelectedId(candidate.blocks[candidate.blocks.length-1].id);
       setMessage('تم رفع PNG وإضافتها للتصميم. احفظ المسودة للاحتفاظ بها.');
     } catch (error) { setMessage(error instanceof Error ? error.message : 'فشل رفع الصورة'); }
