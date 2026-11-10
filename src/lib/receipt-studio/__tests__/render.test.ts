@@ -52,11 +52,11 @@ describe('Receipt Studio browser + ESC/POS HTML', () => {
 
   it('only displays tenant-authorized inline PNGs, rejecting external image URLs', () => {
     const template = structuredClone(COMPACT_CUT_RECEIPT_V1);
-    template.blocks.push({ id: 'badge', kind: 'image', enabled: true, assetId: 'abc-def' });
-    const html = renderStudioReceiptHtml(template, model, { 'abc-def': 'https://evil.example/tracker.png' });
+    template.blocks.push({ id: 'badge', kind: 'image', enabled: true, assetId: '550e8400-e29b-41d4-a716-446655440000' });
+    const html = renderStudioReceiptHtml(template, model, { '550e8400-e29b-41d4-a716-446655440000': 'https://evil.example/tracker.png' });
     expect(html).not.toContain('evil.example');
     expect(html).not.toContain('<img');
-    const valid = renderStudioReceiptHtml(template, model, { 'abc-def': 'data:image/png;base64,AAAA' });
+    const valid = renderStudioReceiptHtml(template, model, { '550e8400-e29b-41d4-a716-446655440000': 'data:image/png;base64,AAAA' });
     expect(valid).toContain('<img');
   });
 });
