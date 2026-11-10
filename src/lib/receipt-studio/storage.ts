@@ -100,6 +100,7 @@ export async function saveStudioDraft(
   if (!validated.ok) throw new StudioError(validated.errors[0] ?? 'Invalid receipt design', 400, 'INVALID_TEMPLATE');
   if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) throw new StudioError('Invalid draft revision');
   await assertStudioSchema();
+  await assetUrisForTemplate(tenantId, validated.template);
   const pool = await getPool();
   const tx = new sql.Transaction(pool);
   await tx.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
@@ -176,11 +177,13 @@ async function publishSnapshot(tenantId: string, branch: number, actor: number, 
       .input('actor', sql.Int, actor).input('action', sql.VarChar(16), input.action)
       .query(`INSERT INTO dbo.ReceiptStudioVersion (TenantId, BranchScope, ReceiptType, Version, SnapshotJson, Action, ActorUserId)
         VALUES (@tenantId, @branch, @kind, @version, @json, @action, @actor)`);
+    const rollbackDraft = input.action === 'rollback' ? ', DraftJson=@json, DraftRevision=DraftRevision+1' : '';
     await args(new sql.Request(tx), tenantId, branch)
       .input('version', sql.Int, published).input('json', sql.NVarChar(sql.MAX), json)
       .input('actor', sql.Int, actor)
       .query(`UPDATE dbo.ReceiptStudioTemplate
         SET PublishedJson=@json, PublishedVersion=@version, UpdatedByUserId=@actor, UpdatedAt=SYSUTCDATETIME()
+        ${rollbackDraft}
         WHERE TenantId=@tenantId AND BranchScope=@branch AND ReceiptType=@kind`);
     await tx.commit();
     return published;
