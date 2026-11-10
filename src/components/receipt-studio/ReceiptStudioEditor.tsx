@@ -552,7 +552,7 @@ export default function ReceiptStudioEditor() {
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border p-4">
             <div>
               <h2 className="font-bold">معاينة حية</h2>
-              <p className="mt-1 text-xs text-muted-foreground">معاينة شاشة قابلة للتعديل — لا تُرسل للطابعة</p>
+              <p className="mt-1 text-xs text-muted-foreground">اضغط لتحديد العنصر، واضغط مرتين على أي كتابة لتعديلها مباشرة. المعاينة تستخدم نفس HTML الطباعة</p>
             </div>
             <div className="flex items-center gap-2 text-xs">
               <Ruler className="size-4 text-muted-foreground"/>
@@ -589,8 +589,12 @@ export default function ReceiptStudioEditor() {
                     border: 0, display: 'block', filter: 'grayscale(1) contrast(2.5)', background: '#fff',
                   }}/>
                 ) : (
-                  <ReceiptStudioPreview template={template} scenario={scenario} selectedId={selectedId}
-                    onSelect={setSelectedId} onHeight={updateHeight} assets={assets}/>
+                  <ReceiptStudioPreview template={template} scenario={scenario}
+                    selectedId={selectedId} selectedIds={selectedIds} onHeight={updateHeight} assets={assets}
+                    onSelect={selectLayer}
+                    onEditText={changeText}
+                    onEditField={changeLabel}
+                  />
                 )}
               </div>
               <div className="mt-3 flex items-center gap-1 text-xs text-muted-foreground"><Printer className="size-3.5"/> الطول بيتحسب تلقائيًا حسب المحتوى</div>
