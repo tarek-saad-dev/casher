@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import { Printer, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { createPrintRequestId, printHtmlViaLocalService, openBrowserPrintFallback } from '@/lib/localPrintClient';
+import { validateReceiptTemplateV1 } from '@/lib/receipt-studio/template';
+import { renderStudioReceiptHtml, type StudioInvoiceModel } from '@/lib/receipt-studio/render';
 import { getPrintBrandHtml, usePrintBrand } from '@/lib/tenant/tenantBrandClient';
 import {
   Dialog,
@@ -728,8 +730,62 @@ export default function PrintInvoiceModal({ open, invID, onClose }: PrintInvoice
     setPrintError(null);
     setPrintSuccess(false);
     try {
+      // Resolve the authorized tenant/branch published design on every print.
+      // Legacy remains the safe fallback if the optional schema or design is absent.
+      let html = buildReceiptHTML();
+      try {
+        const activeResponse = await fetch('/api/receipt-studio/active', { cache: 'no-store' });
+        if (activeResponse.ok) {
+          const active = await activeResponse.json();
+          const checked = validateReceiptTemplateV1(active.published);
+          if (checked.ok) {
+            const brand = getPrintBrandHtml();
+            const { lines, packageDiscount } = buildReceiptModel(data);
+            const lineDiscount = (data.items || []).reduce(
+              (total, item) => total + Math.max(0, Number(item.DisVal || 0)), 0,
+            );
+            const headerDiscount = Math.max(0, Number(data.DisVal || 0));
+            const discounts = [
+              ...(packageDiscount > 0 ? [{ label: 'Package Discount', amount: packageDiscount }] : []),
+              ...(lineDiscount > 0 ? [{ label: 'Service Discounts', amount: lineDiscount }] : []),
+              ...(headerDiscount > 0 ? [{ label: 'Invoice Discount', amount: headerDiscount }] : []),
+            ];
+            const allocations = data.paymentAllocations?.filter((allocation) => Number(allocation.PayValue) > 0) || [];
+            const payments = allocations.length
+              ? allocations.map((allocation) => ({
+                  label: allocation.PaymentMethodName || 'Payment',
+                  amount: Number(allocation.PayValue),
+                }))
+              : [{ label: data.PayCash > 0 && data.PayVisa > 0 ? 'Cash + Visa' : data.PayVisa > 0 ? 'Visa' : 'Cash' }];
+            const fmtDate = (() => {
+              try { return new Date(data.invDate).toLocaleDateString('en-GB'); }
+              catch { return data.invDate; }
+            })();
+            const invoice: StudioInvoiceModel = {
+              invoiceNo: String(data.invID), date: fmtDate, time: data.invTime,
+              branch: active.branchCode || brand.address || 'CUT SALON',
+              brand: brand.title || 'CUT SALON',
+              customer: data.customerName || 'Walk-in Customer',
+              phone: brand.phone || undefined,
+              items: lines.filter((line) => !line.hide).map((line) => ({
+                name: line.label || '',
+                sublabel: line.sublabel,
+                employee: line.empName || undefined,
+                price: printedAmount(line),
+              })),
+              subtotal: Number(data.SubTotal || 0) + packageDiscount,
+              discounts, grandTotal: Number(data.GrandTotal || 0),
+              payments,
+              footer: 'شكراً لزيارتكم',
+            };
+            html = renderStudioReceiptHtml(checked.template, invoice, active.assets || {});
+          }
+        }
+      } catch (studioError) {
+        console.warn('[receipt-studio] Could not render published template; using legacy print layout', studioError);
+      }
       const result = await printHtmlViaLocalService({
-        html: buildReceiptHTML(),
+        html,
         width: '72mm',
         printer: 'default',
         receiptType: 'invoice',
