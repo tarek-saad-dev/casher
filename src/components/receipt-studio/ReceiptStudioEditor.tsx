@@ -494,46 +494,56 @@ export default function ReceiptStudioEditor() {
       </section>
 
       <div className="grid items-start gap-4 xl:grid-cols-[260px_minmax(360px,1fr)_275px]">
-        {/* Block palette and layers */}
+        {/* True nested layers with multi-select, grouping and DnD */}
         <aside className="rounded-2xl border border-border bg-surface p-4 xl:sticky xl:top-4">
-          <div className="mb-3 flex items-center gap-2"><Layers className="size-4 text-primary"/><h2 className="font-bold">طبقات الفاتورة</h2></div>
-          <p className="mb-4 text-xs leading-relaxed text-muted-foreground">اسحب الأقسام لتغيير ترتيبها أو استخدم الأسهم. جدول الخدمات يفضل قبل الإجمالي دائمًا.</p>
-          <div className="space-y-2">
-            {template.blocks.map((block, index) => {
-              const active = selectedId === block.id;
-              return (
-                <div
-                  key={block.id}
-                  draggable
-                  onDragStart={(event) => onDragStart(event, block.id)}
-                  onDragEnd={() => setDraggedId(null)}
-                  onDragOver={(event) => event.preventDefault()}
-                  onDrop={(event) => onDrop(event, block.id)}
-                  className={`flex items-center gap-2 rounded-xl border p-2 transition-colors ${active ? 'border-primary bg-primary/5' : 'border-border bg-background hover:bg-muted/50'} ${draggedId === block.id ? 'opacity-50' : ''}`}
-                >
-                  <GripVertical className="size-4 shrink-0 cursor-grab text-muted-foreground" aria-hidden/>
-                  <button type="button" onClick={() => setSelectedId(block.id)} className="min-w-0 flex-1 text-right">
-                    <span className="block truncate text-xs font-semibold">{LABELS[block.kind]}</span>
-                    <span className="text-[10px] text-muted-foreground">{REQUIRED.has(block.kind) ? 'أساسي' : block.enabled ? 'ظاهر' : 'مخفي'}</span>
-                  </button>
-                  <div className="flex shrink-0 flex-col gap-0.5">
-                    <button type="button" aria-label={`رفع ${LABELS[block.kind]}`} onClick={() => nudge(block.id, -1)} disabled={index === 0} className="rounded p-0.5 hover:bg-muted disabled:opacity-20"><ArrowUp className="size-3.5"/></button>
-                    <button type="button" aria-label={`خفض ${LABELS[block.kind]}`} onClick={() => nudge(block.id, 1)} disabled={index === template.blocks.length - 1} className="rounded p-0.5 hover:bg-muted disabled:opacity-20"><ArrowDown className="size-3.5"/></button>
-                  </div>
-                </div>
-              );
-            })}
+          <div className="mb-1 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2"><Layers className="size-4 text-primary"/><h2 className="font-bold">Layers</h2></div>
+            <span className="rounded-full bg-muted px-2 py-1 text-[11px] text-muted-foreground">
+              {allReceiptNodes(template.blocks).length} عنصر
+            </span>
           </div>
+          <p className="mb-3 text-xs leading-relaxed text-muted-foreground">
+            اختار عناصر متعددة بـ Ctrl أو Shift، واسحب لإعادة ترتيبها. اسحب على مساحة داخل Group لإضافة عنصر لها.
+          </p>
+          <div className="mb-3 grid grid-cols-2 gap-2">
+            <Button variant="outline" size="sm" disabled={selectedIds.length < 2 || busy} onClick={groupSelected}>
+              <Group className="size-4"/> Group
+            </Button>
+            <Button variant="outline" size="sm" disabled={selected?.kind !== 'group' || busy} onClick={ungroupSelected}>
+              <Ungroup className="size-4"/> Ungroup
+            </Button>
+          </div>
+          <ReceiptStudioLayerTree
+            nodes={template.blocks} selectedIds={selectedIds}
+            draggingId={draggedId} onDrag={setDraggedId} onSelect={selectLayer}
+            onMove={moveLayer}
+            onToggle={(id,enabled) => commit(updateTreeNode(template,id,{enabled}))}
+            onLock={(id,locked) => commit(updateTreeNode(template,id,{locked}))}
+            onDuplicate={duplicateLayer}
+          />
           <div className="mt-5 border-t border-border pt-4">
-            <h3 className="mb-3 text-xs font-bold text-muted-foreground">إضافة عنصر</h3>
+            <h3 className="mb-3 text-xs font-bold text-muted-foreground">
+              إضافة عنصر {selected?.kind === 'group' ? 'داخل المجموعة المختارة' : 'للفاتورة'}
+            </h3>
             <div className="grid grid-cols-2 gap-2">
-              <Button variant="outline" size="sm" onClick={() => add('text')}><Type className="size-4"/> نص</Button>
-              <Button variant="outline" size="sm" onClick={() => add('divider')}><Minus className="size-4"/> فاصل</Button>
+              <Button variant="outline" size="sm" disabled={busy} onClick={() => addNewNode('text')}>
+                <Type className="size-4"/> Text
+              </Button>
+              <Button variant="outline" size="sm" disabled={busy} onClick={() => addNewNode('divider')}>
+                <Minus className="size-4"/> Divider
+              </Button>
+              <Button variant="outline" size="sm" disabled={busy} onClick={() => addNewNode('group')}>
+                <FolderPlus className="size-4"/> Group
+              </Button>
+              <label className="inline-flex cursor-pointer items-center justify-center gap-1 rounded-lg border border-border px-2 py-1 text-xs font-medium hover:bg-muted">
+                <ImageIcon className="size-4"/> Image
+                <input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only"
+                  disabled={busy} onChange={(event) => void uploadPng(event)}/>
+              </label>
             </div>
-            <label className="mt-2 flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-border p-2 text-xs text-muted-foreground hover:bg-muted">
-              <ImageIcon className="size-4"/><span>رفع PNG (أقل من 150KB)</span>
-              <input type="file" accept="image/png" className="sr-only" disabled={!dbReady || busy} onChange={(event) => void uploadPng(event)}/>
-            </label>
+            <p className="mt-3 text-[11px] leading-relaxed text-muted-foreground">
+              PNG / JPG / WebP — يتحول تلقائيًا لأبيض وأسود قبل الحفظ، بحد أقصى 576px عرضًا و150KB.
+            </p>
           </div>
         </aside>
 
