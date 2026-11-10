@@ -160,10 +160,12 @@ export function validateReceiptTemplateV1(input: unknown): ReceiptTemplateValida
   let images = 0;
   let mandatoryItems = 0;
   let mandatoryTotals = 0;
+  let totalItemNodes = 0;
+  let totalTotalNodes = 0;
 
   const visit = (entries: unknown, depth: number, parentEnabled: boolean, location: string) => {
     if (!Array.isArray(entries)) { errors.push(`${location}: expected blocks array`); return; }
-    if (depth === 0 && entries.length < 2) errors.push('blocks: expected 2 or more blocks');
+    if (depth === 0 && entries.length < 1) errors.push('blocks: expected at least one block');
     if (depth > MAX_DEPTH) { errors.push(`${location}: group nesting too deep`); return; }
     for (let i = 0; i < entries.length; i++) {
       const b = entries[i] as unknown;
@@ -180,6 +182,8 @@ export function validateReceiptTemplateV1(input: unknown): ReceiptTemplateValida
       if (b.name !== undefined && (typeof b.name !== 'string' || b.name.length > 70)) errors.push(`${at}.name: maximum 70 characters`);
       if (b.locked !== undefined && typeof b.locked !== 'boolean') errors.push(`${at}.locked: expected boolean`);
       const effective = parentEnabled && b.enabled === true;
+      if (b.kind === 'items') totalItemNodes++;
+      if (b.kind === 'totals') totalTotalNodes++;
       if (b.kind === 'group') {
         if (b.text !== undefined || b.fields !== undefined || b.assetId !== undefined) errors.push(`${at}: groups cannot contain text, fields or assets`);
         visit(b.children, depth + 1, effective, `${at}.children`);
@@ -226,8 +230,8 @@ export function validateReceiptTemplateV1(input: unknown): ReceiptTemplateValida
   };
   visit(input.blocks, 0, true, 'blocks');
   if (images > MAX_IMAGE_BLOCKS) errors.push('blocks: maximum 6 images');
-  if (mandatoryItems !== 1) errors.push('blocks: exactly one enabled items block is required');
-  if (mandatoryTotals !== 1) errors.push('blocks: exactly one enabled totals block is required');
+  if (mandatoryItems !== 1 || totalItemNodes !== 1) errors.push('blocks: exactly one enabled items block is required');
+  if (mandatoryTotals !== 1 || totalTotalNodes !== 1) errors.push('blocks: exactly one enabled totals block is required');
   if (typePositions.indexOf('items') > typePositions.indexOf('totals')) errors.push('blocks: totals must follow items');
   if (errors.length) return { ok: false, template: null, errors };
   return { ok: true, template: input as unknown as ReceiptTemplateV1, errors: [] };
