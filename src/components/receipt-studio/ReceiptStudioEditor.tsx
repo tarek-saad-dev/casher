@@ -37,6 +37,21 @@ const LABELS: Record<ReceiptBlockKind, string> = {
   footer: 'رسالة الشكر',
   group: 'مجموعة',
 };
+const FIELD_TITLES: Record<ReceiptField, string> = {
+  brandName: 'اسم البراند',
+  brandTagline: 'الوصف تحت الشعار',
+  receiptLabel: 'عنوان الفاتورة',
+  customerLabel: 'عنوان العميل',
+  numberHeader: 'عنوان رقم الخدمة',
+  serviceHeader: 'عنوان عمود الخدمات',
+  priceHeader: 'عنوان عمود الأسعار',
+  subtotalLabel: 'عنوان المجموع',
+  discountLabel: 'عنوان الخصومات',
+  totalLabel: 'عنوان الإجمالي النهائي',
+  paymentLabel: 'عنوان طريقة الدفع',
+  thanksText: 'عبارة الشكر',
+  footerTagline: 'السطر السفلي',
+};
 const REQUIRED: ReadonlySet<ReceiptBlockKind> = new Set(['items', 'totals']);
 const FIXTURES: Array<{ value: SampleScenario; label: string }> = [
   { value: 'one', label: 'خدمة واحدة' },
@@ -625,78 +640,170 @@ export default function ReceiptStudioEditor() {
 
           {selected ? (
             <div key={selected.id} className="space-y-4 border-t border-border pt-4">
-              <div>
-                <div className="text-sm font-bold">{LABELS[selected.kind]}</div>
-                <p className="text-xs text-muted-foreground">اختار عنصر من الفاتورة أو قائمة الطبقات.</p>
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <div className="text-sm font-bold">{LABELS[selected.kind]}</div>
+                  <p className="font-mono text-[10px] text-muted-foreground">{selected.id}</p>
+                </div>
+                <button type="button" aria-label={selected.locked ? 'فك قفل العنصر' : 'قفل العنصر'}
+                  onClick={() => commit(updateTreeNode(template, selected.id, { locked: !selected.locked }))}
+                  className="rounded-lg border border-border p-2 text-muted-foreground hover:bg-muted">
+                  <LockKeyhole className="size-4"/>
+                </button>
               </div>
+              <label className="block text-xs">
+                <span className="mb-2 block font-semibold">اسم الطبقة (Layers)</span>
+                <Input
+                  value={selected.name ?? ''}
+                  maxLength={70}
+                  placeholder={LABELS[selected.kind]}
+                  disabled={selected.locked || busy}
+                  onChange={(event) => changeBlock({ name: event.target.value })}
+                />
+              </label>
               <label className="flex items-center justify-between gap-2 text-sm">
                 <span className="flex items-center gap-2">{selected.enabled ? <Eye className="size-4"/> : <EyeOff className="size-4"/>} إظهار العنصر</span>
-                <Switch checked={selected.enabled} onCheckedChange={(checked) => changeBlock({ enabled: checked })} disabled={REQUIRED.has(selected.kind)}/>
+                <Switch checked={selected.enabled} disabled={selected.locked || REQUIRED.has(selected.kind) || busy}
+                  onCheckedChange={(checked) => changeBlock({ enabled: checked })}/>
               </label>
+              {selected.locked && (
+                <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs">
+                  الطبقة مقفولة. فك القفل لتعديل محتواها.
+                </p>
+              )}
               {selected.kind === 'text' && (
                 <label className="block text-xs">
-                  <span className="mb-2 block font-semibold">النص</span>
-                  <Input
-                    value={selected.text ?? ''}
-                    maxLength={180}
+                  <span className="mb-2 block font-semibold">تحرير النص</span>
+                  <textarea value={selected.text ?? ''} maxLength={500} rows={3}
+                    disabled={selected.locked || busy} dir="auto"
                     onChange={(event) => changeBlock({ text: event.target.value })}
-                    dir="auto"
-                    aria-label="النص داخل الإيصال"
+                    className="min-h-20 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
                   />
                 </label>
               )}
-              <div>
-                <label htmlFor="block-font" className="mb-2 flex justify-between text-xs font-semibold">
-                  <span>حجم الخط</span><span>{selected.style?.fontSizePx ?? 12} px</span>
-                </label>
-                <input id="block-font" type="range" min={9} max={30} step={1}
-                  value={selected.style?.fontSizePx ?? 12}
-                  onChange={(event) => changeStyle({ fontSizePx: Number(event.target.value) })}
-                  className="w-full accent-primary"
-                />
-              </div>
-              <label className="block text-xs">
-                <span className="mb-2 block font-semibold">سُمك الخط</span>
-                <select value={selected.style?.fontWeight ?? 600}
-                  onChange={(event) => changeStyle({ fontWeight: Number(event.target.value) as 400 | 600 | 700 | 800 | 900 })}
-                  className="h-9 w-full rounded-lg border border-border bg-background px-2 text-sm"
-                >
-                  <option value={400}>Regular</option><option value={600}>Semi Bold</option>
-                  <option value={700}>Bold</option><option value={800}>Extra Bold</option><option value={900}>Black</option>
-                </select>
-              </label>
-              <div>
-                <label htmlFor="block-gap" className="mb-2 flex justify-between text-xs font-semibold">
-                  <span>المسافة بعد العنصر</span><span>{selected.style?.gapAfterMm ?? 1} mm</span>
-                </label>
-                <input id="block-gap" type="range" min={0} max={8} step={0.5}
-                  value={selected.style?.gapAfterMm ?? 1}
-                  onChange={(event) => changeStyle({ gapAfterMm: Number(event.target.value) })}
-                  className="w-full accent-primary"
-                />
-              </div>
-              <div>
-                <p className="mb-2 text-xs font-semibold">المحاذاة</p>
-                <div className="grid grid-cols-3 gap-1" dir="ltr">
-                  {(['left', 'center', 'right'] as const).map((align) => (
-                    <button key={align} type="button"
-                      className={`${miniButton} ${(selected.style?.align ?? 'left') === align ? 'border-foreground bg-foreground text-background hover:bg-foreground' : ''}`}
-                      onClick={() => changeStyle({ align })}
-                    >{align}</button>
+              {RECEIPT_FIELDS_BY_KIND[selected.kind].length > 0 && (
+                <section className="space-y-3 rounded-xl border border-border bg-muted/30 p-3">
+                  <h3 className="text-xs font-bold">تعديل النصوص وعناوين الفاتورة</h3>
+                  {RECEIPT_FIELDS_BY_KIND[selected.kind].map((field) => (
+                    <label key={field} className="block text-xs">
+                      <span className="mb-1 block text-muted-foreground">{FIELD_TITLES[field]}</span>
+                      <Input
+                        value={selected.fields?.[field] ?? DEFAULT_RECEIPT_FIELDS[field]}
+                        maxLength={90}
+                        disabled={selected.locked || busy}
+                        dir="auto"
+                        onChange={(event) => changeLabel(selected.id, field, event.target.value)}
+                      />
+                    </label>
                   ))}
-                </div>
-              </div>
-              {['text', 'divider', 'image'].includes(selected.kind) && (
-                <Button variant="destructive" size="sm" className="w-full" onClick={() => {
-                  commit(deleteReceiptDecoration(template, selected.id));
-                  setSelectedId(null);
-                }}>حذف العنصر</Button>
+                  <p className="text-[11px] text-muted-foreground">
+                    النصوص الثابتة قابلة للتغيير؛ الأسعار والخدمات والتواريخ تتحمل من الفاتورة الحقيقية تلقائيًا.
+                  </p>
+                </section>
               )}
-              {REQUIRED.has(selected.kind) && <p className="flex gap-2 text-[11px] text-muted-foreground"><LockKeyhole className="size-3.5 shrink-0"/> العنصر أساسي لضمان فاتورة صحيحة.</p>}
+              {selected.kind === 'image' && (
+                <section className="space-y-3 rounded-xl border border-border bg-muted/30 p-3">
+                  <h3 className="text-xs font-bold">خصائص الصورة</h3>
+                  {selected.assetId && assets[selected.assetId] && (
+                    <div className="flex justify-center rounded-lg bg-white p-3">
+                      <img src={assets[selected.assetId]} alt="صورة التصميم" className="max-h-24 max-w-full object-contain"/>
+                    </div>
+                  )}
+                  <label className="block text-xs">
+                    <span className="mb-2 flex justify-between"><span>عرض الصورة</span><span>{selected.style?.imageWidthMm ?? 36} mm</span></span>
+                    <input type="range" min={8} max={66} step={1} value={selected.style?.imageWidthMm ?? 36}
+                      disabled={selected.locked || busy}
+                      onChange={(event) => changeStyle({ imageWidthMm: Number(event.target.value) })}
+                      className="w-full accent-primary"/>
+                  </label>
+                </section>
+              )}
+              {selected.kind === 'group' && (
+                <section className="space-y-3 rounded-xl border border-border bg-muted/30 p-3">
+                  <h3 className="text-xs font-bold">Nested Group</h3>
+                  <p className="text-[11px] text-muted-foreground">
+                    عناصر المجموعة بتتحرك مع بعض، وبتتمدد مع عدد الخدمات من غير قص أو تداخل.
+                  </p>
+                  <label className="block text-xs">
+                    <span className="mb-1 flex justify-between"><span>الحواف الداخلية</span><span>{selected.style?.paddingMm ?? 0}mm</span></span>
+                    <input type="range" min={0} max={5} step={0.5} value={selected.style?.paddingMm ?? 0}
+                      disabled={selected.locked || busy}
+                      onChange={(event) => changeStyle({ paddingMm: Number(event.target.value) })}
+                      className="w-full accent-primary"/>
+                  </label>
+                  <label className="block text-xs">
+                    <span className="mb-1 flex justify-between"><span>المسافة بين العناصر</span><span>{selected.style?.groupGapMm ?? 0}mm</span></span>
+                    <input type="range" min={0} max={6} step={0.5} value={selected.style?.groupGapMm ?? 0}
+                      disabled={selected.locked || busy}
+                      onChange={(event) => changeStyle({ groupGapMm: Number(event.target.value) })}
+                      className="w-full accent-primary"/>
+                  </label>
+                  <Button variant="outline" size="sm" className="w-full" disabled={selected.locked || busy} onClick={ungroupSelected}>
+                    <Ungroup className="size-4"/> فك المجموعة
+                  </Button>
+                </section>
+              )}
+              <section className="space-y-3 border-t border-border pt-4">
+                <div>
+                  <label htmlFor="block-font" className="mb-1 flex justify-between text-xs font-semibold">
+                    <span>حجم الخط</span><span>{selected.style?.fontSizePx ?? 12}px</span>
+                  </label>
+                  <input id="block-font" type="range" min={9} max={42} step={1}
+                    disabled={selected.locked || busy}
+                    value={selected.style?.fontSizePx ?? 12}
+                    onChange={(event) => changeStyle({ fontSizePx: Number(event.target.value) })}
+                    className="w-full accent-primary"/>
+                </div>
+                <label className="block text-xs">
+                  <span className="mb-2 block font-semibold">سُمك الخط</span>
+                  <select value={selected.style?.fontWeight ?? 600} disabled={selected.locked || busy}
+                    onChange={(event) => changeStyle({ fontWeight: Number(event.target.value) as 400 | 600 | 700 | 800 | 900 })}
+                    className="h-9 w-full rounded-lg border border-border bg-background px-2 text-sm">
+                    <option value={400}>Regular</option><option value={600}>Semi Bold</option>
+                    <option value={700}>Bold</option><option value={800}>Extra Bold</option><option value={900}>Black</option>
+                  </select>
+                </label>
+                <label className="block text-xs">
+                  <span className="mb-1 flex justify-between"><span>المسافة بعد العنصر</span><span>{selected.style?.gapAfterMm ?? 1}mm</span></span>
+                  <input type="range" min={0} max={8} step={0.5}
+                    disabled={selected.locked || busy}
+                    value={selected.style?.gapAfterMm ?? 1}
+                    onChange={(event) => changeStyle({ gapAfterMm: Number(event.target.value) })}
+                    className="w-full accent-primary"/>
+                </label>
+                <div>
+                  <p className="mb-2 text-xs font-semibold">المحاذاة</p>
+                  <div className="grid grid-cols-3 gap-1" dir="ltr">
+                    {(['left', 'center', 'right'] as const).map((align) => (
+                      <button key={align} type="button" disabled={selected.locked || busy}
+                        className={`${miniButton} ${(selected.style?.align ?? 'left') === align ? 'border-foreground bg-foreground text-background hover:bg-foreground' : ''}`}
+                        onClick={() => changeStyle({ align })}
+                      >{align}</button>
+                    ))}
+                  </div>
+                </div>
+              </section>
+              {['text', 'image', 'divider'].includes(selected.kind) && (
+                <Button variant="outline" size="sm" disabled={selected.locked || busy} className="w-full"
+                  onClick={() => duplicateLayer(selected.id)}>
+                  <Copy className="size-4"/> نسخة من العنصر
+                </Button>
+              )}
+              {['text', 'divider', 'image', 'group'].includes(selected.kind) && (
+                <Button variant="destructive" size="sm" disabled={selected.locked || busy} className="w-full"
+                  onClick={deleteSelected}>
+                  حذف العنصر
+                </Button>
+              )}
+              {REQUIRED.has(selected.kind) && (
+                <p className="flex gap-2 text-[11px] text-muted-foreground">
+                  <LockKeyhole className="size-3.5 shrink-0"/> العنصر أساسي، مينفعش تحذفه أو تخفيه.
+                </p>
+              )}
             </div>
           ) : (
             <div className="rounded-xl border border-dashed border-border p-5 text-center text-xs text-muted-foreground">
-              اختار عنصر من التصميم علشان تعدّل خصائصه.
+              اختار عنصر من التصميم علشان تعدّل نصوصه وخصائصه.
             </div>
           )}
         </aside>
