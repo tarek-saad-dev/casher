@@ -21,6 +21,7 @@ export type ReferralCheckoutInput = {
 
 export type ReferralCheckoutDenial =
   | 'INVALID_CLIENT_ID'
+  | 'INVALID_FACTS'
   | 'SELF_REFERRAL'
   | 'REFERRER_NOT_ACTIVE'
   | 'REFERRED_ALREADY_VISITED'
@@ -41,6 +42,9 @@ function isValidClientId(value: number): boolean {
 export function evaluateReferralAtCheckout(input: ReferralCheckoutInput): ReferralCheckoutDecision {
   if (!isValidClientId(input.referrerClientId) || !isValidClientId(input.referredClientId)) {
     return { eligible: false, reason: 'INVALID_CLIENT_ID' };
+  }
+  if ([input.referrerHasCompletedPaidVisit, input.referredHasCompletedPaidVisit, input.referralClaimExists].some((value) => typeof value !== 'boolean')) {
+    return { eligible: false, reason: 'INVALID_FACTS' };
   }
   if (input.referrerClientId === input.referredClientId) {
     return { eligible: false, reason: 'SELF_REFERRAL' };
@@ -74,7 +78,7 @@ export function calculateFirstVisitReferralDiscountMinor(eligibleBaseMinor: numb
 
 export type ReferrerRewardInput = {
   referralDiscountApplied: boolean;
-  invoiceCommitted: boolean;
+  invoicePersistedInTransaction: boolean;
   invoicePaidInFull: boolean;
   invoiceReversed: boolean;
   rewardAlreadyIssued: boolean;
@@ -82,7 +86,8 @@ export type ReferrerRewardInput = {
 
 export type ReferrerRewardDenial =
   | 'REFERRAL_NOT_APPLIED'
-  | 'INVOICE_NOT_COMMITTED'
+  | 'INVOICE_NOT_PERSISTED'
+  | 'INVALID_FACTS'
   | 'INVOICE_NOT_PAID'
   | 'INVOICE_REVERSED'
   | 'REWARD_ALREADY_ISSUED';
@@ -97,11 +102,14 @@ export type ReferrerRewardDecision =
  * Separate valid referrals may yield separate vouchers; no arbitrary cap.
  */
 export function evaluateReferrerReward(input: ReferrerRewardInput): ReferrerRewardDecision {
+  if ([input.referralDiscountApplied, input.invoicePersistedInTransaction, input.invoicePaidInFull, input.invoiceReversed, input.rewardAlreadyIssued].some((value) => typeof value !== 'boolean')) {
+    return { eligible: false, reason: 'INVALID_FACTS' };
+  }
   if (!input.referralDiscountApplied) {
     return { eligible: false, reason: 'REFERRAL_NOT_APPLIED' };
   }
-  if (!input.invoiceCommitted) {
-    return { eligible: false, reason: 'INVOICE_NOT_COMMITTED' };
+  if (!input.invoicePersistedInTransaction) {
+    return { eligible: false, reason: 'INVOICE_NOT_PERSISTED' };
   }
   if (!input.invoicePaidInFull) {
     return { eligible: false, reason: 'INVOICE_NOT_PAID' };
