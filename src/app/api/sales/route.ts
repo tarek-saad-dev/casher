@@ -18,7 +18,8 @@ import {
 import { createSaleLegacyFromRoute } from '@/lib/sales/legacyRouteSaleCreate';
 import { findForeignServiceIds } from '@/lib/catalog/tenantCatalogGuards';
 import {
-  ReferralCheckoutError, parseReferralCheckoutRequest, priceFirstVisitReferral,
+  ReferralCheckoutError, parseReferralCheckoutRequest, parseReferralRewardVoucherId,
+  priceFirstVisitReferral, priceReferralRewardVoucher,
 } from '@/lib/referrals/referralCheckoutPolicy';
 
 export const runtime = "nodejs";
@@ -28,7 +29,8 @@ export async function POST(req: NextRequest) {
   let referralRequest = false;
   try {
     const body: CreateSalePayload = await req.json();
-    referralRequest = Object.prototype.hasOwnProperty.call(body, 'referralCode');
+    referralRequest = Object.prototype.hasOwnProperty.call(body, 'referralCode') ||
+      Object.prototype.hasOwnProperty.call(body, 'referralVoucherId');
 
     // Validation
     if (!body.items || body.items.length === 0) {
@@ -44,6 +46,10 @@ export async function POST(req: NextRequest) {
     }
 
     const referralCode = parseReferralCheckoutRequest(body.referralCode, body.clientId);
+    const referralVoucherId = parseReferralRewardVoucherId(body.referralVoucherId, referralCode);
+    if (referralVoucherId != null && (!Number.isSafeInteger(body.clientId) || Number(body.clientId) <= 0)) {
+      throw new ReferralCheckoutError('REFERRAL_CLIENT_REQUIRED', 'اختار العميل قبل استخدام المكافأة', 400);
+    }
 
     // Lines may only name services/products of the caller's tenant.
     {
@@ -152,6 +158,10 @@ export async function POST(req: NextRequest) {
       }));
     const computed = referralCode
       ? priceFirstVisitReferral(lineItemsForTotals, {
+          discountPercent: body.dis, discountValue: body.disVal,
+        })
+      : referralVoucherId != null
+      ? priceReferralRewardVoucher(lineItemsForTotals, {
           discountPercent: body.dis, discountValue: body.disVal,
         })
       : computeInvoiceItemsTotals(
@@ -270,6 +280,7 @@ export async function POST(req: NextRequest) {
     const saleInput = {
       tenantId: String(sessionUser.TenantId),
       referralCode,
+      referralVoucherId,
       items: body.items.map((item) => ({
         proId: item.proId,
         empId: item.empId,
