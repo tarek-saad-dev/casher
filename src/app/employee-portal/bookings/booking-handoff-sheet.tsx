@@ -17,6 +17,16 @@ type CatalogService = {
   durationMinutes: number | null;
 };
 
+type AddonPreview = {
+  available: boolean;
+  durationMinutes: number;
+  expectedEndAt: string;
+  proposedEndAt: string;
+  reason?: string;
+  alternatives: Array<{ empId: number; empName: string; startAt: string; endAt: string }>;
+};
+
+
 type Props = {
   booking: MaskedPortalBooking;
   open: boolean;
@@ -34,6 +44,10 @@ export default function BookingHandoffSheet({ booking, open, onClose, onSent }: 
   const [catalogQuery, setCatalogQuery] = useState('');
   const [catalog, setCatalog] = useState<CatalogService[]>([]);
   const [catalogLoading, setCatalogLoading] = useState(false);
+  const [addonCandidate, setAddonCandidate] = useState<CatalogService | null>(null);
+  const [addonPreview, setAddonPreview] = useState<AddonPreview | null>(null);
+  const [addonChecking, setAddonChecking] = useState(false);
+  const [addonCommitting, setAddonCommitting] = useState(false);
   const [lines, setLines] = useState<DetailService[]>([]);
   const [readOnly, setReadOnly] = useState(false);
   const [canSend, setCanSend] = useState(true);
@@ -83,6 +97,8 @@ export default function BookingHandoffSheet({ booking, open, onClose, onSent }: 
     void loadDetail();
     setConfirmOpen(false);
     setCatalogOpen(false);
+    setAddonCandidate(null);
+    setAddonPreview(null);
     setToast('');
   }, [open, loadDetail]);
 
@@ -108,6 +124,69 @@ export default function BookingHandoffSheet({ booking, open, onClose, onSent }: 
     const id = window.setTimeout(() => void loadCatalog(catalogQuery), 200);
     return () => window.clearTimeout(id);
   }, [catalogOpen, catalogQuery, loadCatalog]);
+
+
+  async function checkAddon(service: CatalogService) {
+    if (readOnly || !canSend || addonChecking || addonCommitting) return;
+    setError('');
+    setToast('');
+    setAddonCandidate(service);
+    setAddonPreview(null);
+    setAddonChecking(true);
+    try {
+      const res = await fetch(
+        '/api/employee-portal/bookings/' + booking.bookingId + '/addon?proId=' + service.proId,
+        { cache: 'no-store' },
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'تعذر التحقق من وقت الخدمة');
+      setAddonPreview(data as AddonPreview);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'تعذر التحقق — راجع الكاشير');
+    } finally {
+      setAddonChecking(false);
+    }
+  }
+
+  async function confirmAddon() {
+    if (!addonCandidate || !addonPreview?.available || addonCommitting) return;
+    setError('');
+    setAddonCommitting(true);
+    try {
+      const res = await fetch(
+        '/api/employee-portal/bookings/' + booking.bookingId + '/addon',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            proId: addonCandidate.proId,
+            expectedEndAt: addonPreview.expectedEndAt,
+          }),
+        },
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'تعذر حجز وقت الخدمة');
+      // The service is not selected until the server has saved a real slot.
+      setAddonCandidate(null);
+      setAddonPreview(null);
+      setCatalogOpen(false);
+      setCatalogQuery('');
+      await loadDetail();
+      setToast('تم حجز وقت الخدمة الإضافية وتحديث موعد العميل');
+    } catch (err) {
+      setAddonPreview(null);
+      setError(err instanceof Error ? err.message : 'الوقت لم يعد متاحًا — أعد فحص الخدمة');
+    } finally {
+      setAddonCommitting(false);
+    }
+  }
+
+  function formatCandidateTime(iso: string) {
+    const date = new Date(iso);
+    return new Intl.DateTimeFormat('ar-EG', {
+      timeZone: 'Africa/Cairo', hour: 'numeric', minute: '2-digit',
+    }).format(date);
+  }
 
   if (!open) return null;
 
@@ -254,30 +333,8 @@ export default function BookingHandoffSheet({ booking, open, onClose, onSent }: 
                         <button
                           type="button"
                           className="flex w-full items-center justify-between rounded-lg px-2 py-2 text-sm text-zinc-200 hover:bg-white/5"
-                          onClick={() => {
-                            setLines((prev) => {
-                              const existing = prev.findIndex((p) => p.proId === svc.proId);
-                              if (existing >= 0) {
-                                return prev.map((p, i) =>
-                                  i === existing
-                                    ? { ...p, selected: true, qty: Math.min(99, p.qty + 1) }
-                                    : p,
-                                );
-                              }
-                              return [
-                                ...prev,
-                                {
-                                  proId: svc.proId,
-                                  name: svc.name,
-                                  qty: 1,
-                                  source: 'added',
-                                  selected: true,
-                                },
-                              ];
-                            });
-                            setCatalogOpen(false);
-                            setCatalogQuery('');
-                          }}
+                          disabled={addonChecking || addonCommitting}
+                          onClick={() => void checkAddon(svc)}
                         >
                           <span>{svc.name}</span>
                           {svc.durationMinutes != null ? (
@@ -287,6 +344,56 @@ export default function BookingHandoffSheet({ booking, open, onClose, onSent }: 
                       </li>
                     ))}
                   </ul>
+                </div>
+              ) : null}
+
+              {addonCandidate ? (
+                <div className="space-y-3 rounded-2xl border border-amber-500/25 bg-amber-500/5 p-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-bold">{addonCandidate.name}</p>
+                    <button
+                      type="button"
+                      onClick={() => { setAddonCandidate(null); setAddonPreview(null); }}
+                      className="min-h-9 rounded-lg border border-white/10 px-3 text-xs text-zinc-300"
+                    >إلغاء</button>
+                  </div>
+                  {addonChecking ? <p role="status" className="text-sm text-amber-200">جاري فحص وقت الخدمة والحجوزات التالية…</p> : null}
+                  {addonPreview?.available ? (
+                    <>
+                      <p role="status" className="text-sm text-emerald-300">
+                        الوقت متاح · {addonPreview.durationMinutes} دقيقة. اضغط للتأكيد وحجز الفترة الإضافية.
+                      </p>
+                      <button
+                        type="button"
+                        disabled={addonCommitting || addonChecking}
+                        onClick={() => void confirmAddon()}
+                        className="w-full rounded-xl bg-emerald-500 px-3 py-3 text-sm font-bold text-zinc-950 disabled:opacity-50"
+                      >
+                        {addonCommitting ? 'جاري حجز الوقت…' : 'تأكيد وحجز وقت الخدمة'}
+                      </button>
+                    </>
+                  ) : null}
+                  {addonPreview && !addonPreview.available ? (
+                    <div role="alert" className="space-y-2">
+                      <p className="text-sm font-bold text-rose-300">
+                        مش متاح عندك وقت للخدمة دي — أولوية للحجوزات المؤكدة.
+                      </p>
+                      <p className="text-xs text-zinc-300">{addonPreview.reason}</p>
+                      {addonPreview.alternatives.length > 0 ? (
+                        <div className="space-y-2">
+                          <p className="text-xs font-bold text-amber-200">أقرب موظفين متاحين (اقتراح غير محجوز):</p>
+                          {addonPreview.alternatives.map((person) => (
+                            <p key={person.empId} className="rounded-xl border border-white/10 px-3 py-2 text-xs text-zinc-200">
+                              {person.empName} · {formatCandidateTime(person.startAt)}
+                            </p>
+                          ))}
+                        </div>
+                      ) : <p className="text-xs text-zinc-400">مفيش بديل مؤكد في المواعيد القريبة.</p>}
+                      <p className="rounded-xl bg-amber-500/10 p-3 text-xs font-bold text-amber-200">
+                        وجّه العميل للكاشير لتأكيد نقله لموظف متاح. الخدمة لم تُضف ولم يُحجز وقتها.
+                      </p>
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
             </section>
@@ -299,7 +406,7 @@ export default function BookingHandoffSheet({ booking, open, onClose, onSent }: 
           </p>
           <button
             type="button"
-            disabled={muted || selectedCount === 0 || sending || loading}
+            disabled={muted || selectedCount === 0 || sending || loading || addonCommitting}
             onClick={() => setConfirmOpen(true)}
             className="w-full rounded-2xl bg-amber-400 px-4 py-3 text-sm font-black text-zinc-950 disabled:opacity-40"
           >
