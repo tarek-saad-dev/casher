@@ -157,6 +157,7 @@ export default function LocalPrintConnectionHelp({ onReconnect, errorCode, compa
       )}
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
+        {printerLocation === 'this-device' && (<>
         <Button type="button" size="sm" onClick={() => void checkConnection()}
           disabled={checkState === 'checking'} data-testid="local-print-check">
           {checkState === 'checking'
@@ -168,20 +169,21 @@ export default function LocalPrintConnectionHelp({ onReconnect, errorCode, compa
           className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-background px-3 text-xs font-semibold hover:bg-muted">
           <ExternalLink className="size-3.5" aria-hidden/> فتح رابط فحص الخدمة
         </a>
+        </>)}
         <Link href="/admin/settings/printing"
           className="inline-flex h-8 items-center rounded-lg border border-border bg-background px-3 text-xs font-semibold hover:bg-muted">
           إعدادات الطباعة
         </Link>
       </div>
 
-      {checkState === 'connected' && (
+      {printerLocation === 'this-device' && checkState === 'connected' && (
         <div role="status" data-testid="local-print-connected"
           className="mt-3 flex items-start gap-2 rounded-lg border border-emerald-600/25 bg-emerald-500/10 p-3 text-xs">
           <CheckCircle2 className="size-4 shrink-0 text-emerald-600" aria-hidden/>
           <span>الخدمة بتستجيب على الجهاز الحالي. الاتصال فقط اتأكد، مش خروج ورقة فعلية؛ اطبع اختبارًا واحدًا من زر الطباعة المعتاد.</span>
         </div>
       )}
-      {checkState === 'disconnected' && (
+      {printerLocation === 'this-device' && checkState === 'disconnected' && (
         <div role="status" className="mt-3 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-background/60 p-3 text-xs">
           <TriangleAlert className="size-4 shrink-0 text-amber-600" aria-hidden/>
           <span>الخدمة لسه مش متصلة على الجهاز الحالي. شغّل أداة التثبيت أو افتح رابط فحص الخدمة.</span>
