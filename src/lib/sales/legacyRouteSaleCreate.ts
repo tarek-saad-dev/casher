@@ -43,6 +43,7 @@ type LegacySaleCreateTransactionInput = {
   /** Tenant from signed staff session (not browser authority). */
   tenantId?: string;
   referralCode?: string | null;
+  referralVoucherId?: number | null;
   notes: string;
   notes2?: string;
   payCash: number;
