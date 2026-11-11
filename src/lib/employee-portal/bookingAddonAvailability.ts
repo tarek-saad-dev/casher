@@ -191,6 +191,18 @@ export async function reserveAddon(input: {
       .query("INSERT INTO dbo.BookingServices (BookingID,ProID,EmpID,Qty,Price,DurationMinutes) VALUES (@bid,@proId,@empId,1,@price,@minutes)");
     await tx.commit();
     tx = null;
+    // Refresh booking availability in other screens after the schedule extension.
+    try {
+      const { AvailabilityMutationNotifier } = await import('@/lib/booking/AvailabilityMutationNotifier');
+      await AvailabilityMutationNotifier.bookingOccupancyChanged({
+        employeeId: input.empId,
+        businessDate: p.operationalDate,
+        branchId: booking.BranchID,
+        reason: 'employee_portal_addon_reservation',
+      });
+    } catch (error) {
+      console.warn('[staff-addon] cache invalidation failed', error instanceof Error ? error.message : error);
+    }
     return {ok:true,endAt:newEnd.toISOString(),durationMinutes:service.DurationMinutes};
   } catch (error) {
     if (tx) { try {await tx.rollback();} catch {/* already rolled back */} }
