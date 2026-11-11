@@ -360,6 +360,8 @@ export interface EmpPayrollTxn {
 
 export interface CreateSalePayload {
   clientId: number | null;
+  /** Optional referral for a new, fully-paid invoice only; validated by server. Feature OFF by default. */
+  referralCode?: string;
   items: {
     proId: number;
     /** `0` for retail product lines (no barber). */
