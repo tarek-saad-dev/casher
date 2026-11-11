@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   calls: [] as Array<{ sql: string; params: Record<string, unknown> }>,
   results: [] as Array<{ recordset: Record<string, unknown>[]; rowsAffected?: number[] }>,
   failContaining: null as string | null,
+  schemaReady: true,
 }));
 vi.mock('@/lib/db', () => ({
   sql: {
@@ -19,6 +20,9 @@ vi.mock('@/lib/db', () => ({
         return this;
       }
       async query(statement: string) {
+        if (statement.includes("OBJECT_ID(N'dbo.TblReferralCustomerCode'")) {
+          return { recordset: [{ Ready: mocks.schemaReady ? 1 : 0 }] };
+        }
         mocks.calls.push({ sql: statement, params: { ...this.params } });
         if (mocks.failContaining && statement.includes(mocks.failContaining)) {
           throw new Error('synthetic SQL write failure');
@@ -46,6 +50,7 @@ beforeEach(() => {
   mocks.calls = [];
   mocks.results = [];
   mocks.failContaining = null;
+  mocks.schemaReady = true;
 });
 afterEach(() => delete process.env.POS_REFERRAL_CHECKOUT_ENABLED);
 
@@ -55,6 +60,14 @@ describe('single-transaction referral accounting (#227)', () => {
     expect(await prepareReferralSaleTransaction(tx, { tenantId, clientId: 99 })).toBeNull();
     expect(mocks.calls).toHaveLength(0);
     await expect(prepareReferralSaleTransaction(tx, input)).rejects.toBeInstanceOf(ReferralCheckoutError);
+  });
+
+  it('rejects schema-not-installed without touching customer rows or invoice money', async () => {
+    mocks.schemaReady = false;
+    await expect(prepareReferralSaleTransaction(tx, input)).rejects.toThrowError(
+      expect.objectContaining({ code: 'REFERRAL_SCHEMA_UNAVAILABLE', status: 503 }),
+    );
+    expect(mocks.calls).toHaveLength(0);
   });
 
   it('locks the customer for EVERY sale when enabled, including an ordinary sale', async () => {
