@@ -67,6 +67,7 @@ export async function POST(req: Request, { params }: Ctx) {
         not_sendable: { status: 409, message: 'لا يمكن ارسال هذا الحجز' },
         already_charged: { status: 409, message: 'تم التحصيل مسبقا' },
         empty_services: { status: 400, message: 'اختر خدمة واحدة على الاقل' },
+        services_not_reserved: { status: 409, message: 'فيه خدمات إضافية لم يتم حجز وقتها — أعد فتح الحجز أو توجه للكاشير' },
       };
       const mapped = map[result.error];
       return NextResponse.json({ error: mapped.message }, { status: mapped.status });
