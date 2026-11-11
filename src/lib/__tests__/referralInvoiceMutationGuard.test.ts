@@ -40,11 +40,20 @@ describe('referral invoice edit/delete guard', () => {
   });
 
   it('allows unrelated invoice updates when no claim matches same tenant and invoice', async () => {
-    state.data = [[{ Ready: 1 }], []];
+    state.data = [[{ Ready: 1 }], [], []];
     await expect(assertReferralInvoiceNotMutated(tx, tenantId, 500)).resolves.toBeUndefined();
     expect(state.calls[1]?.text).toContain('WITH (UPDLOCK, HOLDLOCK)');
     expect(state.calls[1]?.text).toContain('TenantId = @tenantId');
     expect(state.calls[1]?.params).toMatchObject({ tenantId, invId: 500 });
+  });
+
+  it('blocks edits/deletes if a 20% voucher was REDEEMED on that invoice', async () => {
+    state.data = [[{ Ready: 1 }], [], [{ VoucherID: 333 }]];
+    await expect(assertReferralInvoiceNotMutated(tx, tenantId, 500)).rejects.toThrowError(
+      expect.objectContaining({ status: 409, code: 'REFERRAL_VOUCHER_UNAVAILABLE' }),
+    );
+    expect(state.calls[2]?.text).toContain('UsedInvID = @invId');
+    expect(state.calls[2]?.params).toMatchObject({ tenantId, invId: 500 });
   });
 
   it('blocks edits or deletes of paid invoices referenced by referral claims', async () => {
