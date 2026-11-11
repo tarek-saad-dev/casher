@@ -19,12 +19,14 @@ const REASON_TEXT: Record<ReferralPreviewReason, string> = {
   ALREADY_CLAIMED: 'العميل استخدم إحالة قبل كده، ومينفعش يكررها.',
 };
 
-function PreviewMessage({ outcome }: { outcome: PosReferralPreviewOutcome }) {
+function PreviewMessage({ outcome, applied }: { outcome: PosReferralPreviewOutcome; applied: boolean }) {
   if (outcome.state === 'eligible') {
     return (
       <p role="status" data-testid="referral-preview-result" className="flex items-start gap-2 text-sm text-emerald-700 dark:text-emerald-300">
         <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5" />
-        الكود صالح مبدئيًا للعرض (50%)، لكن الخصم مش مطبّق على الفاتورة.
+        {applied
+          ? 'الخصم 50% متطبق على مسودة الفاتورة. هيتراجع تاني عند الحفظ.'
+          : 'الكود صالح مبدئيًا للعرض (50%)، لكن الخصم مش مطبّق على الفاتورة.'}
       </p>
     );
   }
@@ -45,13 +47,21 @@ function PreviewMessage({ outcome }: { outcome: PosReferralPreviewOutcome }) {
 }
 
 /**
- * Preview only. This component never updates checkout discounts, voucher
- * inventory, payment amounts, sale payload or the save button.
- * The parent keys this component by the selected customer ID to discard stale
- * code/results when the cashier switches customers.
+ * Preview is always read-only. Applying the eligibility result is an explicit
+ * cashier action when the parent supplies onApply (parent owns the build flag).
+ * Backend rechecks the code and the fully paid invoice inside its transaction.
+ * Parent keys by selected customer to prevent stale cross-customer code state.
  */
-export default function PosReferralPreview({ clientId }: { clientId: number }) {
-  const [code, setCode] = useState('');
+export default function PosReferralPreview({
+  clientId, appliedCode = null, canApply = false, onApply, onRemove,
+}: {
+  clientId: number;
+  appliedCode?: string | null;
+  canApply?: boolean;
+  onApply?: (code: string, clientId: number) => void;
+  onRemove?: () => void;
+}) {
+  const [code, setCode] = useState(appliedCode ?? '');
   const [checking, setChecking] = useState(false);
   const [outcome, setOutcome] = useState<PosReferralPreviewOutcome | null>(null);
   const [validationError, setValidationError] = useState('');
@@ -64,6 +74,7 @@ export default function PosReferralPreview({ clientId }: { clientId: number }) {
   }, []);
 
   const handleCodeChange = (value: string) => {
+    if (appliedCode) onRemove?.();
     sequenceRef.current += 1;
     abortRef.current?.abort();
     abortRef.current = null;
@@ -143,9 +154,52 @@ export default function PosReferralPreview({ clientId }: { clientId: number }) {
         </Button>
       </form>
       {validationError ? <p role="alert" className="text-xs text-destructive">{validationError}</p> : null}
-      {outcome ? <PreviewMessage outcome={outcome} /> : null}
+      {outcome ? <PreviewMessage outcome={outcome} applied={Boolean(appliedCode)} /> : null}
+      {onApply && outcome?.state === 'eligible' && !appliedCode ? (
+        <div className="space-y-2">
+          <Button
+            type="button"
+            data-testid="referral-apply-button"
+            className="w-full"
+            disabled={!canApply || checking}
+            onClick={() => {
+              const normalized = normalizePosReferralCode(code);
+              if (normalized && canApply) onApply(normalized, clientId);
+            }}
+          >
+            تطبيق خصم الإحالة 50%
+          </Button>
+          {!canApply && (
+            <p role="alert" className="text-xs text-destructive">
+              لازم تضيف خدمة مؤهلة، ومن غير خصومات يدوية أو خصومات خدمات، قبل تطبيق الإحالة.
+            </p>
+          )}
+        </div>
+      ) : null}
+      {appliedCode && onRemove ? (
+        <div className="space-y-1">
+          <p role="status" className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">
+            تم تطبيق خصم 50% على المسودة، وهنتأكد من الأهلية وقت الدفع.
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            data-testid="referral-remove-button"
+            className="w-full"
+            onClick={() => {
+              onRemove();
+              setOutcome(null);
+              setCode('');
+            }}
+          >
+            إلغاء خصم الإحالة
+          </Button>
+        </div>
+      ) : null}
       <p className="text-xs text-muted-foreground" data-testid="referral-preview-disclaimer">
-        معاينة فقط — لن يُطبّق أي خصم على الفاتورة، ولن تُصدر مكافأة من هنا.
+        {appliedCode
+          ? 'خصم المسودة مبدئي — السيرفر سيؤكد الإحالة والدفع قبل إصدار أي مكافأة.'
+          : 'معاينة فقط — لن يُطبّق خصم إلا بعد الضغط على تطبيق، ولن تُصدر مكافأة من الفحص.'}
       </p>
     </section>
   );
