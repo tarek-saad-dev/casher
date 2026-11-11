@@ -1,4 +1,5 @@
 import 'server-only';
+import type { Transaction } from 'mssql';
 import { getPool, sql } from '@/lib/db';
 import { normalizeBookingTimes, sqlDateToYyyyMmDd, sqlTimeToHhmm } from '@/lib/bookingDateTime';
 import { acquireEmployeeScheduleLock, assertEmployeeIntervalAvailable, ScheduleConflictError } from '@/lib/scheduleIntegrity';
@@ -8,7 +9,7 @@ type BookingRow = {
   PublicWorkDate: unknown; StartTime: unknown; EndTime: unknown; TotalDuration: number;
   AbsoluteEndUtc: Date | null; Status: string; ConvertedInvID: number | null;
 };
-type DbHandle = Awaited<ReturnType<typeof getPool>> | sql.Transaction;
+type DbHandle = Awaited<ReturnType<typeof getPool>> | Transaction;
 type Service = { ProID: number; ProName: string; DurationMinutes: number; SPrice1: number };
 export type SuggestedBarber = { empId: number; empName: string; startAt: string; endAt: string };
 export type AddonAvailability = {
@@ -155,7 +156,7 @@ export async function reserveAddon(input: {
     return {ok:false,status:400,error:'افحص توافر الوقت الأول'};
   }
   const db = await getPool();
-  let tx: sql.Transaction | null = null;
+  let tx: Transaction | null = null;
   try {
     const snapshot = await getBooking(db,input);
     const initialPeriod = period(snapshot);
