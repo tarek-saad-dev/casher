@@ -25,6 +25,7 @@ import {
   requireActiveBranchContext,
 } from '@/lib/branch';
 import { requireTenantSession } from '@/lib/api-auth';
+import { assertReferralInvoiceNotMutated } from '@/lib/referrals/referralInvoiceMutationGuard';
 
 // GET /api/sales/[id] — Get sale by invID for printing
 export async function GET(
@@ -146,6 +147,9 @@ export async function PUT(
     const userID = sessionUser.UserID;
 
     const body = await req.json();
+    if (body?.referralCode !== undefined) {
+      return NextResponse.json({ error: 'كود الإحالة متاح للفاتورة الجديدة فقط', code: 'REFERRAL_NEW_SALE_ONLY' }, { status: 409 });
+    }
 
     const loaded = await loadAndAuthorizeFinancialMutation(
       userID,
@@ -212,6 +216,7 @@ export async function PUT(
         return snapshot as unknown as Record<string, unknown> | null;
       },
       execute: async (transaction) => {
+        await assertReferralInvoiceNotMutated(transaction, String(sessionUser.TenantId), invID);
         const updateInput = {
         clientId: body.clientId,
         subTotal: body.subTotal,
@@ -356,10 +361,12 @@ export async function DELETE(
           : await getInvoiceSnapshot(transaction, invID);
         return snapshot as unknown as Record<string, unknown> | null;
       },
-      execute: async (transaction) =>
-        isPosPortEnabled()
+      execute: async (transaction) => {
+        await assertReferralInvoiceNotMutated(transaction, String(session.TenantId), invID);
+        return isPosPortEnabled()
           ? deleteSale(transaction, invID, loaded.ownership.branchId, session.UserID)
-          : deleteInvoice(transaction, invID, loaded.ownership.branchId),
+          : deleteInvoice(transaction, invID, loaded.ownership.branchId);
+      },
       loadNewData: async () => null,
       beforeCommit: async ({ transaction, oldData }) => {
         const { enqueueTargetRecalcFromInvoiceSnapshots } = await import(
