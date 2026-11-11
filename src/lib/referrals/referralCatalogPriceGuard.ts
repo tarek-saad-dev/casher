@@ -1,5 +1,5 @@
 import 'server-only';
-import type { ConnectionPool } from 'mssql';
+import type { ConnectionPool, Transaction } from 'mssql';
 import { sql } from '@/lib/db';
 import { ReferralCheckoutError } from './referralCheckoutPolicy';
 import { roundMoney } from '@/lib/reportMonthUtils';
@@ -17,12 +17,12 @@ type CatalogRow = {
  * money MUST NOT trust those prices: the offer is only available at the current
  * tenant catalog price (not package/retail overrides/custom quotations).
  *
- * This check is **before** the transaction; changes to catalog prices between
- * checking and invoice commit must be handled by the final atomic-sale rollout
- * staging gate. For now the checkout switch is OFF by default.
+ * Called from the authoritative SERIALIZABLE invoice transaction, so the
+ * validated catalog facts and the eventual persisted invoice share one unit.
+ * For now the checkout switch is OFF by default.
  */
 export async function assertReferralCheckoutCatalogPrices(
-  db: ConnectionPool,
+  executor: ConnectionPool | Transaction,
   tenantId: string,
   lines: CheckoutLine[],
 ): Promise<void> {
@@ -38,7 +38,8 @@ export async function assertReferralCheckoutCatalogPrices(
     throw new ReferralCheckoutError('REFERRAL_INVALID_ITEMS', 'عرض الإحالة متاح للخدمات المسعّرة في الكتالوج فقط', 400);
   }
   const ids = [...new Set(lines.map((line) => line.proId))];
-  const request = db.request().input('tenantId', sql.UniqueIdentifier, tenantId);
+  const request = new sql.Request(executor as ConnectionPool)
+    .input('tenantId', sql.UniqueIdentifier, tenantId);
   const bind = ids.map((id, i) => {
     request.input('proId' + i, sql.Int, id);
     return '@proId' + i;
