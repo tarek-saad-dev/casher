@@ -752,7 +752,9 @@ export default function PosPage() {
       }
       console.log('[POS SAVE] SUCCESS', { requestId });
     } catch {
-      setSaveError('خطأ في الاتصال بالخادم');
+      setSaveError(state.referralCode
+        ? 'تعذر تأكيد حفظ فاتورة الإحالة. راجع الفواتير الأخيرة قبل إعادة المحاولة، تجنبًا للتكرار.'
+        : 'خطأ في الاتصال بالخادم');
       console.error('[POS SAVE] ERROR', { requestId });
     } finally {
       saveLockRef.current = false;
