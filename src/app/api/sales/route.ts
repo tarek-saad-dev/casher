@@ -25,8 +25,10 @@ export const runtime = "nodejs";
 
 // POST /api/sales — Create a new sale (head + details + payment + cash move)
 export async function POST(req: NextRequest) {
+  let referralRequest = false;
   try {
     const body: CreateSalePayload = await req.json();
+    referralRequest = Object.prototype.hasOwnProperty.call(body, 'referralCode');
 
     // Validation
     if (!body.items || body.items.length === 0) {
@@ -340,6 +342,24 @@ export async function POST(req: NextRequest) {
     if (mapped) return mapped;
     const message = err instanceof Error ? err.message : "Unknown error";
     const stack = err instanceof Error ? err.stack : "";
+    // Never disclose SQL table/index names, customer IDs or transaction internals
+    // when a referral claim loses a concurrency race.
+    if (referralRequest) {
+      const dbError = err as { number?: number; originalError?: { number?: number } } | null;
+      const number = dbError?.number ?? dbError?.originalError?.number;
+      if (number === 2601 || number === 2627) {
+        console.error('[pos-api] Referral uniqueness conflict; sale was rolled back');
+        return NextResponse.json({
+          error: 'الإحالة اتسجلت قبل كده أو مستخدمة في فاتورة تانية',
+          code: 'REFERRAL_ALREADY_CLAIMED',
+        }, { status: 409 });
+      }
+      console.error('[pos-api] Referral sale failed; transaction rolled back', err instanceof Error ? err.name : 'unknown');
+      return NextResponse.json({
+        error: 'تعذر إكمال فاتورة الإحالة. راجع حالة الفاتورة قبل إعادة المحاولة',
+        code: 'REFERRAL_CHECKOUT_FAILED',
+      }, { status: 500 });
+    }
     console.error(`[pos-api] ❌ POST /api/sales FAILED: ${message}`);
     if (stack) console.error(`[pos-api]   Stack: ${stack}`);
     return NextResponse.json({ error: message }, { status: 500 });
