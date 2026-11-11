@@ -39,4 +39,24 @@ export async function assertReferralInvoiceNotMutated(
       409,
     );
   }
+
+  // Also protect the invoice which REDEEMED a reward. Editing or deleting it
+  // without reversing the same ledger transaction would permanently spend
+  // the customer's voucher on a refunded invoice.
+  const used = await new sql.Request(transaction)
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
+    .input('invId', sql.Int, invoiceId)
+    .query(`
+      SELECT TOP (1) VoucherID
+      FROM dbo.TblReferralDiscountVoucher WITH (UPDLOCK, HOLDLOCK)
+      WHERE TenantId = @tenantId AND UsedInvID = @invId
+        AND UsedInvType = N'مبيعات' AND Status = N'USED';
+    `);
+  if (used.recordset.length > 0) {
+    throw new ReferralCheckoutError(
+      'REFERRAL_VOUCHER_UNAVAILABLE',
+      'لا يمكن تعديل أو حذف فاتورة صُرفت فيها مكافأة إحالة قبل استرجاعها محاسبيًا',
+      409,
+    );
+  }
 }
