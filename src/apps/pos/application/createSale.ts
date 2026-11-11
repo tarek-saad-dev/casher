@@ -43,6 +43,9 @@ export async function createSale(input: CreateSaleInput): Promise<CreateSaleResu
       tenantId: input.tenantId,
       clientId: input.clientId,
       referralCode: input.referralCode,
+      items: input.items.map(item => ({
+        proId: item.proId, sPrice: item.sPrice, qty: item.qty, bonus: item.bonus,
+      })),
     });
     const { invID, invType, targetRecalcScopes } = await executeLegacySaleCreateTransaction(
       transaction,
