@@ -133,6 +133,11 @@ export default function PosInvoicePanel({
             </button>
           </div>
 
+          {splitPaymentActive && state.referralCode && (
+            <p role="status" data-testid="referral-split-reallocate" className="text-xs text-amber-700 dark:text-amber-300">
+              بعد تطبيق خصم الإحالة، أعد توزيع المبلغ المدفوع على طرق الدفع — الإجمالي الجديد {totals.grandTotal.toFixed(2)} ج.م.
+            </p>
+          )}
           {splitPaymentActive && (
             <SplitPaymentInput
               methods={paymentMethods}
