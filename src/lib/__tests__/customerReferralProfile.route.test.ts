@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { NextResponse } from 'next/server';
 
 vi.mock('server-only', () => ({}));
 const mock = vi.hoisted(() => ({
@@ -8,7 +9,7 @@ const mock = vi.hoisted(() => ({
 }));
 vi.mock('@/lib/api-auth', () => ({
   requireTenantSession: vi.fn(async () => mock.session ??
-    new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 })),
+    NextResponse.json({ error: 'Unauthorized' }, { status: 401 })),
 }));
 vi.mock('@/lib/referrals/customerReferralProfile.service', () => ({
   getTenantCustomerReferralProfile: (...args: unknown[]) => mock.getProfile(...args),
