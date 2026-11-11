@@ -12,11 +12,8 @@ export const POS_REFERRAL_CHECKOUT_UI_ENABLED =
 type ReferralState = Pick<SaleState,
   'customer' | 'items' | 'discountPercent' | 'discountValue' | 'referralCode'>;
 
-export function canApplyPosReferral(state: ReferralState, code: string, clientId: number): boolean {
-  const normalized = normalizePosReferralCode(code);
-  if (!normalized || !state.customer || state.customer.ClientID !== clientId || state.referralCode) {
-    return false;
-  }
+export function canUsePosReferralCart(state: ReferralState): boolean {
+  if (!state.customer || state.referralCode) return false;
   if (state.items.length === 0 || state.items.length > 100 ||
       Number(state.discountPercent) !== 0 || Number(state.discountValue) !== 0) {
     return false;
@@ -28,6 +25,11 @@ export function canApplyPosReferral(state: ReferralState, code: string, clientId
     Number.isFinite(line.Bonus) && line.Bonus >= 0 &&
     Number(line.Dis) === 0 && Number(line.DisVal) === 0
   );
+}
+
+export function canApplyPosReferral(state: ReferralState, code: string, clientId: number): boolean {
+  const normalized = normalizePosReferralCode(code);
+  return Boolean(normalized && state.customer?.ClientID === clientId && canUsePosReferralCart(state));
 }
 
 export function referralCheckoutLineItemsFingerprint(items: CartItem[]): string {
