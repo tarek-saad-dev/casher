@@ -78,6 +78,9 @@ jobs:
       - name: CUT staff customer referral profile and WhatsApp share regressions
         run: npx vitest run src/lib/__tests__/customerReferralProfile.service.test.ts src/lib/__tests__/customerReferralProfile.route.test.ts src/lib/__tests__/posCustomerReferralProfile.test.tsx
 
+      - name: CUT admin referral ledger dashboard and tenant/report UI regressions
+        run: npx vitest run src/lib/__tests__/referralAdminDashboard.service.test.ts src/lib/__tests__/referralAdminDashboard.route.test.ts src/lib/__tests__/referralAdminDashboard.page.test.tsx
+
       - name: DRVO migration + rollout + runner tests
         run: >
           npx vitest run
