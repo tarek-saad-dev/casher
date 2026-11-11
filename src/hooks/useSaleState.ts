@@ -7,6 +7,7 @@ import {
   computeServiceLineTotals,
 } from '@/lib/sales/service-line-totals';
 import { applyHomeVisitExclusivity } from '@/lib/catalog/groomOptionalAddons';
+import { canApplyPosReferral, canApplyPosReferralReward } from '@/lib/referrals/posReferralCheckoutPolicy';
 
 // ───────────────────────── Actions ─────────────────────────
 
@@ -25,6 +26,10 @@ type Action =
   | { type: 'UPDATE_ITEM'; id: string; patch: Partial<CartItem> }
   | { type: 'SET_DISCOUNT_PERCENT'; value: number }
   | { type: 'SET_DISCOUNT_VALUE'; value: number }
+  | { type: 'APPLY_REFERRAL'; code: string; clientId: number }
+  | { type: 'CLEAR_REFERRAL' }
+  | { type: 'APPLY_REFERRAL_REWARD'; voucherId: number; clientId: number }
+  | { type: 'CLEAR_REFERRAL_REWARD' }
   | { type: 'SET_PAYMENT_METHOD'; id: number | null }
   | { type: 'SET_PAYMENT_ALLOCATIONS'; allocations: PaymentAllocation[] }
   | { type: 'UPDATE_PAYMENT_AMOUNT'; paymentMethodId: number; amount: number }
@@ -41,6 +46,8 @@ const initialState: SaleState = {
   items: [],
   discountPercent: 0,
   discountValue: 0,
+  referralCode: null,
+  referralVoucherId: null,
   paymentMethodId: null,
   paymentAllocations: [],
   notes: '',
@@ -97,15 +104,27 @@ function syncHeaderDiscountFromValue(items: CartItem[], value: number) {
   return { discountPercent, discountValue };
 }
 
+/** Remove the promotion and clear payment allocations whenever a draft changes.
+ * Single payment allocation is re-synced by the existing POS page effect;
+ * split payment is deliberately re-entered by the cashier. */
+function revokeAppliedReferral(state: SaleState): SaleState {
+  if (!state.referralCode && !state.referralVoucherId) return state;
+  return { ...state, referralCode: null, referralVoucherId: null, discountPercent: 0, discountValue: 0, paymentAllocations: [] };
+}
+
 // ───────────────────────── Reducer ─────────────────────────
 
 function reducer(state: SaleState, action: Action): SaleState {
   switch (action.type) {
     case 'SET_CUSTOMER':
-      return { ...state, customer: action.customer };
+      return {
+        ...(state.customer?.ClientID === action.customer?.ClientID ? state : revokeAppliedReferral(state)),
+        customer: action.customer,
+      };
     case 'SET_BARBER':
       return { ...state, barber: action.barber };
     case 'ADD_ITEM': {
+      state = revokeAppliedReferral(state);
       // Home-visit tiers are mutually exclusive — adding one replaces any other tier.
       if (action.homeVisitProIds?.length) {
         const cleared = applyHomeVisitExclusivity(
@@ -118,6 +137,7 @@ function reducer(state: SaleState, action: Action): SaleState {
       return { ...state, items: [...state.items, normalizeCartItem(action.item)] };
     }
     case 'ADD_ITEMS': {
+      state = revokeAppliedReferral(state);
       const removeSet = new Set(action.removeIds ?? []);
       let next = state.items.filter((i) => !removeSet.has(i.id));
       for (const raw of action.items) {
@@ -130,12 +150,15 @@ function reducer(state: SaleState, action: Action): SaleState {
       return { ...state, items: next };
     }
     case 'REMOVE_ITEM':
+      state = revokeAppliedReferral(state);
       return { ...state, items: state.items.filter((i) => i.id !== action.id) };
     case 'REMOVE_ITEMS': {
+      state = revokeAppliedReferral(state);
       const ids = new Set(action.ids);
       return { ...state, items: state.items.filter((i) => !ids.has(i.id)) };
     }
     case 'UPDATE_ITEM':
+      state = revokeAppliedReferral(state);
       return {
         ...state,
         items: state.items.map((i) =>
@@ -143,15 +166,41 @@ function reducer(state: SaleState, action: Action): SaleState {
         ),
       };
     case 'CLEAR_ITEMS':
-      return { ...state, items: [], discountPercent: 0, discountValue: 0 };
+      return { ...state, items: [], referralCode: null, referralVoucherId: null, discountPercent: 0, discountValue: 0, paymentAllocations: [] };
     case 'SET_DISCOUNT_PERCENT': {
+      state = revokeAppliedReferral(state);
       const synced = syncHeaderDiscountFromPercent(state.items, action.value);
       return { ...state, ...synced };
     }
     case 'SET_DISCOUNT_VALUE': {
+      state = revokeAppliedReferral(state);
       const synced = syncHeaderDiscountFromValue(state.items, action.value);
       return { ...state, ...synced };
     }
+    case 'APPLY_REFERRAL': {
+      if (!canApplyPosReferral(state, action.code, action.clientId)) return state;
+      const synced = syncHeaderDiscountFromPercent(state.items, 50);
+      return {
+        ...state,
+        ...synced,
+        referralCode: action.code,
+        paymentAllocations: [],
+      };
+    }
+    case 'CLEAR_REFERRAL':
+      return revokeAppliedReferral(state);
+    case 'APPLY_REFERRAL_REWARD': {
+      if (!canApplyPosReferralReward(state, action.voucherId, action.clientId)) return state;
+      const synced = syncHeaderDiscountFromPercent(state.items, 20);
+      return {
+        ...state,
+        ...synced,
+        referralVoucherId: action.voucherId,
+        paymentAllocations: [],
+      };
+    }
+    case 'CLEAR_REFERRAL_REWARD':
+      return revokeAppliedReferral(state);
     case 'SET_PAYMENT_METHOD':
       return { ...state, paymentMethodId: action.id };
     case 'SET_PAYMENT_ALLOCATIONS':
@@ -242,6 +291,17 @@ export function useSaleState() {
     (v: number) => dispatch({ type: 'SET_DISCOUNT_VALUE', value: v }),
     [],
   );
+  const applyReferral = useCallback(
+    (code: string, clientId: number) => dispatch({ type: 'APPLY_REFERRAL', code, clientId }),
+    [],
+  );
+  const clearReferral = useCallback(() => dispatch({ type: 'CLEAR_REFERRAL' }), []);
+  const applyReferralReward = useCallback(
+    (voucherId: number, clientId: number) =>
+      dispatch({ type: 'APPLY_REFERRAL_REWARD', voucherId, clientId }),
+    [],
+  );
+  const clearReferralReward = useCallback(() => dispatch({ type: 'CLEAR_REFERRAL_REWARD' }), []);
   const setPaymentMethod = useCallback(
     (id: number | null) => dispatch({ type: 'SET_PAYMENT_METHOD', id }),
     [],
@@ -314,6 +374,10 @@ export function useSaleState() {
     updateItem,
     setDiscountPercent,
     setDiscountValue,
+    applyReferral,
+    clearReferral,
+    applyReferralReward,
+    clearReferralReward,
     applyDiscountToLargestLine,
     setPaymentMethod,
     setPaymentAllocations,
