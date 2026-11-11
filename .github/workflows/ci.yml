@@ -67,7 +67,7 @@ jobs:
         run: npm ci
 
       - name: CUT referral atomic checkout and monetary invariants
-        run: npx vitest run src/lib/__tests__/referralCheckoutPolicy.test.ts src/lib/__tests__/referralSaleTransaction.test.ts src/lib/__tests__/referralWriterWiring.test.ts
+        run: npx vitest run src/lib/__tests__/referralCheckoutPolicy.test.ts src/lib/__tests__/referralSaleTransaction.test.ts src/lib/__tests__/referralWriterWiring.test.ts src/lib/__tests__/referralInvoiceMutationGuard.test.ts
 
       - name: DRVO migration + rollout + runner tests
         run: >
