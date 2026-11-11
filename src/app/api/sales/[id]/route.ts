@@ -26,6 +26,10 @@ import {
 } from '@/lib/branch';
 import { requireTenantSession } from '@/lib/api-auth';
 import { assertReferralInvoiceNotMutated } from '@/lib/referrals/referralInvoiceMutationGuard';
+import {
+  getReferralRefundAuditSnapshot,
+  reverseReferralInvoiceOnFullRefund,
+} from '@/lib/referrals/referralInvoiceRefund.service';
 
 // GET /api/sales/[id] — Get sale by invID for printing
 export async function GET(
@@ -359,13 +363,26 @@ export async function DELETE(
         const snapshot = isPosPortEnabled()
           ? await getSaleSnapshot(transaction, invID)
           : await getInvoiceSnapshot(transaction, invID);
-        return snapshot as unknown as Record<string, unknown> | null;
+        if (!snapshot) return null;
+        // The audited old-data record captures linked voucher IDs and status,
+        // along with staff, mandatory reason and invoice snapshot.
+        const referralLedger = await getReferralRefundAuditSnapshot(
+          transaction, String(session.TenantId), invID,
+        );
+        return { ...snapshot, ...(referralLedger ? { referralLedger } : {}) } as Record<string, unknown>;
       },
       execute: async (transaction) => {
-        await assertReferralInvoiceNotMutated(transaction, String(session.TenantId), invID);
-        return isPosPortEnabled()
-          ? deleteSale(transaction, invID, loaded.ownership.branchId, session.UserID)
-          : deleteInvoice(transaction, invID, loaded.ownership.branchId);
+        // Same SERIALIZABLE audited SQL transaction as stock/cash/payment reversal.
+        // The source reward is preserved when its claim becomes REVERSED.
+        const reversal = await reverseReferralInvoiceOnFullRefund(transaction, {
+          tenantId: String(session.TenantId), invoiceId: invID,
+        });
+        if (isPosPortEnabled()) {
+          await deleteSale(transaction, invID, loaded.ownership.branchId, session.UserID);
+        } else {
+          await deleteInvoice(transaction, invID, loaded.ownership.branchId);
+        }
+        return reversal;
       },
       loadNewData: async () => null,
       beforeCommit: async ({ transaction, oldData }) => {
@@ -397,6 +414,7 @@ export async function DELETE(
       success: true,
       message: 'تم حذف الفاتورة',
       auditId: auditResult.auditId,
+      referralRefund: auditResult.data,
     });
 
   } catch (err: unknown) {
