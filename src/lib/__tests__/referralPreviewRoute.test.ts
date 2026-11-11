@@ -43,7 +43,8 @@ describe('staff-only referral code preview API', () => {
   it('accepts a valid staff request and binds tenant from the session, not the URL', async () => {
     const response = await GET(new NextRequest(url + '&tenantId=another-tenant'));
     expect(response.status).toBe(200);
-    expect(mockPreview).toHaveBeenCalledExactlyOnceWith({
+    expect(mockPreview).toHaveBeenCalledTimes(1);
+    expect(mockPreview).toHaveBeenCalledWith({
       tenantId: tenant,
       referredClientId: 34,
       code: 'CUT-ABCDEF0123456789ABCDEF01',
