@@ -36,6 +36,9 @@ type LegacySaleCreateItemInput = {
 type LegacySaleCreateTransactionInput = {
   items: LegacySaleCreateItemInput[];
   clientId: number | null;
+  /** Tenant from signed staff session (not browser authority). */
+  tenantId?: string;
+  referralCode?: string | null;
   notes: string;
   notes2?: string;
   payCash: number;
