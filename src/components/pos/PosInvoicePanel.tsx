@@ -7,6 +7,7 @@ import CartPanel from '@/components/pos/CartPanel';
 import InvoiceSummary from '@/components/pos/InvoiceSummary';
 import PosReferralPreview from '@/components/pos/PosReferralPreview';
 import { REFERRAL_PREVIEW_ENABLED } from '@/lib/referrals/posReferralPreview';
+import { POS_REFERRAL_CHECKOUT_UI_ENABLED, canUsePosReferralCart } from '@/lib/referrals/posReferralCheckoutPolicy';
 import PaymentMethodSelect from '@/components/pos/PaymentMethodSelect';
 import SplitPaymentInput from '@/components/pos/SplitPaymentInput';
 import type { Barber, CartItem, PaymentMethod, SaleState, SaleTotals } from '@/lib/types';
@@ -30,6 +31,8 @@ interface PosInvoicePanelProps {
   onSave: (forcePrint?: boolean, source?: string) => void;
   showKeyboardHints?: boolean;
   isEditingSale?: boolean;
+  onApplyReferral: (code: string, clientId: number) => void;
+  onClearReferral: () => void;
 }
 
 export default function PosInvoicePanel({
@@ -51,6 +54,8 @@ export default function PosInvoicePanel({
   onSave: _onSave,
   showKeyboardHints = true,
   isEditingSale = false,
+  onApplyReferral,
+  onClearReferral,
 }: PosInvoicePanelProps) {
   const hasSplitAllocations = state.paymentAllocations.some(
     (pa) => pa.amount > 0 && pa.amount !== totals.grandTotal,
@@ -70,11 +75,19 @@ export default function PosInvoicePanel({
         totals={totals}
         discountPercent={state.discountPercent}
         discountValue={state.discountValue}
+        referralApplied={Boolean(state.referralCode)}
         onDiscountPercentChange={onDiscountPercentChange}
         onDiscountValueChange={onDiscountValueChange}
       />
-      {REFERRAL_PREVIEW_ENABLED && state.customer && !isEditingSale && (
-        <PosReferralPreview key={state.customer.ClientID} clientId={state.customer.ClientID} />
+      {(REFERRAL_PREVIEW_ENABLED || POS_REFERRAL_CHECKOUT_UI_ENABLED) && state.customer && !isEditingSale && (
+        <PosReferralPreview
+          key={state.customer.ClientID}
+          clientId={state.customer.ClientID}
+          appliedCode={state.referralCode}
+          canApply={canUsePosReferralCart(state)}
+          onApply={POS_REFERRAL_CHECKOUT_UI_ENABLED ? onApplyReferral : undefined}
+          onRemove={POS_REFERRAL_CHECKOUT_UI_ENABLED ? onClearReferral : undefined}
+        />
       )}
       <Separator />
       {paymentMethods.length > 0 && (
