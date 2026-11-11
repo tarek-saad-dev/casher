@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import { Printer, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { createPrintRequestId, printHtmlViaLocalService, openBrowserPrintFallback } from '@/lib/localPrintClient';
+import { createPrintRequestId, printHtmlViaLocalService, openBrowserPrintFallback, type PrintErrorCode } from '@/lib/localPrintClient';
+import LocalPrintConnectionHelp, { isLocalAgentConnectionError } from '@/components/printing/LocalPrintConnectionHelp';
 import { validateReceiptTemplateV1 } from '@/lib/receipt-studio/template';
 import { renderStudioReceiptHtml, type StudioInvoiceModel } from '@/lib/receipt-studio/render';
 import { getPrintBrandHtml, usePrintBrand } from '@/lib/tenant/tenantBrandClient';
@@ -506,6 +507,7 @@ export default function PrintInvoiceModal({ open, invID, onClose }: PrintInvoice
   const [loading, setLoading] = useState(false);
   const [printing, setPrinting] = useState(false);
   const [printError, setPrintError] = useState<string | null>(null);
+  const [printErrorCode, setPrintErrorCode] = useState<PrintErrorCode | null>(null);
   const [printSuccess, setPrintSuccess] = useState(false);
   const [policyBlocked, setPolicyBlocked] = useState(false);
   const printLockRef = useRef(false);
@@ -728,6 +730,7 @@ export default function PrintInvoiceModal({ open, invID, onClose }: PrintInvoice
     printLockRef.current = true;
     setPrinting(true);
     setPrintError(null);
+    setPrintErrorCode(null);
     setPrintSuccess(false);
     try {
       // Resolve the authorized tenant/branch published design on every print.
@@ -791,8 +794,14 @@ export default function PrintInvoiceModal({ open, invID, onClose }: PrintInvoice
         receiptType: 'invoice',
         requestId: createPrintRequestId(`invoice-${data.invID}`),
       });
-      if (result.ok) setPrintSuccess(true);
-      else { setPrintError(result.userMessage); setPolicyBlocked(result.code === 'PRINT_DISABLED' || result.code === 'PRINT_TYPE_DISABLED'); }
+      if (result.ok) {
+        setPrintSuccess(true);
+        setPrintErrorCode(null);
+      } else {
+        setPrintError(result.userMessage);
+        setPrintErrorCode(result.code);
+        setPolicyBlocked(result.code === 'PRINT_DISABLED' || result.code === 'PRINT_TYPE_DISABLED');
+      }
     } catch {
       setPrintError('تعذر إرسال الفاتورة للطابعة المحلية.');
     } finally {
@@ -1049,6 +1058,11 @@ export default function PrintInvoiceModal({ open, invID, onClose }: PrintInvoice
             {printError && (
               <p role="alert" className="text-sm text-destructive mt-2">{printError}</p>
             )}
+            {isLocalAgentConnectionError(printErrorCode) && (
+              <div className="mt-3">
+                <LocalPrintConnectionHelp errorCode={printErrorCode} compact />
+              </div>
+            )}
             {printSuccess && (
               <p role="status" className="text-sm text-green-700 mt-2">تم إرسال الفاتورة إلى قائمة انتظار الطابعة.</p>
             )}
@@ -1058,7 +1072,7 @@ export default function PrintInvoiceModal({ open, invID, onClose }: PrintInvoice
                 <X className="w-4 h-4 ml-2" />
                 إغلاق
               </Button>
-              {printError && !policyBlocked && (
+              {printError && !policyBlocked && !isLocalAgentConnectionError(printErrorCode) && (
                 <Button variant="secondary" onClick={handleBrowserFallback} disabled={printing} data-testid="invoice-browser-fallback">
                   طباعة من المتصفح
                 </Button>
