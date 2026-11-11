@@ -23,7 +23,8 @@ import ReceiptStudioLayerTree from './ReceiptStudioLayerTree';
 import { allReceiptNodes, duplicateTreeNode, findReceiptNode, groupReceiptNodes, moveTreeNode, removeTreeNode, treeNodeParentId, ungroupReceiptNode, updateTreeNode, addTreeNode, type TreePlacement } from '@/lib/receipt-studio/tree';
 import { prepareThermalImage } from './prepareImage';
 import { renderStudioReceiptHtml, type StudioInvoiceModel } from '@/lib/receipt-studio/render';
-import { createPrintRequestId, printHtmlViaLocalService } from '@/lib/localPrintClient';
+import { createPrintRequestId, printHtmlViaLocalService, type PrintErrorCode } from '@/lib/localPrintClient';
+import LocalPrintConnectionHelp, { isLocalAgentConnectionError } from '@/components/printing/LocalPrintConnectionHelp';
 
 const LABELS: Record<ReceiptBlockKind, string> = {
   brand: 'الشعار والهوية',
@@ -106,6 +107,7 @@ export default function ReceiptStudioEditor() {
   const [dbReady, setDbReady] = useState(false);
   const [testSent, setTestSent] = useState(false);
   const [physicalVerified, setPhysicalVerified] = useState(false);
+  const [printFailureCode, setPrintFailureCode] = useState<PrintErrorCode | null>(null);
   const [proofMode, setProofMode] = useState(false);
   const [rollbackTarget, setRollbackTarget] = useState<number | null>(null);
 
@@ -216,12 +218,17 @@ export default function ReceiptStudioEditor() {
   async function printProof() {
     if (busyRef.current) return;
     busyRef.current = true; setBusy(true); setTestSent(false); setPhysicalVerified(false);
+    setPrintFailureCode(null);
     try {
       const result = await printHtmlViaLocalService({
         html: proofHtml, width: '72mm', receiptType: 'other',
         printer: 'default', requestId: createPrintRequestId('receipt-studio-demo'),
       });
-      if (!result.ok) throw new Error(result.userMessage);
+      if (!result.ok) {
+        setPrintFailureCode(result.code);
+        throw new Error(result.userMessage);
+      }
+      setPrintFailureCode(null);
       setTestSent(true);
       setMessage('تم إرسال فاتورة اختبار إلى Windows. تأكد من الطباعة والقص قبل الاعتماد.');
     } catch (error) { setMessage(error instanceof Error ? error.message : 'فشل إرسال الطباعة التجريبية'); }
@@ -807,6 +814,9 @@ export default function ReceiptStudioEditor() {
         </aside>
       </div>
 
+      {isLocalAgentConnectionError(printFailureCode) && (
+        <LocalPrintConnectionHelp errorCode={printFailureCode} />
+      )}
       {message && (
         <div role="status" className="flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm">
           <Info className="size-4"/>{message}

@@ -8,6 +8,7 @@ import {
   RefreshCw, Scissors, ShieldCheck, TestTube2, Wifi, WifiOff,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import LocalPrintConnectionHelp from '@/components/printing/LocalPrintConnectionHelp';
 import { Switch } from '@/components/ui/switch';
 import {
   getLocalPrinterSettings, patchLocalPrinterSettings, printLocalTestReceipt,
@@ -174,12 +175,9 @@ export default function PrinterControlPage() {
       </section>
 
       {!connected && !loading && (
-        <div role="alert" className="flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm text-foreground">
-          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
-          <span>خدمة الطباعة غير متاحة على هذا الكمبيوتر. افتح الصفحة من جهاز الكاشير الذي يشغّل CUT Salon Print Agent، وتأكد من تشغيل خدمة Windows.</span>
-        </div>
+        <LocalPrintConnectionHelp onReconnect={() => refresh()} />
       )}
-      {error && <div role="alert" className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">{error}</div>}
+      {error && connected && <div role="alert" className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">{error}</div>}
       {notice && <div role="status" className="flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 text-sm text-foreground"><CheckCircle2 className="h-4 w-4 text-emerald-500" />{notice}</div>}
 
       <div className="grid gap-6 lg:grid-cols-5">
