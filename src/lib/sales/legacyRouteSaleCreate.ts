@@ -371,6 +371,7 @@ export async function createSaleLegacyFromRoute(
       tenantId: input.tenantId,
       clientId: input.clientId,
       referralCode: input.referralCode,
+      referralVoucherId: input.referralVoucherId,
       items: input.items.map(item => ({
         proId: item.proId, sPrice: item.sPrice, qty: item.qty, bonus: item.bonus,
       })),
