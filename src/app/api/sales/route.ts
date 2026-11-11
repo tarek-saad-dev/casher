@@ -17,6 +17,9 @@ import {
 } from '@/apps/pos/public';
 import { createSaleLegacyFromRoute } from '@/lib/sales/legacyRouteSaleCreate';
 import { findForeignServiceIds } from '@/lib/catalog/tenantCatalogGuards';
+import {
+  ReferralCheckoutError, parseReferralCheckoutRequest, priceFirstVisitReferral,
+} from '@/lib/referrals/referralCheckoutPolicy';
 
 export const runtime = "nodejs";
 
@@ -37,6 +40,8 @@ export async function POST(req: NextRequest) {
     if (!sessionUser?.TenantId) {
       return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
     }
+
+    const referralCode = parseReferralCheckoutRequest(body.referralCode, body.clientId);
 
     // Lines may only name services/products of the caller's tenant.
     {
@@ -136,7 +141,18 @@ export async function POST(req: NextRequest) {
     }
 
     // ──── Server-side totals from line items + optional header discount ────
-    const computed = computeInvoiceItemsTotals(
+    const lineItemsForTotals = body.items.map((item) => ({
+        sPrice: item.sPrice,
+        qty: item.qty,
+        discountPercent: item.dis,
+        discountValue: item.disVal,
+        bonus: item.bonus,
+      }));
+    const computed = referralCode
+      ? priceFirstVisitReferral(lineItemsForTotals, {
+          discountPercent: body.dis, discountValue: body.disVal,
+        })
+      : computeInvoiceItemsTotals(
       body.items.map((item) => ({
         sPrice: item.sPrice,
         qty: item.qty,
@@ -250,6 +266,8 @@ export async function POST(req: NextRequest) {
     );
 
     const saleInput = {
+      tenantId: String(sessionUser.TenantId),
+      referralCode,
       items: body.items.map((item) => ({
         proId: item.proId,
         empId: item.empId,
@@ -305,6 +323,9 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ invID: result.invID, invType: result.invType }, { status: 201 });
   } catch (err: unknown) {
+    if (err instanceof ReferralCheckoutError) {
+      return NextResponse.json({ error: err.message, code: err.code }, { status: err.status });
+    }
     const { InventoryDomainError } = await import(
       '@/lib/inventory/inventoryMutation.service'
     );
