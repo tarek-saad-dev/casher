@@ -21,7 +21,8 @@ jobs:
           $scripts = @(
             'print-service/windows/run-agent.ps1',
             'print-service/windows/install-autostart.ps1',
-            'print-service/windows/uninstall-autostart.ps1'
+            'print-service/windows/uninstall-autostart.ps1',
+            'public/downloads/Install-CUT-Print-Agent.ps1'
           )
           foreach ($script in $scripts) {
             $tokens = $null
