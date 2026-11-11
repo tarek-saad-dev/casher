@@ -109,7 +109,7 @@ export default function LocalPrintConnectionHelp({ onReconnect, errorCode, compa
                 <strong>نزّل أداة CUT Print Agent</strong>، وبعد التنزيل اضغط كليك يمين على الملف
                 واختر <strong>Run with PowerShell</strong> على الكمبيوتر الحالي.
                 <p className="mt-1 text-xs text-muted-foreground">
-                  الأداة هتفحص مهمة {TASK_NAME}. لو موجودة بتحاول تشغّلها، ولو مش موجودة بتثبتها وتشغّلها.
+                  الأداة هتفحص مهمة {TASK_NAME} في Task Scheduler. لو موجودة بتحاول تشغّلها، ولو مش موجودة بتثبتها وتشغّلها.
                   مش هتطبع أي ورق أثناء التثبيت.
                 </p>
                 <a href={INSTALLER_URL} download="Install-CUT-Print-Agent.ps1"
