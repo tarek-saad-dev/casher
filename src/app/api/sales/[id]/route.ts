@@ -307,7 +307,7 @@ export async function PUT(
     });
   } catch (err: unknown) {
     if (isAuditedActionError(err)) {
-      return NextResponse.json({ error: err.message, auditId: err.failedAuditId }, { status: 500 });
+      return NextResponse.json({ error: err.message, auditId: err.failedAuditId }, { status: err.statusCode });
     }
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error('[api/sales/id] PUT error:', message);
@@ -404,7 +404,7 @@ export async function DELETE(
       const isValidation = err.message.includes('تتطلب سبباً') || err.message.includes('مطلوب');
       return NextResponse.json(
         { success: false, error: err.message, auditId: err.failedAuditId },
-        { status: isValidation ? 400 : 500 },
+        { status: isValidation ? 400 : err.statusCode },
       );
     }
     const msg = err instanceof Error ? err.message : 'Unknown error';
