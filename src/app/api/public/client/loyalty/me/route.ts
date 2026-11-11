@@ -69,8 +69,11 @@ export async function GET(
       );
     }
 
-    const clientId = parseInt(clientIdParam, 10);
-    if (isNaN(clientId) || clientId <= 0) {
+    // ClientID is a SQL INT primary key, not a phone number. Reject malformed
+    // and out-of-range identifiers before binding them to mssql (which otherwise
+    // converts an 11-digit phone to a database error / HTTP 500).
+    const clientId = Number(clientIdParam);
+    if (!/^\\d+$/.test(clientIdParam) || !Number.isSafeInteger(clientId) || clientId <= 0 || clientId > 2147483647) {
       return NextResponse.json(
         { ok: false, error: "Invalid clientId" },
         { status: 400, headers: corsHeaders },
