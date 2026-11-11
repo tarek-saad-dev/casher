@@ -24,6 +24,8 @@ interface MobileInvoiceSheetProps {
   onPaymentAllocationsChange: (allocations: SaleState['paymentAllocations']) => void;
   onSave: (forcePrint?: boolean, source?: string) => void;
   isEditingSale?: boolean;
+  onApplyReferral: (code: string, clientId: number) => void;
+  onClearReferral: () => void;
 }
 
 export default function MobileInvoiceSheet({
