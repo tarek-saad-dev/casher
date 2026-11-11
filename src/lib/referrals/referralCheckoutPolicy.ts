@@ -13,6 +13,30 @@ import {
 export const REFERRAL_CHECKOUT_PERCENT = 50 as const;
 export const REFERRAL_REFERRER_VOUCHER_PERCENT = 20 as const;
 
+export function referralRewardRedemptionEnabled(): boolean {
+  return referralCheckoutEnabled() && process.env.POS_REFERRAL_REDEEM_ENABLED === 'true';
+}
+
+export function parseReferralRewardVoucherId(raw: unknown, referralCode: string | null): number | null {
+  if (raw === undefined || raw === null) return null;
+  if (!referralRewardRedemptionEnabled()) {
+    throw new ReferralCheckoutError('REFERRALS_DISABLED', 'صرف مكافآت الإحالة غير متاح حاليًا');
+  }
+  if (referralCode) {
+    throw new ReferralCheckoutError('REFERRAL_DISCOUNT_CONFLICT', 'مينفعش تجمع كود إحالة ومكافأة على نفس الفاتورة');
+  }
+  if ((typeof raw !== 'number' && typeof raw !== 'string') ||
+      String(raw).trim() === '' ||
+      !/^[1-9][0-9]*$/.test(String(raw).trim())) {
+    throw new ReferralCheckoutError('INVALID_REFERRAL_VOUCHER', 'مكافأة إحالة غير صالحة', 400);
+  }
+  const id = Number(raw);
+  if (!Number.isSafeInteger(id) || id <= 0) {
+    throw new ReferralCheckoutError('INVALID_REFERRAL_VOUCHER', 'مكافأة إحالة غير صالحة', 400);
+  }
+  return id;
+}
+
 export class ReferralCheckoutError extends Error {
   constructor(
     readonly code:
@@ -23,7 +47,9 @@ export class ReferralCheckoutError extends Error {
       | 'REFERRAL_INVALID_ITEMS'
       | 'REFERRAL_NOT_ELIGIBLE'
       | 'REFERRAL_INVOICE_NOT_PAID'
-      | 'REFERRAL_SCHEMA_UNAVAILABLE',
+      | 'REFERRAL_SCHEMA_UNAVAILABLE'
+      | 'INVALID_REFERRAL_VOUCHER'
+      | 'REFERRAL_VOUCHER_UNAVAILABLE',
     message: string,
     readonly status = 409,
   ) {
@@ -92,6 +118,24 @@ export function priceFirstVisitReferral(
     throw new ReferralCheckoutError('REFERRAL_INVALID_ITEMS', 'لا يمكن تطبيق خصم الإحالة على فاتورة بقيمة صفر', 400);
   }
   return computed;
+}
+
+/**
+ * A referrer redeems exactly one 20% reward on a SUBSEQUENT paid invoice.
+ * This uses canonical server money math; no custom line/header discounts can
+ * be stacked. Issuance/usage is atomic with the sale transaction, never GET.
+ */
+export function priceReferralRewardVoucher(
+  items: InvoiceItemForTotals[],
+  currentHeader: { discountPercent?: number | null; discountValue?: number | null },
+): InvoiceItemsTotals {
+  // Reuse first-visit validation so the monetary rules never drift.
+  // This intentionally checks the same exclusive no-stacking / positive-amount conditions.
+  const firstVisitValidation = priceFirstVisitReferral(items, currentHeader);
+  if (firstVisitValidation.linesNetTotal <= 0) {
+    throw new ReferralCheckoutError('REFERRAL_INVALID_ITEMS', 'فاتورة المكافأة غير صالحة', 400);
+  }
+  return computeInvoiceItemsTotals(items, { discountPercent: REFERRAL_REFERRER_VOUCHER_PERCENT });
 }
 
 /** Token-safe identity: public code never contains client IDs or phone numbers. */
