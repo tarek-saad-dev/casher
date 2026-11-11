@@ -199,7 +199,7 @@ export default function PosReferralPreview({
       <p className="text-xs text-muted-foreground" data-testid="referral-preview-disclaimer">
         {appliedCode
           ? 'خصم المسودة مبدئي — السيرفر سيؤكد الإحالة والدفع قبل إصدار أي مكافأة.'
-          : 'معاينة فقط — لن يُطبّق خصم إلا بعد الضغط على تطبيق، ولن تُصدر مكافأة من الفحص.'}
+          : 'معاينة فقط — لن يُطبّق أي خصم إلا بعد الضغط على تطبيق، ولن تُصدر مكافأة من الفحص.'}
       </p>
     </section>
   );
