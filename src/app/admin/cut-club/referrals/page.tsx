@@ -1,322 +1,434 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import {
-  UserPlus, Users, Gift, TrendingUp, Share2, CheckCircle2,
-  Clock, XCircle
+  UserPlus, Users, Gift, CheckCircle2, RotateCcw, Ticket, Search,
+  RefreshCw, ChevronLeft, ChevronRight, AlertTriangle, BadgeCheck,
+  XCircle, Clock,
 } from 'lucide-react';
 import PageHeader from '@/components/cut-club/PageHeader';
-import StatCard from '@/components/cut-club/StatCard';
 import PremiumCard from '@/components/cut-club/PremiumCard';
 import { CardSkeleton, TableSkeleton } from '@/components/cut-club/LoadingSkeleton';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 
-interface ReferralStats {
-  invitesSent: number;
-  successfulReferrals: number;
-  rewardCost: number;
-  conversionRate: number;
-}
+type View = 'claims' | 'codes';
+type ClaimStatus = 'APPLIED' | 'REVERSED' | 'PENDING' | 'CANCELLED';
+type VoucherStatus = 'ACTIVE' | 'USED' | 'EXPIRED' | 'REVOKED';
+type CodeFilter = 'active' | 'inactive';
+type Status = ClaimStatus | CodeFilter | 'all';
 
-interface Referral {
+type Summary = {
+  issuedCodes: number;
+  activeCodes: number;
+  successfulReferrals: number;
+  refundedReferrals: number;
+  rewardsIssued: number;
+  rewardsAvailable: number;
+  rewardsUsed: number;
+};
+type Claim = {
   id: number;
+  code: string;
   referrerName: string;
   referredName: string;
-  referredPhone: string;
-  status: 'INVITED' | 'REGISTERED' | 'FIRST_VISIT' | 'REWARDED';
-  inviteDate: string;
-  registrationDate?: string;
-  firstVisitDate?: string;
-  rewardDate?: string;
-  rewardCoins?: number;
-}
-
-const statusConfig = {
-  INVITED: {
-    label: 'تم الإرسال',
-    color: 'bg-blue-500/10 text-blue-400 border-blue-500/30',
-    icon: Share2,
-  },
-  REGISTERED: {
-    label: 'مسجل',
-    color: 'bg-purple-500/10 text-purple-400 border-purple-500/30',
-    icon: UserPlus,
-  },
-  FIRST_VISIT: {
-    label: 'زيارة أولى',
-    color: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30',
-    icon: Clock,
-  },
-  REWARDED: {
-    label: 'تمت المكافأة',
-    color: 'bg-green-500/10 text-green-400 border-green-500/30',
-    icon: CheckCircle2,
-  },
+  status: ClaimStatus;
+  originalInvoiceId: number | null;
+  claimedAtUtc: string;
+  appliedAtUtc: string | null;
+  reversedAtUtc: string | null;
+  rewardStatus: VoucherStatus | null;
+};
+type Code = {
+  id: number;
+  code: string;
+  customerName: string;
+  activatedAtUtc: string | null;
+  createdAtUtc: string;
+  referrals: number;
+  refunded: number;
+  availableRewards: number;
+  usedRewards: number;
+};
+export type ReferralAdminDashboard = {
+  summary: Summary;
+  view: View;
+  status: Status;
+  search: string;
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  claims: Claim[];
+  codes: Code[];
 };
 
-export default function ReferralsPage() {
-  const [stats, setStats] = useState<ReferralStats | null>(null);
-  const [referrals, setReferrals] = useState<Referral[]>([]);
-  const [loading, setLoading] = useState(true);
+const claimLabels: Record<ClaimStatus, string> = {
+  APPLIED: 'ناجحة',
+  REVERSED: 'الفاتورة مسترجعة',
+  PENDING: 'قيد التنفيذ',
+  CANCELLED: 'ملغاة',
+};
+const rewardLabels: Record<VoucherStatus, string> = {
+  ACTIVE: 'مُصدرة',
+  USED: 'مستخدمة',
+  EXPIRED: 'منتهية',
+  REVOKED: 'ملغاة',
+};
+const statusOptions: Record<View, Array<{ value: Status; label: string }>> = {
+  claims: [
+    { value: 'all', label: 'كل الحالات' },
+    { value: 'APPLIED', label: 'ناجحة' },
+    { value: 'REVERSED', label: 'مسترجعة' },
+    { value: 'PENDING', label: 'قيد التنفيذ' },
+    { value: 'CANCELLED', label: 'ملغاة' },
+  ],
+  codes: [
+    { value: 'all', label: 'كل الأكواد' },
+    { value: 'active', label: 'مفعّلة' },
+    { value: 'inactive', label: 'غير مفعّلة' },
+  ],
+};
 
-  const fetchData = async () => {
-    setLoading(true);
-    try {
-      const mockStats: ReferralStats = {
-        invitesSent: 156,
-        successfulReferrals: 89,
-        rewardCost: 17800,
-        conversionRate: 57.05,
-      };
+const countFormat = new Intl.NumberFormat('ar-EG');
+function isCount(v: unknown): v is number {
+  return typeof v === 'number' && Number.isSafeInteger(v) && v >= 0;
+}
 
-      const mockReferrals: Referral[] = [
-        {
-          id: 1,
-          referrerName: 'أحمد محمد',
-          referredName: 'خالد حسن',
-          referredPhone: '0123456789',
-          status: 'REWARDED',
-          inviteDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
-          registrationDate: new Date(Date.now() - 28 * 24 * 60 * 60 * 1000).toISOString(),
-          firstVisitDate: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000).toISOString(),
-          rewardDate: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000).toISOString(),
-          rewardCoins: 200,
-        },
-        {
-          id: 2,
-          referrerName: 'محمد علي',
-          referredName: 'يوسف أحمد',
-          referredPhone: '0123456788',
-          status: 'FIRST_VISIT',
-          inviteDate: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString(),
-          registrationDate: new Date(Date.now() - 12 * 24 * 60 * 60 * 1000).toISOString(),
-          firstVisitDate: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-        },
-        {
-          id: 3,
-          referrerName: 'عمر حسن',
-          referredName: 'سامي محمد',
-          referredPhone: '0123456787',
-          status: 'REGISTERED',
-          inviteDate: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
-          registrationDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-        },
-        {
-          id: 4,
-          referrerName: 'سارة أحمد',
-          referredName: 'منى خالد',
-          referredPhone: '0123456786',
-          status: 'INVITED',
-          inviteDate: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-        },
-      ];
-
-      setStats(mockStats);
-      setReferrals(mockReferrals);
-    } catch (error) {
-      console.error('Failed to fetch referral data:', error);
-    } finally {
-      setLoading(false);
+/** Refuse to render malformed or cross-view data; no fake-number fallback. */
+export function parseReferralAdminResponse(body: unknown, view: View, page: number): ReferralAdminDashboard {
+  if (!body || typeof body !== 'object') throw new Error('INVALID_DASHBOARD');
+  const payload = body as Record<string, unknown>;
+  if (payload.ok !== true || !payload.dashboard || typeof payload.dashboard !== 'object') {
+    throw new Error('INVALID_DASHBOARD');
+  }
+  const d = payload.dashboard as Record<string, unknown>;
+  const s = d.summary as Record<string, unknown> | undefined;
+  if (d.view !== view || d.page !== page ||
+      !s || typeof s !== 'object' ||
+      !Array.isArray(d.claims) || !Array.isArray(d.codes) ||
+      !isCount(d.total) || !isCount(d.totalPages) ||
+      !isCount(d.pageSize) || d.pageSize !== 20 ||
+      !['all', 'APPLIED', 'REVERSED', 'PENDING', 'CANCELLED', 'active', 'inactive'].includes(String(d.status)) ||
+      typeof d.search !== 'string') throw new Error('INVALID_DASHBOARD');
+  for (const k of ['issuedCodes', 'activeCodes', 'successfulReferrals', 'refundedReferrals',
+    'rewardsIssued', 'rewardsAvailable', 'rewardsUsed']) {
+    if (!isCount(s[k])) throw new Error('INVALID_DASHBOARD');
+  }
+  if ((s.activeCodes as number) > (s.issuedCodes as number) ||
+      (s.rewardsAvailable as number) + (s.rewardsUsed as number) > (s.rewardsIssued as number) ||
+      d.totalPages !== Math.ceil((d.total as number) / 20) ||
+      d.claims.length > 20 || d.codes.length > 20 ||
+      (view === 'claims' && d.codes.length !== 0) ||
+      (view === 'codes' && d.claims.length !== 0)) {
+    throw new Error('INVALID_DASHBOARD');
+  }
+  const rows = (view === 'claims' ? d.claims : d.codes) as Array<Record<string, unknown>>;
+  for (const row of rows) {
+    if (!row || !isCount(row.id) || Number(row.id) === 0 ||
+        typeof row.code !== 'string' || !/^CUT-[0-9A-F]{24}$/.test(row.code)) {
+      throw new Error('INVALID_DASHBOARD');
     }
-  };
+    if (view === 'claims') {
+      if (typeof row.referrerName !== 'string' || typeof row.referredName !== 'string' ||
+          !['APPLIED', 'REVERSED', 'PENDING', 'CANCELLED'].includes(String(row.status)) ||
+          !(row.rewardStatus === null || ['ACTIVE', 'USED', 'EXPIRED', 'REVOKED'].includes(String(row.rewardStatus)))) {
+        throw new Error('INVALID_DASHBOARD');
+      }
+    } else if (typeof row.customerName !== 'string' ||
+      !isCount(row.referrals) || !isCount(row.refunded) ||
+      !isCount(row.availableRewards) || !isCount(row.usedRewards)) {
+      throw new Error('INVALID_DASHBOARD');
+    }
+  }
+  return d as ReferralAdminDashboard;
+}
+
+function dateLabel(value: string | null): string {
+  if (!value) return '—';
+  const d = new Date(value);
+  return Number.isFinite(d.getTime())
+    ? d.toLocaleDateString('ar-EG', { year: 'numeric', month: 'short', day: 'numeric' })
+    : '—';
+}
+function numberLabel(n: number) {
+  return countFormat.format(n);
+}
+function StatTile({
+  title, value, icon: Icon, detail,
+}: { title: string; value: number; icon: typeof Gift; detail?: string }) {
+  return (
+    <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-4">
+      <div className="flex items-center justify-between gap-2 text-sm text-zinc-400">
+        <span>{title}</span><Icon className="h-5 w-5 text-emerald-400" />
+      </div>
+      <p className="mt-3 text-2xl font-bold text-white">{numberLabel(value)}</p>
+      {detail && <p className="mt-1 text-xs text-zinc-500">{detail}</p>}
+    </div>
+  );
+}
+
+/** Manager dashboard: sourced exclusively from DRVO-023 (never the legacy mock). */
+export default function ReferralsPage() {
+  const [view, setView] = useState<View>('claims');
+  const [status, setStatus] = useState<Status>('all');
+  const [searchDraft, setSearchDraft] = useState('');
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [refreshToken, setRefreshToken] = useState(0);
+  const [dashboard, setDashboard] = useState<ReferralAdminDashboard | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchData();
-  }, []);
-
-  const formatNumber = (num: number) => {
-    return new Intl.NumberFormat('ar-EG').format(num);
-  };
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('ar-EG', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
+    const controller = new AbortController();
+    setLoading(true);
+    setError(null);
+    setDashboard(null);
+    const params = new URLSearchParams({
+      view, status, page: String(page), search,
     });
-  };
+    (async () => {
+      try {
+        const response = await fetch(
+          `/api/admin/cut-club/referrals?${params.toString()}`,
+          { method: 'GET', cache: 'no-store', credentials: 'same-origin', signal: controller.signal },
+        );
+        if (!response.ok) {
+          if (response.status === 503) {
+            throw new Error('لوحة الإحالات غير مفعّلة حاليًا أو قاعدة بياناتها غير جاهزة.');
+          }
+          if (response.status === 401 || response.status === 403) {
+            throw new Error('حسابك غير مخوّل لعرض بيانات الإحالات.');
+          }
+          throw new Error('تعذر تحميل بيانات الإحالات من الخادم.');
+        }
+        const data: unknown = await response.json();
+        const parsed = parseReferralAdminResponse(data, view, page);
+        if (!controller.signal.aborted) setDashboard(parsed);
+      } catch (e) {
+        if (!controller.signal.aborted) {
+          setError(e instanceof Error && !['INVALID_DASHBOARD'].includes(e.message)
+            ? e.message
+            : 'الاستجابة غير صالحة؛ لم يتم عرض أي بيانات قديمة أو تجريبية.');
+        }
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
+      }
+    })();
+    return () => controller.abort();
+  }, [view, status, search, page, refreshToken]);
 
-  const funnelSteps = [
-    { label: 'تم الإرسال', count: stats?.invitesSent || 0, color: 'bg-blue-500' },
-    { label: 'مسجل', count: 120, color: 'bg-purple-500' },
-    { label: 'زيارة أولى', count: 95, color: 'bg-yellow-500' },
-    { label: 'تمت المكافأة', count: stats?.successfulReferrals || 0, color: 'bg-green-500' },
-  ];
+  const changeView = (next: View) => {
+    setView(next); setStatus('all'); setPage(1);
+  };
+  const applyStatus = (next: Status) => { setStatus(next); setPage(1); };
+  const onSearch = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setSearch(searchDraft.trim().slice(0, 80));
+    setPage(1);
+  };
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-white">
-      <PageHeader
-        icon={UserPlus}
-        title="إدارة الإحالات"
-        description="تتبع دعوات العملاء والمكافآت"
-        gradient="from-green-500/20 to-emerald-600/20"
-      />
+    <div className="min-h-screen bg-[#0a0a0a] text-white" dir="rtl">
+      <PageHeader icon={UserPlus} title="إدارة الإحالات"
+        description="أكواد العملاء والإحالات ومكافآت 20% الفعلية"
+        gradient="from-green-500/20 to-emerald-600/20" />
+      <div className="space-y-5 px-4 py-6 sm:px-6">
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-xs text-zinc-400">
+            البيانات من سجل الإحالات الفعلي؛ مشاركة WhatsApp ليست دعوة مسجلة.
+          </p>
+          <Button type="button" size="sm" variant="outline"
+            data-testid="admin-referral-refresh"
+            className="shrink-0 gap-2"
+            onClick={() => setRefreshToken(value => value + 1)}>
+            <RefreshCw className="h-4 w-4" /> تحديث
+          </Button>
+        </div>
 
-      <div className="px-4 sm:px-6 py-6 space-y-6">
-        {loading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <CardSkeleton key={i} />
-            ))}
+        {error && (
+          <div role="alert" data-testid="admin-referral-error"
+            className="flex items-start gap-2 rounded-lg border border-amber-600/30 bg-amber-900/10 p-4 text-sm text-amber-300">
+            <AlertTriangle className="h-5 w-5 shrink-0" /> {error}
           </div>
-        ) : (
+        )}
+
+        {loading && (
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4" data-testid="admin-referral-loading">
+            {Array.from({ length: 4 }, (_, i) => <CardSkeleton key={i} />)}
+          </div>
+        )}
+
+        {!loading && dashboard && (
           <>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <StatCard
-                title="الدعوات المرسلة"
-                value={formatNumber(stats?.invitesSent || 0)}
-                icon={Share2}
-                iconColor="text-blue-400"
-                iconBgColor="bg-blue-500/10"
-              />
-              <StatCard
-                title="الإحالات الناجحة"
-                value={formatNumber(stats?.successfulReferrals || 0)}
-                icon={CheckCircle2}
-                iconColor="text-green-400"
-                iconBgColor="bg-green-500/10"
-              />
-              <StatCard
-                title="تكلفة المكافآت"
-                value={formatNumber(stats?.rewardCost || 0)}
-                icon={Gift}
-                iconColor="text-yellow-400"
-                iconBgColor="bg-yellow-500/10"
-              />
-              <StatCard
-                title="معدل التحويل"
-                value={`${stats?.conversionRate.toFixed(1)}%`}
-                icon={TrendingUp}
-                iconColor="text-purple-400"
-                iconBgColor="bg-purple-500/10"
-              />
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4"
+              data-testid="admin-referral-summary">
+              <StatTile title="أكواد مفعّلة" value={dashboard.summary.activeCodes}
+                icon={Ticket} detail={`من ${numberLabel(dashboard.summary.issuedCodes)} كود مسجّل`} />
+              <StatTile title="إحالات ناجحة" value={dashboard.summary.successfulReferrals}
+                icon={CheckCircle2} detail="فواتير مُسددة ولم تُسترجع" />
+              <StatTile title="إحالات مسترجعة" value={dashboard.summary.refundedReferrals}
+                icon={RotateCcw} detail="المكافأة المُكتسبة تظل صالحة" />
+              <StatTile title="مكافآت 20% متاحة" value={dashboard.summary.rewardsAvailable}
+                icon={Gift} detail={`مستخدمة: ${numberLabel(dashboard.summary.rewardsUsed)} • صادرة: ${numberLabel(dashboard.summary.rewardsIssued)}`} />
             </div>
-
-            <PremiumCard>
-              <h2 className="text-lg font-bold text-white mb-6">مسار الإحالة</h2>
-              <div className="space-y-3">
-                {funnelSteps.map((step, index) => {
-                  const percentage = ((step.count / (stats?.invitesSent || 1)) * 100).toFixed(1);
-                  const width = `${percentage}%`;
-                  
-                  return (
-                    <div key={step.label} className="relative">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-medium text-white">{step.label}</span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-bold text-white">
-                            {formatNumber(step.count)}
-                          </span>
-                          <span className="text-xs text-zinc-500">({percentage}%)</span>
-                        </div>
-                      </div>
-                      <div className="h-8 bg-zinc-800 rounded-lg overflow-hidden">
-                        <div
-                          className={`h-full ${step.color} transition-all duration-500 flex items-center justify-end px-3`}
-                          style={{ width }}
-                        >
-                          {parseFloat(percentage) > 15 && (
-                            <span className="text-xs font-semibold text-white">
-                              {percentage}%
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      {index < funnelSteps.length - 1 && (
-                        <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 z-10">
-                          <div className="w-6 h-6 rotate-45 bg-zinc-900 border-2 border-zinc-800" />
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </PremiumCard>
-
-            <PremiumCard noPadding>
-              <div className="p-6 border-b border-zinc-800">
-                <h2 className="text-lg font-bold text-white">الإحالات الأخيرة</h2>
-              </div>
-              {loading ? (
-                <div className="p-6">
-                  <TableSkeleton rows={5} />
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead className="bg-zinc-800/50 border-b border-zinc-800">
-                      <tr>
-                        <th className="px-6 py-4 text-right text-sm font-semibold text-zinc-400">
-                          المُحيل
-                        </th>
-                        <th className="px-6 py-4 text-right text-sm font-semibold text-zinc-400">
-                          العميل الجديد
-                        </th>
-                        <th className="px-6 py-4 text-right text-sm font-semibold text-zinc-400">
-                          رقم الهاتف
-                        </th>
-                        <th className="px-6 py-4 text-right text-sm font-semibold text-zinc-400">
-                          تاريخ الدعوة
-                        </th>
-                        <th className="px-6 py-4 text-right text-sm font-semibold text-zinc-400">
-                          الحالة
-                        </th>
-                        <th className="px-6 py-4 text-right text-sm font-semibold text-zinc-400">
-                          المكافأة
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-zinc-800">
-                      {referrals.map((referral) => {
-                        const StatusIcon = statusConfig[referral.status].icon;
-                        return (
-                          <tr
-                            key={referral.id}
-                            className="hover:bg-zinc-800/30 transition-colors"
-                          >
-                            <td className="px-6 py-4">
-                              <p className="font-medium text-white">{referral.referrerName}</p>
-                            </td>
-                            <td className="px-6 py-4">
-                              <p className="text-sm text-white">{referral.referredName}</p>
-                            </td>
-                            <td className="px-6 py-4">
-                              <p className="text-sm text-zinc-400 font-mono">
-                                {referral.referredPhone}
-                              </p>
-                            </td>
-                            <td className="px-6 py-4">
-                              <p className="text-sm text-zinc-300">
-                                {formatDate(referral.inviteDate)}
-                              </p>
-                            </td>
-                            <td className="px-6 py-4">
-                              <Badge
-                                className={`${statusConfig[referral.status].color} border font-medium`}
-                              >
-                                <StatusIcon className="h-3 w-3 ml-1" />
-                                {statusConfig[referral.status].label}
-                              </Badge>
-                            </td>
-                            <td className="px-6 py-4">
-                              {referral.rewardCoins ? (
-                                <p className="text-sm font-bold text-yellow-400">
-                                  {formatNumber(referral.rewardCoins)} نقطة
-                                </p>
-                              ) : (
-                                <p className="text-sm text-zinc-500">-</p>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </PremiumCard>
           </>
         )}
+
+        <PremiumCard>
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex rounded-lg border border-zinc-700 bg-zinc-900 p-1"
+                aria-label="أقسام الإحالات">
+                <button type="button" data-testid="admin-referral-tab-claims"
+                  aria-pressed={view === 'claims'}
+                  className={`rounded-md px-4 py-2 text-sm ${view === 'claims' ? 'bg-emerald-500/20 text-emerald-300' : 'text-zinc-400'}`}
+                  onClick={() => changeView('claims')}>
+                  <Users className="ml-1 inline h-4 w-4" /> سجل الإحالات
+                </button>
+                <button type="button" data-testid="admin-referral-tab-codes"
+                  aria-pressed={view === 'codes'}
+                  className={`rounded-md px-4 py-2 text-sm ${view === 'codes' ? 'bg-emerald-500/20 text-emerald-300' : 'text-zinc-400'}`}
+                  onClick={() => changeView('codes')}>
+                  <Ticket className="ml-1 inline h-4 w-4" /> أكواد العملاء
+                </button>
+              </div>
+              <span className="text-xs text-zinc-400">
+                {dashboard ? `${numberLabel(dashboard.total)} سجل` : '—'}
+              </span>
+            </div>
+
+            <div className="flex flex-col gap-2 md:flex-row">
+              <form className="flex flex-1 gap-2" onSubmit={onSearch}>
+                <Input data-testid="admin-referral-search"
+                  value={searchDraft} maxLength={80}
+                  onChange={e => setSearchDraft(e.target.value)}
+                  placeholder={view === 'claims' ? 'اسم المُحيل أو العميل الجديد أو الكود...' : 'اسم صاحب الكود أو الكود...'}
+                  className="min-w-0 flex-1 border-zinc-700 bg-zinc-900" />
+                <Button type="submit" variant="outline"
+                  data-testid="admin-referral-search-submit" className="gap-1">
+                  <Search className="h-4 w-4" /> بحث
+                </Button>
+              </form>
+              <select value={status}
+                data-testid="admin-referral-status"
+                onChange={e => applyStatus(e.target.value as Status)}
+                className="min-h-10 rounded-lg border border-zinc-700 bg-zinc-900 px-3 text-sm text-zinc-100">
+                {statusOptions[view].map(o => (
+                  <option value={o.value} key={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </div>
+
+            {loading ? (
+              <TableSkeleton rows={5} />
+            ) : dashboard ? (
+              <>
+                <div className="overflow-x-auto" data-testid="admin-referral-table">
+                  <table className="w-full min-w-[750px] text-right text-sm">
+                    <thead className="border-b border-zinc-800 bg-zinc-800/50 text-zinc-400">
+                      {view === 'claims' ? (
+                        <tr>
+                          <th className="px-3 py-3">المُحيل</th>
+                          <th className="px-3 py-3">العميل المُحال</th>
+                          <th className="px-3 py-3">الكود</th>
+                          <th className="px-3 py-3">تاريخ التسجيل</th>
+                          <th className="px-3 py-3">الفاتورة</th>
+                          <th className="px-3 py-3">حالة الإحالة</th>
+                          <th className="px-3 py-3">مكافأة 20%</th>
+                        </tr>
+                      ) : (
+                        <tr>
+                          <th className="px-3 py-3">صاحب الكود</th>
+                          <th className="px-3 py-3">الكود</th>
+                          <th className="px-3 py-3">التفعيل</th>
+                          <th className="px-3 py-3">إجمالي الإحالات</th>
+                          <th className="px-3 py-3">المسترجعة</th>
+                          <th className="px-3 py-3">مكافآت متاحة</th>
+                          <th className="px-3 py-3">مستخدمة</th>
+                        </tr>
+                      )}
+                    </thead>
+                    <tbody className="divide-y divide-zinc-800">
+                      {view === 'claims' ? dashboard.claims.map(claim => (
+                        <tr key={claim.id} data-testid="admin-referral-claim-row" className="hover:bg-zinc-800/30">
+                          <td className="px-3 py-3">{claim.referrerName}</td>
+                          <td className="px-3 py-3">{claim.referredName}</td>
+                          <td className="px-3 py-3 font-mono text-xs" dir="ltr">{claim.code}</td>
+                          <td className="px-3 py-3 text-zinc-400">{dateLabel(claim.appliedAtUtc ?? claim.claimedAtUtc)}</td>
+                          <td className="px-3 py-3">{claim.originalInvoiceId ?? '—'}</td>
+                          <td className="px-3 py-3">
+                            <Badge variant="outline" className={claim.status === 'APPLIED'
+                              ? 'border-emerald-600/60 text-emerald-300'
+                              : claim.status === 'REVERSED'
+                                ? 'border-amber-600/60 text-amber-300'
+                                : 'border-zinc-600 text-zinc-300'}>
+                              {claim.status === 'APPLIED' && <BadgeCheck className="ml-1 h-3 w-3" />}
+                              {claim.status === 'REVERSED' && <RotateCcw className="ml-1 h-3 w-3" />}
+                              {claim.status === 'CANCELLED' && <XCircle className="ml-1 h-3 w-3" />}
+                              {claim.status === 'PENDING' && <Clock className="ml-1 h-3 w-3" />}
+                              {claimLabels[claim.status]}
+                            </Badge>
+                          </td>
+                          <td className="px-3 py-3">
+                            {claim.rewardStatus ? rewardLabels[claim.rewardStatus] : 'لم تُصدر'}
+                          </td>
+                        </tr>
+                      )) : dashboard.codes.map(customerCode => (
+                        <tr key={customerCode.id} data-testid="admin-referral-code-row" className="hover:bg-zinc-800/30">
+                          <td className="px-3 py-3">{customerCode.customerName}</td>
+                          <td className="px-3 py-3 font-mono text-xs" dir="ltr">{customerCode.code}</td>
+                          <td className="px-3 py-3">
+                            {customerCode.activatedAtUtc
+                              ? <span className="text-emerald-300">مفعّل · {dateLabel(customerCode.activatedAtUtc)}</span>
+                              : <span className="text-amber-300">غير مفعّل</span>}
+                          </td>
+                          <td className="px-3 py-3">{numberLabel(customerCode.referrals)}</td>
+                          <td className="px-3 py-3">{numberLabel(customerCode.refunded)}</td>
+                          <td className="px-3 py-3">{numberLabel(customerCode.availableRewards)}</td>
+                          <td className="px-3 py-3">{numberLabel(customerCode.usedRewards)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {(view === 'claims' ? dashboard.claims : dashboard.codes).length === 0 && (
+                    <div className="px-3 py-8 text-center text-sm text-zinc-400"
+                      data-testid="admin-referral-empty">
+                      مفيش سجلات مطابقة للبحث والفلاتر الحالية.
+                    </div>
+                  )}
+                </div>
+                <div className="flex items-center justify-between border-t border-zinc-800 pt-3">
+                  <span className="text-xs text-zinc-400">
+                    {dashboard.totalPages === 0 ? 'لا توجد صفحات'
+                      : `صفحة ${numberLabel(page)} من ${numberLabel(dashboard.totalPages)}`}
+                  </span>
+                  <div className="flex gap-2">
+                    <Button type="button" size="sm" variant="outline"
+                      data-testid="admin-referral-prev"
+                      disabled={page <= 1}
+                      onClick={() => setPage(p => Math.max(1, p - 1))}>
+                      <ChevronRight className="h-4 w-4" /> السابق
+                    </Button>
+                    <Button type="button" size="sm" variant="outline"
+                      data-testid="admin-referral-next"
+                      disabled={page >= dashboard.totalPages}
+                      onClick={() => setPage(p => p + 1)}>
+                      التالي <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              </>
+            ) : (
+              !error && <p className="text-sm text-zinc-400">لا توجد بيانات معروضة.</p>
+            )}
+          </div>
+        </PremiumCard>
+        <p className="text-xs text-zinc-500">
+          صفحة متابعة فقط؛ لا تمنح أو تلغي خصومات أو نقاطًا. المكافآت المكتسبة تستمر بعد استرجاع فاتورة الإحالة الأصلية.
+        </p>
       </div>
     </div>
   );
