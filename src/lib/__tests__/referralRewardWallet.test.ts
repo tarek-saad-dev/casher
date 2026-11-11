@@ -52,7 +52,7 @@ describe('staff-only read-only referral wallet service', () => {
     expect(mock.calls[1]?.parameters).toMatchObject(input);
   });
 
-  it('only returns tenant-owned, ACTIVE, unexpired vouchers with APPLIED source claim', async () => {
+  it('only returns tenant-owned, ACTIVE, unexpired vouchers with honored APPLIED/REVERSED source claim', async () => {
     mock.results = [
       [{ Ready: 1 }], [{ ClientID: 90 }],
       [{ VoucherID: 50, DiscountPercent: 20,
@@ -64,7 +64,7 @@ describe('staff-only read-only referral wallet service', () => {
       expiresAtUtc: null,
     }]);
     expect(mock.calls[2]?.query).toContain("v.Status = N'ACTIVE'");
-    expect(mock.calls[2]?.query).toContain("c.Status = N'APPLIED'");
+    expect(mock.calls[2]?.query).toContain("c.Status IN (N'APPLIED', N'REVERSED')");
     expect(mock.calls[2]?.query).toContain('v.ExpiresAtUtc > SYSUTCDATETIME()');
     expect(mock.calls[2]?.query).toContain('v.ReferrerClientID = @clientId');
     expect(mock.calls[2]?.parameters).toMatchObject(input);
