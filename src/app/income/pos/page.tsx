@@ -108,6 +108,7 @@ export default function PosPage() {
     setCustomer: setCustomerBase, setBarber, addItem, addItems, removeItem, removeItems, updateItem,
     setDiscountPercent, setDiscountValue,
     applyReferral, clearReferral,
+    applyReferralReward, clearReferralReward,
     applyDiscountToLargestLine,
     setPaymentMethod,
     setPaymentAllocations,
@@ -169,8 +170,8 @@ export default function PosPage() {
   const [editingSaleId, setEditingSaleId] = useState<number | null>(null);
   const [vouchersOpen, setVouchersOpen] = useState(false);
   useEffect(() => {
-    if (state.referralCode) setVouchersOpen(false);
-  }, [state.referralCode]);
+    if (state.referralCode || state.referralVoucherId) setVouchersOpen(false);
+  }, [state.referralCode, state.referralVoucherId]);
   const [invoiceSheetOpen, setInvoiceSheetOpen] = useState(false);
   const [isPaymentTransferOpen, setIsPaymentTransferOpen] = useState(false);
   const [isQuickExpenseOpen, setIsQuickExpenseOpen] = useState(false);
@@ -547,7 +548,7 @@ export default function PosPage() {
     console.log('[POS SAVE] START', { requestId, source });
 
     if (state.items.length === 0) { setSaveError('يجب إضافة خدمة واحدة على الأقل'); saveLockRef.current = false; setSaving(false); return; }
-    if (state.referralCode && (editingSaleId !== null || !state.customer)) {
+    if ((state.referralCode || state.referralVoucherId) && (editingSaleId !== null || !state.customer)) {
       setSaveError('خصم الإحالة متاح للفاتورة الجديدة مع عميل محدد فقط');
       saveLockRef.current = false; setSaving(false);
       return;
@@ -752,7 +753,7 @@ export default function PosPage() {
       }
       console.log('[POS SAVE] SUCCESS', { requestId });
     } catch {
-      setSaveError(state.referralCode
+      setSaveError(state.referralCode || state.referralVoucherId
         ? 'تعذر تأكيد حفظ فاتورة الإحالة. راجع الفواتير الأخيرة قبل إعادة المحاولة، تجنبًا للتكرار.'
         : 'خطأ في الاتصال بالخادم');
       console.error('[POS SAVE] ERROR', { requestId });
@@ -991,6 +992,8 @@ export default function PosPage() {
     isEditingSale: editingSaleId !== null,
     onApplyReferral: applyReferral,
     onClearReferral: clearReferral,
+    onApplyReferralReward: applyReferralReward,
+    onClearReferralReward: clearReferralReward,
   };
 
   const invoiceLabel = editingSaleId
@@ -1098,7 +1101,7 @@ export default function PosPage() {
               </button>
             </div>
           ) : null}
-          {state.customer && !state.referralCode && !vouchersOpen && (
+          {state.customer && !state.referralCode && !state.referralVoucherId && !vouchersOpen && (
             <button
               type="button"
               onClick={() => setVouchersOpen(true)}
@@ -1166,7 +1169,7 @@ export default function PosPage() {
           ) : null}
 
           {/* Vouchers button — shown when customer is selected and modal is closed */}
-          {state.customer && !vouchersOpen && (
+          {state.customer && !state.referralCode && !state.referralVoucherId && !vouchersOpen && (
             <button
               onClick={() => setVouchersOpen(true)}
               className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-warning/10 border border-warning/20 hover:bg-warning/15 transition-colors text-sm text-warning font-medium"
@@ -1242,7 +1245,7 @@ export default function PosPage() {
       />
 
       {/* ═══════ Client Vouchers Modal ═══════ */}
-      {state.customer && !state.referralCode && (
+      {state.customer && !state.referralCode && !state.referralVoucherId && (
         <ClientVouchersModal
           clientId={state.customer.ClientID}
           clientName={state.customer.Name}
