@@ -39,6 +39,8 @@ describe('CUT STAFF safe extra-service workflow', () => {
     expect(insert).toBeLessThan(commit);
     expect(guard).toContain('await tx.rollback()');
     expect(guard).toContain('bookingOccupancyChanged');
+    expect(guard).toContain('مدة الحجز المسجلة غير متطابقة');
+    expect(guard).toContain('derivedEnd.getTime() - endAt.getTime()');
   });
 
   it('only suggests alternative staff, never auto-reserves without cashier confirmation', () => {
