@@ -39,6 +39,7 @@ import { printReceiptWithFallback, type PrintReceiptData } from '@/lib/printServ
 import { isCustomerIncomplete } from '@/lib/customerSource';
 import type { Barber, Service, PaymentMethod, Customer, CartItem } from '@/lib/types';
 import { isGroomHomeVisitCategory } from '@/lib/catalog/groomOptionalAddons';
+import { referralSalePayloadDiscount } from '@/lib/referrals/posReferralCheckoutPolicy';
 
 // ─── Toast Types ─────────────────────────────────────────────────────────
 interface Toast { id: number; type: 'success' | 'error' | 'info'; message: string }
@@ -106,6 +107,7 @@ export default function PosPage() {
     state, totals,
     setCustomer: setCustomerBase, setBarber, addItem, addItems, removeItem, removeItems, updateItem,
     setDiscountPercent, setDiscountValue,
+    applyReferral, clearReferral,
     applyDiscountToLargestLine,
     setPaymentMethod,
     setPaymentAllocations,
@@ -166,6 +168,9 @@ export default function PosPage() {
   const [splitPaymentActive, setSplitPaymentActive] = useState(false);
   const [editingSaleId, setEditingSaleId] = useState<number | null>(null);
   const [vouchersOpen, setVouchersOpen] = useState(false);
+  useEffect(() => {
+    if (state.referralCode) setVouchersOpen(false);
+  }, [state.referralCode]);
   const [invoiceSheetOpen, setInvoiceSheetOpen] = useState(false);
   const [isPaymentTransferOpen, setIsPaymentTransferOpen] = useState(false);
   const [isQuickExpenseOpen, setIsQuickExpenseOpen] = useState(false);
@@ -542,6 +547,11 @@ export default function PosPage() {
     console.log('[POS SAVE] START', { requestId, source });
 
     if (state.items.length === 0) { setSaveError('يجب إضافة خدمة واحدة على الأقل'); saveLockRef.current = false; setSaving(false); return; }
+    if (state.referralCode && (editingSaleId !== null || !state.customer)) {
+      setSaveError('خصم الإحالة متاح للفاتورة الجديدة مع عميل محدد فقط');
+      saveLockRef.current = false; setSaving(false);
+      return;
+    }
     if (state.paymentMethodId === null) { setSaveError('اختر طريقة الدفع'); saveLockRef.current = false; setSaving(false); return; }
 
     // Validate split payment totals
@@ -598,8 +608,7 @@ export default function PosPage() {
           notes: i.ProName,
         })),
         subTotal: totals.subTotal,
-        dis: state.discountPercent,
-        disVal: state.discountValue,
+        ...referralSalePayloadDiscount(state),
         grandTotal: totals.grandTotal,
         totalBonus: totals.totalBonus,
         totalQty: totals.totalQty,
@@ -978,6 +987,8 @@ export default function PosPage() {
     onPaymentAllocationsChange: setPaymentAllocations,
     onSave: handleSave,
     isEditingSale: editingSaleId !== null,
+    onApplyReferral: applyReferral,
+    onClearReferral: clearReferral,
   };
 
   const invoiceLabel = editingSaleId
@@ -1085,7 +1096,7 @@ export default function PosPage() {
               </button>
             </div>
           ) : null}
-          {state.customer && !vouchersOpen && (
+          {state.customer && !state.referralCode && !vouchersOpen && (
             <button
               type="button"
               onClick={() => setVouchersOpen(true)}
@@ -1229,7 +1240,7 @@ export default function PosPage() {
       />
 
       {/* ═══════ Client Vouchers Modal ═══════ */}
-      {state.customer && (
+      {state.customer && !state.referralCode && (
         <ClientVouchersModal
           clientId={state.customer.ClientID}
           clientName={state.customer.Name}
