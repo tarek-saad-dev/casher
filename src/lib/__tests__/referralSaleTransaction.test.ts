@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('server-only', () => ({}));
+vi.mock('@/lib/referrals/referralCatalogPriceGuard', () => ({
+  assertReferralCheckoutCatalogPrices: vi.fn().mockResolvedValue(undefined),
+}));
 
 const mocks = vi.hoisted(() => ({
   calls: [] as Array<{ sql: string; params: Record<string, unknown> }>,
