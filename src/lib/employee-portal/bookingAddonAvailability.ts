@@ -1,7 +1,7 @@
 import 'server-only';
 import type { Transaction } from 'mssql';
 import { getPool, sql } from '@/lib/db';
-import { normalizeBookingTimes, sqlDateToYyyyMmDd, sqlTimeToHhmm } from '@/lib/bookingDateTime';
+import { normalizeBookingTimes, sqlDateToYyyyMmDd, sqlTimeToHhmm, createCairoDateTime } from '@/lib/bookingDateTime';
 import { acquireEmployeeScheduleLock, assertEmployeeIntervalAvailable, ScheduleConflictError } from '@/lib/scheduleIntegrity';
 
 type BookingRow = {
@@ -80,9 +80,21 @@ async function getService(db: DbHandle, tenantId: string, proId: number, empId: 
 function period(booking: BookingRow) {
   const date = sqlDateToYyyyMmDd(booking.BookingDate);
   const n = normalizeBookingTimes(date, sqlTimeToHhmm(booking.StartTime), sqlTimeToHhmm(booking.EndTime), Math.max(1,Number(booking.TotalDuration)||30));
+  const derivedEnd = new Date(n.endDateTimeCairo);
   const endAt = booking.AbsoluteEndUtc instanceof Date && Number.isFinite(booking.AbsoluteEndUtc.getTime())
-    ? booking.AbsoluteEndUtc : new Date(n.endDateTimeCairo);
+    ? booking.AbsoluteEndUtc : derivedEnd;
   if (!Number.isFinite(endAt.getTime())) throw new AddonGuardError(409, 'موعد الحجز غير واضح — راجع الكاشير');
+  const startAt = createCairoDateTime(date, booking.StartTime);
+  const sqlEndAt = createCairoDateTime(date, booking.EndTime);
+  if (sqlEndAt.getTime() <= startAt.getTime()) {
+    sqlEndAt.setTime(sqlEndAt.getTime() + 86400000);
+  }
+  // Do not shorten or overwrite an inconsistent legacy reservation. Require
+  // persisted end, absolute end and service-derived duration to agree.
+  if (Math.abs(sqlEndAt.getTime() - endAt.getTime()) > 60000 ||
+      Math.abs(derivedEnd.getTime() - endAt.getTime()) > 60000) {
+    throw new AddonGuardError(409, 'مدة الحجز المسجلة غير متطابقة — راجع الكاشير قبل الإضافة');
+  }
   if (endAt.getTime() < Date.now() - 60_000) throw new AddonGuardError(409, 'انتهى وقت الحجز — خلي الكاشير ينظم الإضافة');
   return {
     endAt, operationalDate: booking.PublicWorkDate
