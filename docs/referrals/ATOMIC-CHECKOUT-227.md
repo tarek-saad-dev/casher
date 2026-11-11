@@ -24,6 +24,7 @@ Once explicitly enabled in a safely migrated/approved environment:
 5. The existing writers persist invoice/payment/stock/treasury effects in their own transaction.
 6. `finalizeReferralSaleTransaction` verifies invoice tenant branch, client, full payment amount from actual payment rows, matching saved 50% header discount; marks claim APPLIED, inserts **one 20% voucher**; and activates or creates a permanent random code for the newly paid customer.
 7. **Only then** does the original writer commit. Any SQL failure throws into the existing rollback path. Preview requests never reach this code.
+8. PUT and DELETE invoice audit transactions now refuse editing/deleting an invoice already linked to an applied referral claim until a proper refund/reversal/reward-revocation flow exists. When DRVO-023 has not yet been installed, ordinary historical invoice edits/deletes remain unchanged.
 
 ## Explicit launch blockers (DO NOT MERGE/ENABLE)
 
@@ -33,7 +34,7 @@ This is a substantial first implementation slice, **not** the entire issue. The 
 - **Dependencies/policy deduplication:** reconcile this module with the code generator and pure eligibility/activation utilities from draft PRs #222 and #224. Avoid divergent future business logic and ensure activation counts paid invoice consistently across features.
 - **UI submission:** draft PR #226 is preview only; do not silently charge full price for unsubmitted/pending referrals. Add explicit POS apply intent with staff confirmation, updated totals and server-derived payment allocations to a subsequent reviewed integration.
 - **Voucher redemption:** existing `/api/pos/client-inventory/use` marks `USED` **before invoice save**. Refactor the old path before any shared voucher usage; the 20% referral vouchers are a separate ledger and currently are **issued but not redeemable** in UI/checkout.
-- **Returns/reversals/audit:** there is not yet an idempotent reversal/revocation/expiry movement log, refund-safe behavior or invoice-edit policy for referral vouchers. Do NOT launch without these.
+- **Returns/reversals/audit:** an existing referral-linked invoice is now protected against ordinary PUT/DELETE, but there is not yet an idempotent reversal/revocation/expiry movement log, refund-safe return/cancellation handling, or replacement audited invoice-edit flow for referral vouchers. Do NOT launch without these.
 - **Idempotency:** claim/voucher uniqueness prevents a double reward but a repeated POST after a successful invoice does not have a persistent client request-id ledger to return the original invoice; handle retry UX explicitly.
 - **Real DB smoke/concurrency:** run targeted staging tests with two overlapping invoice writers (with and without referral), abort/rollback, mixed payments, refund/reversal and recovery. Current Vitest tests exercise the SQL seams with mocked data and static ordering, not full live cashier E2E.
 - **SQL review:** check historical invoice flags, `Location` tenant association, money rounding and DB lock/order performance with real stage data. Independent financial/security review required.
