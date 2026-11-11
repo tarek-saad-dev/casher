@@ -362,6 +362,8 @@ export interface CreateSalePayload {
   clientId: number | null;
   /** Optional referral for a new, fully-paid invoice only; validated by server. Feature OFF by default. */
   referralCode?: string;
+  /** 20% referrer reward redemption, distinct from first-visit referralCode. */
+  referralVoucherId?: number;
   items: {
     proId: number;
     /** `0` for retail product lines (no barber). */
