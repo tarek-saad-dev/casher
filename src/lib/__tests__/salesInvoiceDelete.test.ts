@@ -27,6 +27,14 @@ vi.mock('@/lib/referrals/referralInvoiceRefund.service', () => ({
   }),
 }));
 
+// Preserve the original DELETE tests' legacy-writer assumptions. Other
+// dedicated tests cover extracted POS branch. This repo's default may now
+// point to the extracted path independently of the refund feature.
+vi.mock('@/apps/pos/public', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/apps/pos/public')>()),
+  isPosPortEnabled: () => false,
+}));
+
 // ── Shared mutable state ──────────────────────────────────────────────────
 let fakeAuditId = 42;
 let fakeInvoiceExists = true;
