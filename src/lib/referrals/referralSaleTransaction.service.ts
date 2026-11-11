@@ -3,6 +3,7 @@ import 'server-only';
 import { randomBytes } from 'node:crypto';
 import type { Transaction } from 'mssql';
 import { sql } from '@/lib/db';
+import { assertReferralCheckoutCatalogPrices } from './referralCatalogPriceGuard';
 import {
   ReferralCheckoutError,
   generatePermanentReferralCheckoutCode,
@@ -13,6 +14,7 @@ type SaleReferralInput = {
   tenantId?: string;
   clientId: number | null;
   referralCode?: string | null;
+  items?: Array<{proId:number;sPrice:number;qty:number;bonus:number}>;
 };
 
 type ReferralReservation = {
@@ -114,6 +116,10 @@ export async function prepareReferralSaleTransaction(
   if (!code || code.ReferrerClientID === clientId) {
     throw new ReferralCheckoutError('REFERRAL_NOT_ELIGIBLE', 'كود الإحالة غير مؤهل', 409);
   }
+
+  // Price tampering must be refused inside the same transaction that saves
+  // the invoice: no client price overrides or adjusted line bonuses.
+  await assertReferralCheckoutCatalogPrices(tx, tenantId, input.items ?? []);
 
   // One query obtains all eligibility facts from the DB under the same
   // transaction; no browser-stated eligibility or client-provided referrer.
