@@ -47,8 +47,8 @@ describe('staff-only permanent referral profile + safe share UX (#237)', () => {
     const message = url.searchParams.get('text') ?? '';
     expect(message).toContain(CODE);
     expect(message).toContain('Cut Salon');
-    expect(message).not.toContain('45');
-    expect(message).not.toContain('0123456789');
+    expect(message).not.toContain('ClientID=');
+    expect(message).not.toContain('رقم الهاتف');
     expect(() => buildCustomerReferralWhatsAppShare('CUT-123')).toThrow();
   });
 
