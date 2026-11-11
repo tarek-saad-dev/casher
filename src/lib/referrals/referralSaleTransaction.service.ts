@@ -118,7 +118,7 @@ export async function prepareReferralSaleTransaction(
           AND v.VoucherID = @voucherId AND v.DiscountPercent = 20
           AND v.Status = N'ACTIVE' AND v.UsedInvID IS NULL
           AND (v.ExpiresAtUtc IS NULL OR v.ExpiresAtUtc > SYSUTCDATETIME())
-          AND c.Status = N'APPLIED'
+          AND c.Status IN (N'APPLIED', N'REVERSED')
       `);
     if (voucher.recordset.length !== 1) {
       throw new ReferralCheckoutError('REFERRAL_VOUCHER_UNAVAILABLE',
