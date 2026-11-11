@@ -8,12 +8,14 @@ import {
   ReferralCheckoutError,
   generatePermanentReferralCheckoutCode,
   referralCheckoutEnabled,
+  referralRewardRedemptionEnabled,
 } from './referralCheckoutPolicy';
 
 type SaleReferralInput = {
   tenantId?: string;
   clientId: number | null;
   referralCode?: string | null;
+  referralVoucherId?: number | null;
   items?: Array<{proId:number;sPrice:number;qty:number;bonus:number}>;
 };
 
@@ -29,6 +31,7 @@ export type ReferralSalePreparation = {
   tenantId: string;
   clientId: number | null;
   reservation: ReferralReservation | null;
+  voucherReservation?: { voucherId: number } | null;
 };
 
 const FULLY_PAID = `
@@ -52,7 +55,7 @@ export async function prepareReferralSaleTransaction(
 ): Promise<ReferralSalePreparation | null> {
   if (!referralCheckoutEnabled()) {
     // A referral request must NEVER silently proceed as a full-price invoice.
-    if (input.referralCode != null) {
+    if (input.referralCode != null || input.referralVoucherId != null) {
       throw new ReferralCheckoutError('REFERRALS_DISABLED', 'خصم الإحالة غير متاح حاليًا');
     }
     return null;
@@ -62,7 +65,7 @@ export async function prepareReferralSaleTransaction(
   }
   const tenantId = input.tenantId;
   if (input.clientId == null) {
-    if (input.referralCode != null) {
+    if (input.referralCode != null || input.referralVoucherId != null) {
       throw new ReferralCheckoutError('REFERRAL_CLIENT_REQUIRED', 'اختار العميل أولًا', 400);
     }
     return { tenantId, clientId: null, reservation: null };
@@ -92,6 +95,40 @@ export async function prepareReferralSaleTransaction(
   if (locked.recordset.length !== 1) {
     throw new ReferralCheckoutError('REFERRAL_NOT_ELIGIBLE', 'العميل غير تابع للمنشأة', 404);
   }
+  if (input.referralVoucherId != null) {
+    if (input.referralCode != null || !referralRewardRedemptionEnabled()) {
+      throw new ReferralCheckoutError('REFERRAL_DISCOUNT_CONFLICT', 'صرف المكافأة غير متاح مع خصم إحالة آخر', 409);
+    }
+    if (!Number.isSafeInteger(input.referralVoucherId) || input.referralVoucherId < 1) {
+      throw new ReferralCheckoutError('INVALID_REFERRAL_VOUCHER', 'مكافأة إحالة غير صالحة', 400);
+    }
+    // Same transaction as eventual invoice payment. This lock protects against
+    // concurrent cashiers or repeated voucher redemption requests.
+    const voucher = await new sql.Request(tx)
+      .input('tenantId', sql.UniqueIdentifier, tenantId)
+      .input('clientId', sql.Int, clientId)
+      .input('voucherId', sql.BigInt, input.referralVoucherId)
+      .query(`
+        SELECT v.VoucherID
+        FROM dbo.TblReferralDiscountVoucher v WITH (UPDLOCK, HOLDLOCK)
+        INNER JOIN dbo.TblReferralVisitClaim c
+          ON c.TenantId = v.TenantId AND c.ClaimID = v.ClaimID
+          AND c.ReferrerClientID = v.ReferrerClientID
+        WHERE v.TenantId = @tenantId AND v.ReferrerClientID = @clientId
+          AND v.VoucherID = @voucherId AND v.DiscountPercent = 20
+          AND v.Status = N'ACTIVE' AND v.UsedInvID IS NULL
+          AND (v.ExpiresAtUtc IS NULL OR v.ExpiresAtUtc > SYSUTCDATETIME())
+          AND c.Status = N'APPLIED'
+      `);
+    if (voucher.recordset.length !== 1) {
+      throw new ReferralCheckoutError('REFERRAL_VOUCHER_UNAVAILABLE',
+        'مكافأة الإحالة مستخدمة أو غير صالحة أو انتهت', 409);
+    }
+    await assertReferralCheckoutCatalogPrices(tx, tenantId, input.items ?? []);
+    return { tenantId, clientId, reservation: null,
+      voucherReservation: { voucherId: input.referralVoucherId } };
+  }
+
   if (!input.referralCode) {
     return { tenantId, clientId, reservation: null };
   }
@@ -247,6 +284,39 @@ export async function finalizeReferralSaleTransaction(
           (TenantId, ClaimID, ReferrerClientID, DiscountPercent, Status)
         VALUES (@tenantId, @claimId, @referrerId, 20, N'ACTIVE');
       `);
+  }
+
+  if (prep.voucherReservation) {
+    if (Math.abs(Number(row.Dis) - 20) > 0.01) {
+      throw new ReferralCheckoutError('REFERRAL_INVOICE_NOT_PAID', 'خصم المكافأة لم يُحفظ على الفاتورة');
+    }
+    // This happens AFTER the persisted invoice & payment checks and BEFORE
+    // COMMIT. If another cashier already spent it or this SQL write fails,
+    // the enclosing invoice and all payment/treasury effects roll back.
+    const redeemed = await new sql.Request(tx)
+      .input('tenantId', sql.UniqueIdentifier, prep.tenantId)
+      .input('clientId', sql.Int, prep.clientId)
+      .input('voucherId', sql.BigInt, prep.voucherReservation.voucherId)
+      .input('invId', sql.Int, invoice.invID)
+      .query(`
+        UPDATE dbo.TblReferralDiscountVoucher
+        SET Status = N'USED', UsedAtUtc = SYSUTCDATETIME(),
+            UsedInvID = @invId, UsedInvType = N'مبيعات'
+        WHERE TenantId = @tenantId AND ReferrerClientID = @clientId
+          AND VoucherID = @voucherId AND Status = N'ACTIVE'
+          AND UsedInvID IS NULL
+          AND (ExpiresAtUtc IS NULL OR ExpiresAtUtc > SYSUTCDATETIME())
+          AND EXISTS (
+            SELECT 1 FROM dbo.TblReferralVisitClaim c
+            WHERE c.TenantId = @tenantId
+              AND c.ClaimID = dbo.TblReferralDiscountVoucher.ClaimID
+              AND c.ReferrerClientID = @clientId AND c.Status = N'APPLIED'
+          );
+      `);
+    if (redeemed.rowsAffected?.[0] !== 1) {
+      throw new ReferralCheckoutError('REFERRAL_VOUCHER_UNAVAILABLE',
+        'المكافأة لم تعد متاحة؛ الفاتورة لن تُحفظ', 409);
+    }
   }
 
   // Activate/generate a permanent code for EVERY first paid customer,
