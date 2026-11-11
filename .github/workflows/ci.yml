@@ -72,6 +72,9 @@ jobs:
       - name: CUT POS referral Apply / payment / stale-code regressions
         run: npx vitest run src/lib/__tests__/posReferralApplyState.test.tsx src/lib/__tests__/posReferralCheckoutUi.test.tsx src/lib/__tests__/posReferralSalePayload.test.ts
 
+      - name: CUT referral wallet UI and 20-percent Apply regressions
+        run: npx vitest run src/lib/__tests__/posReferralWalletApplyState.test.tsx src/lib/__tests__/posReferralWalletUi.test.tsx
+
       - name: DRVO migration + rollout + runner tests
         run: >
           npx vitest run
