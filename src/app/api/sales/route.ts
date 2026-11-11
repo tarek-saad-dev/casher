@@ -17,13 +17,18 @@ import {
 } from '@/apps/pos/public';
 import { createSaleLegacyFromRoute } from '@/lib/sales/legacyRouteSaleCreate';
 import { findForeignServiceIds } from '@/lib/catalog/tenantCatalogGuards';
+import {
+  ReferralCheckoutError, parseReferralCheckoutRequest, priceFirstVisitReferral,
+} from '@/lib/referrals/referralCheckoutPolicy';
 
 export const runtime = "nodejs";
 
 // POST /api/sales — Create a new sale (head + details + payment + cash move)
 export async function POST(req: NextRequest) {
+  let referralRequest = false;
   try {
     const body: CreateSalePayload = await req.json();
+    referralRequest = Object.prototype.hasOwnProperty.call(body, 'referralCode');
 
     // Validation
     if (!body.items || body.items.length === 0) {
@@ -37,6 +42,8 @@ export async function POST(req: NextRequest) {
     if (!sessionUser?.TenantId) {
       return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
     }
+
+    const referralCode = parseReferralCheckoutRequest(body.referralCode, body.clientId);
 
     // Lines may only name services/products of the caller's tenant.
     {
@@ -136,7 +143,18 @@ export async function POST(req: NextRequest) {
     }
 
     // ──── Server-side totals from line items + optional header discount ────
-    const computed = computeInvoiceItemsTotals(
+    const lineItemsForTotals = body.items.map((item) => ({
+        sPrice: item.sPrice,
+        qty: item.qty,
+        discountPercent: item.dis,
+        discountValue: item.disVal,
+        bonus: item.bonus,
+      }));
+    const computed = referralCode
+      ? priceFirstVisitReferral(lineItemsForTotals, {
+          discountPercent: body.dis, discountValue: body.disVal,
+        })
+      : computeInvoiceItemsTotals(
       body.items.map((item) => ({
         sPrice: item.sPrice,
         qty: item.qty,
@@ -250,6 +268,8 @@ export async function POST(req: NextRequest) {
     );
 
     const saleInput = {
+      tenantId: String(sessionUser.TenantId),
+      referralCode,
       items: body.items.map((item) => ({
         proId: item.proId,
         empId: item.empId,
@@ -305,6 +325,9 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ invID: result.invID, invType: result.invType }, { status: 201 });
   } catch (err: unknown) {
+    if (err instanceof ReferralCheckoutError) {
+      return NextResponse.json({ error: err.message, code: err.code }, { status: err.status });
+    }
     const { InventoryDomainError } = await import(
       '@/lib/inventory/inventoryMutation.service'
     );
@@ -319,6 +342,24 @@ export async function POST(req: NextRequest) {
     if (mapped) return mapped;
     const message = err instanceof Error ? err.message : "Unknown error";
     const stack = err instanceof Error ? err.stack : "";
+    // Never disclose SQL table/index names, customer IDs or transaction internals
+    // when a referral claim loses a concurrency race.
+    if (referralRequest) {
+      const dbError = err as { number?: number; originalError?: { number?: number } } | null;
+      const number = dbError?.number ?? dbError?.originalError?.number;
+      if (number === 2601 || number === 2627) {
+        console.error('[pos-api] Referral uniqueness conflict; sale was rolled back');
+        return NextResponse.json({
+          error: 'الإحالة اتسجلت قبل كده أو مستخدمة في فاتورة تانية',
+          code: 'REFERRAL_ALREADY_CLAIMED',
+        }, { status: 409 });
+      }
+      console.error('[pos-api] Referral sale failed; transaction rolled back', err instanceof Error ? err.name : 'unknown');
+      return NextResponse.json({
+        error: 'تعذر إكمال فاتورة الإحالة. راجع حالة الفاتورة قبل إعادة المحاولة',
+        code: 'REFERRAL_CHECKOUT_FAILED',
+      }, { status: 500 });
+    }
     console.error(`[pos-api] ❌ POST /api/sales FAILED: ${message}`);
     if (stack) console.error(`[pos-api]   Stack: ${stack}`);
     return NextResponse.json({ error: message }, { status: 500 });
