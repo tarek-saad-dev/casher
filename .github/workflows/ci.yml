@@ -66,7 +66,7 @@ jobs:
         run: npm ci
 
       - name: CUT referral tenant preview security regression
-        run: npx vitest run src/lib/__tests__/referralPreviewPolicy.test.ts src/lib/__tests__/referralPreviewService.test.ts src/lib/__tests__/referralPreviewRoute.test.ts
+        run: npx vitest run src/lib/__tests__/referralPreviewPolicy.test.ts src/lib/__tests__/referralPreviewService.test.ts src/lib/__tests__/referralPreviewRoute.test.ts src/lib/__tests__/referralCodeActivation.test.ts
 
       - name: DRVO migration + rollout + runner tests
         run: >
