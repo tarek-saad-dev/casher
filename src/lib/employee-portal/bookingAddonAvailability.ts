@@ -5,7 +5,7 @@ import { acquireEmployeeScheduleLock, assertEmployeeIntervalAvailable, ScheduleC
 
 type BookingRow = {
   BookingID: number; BranchID: number; BookingDate: unknown;
-  PublicWorkDate: unknown; StartTime: unknown; EndTime: unknown;
+  PublicWorkDate: unknown; StartTime: unknown; EndTime: unknown; TotalDuration: number;
   AbsoluteEndUtc: Date | null; Status: string; ConvertedInvID: number | null;
 };
 type DbHandle = Awaited<ReturnType<typeof getPool>> | sql.Transaction;
@@ -27,7 +27,7 @@ async function getBooking(db: DbHandle, actor: { bookingId: number; empId: numbe
     .input('tenant', sql.NVarChar(100), actor.tenantId)
     .query(
       "SELECT b.BookingID, b.BranchID, b.BookingDate, b.PublicWorkDate, " +
-      "b.StartTime, b.EndTime, b.AbsoluteEndUtc, b.Status, b.ConvertedInvID " +
+      "b.StartTime, b.EndTime, b.AbsoluteEndUtc, b.Status, b.ConvertedInvID, (SELECT COALESCE(SUM(COALESCE(bs.DurationMinutes,30)),30) FROM dbo.BookingServices bs WHERE bs.BookingID=b.BookingID) AS TotalDuration " +
       "FROM dbo.Bookings b " + (lock ? "WITH (UPDLOCK, HOLDLOCK) " : "") +
       "INNER JOIN dbo.TblEmp e ON e.EmpID = b.AssignedEmpID " +
       "WHERE b.BookingID=@bid AND b.AssignedEmpID=@emp AND e.TenantId=@tenant AND e.isActive=1"
@@ -60,7 +60,7 @@ async function getService(db: DbHandle, tenantId: string, proId: number): Promis
 }
 function period(booking: BookingRow) {
   const date = sqlDateToYyyyMmDd(booking.BookingDate);
-  const n = normalizeBookingTimes(date, sqlTimeToHhmm(booking.StartTime), sqlTimeToHhmm(booking.EndTime), 30);
+  const n = normalizeBookingTimes(date, sqlTimeToHhmm(booking.StartTime), sqlTimeToHhmm(booking.EndTime), Math.max(1,Number(booking.TotalDuration)||30));
   const endAt = booking.AbsoluteEndUtc instanceof Date && Number.isFinite(booking.AbsoluteEndUtc.getTime())
     ? booking.AbsoluteEndUtc : new Date(n.endDateTimeCairo);
   if (!Number.isFinite(endAt.getTime())) throw new AddonGuardError(409, 'موعد الحجز غير واضح — راجع الكاشير');
