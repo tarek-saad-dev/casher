@@ -26,6 +26,8 @@ interface MobileInvoiceSheetProps {
   isEditingSale?: boolean;
   onApplyReferral: (code: string, clientId: number) => void;
   onClearReferral: () => void;
+  onApplyReferralReward: (voucherId: number, clientId: number) => void;
+  onClearReferralReward: () => void;
 }
 
 export default function MobileInvoiceSheet({
