@@ -9,11 +9,15 @@ import { normalizePosReferralCode } from './posReferralPreview';
 export const POS_REFERRAL_CHECKOUT_UI_ENABLED =
   process.env.NEXT_PUBLIC_POS_REFERRAL_CHECKOUT_ENABLED === 'true';
 
+export const POS_REFERRAL_WALLET_UI_ENABLED =
+  POS_REFERRAL_CHECKOUT_UI_ENABLED &&
+  process.env.NEXT_PUBLIC_POS_REFERRAL_WALLET_ENABLED === 'true';
+
 type ReferralState = Pick<SaleState,
-  'customer' | 'items' | 'discountPercent' | 'discountValue' | 'referralCode'>;
+  'customer' | 'items' | 'discountPercent' | 'discountValue' | 'referralCode' | 'referralVoucherId'>;
 
 export function canUsePosReferralCart(state: ReferralState): boolean {
-  if (!state.customer || state.referralCode) return false;
+  if (!state.customer || state.referralCode || state.referralVoucherId) return false;
   if (state.items.length === 0 || state.items.length > 100 ||
       Number(state.discountPercent) !== 0 || Number(state.discountValue) !== 0) {
     return false;
@@ -32,6 +36,11 @@ export function canApplyPosReferral(state: ReferralState, code: string, clientId
   return Boolean(normalized && state.customer?.ClientID === clientId && canUsePosReferralCart(state));
 }
 
+export function canApplyPosReferralReward(state: ReferralState, voucherId: number, clientId: number): boolean {
+  return Number.isSafeInteger(voucherId) && voucherId > 0 &&
+    state.customer?.ClientID === clientId && canUsePosReferralCart(state);
+}
+
 export function referralCheckoutLineItemsFingerprint(items: CartItem[]): string {
   // Only metadata that changes the total or service eligibility matters.
   // This helper is diagnostic; reducer invalidates on ANY line edit.
@@ -41,8 +50,19 @@ export function referralCheckoutLineItemsFingerprint(items: CartItem[]): string 
 }
 
 export function referralSalePayloadDiscount(
-  state: Pick<SaleState, 'referralCode' | 'discountPercent' | 'discountValue'>,
-): { dis: number; disVal: number; referralCode?: string } {
+  state: Pick<SaleState, 'referralCode' | 'referralVoucherId' | 'discountPercent' | 'discountValue'>,
+): { dis: number; disVal: number; referralCode?: string; referralVoucherId?: number } {
+  if (state.referralCode && state.referralVoucherId) {
+    throw new Error('REFERRAL_CHECKOUT_INCONSISTENT');
+  }
+  if (state.referralVoucherId != null) {
+    if (!Number.isSafeInteger(state.referralVoucherId) || state.referralVoucherId <= 0 ||
+        state.discountPercent !== 20 || !(state.discountValue > 0)) {
+      throw new Error('REFERRAL_CHECKOUT_INCONSISTENT');
+    }
+    // Backend #232 revalidates and consumes in the paid sale transaction.
+    return { dis: 0, disVal: 0, referralVoucherId: state.referralVoucherId };
+  }
   if (!state.referralCode) {
     return { dis: state.discountPercent, disVal: state.discountValue };
   }
