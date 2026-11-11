@@ -15,6 +15,17 @@ describe('referral sale request and UI money safety (#229)', () => {
       referralCode: null, discountPercent: 12, discountValue: 24,
     })).toEqual({ dis: 12, disVal: 24 });
   });
+  it('keeps wallet reward exclusive, sending no manual discount on new POST', () => {
+    expect(referralSalePayloadDiscount({
+      referralCode: null, referralVoucherId: 300,
+      discountPercent: 20, discountValue: 20,
+    })).toEqual({ dis: 0, disVal: 0, referralVoucherId: 300 });
+    expect(() => referralSalePayloadDiscount({
+      referralCode: 'CUT-ABCDEF0123456789ABCDEF01', referralVoucherId: 300,
+      discountPercent: 20, discountValue: 20,
+    })).toThrow('REFERRAL_CHECKOUT_INCONSISTENT');
+  });
+
   it('fails closed if a stale referral token is paired with wrong manual discount', () => {
     for (const state of [
       { referralCode: code, discountPercent: 10, discountValue: 50 },
@@ -26,13 +37,13 @@ describe('referral sale request and UI money safety (#229)', () => {
   });
   it('never submits applied referrals to PUT invoice edit route', () => {
     const page = readFileSync('src/app/income/pos/page.tsx', 'utf8');
-    expect(page).toContain('state.referralCode && (editingSaleId !== null || !state.customer)');
+    expect(page).toContain('(state.referralCode || state.referralVoucherId) && (editingSaleId !== null || !state.customer)');
     expect(page).toContain('...referralSalePayloadDiscount(state)');
     expect(page).toContain("method = isEditing ? 'PUT' : 'POST'");
   });
   it('hides legacy voucher redemption during a live referral draft', () => {
     const page = readFileSync('src/app/income/pos/page.tsx', 'utf8');
-    expect(page).toContain('state.customer && !state.referralCode && (');
-    expect(page).toContain('if (state.referralCode) setVouchersOpen(false)');
+    expect(page).toContain('state.customer && !state.referralCode && !state.referralVoucherId && (');
+    expect(page).toContain('if (state.referralCode || state.referralVoucherId) setVouchersOpen(false)');
   });
 });
