@@ -73,7 +73,7 @@ describe('transactional referral voucher redemption', () => {
     expect(mock.calls[1]?.query).toContain('v.TenantId = @tenantId');
     expect(mock.calls[1]?.query).toContain('v.ReferrerClientID = @clientId');
     expect(mock.calls[1]?.query).toContain("v.Status = N'ACTIVE'");
-    expect(mock.calls[1]?.query).toContain("c.Status = N'APPLIED'");
+    expect(mock.calls[1]?.query).toContain("c.Status IN (N'APPLIED', N'REVERSED')");
     expect(mock.calls[1]?.params).toMatchObject({ tenantId, clientId: 45, voucherId: 300 });
   });
 
