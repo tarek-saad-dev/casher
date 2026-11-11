@@ -72,6 +72,9 @@ jobs:
       - name: CUT referral reward wallet, price and atomic voucher redemption tests
         run: npx vitest run src/lib/__tests__/referralRewardPolicy.test.ts src/lib/__tests__/referralRewardWallet.test.ts src/lib/__tests__/referralRewardRedemption.test.ts
 
+      - name: CUT referral refund reward-preservation and audit regressions
+        run: npx vitest run src/lib/__tests__/referralInvoiceRefund.test.ts src/lib/__tests__/referralRefundRouteWiring.test.ts src/lib/__tests__/referralRewardWallet.test.ts src/lib/__tests__/referralRewardRedemption.test.ts src/lib/__tests__/salesInvoiceDelete.test.ts
+
       - name: DRVO migration + rollout + runner tests
         run: >
           npx vitest run
