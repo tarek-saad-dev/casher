@@ -13,7 +13,9 @@ vi.mock('@/lib/api-auth', () => ({
   isAuthResult: (value: unknown) =>
     Boolean(value && typeof value === 'object' && (value as {ok?:boolean}).ok === true),
 }));
-vi.mock('@/lib/referrals/referralAdminDashboard.service', () => ({
+vi.mock('@/lib/referrals/referralAdminDashboard.service', async () => {
+  const { ReferralCheckoutError } = await import('@/lib/referrals/referralCheckoutPolicy');
+  return {
   getTenantReferralAdminDashboard: (...args: unknown[]) => mock.getDashboard(...args),
   parseReferralAdminQuery: (url: URL) => {
     const view = url.searchParams.get('view') ?? 'claims';
@@ -21,13 +23,12 @@ vi.mock('@/lib/referrals/referralAdminDashboard.service', () => ({
     const page = Number(url.searchParams.get('page') ?? '1');
     if (!['claims', 'codes'].includes(view) || !Number.isSafeInteger(page) || page < 1 ||
       !['all', 'APPLIED', 'REVERSED', 'PENDING', 'CANCELLED', 'active', 'inactive'].includes(status)) {
-      throw new (class extends Error {
-        code = 'REFERRAL_NOT_ELIGIBLE'; status = 400;
-      })('bad request');
+      throw new ReferralCheckoutError('REFERRAL_NOT_ELIGIBLE', 'bad request', 400);
     }
     return { view, status, page, search: url.searchParams.get('search') ?? '' };
   },
-}));
+  };
+});
 
 import { GET } from '@/app/api/admin/cut-club/referrals/route';
 import { ReferralCheckoutError } from '@/lib/referrals/referralCheckoutPolicy';
