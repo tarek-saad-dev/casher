@@ -70,7 +70,7 @@ jobs:
         run: npx vitest run src/lib/__tests__/posReferralPreview.test.ts src/lib/__tests__/posReferralPreviewComponent.test.tsx
 
       - name: CUT POS referral Apply / payment / stale-code regressions
-        run: npx vitest run src/lib/__tests__/posReferralApplyState.test.tsx src/lib/__tests__/posReferralCheckoutUi.test.tsx
+        run: npx vitest run src/lib/__tests__/posReferralApplyState.test.tsx src/lib/__tests__/posReferralCheckoutUi.test.tsx src/lib/__tests__/posReferralSalePayload.test.ts
 
       - name: DRVO migration + rollout + runner tests
         run: >
