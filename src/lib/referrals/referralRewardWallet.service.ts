@@ -50,7 +50,7 @@ export async function listTenantReferralRewardWallet(input: {
       WHERE v.TenantId = @tenantId AND v.ReferrerClientID = @clientId
         AND v.Status = N'ACTIVE' AND v.UsedInvID IS NULL
         AND (v.ExpiresAtUtc IS NULL OR v.ExpiresAtUtc > SYSUTCDATETIME())
-        AND c.Status = N'APPLIED'
+        AND c.Status IN (N'APPLIED', N'REVERSED')
       ORDER BY v.IssuedAtUtc ASC, v.VoucherID ASC;
     `);
   return res.recordset.map((row: Record<string, unknown>) => {
