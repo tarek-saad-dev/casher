@@ -13,6 +13,18 @@
 - Script is intentionally readable/plain PowerShell and served from a first-party URL. For wider distribution, sign and version a standalone Windows installer, pin the distribution artifacts using SHA-256, and keep a version/pairing inventory. Avoid long-term dependence on the moving `main` branch.
 - If the PC has no physical printer, **do not install an Agent merely to print to another PC's printer**; implement the centralized print route below.
 
+## Short-term workaround: Windows shared printer on the SAME trusted LAN
+
+If two Windows cashier PCs are on the same branch LAN, a temporary, lower-effort route is possible:
+
+1. On the Windows PC physically connected to XP-80, enable **printer sharing** for that XP-80 in Windows (not the Node service), with printer access restricted to trusted cashier accounts.
+2. On the second PC, use Windows **Add printer** to connect to `\\\\PRINTER-PC\\XP80`; if the printer is installed under another alias, configure the local Agent's Windows printer name to match the installed name (existing `run-agent.ps1` hardcodes `XP-80`).
+3. Run the local Agent on the second PC only after confirming that the *Windows shared printer* appears locally and can print. It submits a RAW ESC/POS job to Windows, which forwards it to the host spooler. Test one small physical receipt first; some drivers/RAW share setups may not support ESC/POS transparently.
+4. The printer host must stay powered on and reachable. Windows SMB printer sharing is a local-network operating-system feature, **not** a Cashier cloud feature. Use firewall rules restricting SMB to trusted LAN only; NEVER publish SMB/445 on the internet.
+5. There is no central queue, no cross-branch offline buffering, and no remote status beyond Windows spooler. For reliable multi-branch routing, choose the authenticated centralized design below.
+
+This is an optional operational workaround, **not implemented/configured automatically** by the Cashier UI.
+
 ## Future: centrally routed print jobs, no raw TCP exposure
 
 ```
