@@ -14,7 +14,7 @@ import { fetchPosReferralPreview } from '@/lib/referrals/posReferralPreview';
 const CODE = 'CUT-ABCDEF0123456789ABCDEF01';
 const mockedFetch = vi.mocked(fetchPosReferralPreview);
 
-beforeEach(() => mockedFetch.mockReset());
+beforeEach(() => { mockedFetch.mockReset(); });
 afterEach(cleanup);
 
 function typeCode(text: string) {
