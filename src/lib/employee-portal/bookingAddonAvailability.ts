@@ -95,12 +95,12 @@ async function alternatives(input: {
     .input('tenant', sql.NVarChar(100), input.tenantId)
     .input('emp', sql.Int, input.empId)
     .query(
-      "SELECT TOP 12 EmpID, EmpName FROM dbo.TblEmp WHERE TenantId=@tenant " +
+      "SELECT TOP 8 EmpID, EmpName FROM dbo.TblEmp WHERE TenantId=@tenant " +
       "AND isActive=1 AND EmpID<>@emp AND Job IN (N'حلاق',N'مساعد',N'Barber',N'barber') ORDER BY EmpID"
     );
   const people = staff.recordset as Array<{EmpID:number;EmpName:string}>;
   const found: SuggestedBarber[] = [];
-  for (const delay of [0,15,30,45,60,75,90]) {
+  for (const delay of [0,15,30,45,60]) {
     const startAt = new Date(input.startAt.getTime() + delay * 60000);
     const endAt = new Date(startAt.getTime() + input.durationMinutes * 60000);
     const checked = await Promise.all(people.map(async p => {
@@ -140,10 +140,18 @@ export async function previewAddon(input: {
       expectedEndAt:p.endAt.toISOString(),proposedEndAt:endAt.toISOString(),alternatives:[]};
   } catch (error) {
     if (!(error instanceof ScheduleConflictError)) throw error;
-    const suggested = await alternatives({
-      empId:input.empId,tenantId:input.tenantId,branchId:booking.BranchID,
-      workDate:p.operationalDate,startAt:p.endAt,durationMinutes:service.DurationMinutes,
-    });
+    let suggested: SuggestedBarber[] = [];
+    try {
+      suggested = await alternatives({
+        empId:input.empId,tenantId:input.tenantId,branchId:booking.BranchID,
+        workDate:p.operationalDate,startAt:p.endAt,durationMinutes:service.DurationMinutes,
+      });
+    } catch (lookupError) {
+      // The original barber is definitely unavailable. Do not hide this result
+      // just because the optional recommendation lookup failed.
+      console.warn('[staff-addon] optional alternative lookup failed',
+        lookupError instanceof Error ? lookupError.message : lookupError);
+    }
     return {available:false,durationMinutes:service.DurationMinutes,reason:error.message,
       expectedEndAt:p.endAt.toISOString(),proposedEndAt:endAt.toISOString(),alternatives:suggested};
   }
