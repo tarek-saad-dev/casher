@@ -23,6 +23,11 @@ describe('local print agent guided recovery', () => {
     expect(markup).toContain('http://127.0.0.1:7788/health');
     expect(markup).toContain('إعدادات الطباعة');
     expect(markup).toContain('data-testid="local-print-help"');
+    expect(markup).toContain('data-testid="print-agent-download"');
+    expect(markup).toContain('/downloads/Install-CUT-Print-Agent.ps1');
+    expect(markup).toContain('Run with PowerShell');
+    expect(markup).toContain('data-testid="printer-location-remote"');
+    expect(markup).toContain('لو مش موجودة بتثبتها وتشغّلها');
     expect(markup).not.toContain('window.print');
   });
 
@@ -30,6 +35,7 @@ describe('local print agent guided recovery', () => {
     const markup = renderToStaticMarkup(<LocalPrintConnectionHelp compact errorCode="SERVICE_UNAVAILABLE" />);
     expect(markup).toContain('فحص الاتصال');
     expect(markup).toContain('Task Scheduler');
+    expect(markup).toContain('data-testid="print-agent-download"');
     expect(markup).not.toContain('أو انسخ أمر التشغيل في PowerShell');
   });
 });
