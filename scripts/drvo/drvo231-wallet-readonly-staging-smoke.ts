@@ -55,7 +55,7 @@ async function main() {
         WHERE v.TenantId = @tenantId AND v.ReferrerClientID = @clientId
           AND v.Status = N'ACTIVE' AND v.UsedInvID IS NULL
           AND (v.ExpiresAtUtc IS NULL OR v.ExpiresAtUtc > SYSUTCDATETIME())
-          AND c.Status = N'APPLIED'
+          AND c.Status IN (N'APPLIED', N'REVERSED')
         ORDER BY v.IssuedAtUtc ASC, v.VoucherID ASC;
       `);
     requireSafe(Array.isArray(wallet.recordset), 'wallet SQL query did not run');
@@ -76,7 +76,7 @@ async function main() {
         (SELECT COUNT_BIG(*) FROM dbo.TblReferralDiscountVoucher v
           INNER JOIN dbo.TblReferralVisitClaim c
             ON c.TenantId = v.TenantId AND c.ClaimID = v.ClaimID
-          WHERE v.Status = N'ACTIVE' AND c.Status <> N'APPLIED') AS InvalidActiveClaims;
+          WHERE v.Status = N'ACTIVE' AND c.Status NOT IN (N'APPLIED', N'REVERSED')) AS InvalidActiveClaims;
     `);
     const x = integrity.recordset[0] as Record<string, unknown>;
     requireSafe(['BadUsed', 'BadActive', 'Orphans', 'InvalidActiveClaims']
