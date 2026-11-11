@@ -194,6 +194,17 @@ async function run() {
         );
       `, [547], 'Cross tenant foreign key');
 
+      await expectSqlError(tx, fixture, code, `
+        INSERT INTO dbo.TblReferralDiscountVoucher
+          (TenantId, ClaimID, ReferrerClientID, DiscountPercent)
+        VALUES (
+          @tenantId,
+          (SELECT ClaimID FROM dbo.TblReferralVisitClaim
+           WHERE TenantId=@tenantId AND ReferredClientID=@referredId),
+          @ownerId, 25
+        );
+      `, [547], 'Non-20-percent voucher');
+
       await dbRequest(tx, fixture, code).input('claimId', sql.BigInt, claimId).query(`
         UPDATE dbo.TblReferralVisitClaim
         SET Status=N'APPLIED', FirstPaidInvID=2147483000, FirstPaidInvType=N'مبيعات'
@@ -213,16 +224,6 @@ async function run() {
         );
       `, [2601, 2627], 'Duplicate 20% reward voucher');
 
-      await expectSqlError(tx, fixture, code, `
-        INSERT INTO dbo.TblReferralDiscountVoucher
-          (TenantId, ClaimID, ReferrerClientID, DiscountPercent)
-        VALUES (
-          @tenantId,
-          (SELECT ClaimID FROM dbo.TblReferralVisitClaim
-           WHERE TenantId=@tenantId AND ReferredClientID=@referredId),
-          @ownerId, 25
-        );
-      `, [547, 2601, 2627], 'Non-20-percent voucher');
       console.log('DRVO-023 rolled-back SQL constraints: duplicate code, repeat claim, self-referral, cross tenant, reward uniqueness PASS');
     } finally {
       await rollbackQuietly(tx, 'Fixture transaction');
@@ -259,6 +260,7 @@ async function run() {
             SET @errorNumber = ERROR_NUMBER();
           END CATCH;
           SELECT @errorNumber AS ErrorNumber;
+          SET LOCK_TIMEOUT -1;
         `);
         assert(Number(r.recordset[0]?.ErrorNumber) === 1222,
           'Second cashier was not blocked by unique owner lock');
