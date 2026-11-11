@@ -41,7 +41,7 @@ async function getBooking(db: DbHandle, actor: { bookingId: number; empId: numbe
   }
   return row;
 }
-async function getService(db: DbHandle, tenantId: string, proId: number): Promise<Service> {
+async function getService(db: DbHandle, tenantId: string, proId: number, empId: number): Promise<Service> {
   if (!Number.isInteger(proId) || proId < 1) throw new AddonGuardError(400, 'الخدمة غير صالحة');
   const found = await request(db)
     .input('proId', sql.Int, proId).input('tenant', sql.NVarChar(100), tenantId)
@@ -53,7 +53,25 @@ async function getService(db: DbHandle, tenantId: string, proId: number): Promis
     );
   const service = found.recordset[0] as Service | undefined;
   if (!service) throw new AddonGuardError(400, 'الخدمة مش متاحة');
-  const duration = Number(service.DurationMinutes);
+  let duration = Number(service.DurationMinutes);
+  // Honor the same per-barber duration overrides used by operations.
+  // Unsupported legacy schemas fall back to catalog duration; other DB errors fail closed.
+  try {
+    const override = await request(db)
+      .input('empId', sql.Int, empId).input('proId', sql.Int, proId)
+      .query(
+        "SELECT TOP 1 DurationMinutes FROM dbo.TblEmpServiceSettings " +
+        "WHERE EmpID=@empId AND ProID=@proId AND IsActive=1 " +
+        "AND DurationMinutes > 0"
+      );
+    const minutes = Number(override.recordset[0]?.DurationMinutes);
+    if (Number.isInteger(minutes) && minutes > 0) duration = minutes;
+  } catch (error) {
+    if ((error as {number?:number})?.number !== 208 &&
+      !String((error as Error)?.message ?? '').includes('Invalid object name')) {
+      throw error;
+    }
+  }
   if (!Number.isInteger(duration) || duration <= 0 || duration > 240) {
     throw new AddonGuardError(409, 'مدة الخدمة غير محددة — راجع الكاشير');
   }
@@ -88,7 +106,7 @@ async function ensureNotSent(db: DbHandle, bookingId: number) {
 }
 async function alternatives(input: {
   empId: number; branchId: number; tenantId: string; workDate: string;
-  startAt: Date; durationMinutes: number;
+  startAt: Date; durationMinutes: number; proId: number;
 }): Promise<SuggestedBarber[]> {
   const db = await getPool();
   const staff = await db.request()
@@ -99,11 +117,14 @@ async function alternatives(input: {
       "AND isActive=1 AND EmpID<>@emp AND Job IN (N'حلاق',N'مساعد',N'Barber',N'barber') ORDER BY EmpID"
     );
   const people = staff.recordset as Array<{EmpID:number;EmpName:string}>;
+  const durations = await Promise.all(people.map(p =>
+    getService(db, input.tenantId, input.proId, p.EmpID).then(s => s.DurationMinutes)
+  ));
   const found: SuggestedBarber[] = [];
   for (const delay of [0,15,30,45,60]) {
     const startAt = new Date(input.startAt.getTime() + delay * 60000);
-    const endAt = new Date(startAt.getTime() + input.durationMinutes * 60000);
-    const checked = await Promise.all(people.map(async p => {
+    const checked = await Promise.all(people.map(async (p, index) => {
+      const endAt = new Date(startAt.getTime() + durations[index]! * 60000);
       try {
         await assertEmployeeIntervalAvailable({
           empId: p.EmpID, branchId: input.branchId, operationalDate: input.workDate, startAt, endAt,
@@ -126,7 +147,7 @@ export async function previewAddon(input: {
 }): Promise<AddonAvailability> {
   const db = await getPool();
   const [booking, service] = await Promise.all([
-    getBooking(db,input), getService(db,input.tenantId,input.proId),
+    getBooking(db,input), getService(db,input.tenantId,input.proId,input.empId),
   ]);
   await ensureNotSent(db,input.bookingId);
   const p = period(booking);
@@ -144,7 +165,7 @@ export async function previewAddon(input: {
     try {
       suggested = await alternatives({
         empId:input.empId,tenantId:input.tenantId,branchId:booking.BranchID,
-        workDate:p.operationalDate,startAt:p.endAt,durationMinutes:service.DurationMinutes,
+        workDate:p.operationalDate,startAt:p.endAt,durationMinutes:service.DurationMinutes,proId:input.proId,
       });
     } catch (lookupError) {
       // The original barber is definitely unavailable. Do not hide this result
@@ -172,7 +193,7 @@ export async function reserveAddon(input: {
     await tx.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
     await acquireEmployeeScheduleLock(tx,input.empId,initialPeriod.operationalDate);
     const booking = await getBooking(tx,input,true);
-    const service = await getService(tx,input.tenantId,input.proId);
+    const service = await getService(tx,input.tenantId,input.proId,input.empId);
     await ensureNotSent(tx,input.bookingId);
     const p = period(booking);
     if (p.operationalDate !== initialPeriod.operationalDate ||
