@@ -310,7 +310,7 @@ export async function finalizeReferralSaleTransaction(
             SELECT 1 FROM dbo.TblReferralVisitClaim c
             WHERE c.TenantId = @tenantId
               AND c.ClaimID = dbo.TblReferralDiscountVoucher.ClaimID
-              AND c.ReferrerClientID = @clientId AND c.Status = N'APPLIED'
+              AND c.ReferrerClientID = @clientId AND c.Status IN (N'APPLIED', N'REVERSED')
           );
       `);
     if (redeemed.rowsAffected?.[0] !== 1) {
