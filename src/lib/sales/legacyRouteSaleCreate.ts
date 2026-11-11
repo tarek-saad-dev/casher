@@ -16,6 +16,10 @@ import { getCairoInvTimeDotStr, getCairoPayTimeStr } from '@/lib/businessDate';
 import { lockOperationalWrite } from '@/lib/branch/operationalGates';
 import type { TargetRecalcScope } from '@/lib/payroll/employee-target/employee-target-recalc-scope';
 import { runSalePostCommitEffects } from '@/apps/pos/internal/salePostCommitEffects';
+import {
+  prepareReferralSaleTransaction,
+  finalizeReferralSaleTransaction,
+} from '@/lib/referrals/referralSaleTransaction.service';
 
 type InvoicePaymentAllocationInput = {
   paymentMethodId: number;
@@ -362,10 +366,18 @@ export async function createSaleLegacyFromRoute(
   const { branchName, ...txInput } = input;
 
   try {
+    const referral = await prepareReferralSaleTransaction(transaction, {
+      tenantId: input.tenantId,
+      clientId: input.clientId,
+      referralCode: input.referralCode,
+    });
     const { invID, invType, targetRecalcScopes } = await executeInRouteSaleCreateTransaction(
       transaction,
       txInput,
     );
+    await finalizeReferralSaleTransaction(transaction, referral, {
+      invID, invType, expectedGrandTotal: input.computed.grandTotal,
+    });
     await transaction.commit();
     console.log(`[pos-api]   ✅ COMMITTED — invID=${invID}, invType=${invType} [legacy route]`);
 
