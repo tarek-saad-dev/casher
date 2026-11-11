@@ -65,6 +65,16 @@ export async function prepareReferralSaleTransaction(
     }
     return { tenantId, clientId: null, reservation: null };
   }
+  const readiness = await new sql.Request(tx).query(`
+    SELECT CASE WHEN
+      OBJECT_ID(N'dbo.TblReferralCustomerCode', N'U') IS NOT NULL
+      AND OBJECT_ID(N'dbo.TblReferralVisitClaim', N'U') IS NOT NULL
+      AND OBJECT_ID(N'dbo.TblReferralDiscountVoucher', N'U') IS NOT NULL
+    THEN 1 ELSE 0 END AS Ready;
+  `);
+  if (Number(readiness.recordset[0]?.Ready) !== 1) {
+    throw new ReferralCheckoutError('REFERRAL_SCHEMA_UNAVAILABLE', 'خدمة الإحالات غير جاهزة', 503);
+  }
   const clientId = Number(input.clientId);
   if (!Number.isSafeInteger(clientId) || clientId < 1 || clientId > 2_147_483_647) {
     throw new ReferralCheckoutError('REFERRAL_CLIENT_REQUIRED', 'عميل غير صالح', 400);
