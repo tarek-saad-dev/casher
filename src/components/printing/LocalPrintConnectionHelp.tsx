@@ -100,7 +100,11 @@ export default function LocalPrintConnectionHelp({ onReconnect, errorCode, compa
               <span className="flex size-6 shrink-0 items-center justify-center rounded-full border border-border bg-background text-xs font-bold">1</span>
               <div>
                 اتأكد إن طابعة <strong>XP-80</strong> متوصلة ومثبتة على Windows.
-                <p className="mt-1 text-xs text-muted-foreground">لو أول مرة تستخدم الجهاز ده، ثبّت Node.js 22 أو أحدث أيضًا.</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  لو أول مرة تستخدم الجهاز ده، ثبّت Node.js 22 أو أحدث أيضًا.{' '}
+                  <a href="https://nodejs.org/en/download" target="_blank" rel="noopener noreferrer"
+                    className="font-semibold underline underline-offset-2">تحميل Node.js الرسمي</a>
+                </p>
               </div>
             </li>
             <li className="flex items-start gap-3 text-sm">
