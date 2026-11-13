@@ -21,6 +21,9 @@ import {
   ReferralCheckoutError, parseReferralCheckoutRequest, parseReferralRewardVoucherId,
   priceFirstVisitReferral, priceReferralRewardVoucher,
 } from '@/lib/referrals/referralCheckoutPolicy';
+import {
+  createSaleIdempotencyIntent, lookupCommittedSaleReplay, SaleIdempotencyError,
+} from '@/lib/sales/saleRequestIdempotency.service';
 
 export const runtime = "nodejs";
 
@@ -44,6 +47,18 @@ export async function POST(req: NextRequest) {
     if (!sessionUser?.TenantId) {
       return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
     }
+
+    const idempotency = createSaleIdempotencyIntent({
+      tenantId: String(sessionUser.TenantId),
+      userId: sessionUser.UserID,
+      branchId: sessionUser.ActiveBranchID,
+      rawRequestId: body.requestId,
+      payload: body as unknown as Record<string, unknown>,
+    });
+    // A committed retry is safe even when the original shift has since closed.
+    // Always return the persisted invoice; NEVER re-apply stock or referral rewards.
+    const prior = await lookupCommittedSaleReplay(await getPool(), idempotency);
+    if (prior) return NextResponse.json(prior, { status: 200 });
 
     const referralCode = parseReferralCheckoutRequest(body.referralCode, body.clientId);
     const referralVoucherId = parseReferralRewardVoucherId(body.referralVoucherId, referralCode);
@@ -279,6 +294,7 @@ export async function POST(req: NextRequest) {
 
     const saleInput = {
       tenantId: String(sessionUser.TenantId),
+      idempotency,
       referralCode,
       referralVoucherId,
       items: body.items.map((item) => ({
@@ -315,7 +331,7 @@ export async function POST(req: NextRequest) {
       : await createSaleLegacyFromRoute(saleInput);
 
     const handoffId = Number(body.handoffId);
-    if (Number.isInteger(handoffId) && handoffId > 0) {
+    if (!result.replayed && Number.isInteger(handoffId) && handoffId > 0) {
       try {
         const { markHandoffCharged } = await import('@/lib/booking/cashierHandoff');
         await markHandoffCharged({
@@ -334,8 +350,13 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    return NextResponse.json({ invID: result.invID, invType: result.invType }, { status: 201 });
+    return NextResponse.json({
+      invID: result.invID, invType: result.invType, replayed: result.replayed === true,
+    }, { status: result.replayed ? 200 : 201 });
   } catch (err: unknown) {
+    if (err instanceof SaleIdempotencyError) {
+      return NextResponse.json({ error: err.message, code: err.code }, { status: err.status });
+    }
     if (err instanceof ReferralCheckoutError) {
       return NextResponse.json({ error: err.message, code: err.code }, { status: err.status });
     }
