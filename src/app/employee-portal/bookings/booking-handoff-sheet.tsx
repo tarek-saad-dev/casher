@@ -52,6 +52,7 @@ export default function BookingHandoffSheet({ booking, open, onClose, onSent }: 
   const [readOnly, setReadOnly] = useState(false);
   const [canSend, setCanSend] = useState(true);
   const [handoffPending, setHandoffPending] = useState(booking.handoffStatus === 'pending');
+  const [displayEndTime, setDisplayEndTime] = useState(booking.endTime);
 
   const selectedCount = useMemo(
     () => lines.filter((l) => l.selected).reduce((n, l) => n + l.qty, 0),
@@ -72,6 +73,7 @@ export default function BookingHandoffSheet({ booking, open, onClose, onSent }: 
         canSend: boolean;
         readOnly: boolean;
         handoffStatus: string;
+        endTime?: string;
       };
       setLines(
         (detail.services ?? []).map((s) => ({
@@ -82,6 +84,7 @@ export default function BookingHandoffSheet({ booking, open, onClose, onSent }: 
           selected: true,
         })),
       );
+      setDisplayEndTime(detail.endTime || booking.endTime);
       setCanSend(Boolean(detail.canSend));
       setReadOnly(Boolean(detail.readOnly));
       setHandoffPending(detail.handoffStatus === 'pending');
@@ -99,6 +102,7 @@ export default function BookingHandoffSheet({ booking, open, onClose, onSent }: 
     setCatalogOpen(false);
     setAddonCandidate(null);
     setAddonPreview(null);
+    setDisplayEndTime(booking.endTime);
     setToast('');
   }, [open, loadDetail]);
 
@@ -232,8 +236,8 @@ export default function BookingHandoffSheet({ booking, open, onClose, onSent }: 
             <div>
               <p className="text-lg font-extrabold tracking-wide" dir="ltr">
                 {booking.startTime}
-                {booking.endTime ? (
-                  <span className="text-sm font-semibold text-zinc-400"> – {booking.endTime}</span>
+                {displayEndTime ? (
+                  <span className="text-sm font-semibold text-zinc-400"> – {displayEndTime}</span>
                 ) : null}
               </p>
               <p className="mt-1 text-sm font-bold text-amber-200">{booking.firstName}</p>
