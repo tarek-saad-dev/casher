@@ -10,6 +10,7 @@ import {
   isCustomerIncomplete,
 } from '@/lib/customerSource';
 import type { Customer } from '@/lib/types';
+import PosCustomerReferralProfile, { POS_CUSTOMER_REFERRAL_PROFILE_UI_ENABLED } from '@/components/pos/PosCustomerReferralProfile';
 import { cn } from '@/lib/utils';
 
 interface CustomerSearchProps {
@@ -162,6 +163,12 @@ export default function CustomerSearch({
             <Pencil className="w-3.5 h-3.5 shrink-0" />
             <span>تعديل بيانات العميل</span>
           </button>
+        )}
+        {POS_CUSTOMER_REFERRAL_PROFILE_UI_ENABLED && (
+          <PosCustomerReferralProfile
+            key={effectiveSelected.ClientID}
+            clientId={effectiveSelected.ClientID}
+          />
         )}
       </div>
     );
