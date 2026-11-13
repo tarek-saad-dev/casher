@@ -30,6 +30,7 @@ export type LegacySaleCreateTransactionInput = {
   tenantId?: string;
   referralCode?: string | null;
   referralVoucherId?: number | null;
+  idempotency?: import('@/lib/sales/saleRequestIdempotency.service').SaleIdempotencyIntent | null;
   notes: string;
   notes2?: string;
   payCash: number;
