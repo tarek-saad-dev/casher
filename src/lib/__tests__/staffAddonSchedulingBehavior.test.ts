@@ -205,6 +205,20 @@ describe('CUT STAFF add-on booking behavior (mock SQL + real server functions)',
     expect(sim.rows[0]?.duration).toBe(25);
   });
 
+  it('preserves next-day occupancy when a late booking crosses midnight', async () => {
+    sim.booking.StartTime = '23:50';
+    sim.booking.EndTime = '00:20';
+    sim.booking.AbsoluteEndUtc = new Date('2030-01-12T22:20:00.000Z');
+    const preview = await previewAddon(actor);
+    expect(preview.available).toBe(true);
+    expect(preview.expectedEndAt).toBe('2030-01-12T22:20:00.000Z');
+    const result = await reserveAddon({ ...actor, expectedEndAt: preview.expectedEndAt });
+    expect(result.ok).toBe(true);
+    expect(sim.booking.EndTime).toBe('00:40');
+    expect(sim.booking.AbsoluteEndUtc.toISOString()).toBe('2030-01-12T22:40:00.000Z');
+    expect(sim.booking.TotalDuration).toBe(50);
+  });
+
   it('denies cross-employee or cross-tenant access', async () => {
     await expect(previewAddon({ ...actor, empId: 88 })).rejects.toMatchObject({ status: 404 });
     await expect(previewAddon({ ...actor, tenantId: 'someone-else' })).rejects.toMatchObject({ status: 404 });
