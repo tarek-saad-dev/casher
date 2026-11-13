@@ -40,6 +40,7 @@ import { isCustomerIncomplete } from '@/lib/customerSource';
 import type { Barber, Service, PaymentMethod, Customer, CartItem } from '@/lib/types';
 import { isGroomHomeVisitCategory } from '@/lib/catalog/groomOptionalAddons';
 import { referralSalePayloadDiscount } from '@/lib/referrals/posReferralCheckoutPolicy';
+import { acquirePendingSaleRequestId, clearPendingSaleRequestId, hasUnresolvedSaleRequest } from '@/lib/sales/clientSaleRequestId';
 
 const POS_SALE_IDEMPOTENCY_UI_ENABLED =
   process.env.NEXT_PUBLIC_POS_SALE_IDEMPOTENCY_ENABLED === 'true';
@@ -628,7 +629,7 @@ export default function PosPage() {
         handoffId: activeHandoffId,
         ...(POS_SALE_IDEMPOTENCY_UI_ENABLED && editingSaleId === null
           ? { requestId: saleRequestIdRef.current ??
-              (saleRequestIdRef.current = crypto.randomUUID()) }
+              (saleRequestIdRef.current = acquirePendingSaleRequestId(null)) }
           : {}),
       };
 
@@ -655,6 +656,7 @@ export default function PosPage() {
 
       // Only a confirmed newly created/replayed invoice releases this request ID.
       saleRequestIdRef.current = null;
+      if (POS_SALE_IDEMPOTENCY_UI_ENABLED && editingSaleId === null) clearPendingSaleRequestId();
       // Reset everything (customer, barber, items, discount, payment, edit mode)
       reset();
       setActiveHandoffId(null);
@@ -803,9 +805,11 @@ export default function PosPage() {
 
   // ───────────────── New sale handler ─────────────────
   const handleNewSale = useCallback(() => {
-    // Explicit New Invoice starts a NEW request; the user must check any
-    // uncertain previous invoice in Recent Invoices first.
+    if (POS_SALE_IDEMPOTENCY_UI_ENABLED && hasUnresolvedSaleRequest() &&
+        !window.confirm('هناك محاولة حفظ فاتورة قد تكون نجحت. راجع آخر الفواتير والمدفوعات أولًا. هل تريد بدء فاتورة جديدة وإلغاء معرّف إعادة المحاولة؟')) return;
+    // Only deliberate New Invoice clears pending same-tab retry after review.
     saleRequestIdRef.current = null;
+    if (POS_SALE_IDEMPOTENCY_UI_ENABLED) clearPendingSaleRequestId();
     reset();
     setActiveHandoffId(null);
     setHandoffBanner(null);
