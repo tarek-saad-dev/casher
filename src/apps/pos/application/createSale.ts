@@ -15,6 +15,9 @@ import {
   prepareReferralSaleTransaction,
   finalizeReferralSaleTransaction,
 } from '@/lib/referrals/referralSaleTransaction.service';
+import {
+  reserveSaleRequest, completeSaleRequest,
+} from '@/lib/sales/saleRequestIdempotency.service';
 
 export type CreateSaleInput = LegacySaleCreateTransactionInput & {
   branchName: string;
@@ -23,6 +26,7 @@ export type CreateSaleInput = LegacySaleCreateTransactionInput & {
 export type CreateSaleResult = {
   invID: number;
   invType: string;
+  replayed?: boolean;
 };
 
 export async function createSale(input: CreateSaleInput): Promise<CreateSaleResult> {
@@ -39,6 +43,11 @@ export async function createSale(input: CreateSaleInput): Promise<CreateSaleResu
   }
 
   try {
+    const saleRequest = await reserveSaleRequest(transaction, input.idempotency ?? null);
+    if (saleRequest?.kind === 'replay') {
+      await transaction.commit(); // Read-only duplicate: release key-range lock.
+      return saleRequest.result; // No invoice or post-commit side effects.
+    }
     const referral = await prepareReferralSaleTransaction(transaction, {
       tenantId: input.tenantId,
       clientId: input.clientId,
@@ -56,6 +65,7 @@ export async function createSale(input: CreateSaleInput): Promise<CreateSaleResu
       invID, invType, expectedGrandTotal: input.computed.grandTotal,
     });
 
+    await completeSaleRequest(transaction, saleRequest, { invID, invType });
     await transaction.commit();
     console.log(
       `[pos-api]   ✅ COMMITTED — invID=${invID}, invType=${invType}`,
