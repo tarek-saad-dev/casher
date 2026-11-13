@@ -23,7 +23,8 @@ jobs:
           github.event.pull_request.head.ref == 'drvo-012-commercial-plans-tenant-apps' ||
           github.event.pull_request.head.ref == 'feat/automatic-employee-late-deductions' ||
           github.event.pull_request.head.ref == 'feat/referrals-tenant-schema-223' ||
-          github.event.pull_request.head.ref == 'feat/cut-referrals-integration-244'
+          github.event.pull_request.head.ref == 'feat/cut-referrals-integration-244' ||
+          github.event.pull_request.head.ref == 'feat/pos-sale-idempotency-246'
         )
       )
     runs-on: ubuntu-latest
@@ -146,6 +147,11 @@ jobs:
         if: github.event_name == 'pull_request' && (github.event.pull_request.head.ref == 'feat/referrals-tenant-schema-223' || github.event.pull_request.head.ref == 'feat/cut-referrals-integration-244')
         timeout-minutes: 8
         run: npx tsx scripts/drvo/drvo023-referral-staging-smoke.ts
+
+      - name: DRVO-024 POS sale idempotency SQL smoke (staging rollback only)
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'feat/pos-sale-idempotency-246'
+        timeout-minutes: 6
+        run: npx tsx scripts/drvo/drvo024-sale-idempotency-staging-smoke.ts
 
       - name: Verify migration 9 ledger
         run: |
