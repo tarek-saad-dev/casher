@@ -228,6 +228,37 @@ async function main() {
     const movedReplay = await reschedulePublicBooking(moveInput);
     check(movedReplay.idempotentReplay === true && movedReplay.bookingId === bookingId, 'Move replay does not create another booking');
 
+    // CUT STAFF addon: real SQL in the disposable salon tenant only. Preview
+    // does not reserve; only one concurrent submit may commit the new duration.
+    const { previewAddon, reserveAddon } = await import('../../src/lib/employee-portal/bookingAddonAvailability');
+    const addonActor = { bookingId, empId, tenantId, proId: service.serviceId };
+    const addonPreview = await previewAddon(addonActor);
+    check(addonPreview.available === true, 'Employee addon preview finds a free extension');
+    const beforeAddonRows = await pool.request().input('bid', sql.Int, bookingId)
+      .query('SELECT COUNT(*) AS count FROM dbo.BookingServices WHERE BookingID=@bid');
+    const beforeCount = Number(beforeAddonRows.recordset[0]?.count || 0);
+    const [addonA, addonB] = await Promise.all([
+      reserveAddon({ ...addonActor, expectedEndAt: addonPreview.expectedEndAt }),
+      reserveAddon({ ...addonActor, expectedEndAt: addonPreview.expectedEndAt }),
+    ]);
+    check([addonA, addonB].filter(r => r.ok).length === 1,
+      'Exactly one concurrent addon request reserves extra time');
+    check([addonA, addonB].filter(r => !r.ok).length === 1,
+      'Stale duplicate addon request is rejected');
+    const afterAddon = await pool.request().input('bid', sql.Int, bookingId).query(`
+      SELECT b.AbsoluteEndUtc, b.EndTime,
+        (SELECT COUNT(*) FROM dbo.BookingServices bs WHERE bs.BookingID=b.BookingID) AS LineCount
+      FROM dbo.Bookings b WHERE b.BookingID=@bid
+    `);
+    check(Number(afterAddon.recordset[0]?.LineCount) === beforeCount + 1,
+      'Confirmed addon persists exactly one new booking service row');
+    check(new Date(afterAddon.recordset[0]?.AbsoluteEndUtc).getTime() > new Date(addonPreview.expectedEndAt).getTime(),
+      'Confirmed addon extends the persisted booking end time');
+    const repeatAfterSuccess = await reserveAddon({ ...addonActor, expectedEndAt: addonPreview.expectedEndAt });
+    check(!repeatAfterSuccess.ok && repeatAfterSuccess.status === 409,
+      'Old preview token cannot be replayed after successful extension');
+    console.log('SALON_STAFF_ADDON_E2E_STAGING_PASS');
+
     // Public cancellation releases the previously moved appointment and leaves a
     // single cancelled booking with no outbound customer or team notification.
     const cancelled = await cancelPublicBooking({
