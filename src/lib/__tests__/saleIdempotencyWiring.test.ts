@@ -8,7 +8,13 @@ describe('persistent POST /api/sales request token across both POS writers (#246
     const ui = get('src/app/income/pos/page.tsx');
     expect(ui).toContain('NEXT_PUBLIC_POS_SALE_IDEMPOTENCY_ENABLED');
     expect(ui).toContain('saleRequestIdRef.current ??');
-    expect(ui).toContain('crypto.randomUUID()');
+    const token = get('src/lib/sales/clientSaleRequestId.ts');
+    expect(token).toContain('crypto.randomUUID()');
+    expect(token).toContain('window.sessionStorage');
+    expect(ui).toContain('acquirePendingSaleRequestId(null)');
+    expect(ui).toContain('clearPendingSaleRequestId()');
+    expect(ui).toContain('hasUnresolvedSaleRequest()');
+    expect(ui).toContain('window.confirm(');
     expect(ui).toContain('requestId: saleRequestIdRef.current');
     expect(ui).toContain('saleRequestIdRef.current = null;');
   });
