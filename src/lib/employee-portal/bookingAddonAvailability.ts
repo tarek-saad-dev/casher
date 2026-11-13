@@ -133,6 +133,7 @@ async function alternatives(input: {
     getService(db, input.tenantId, input.proId, p.EmpID).then(s => s.DurationMinutes)
   ));
   const found: SuggestedBarber[] = [];
+  const suggestedEmployees = new Set<number>();
   for (const delay of [0,15,30,45,60]) {
     const startAt = new Date(input.startAt.getTime() + delay * 60000);
     const checked = await Promise.all(people.map(async (p, index) => {
@@ -148,7 +149,10 @@ async function alternatives(input: {
       }
     }));
     for (const row of checked) {
-      if (row) found.push(row);
+      if (row && !suggestedEmployees.has(row.empId)) {
+        suggestedEmployees.add(row.empId);
+        found.push(row);
+      }
       if (found.length === 3) return found;
     }
   }
