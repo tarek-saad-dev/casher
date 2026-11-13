@@ -20,6 +20,9 @@ import {
   prepareReferralSaleTransaction,
   finalizeReferralSaleTransaction,
 } from '@/lib/referrals/referralSaleTransaction.service';
+import {
+  reserveSaleRequest, completeSaleRequest,
+} from '@/lib/sales/saleRequestIdempotency.service';
 
 type InvoicePaymentAllocationInput = {
   paymentMethodId: number;
@@ -359,7 +362,7 @@ export type LegacyRouteSaleCreateInput = LegacySaleCreateTransactionInput & {
  */
 export async function createSaleLegacyFromRoute(
   input: LegacyRouteSaleCreateInput,
-): Promise<{ invID: number; invType: string }> {
+): Promise<{ invID: number; invType: string; replayed?: boolean }> {
   const db = await getPool();
   const transaction = new sql.Transaction(db);
   await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
@@ -368,6 +371,11 @@ export async function createSaleLegacyFromRoute(
   const { branchName, ...txInput } = input;
 
   try {
+    const saleRequest = await reserveSaleRequest(transaction, input.idempotency ?? null);
+    if (saleRequest?.kind === 'replay') {
+      await transaction.commit(); // Read-only duplicate: release key-range lock.
+      return saleRequest.result; // No invoice or post-commit side effects.
+    }
     const referral = await prepareReferralSaleTransaction(transaction, {
       tenantId: input.tenantId,
       clientId: input.clientId,
@@ -384,6 +392,8 @@ export async function createSaleLegacyFromRoute(
     await finalizeReferralSaleTransaction(transaction, referral, {
       invID, invType, expectedGrandTotal: input.computed.grandTotal,
     });
+    // Same SQL transaction owns invoice, payment, referral and idempotency state.
+    await completeSaleRequest(transaction, saleRequest, { invID, invType });
     await transaction.commit();
     console.log(`[pos-api]   ✅ COMMITTED — invID=${invID}, invType=${invType} [legacy route]`);
 
