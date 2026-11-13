@@ -14,12 +14,16 @@ describe('referral is atomic in BOTH POS invoice writers (#227)', () => {
     const before = relevant.indexOf('await prepareReferralSaleTransaction(');
     const execute = relevant.indexOf('await ' + executeMarker);
     const after = relevant.indexOf('await finalizeReferralSaleTransaction(');
-    const commit = relevant.indexOf('await transaction.commit()');
+    // The first commit belongs to the READ-ONLY replay fast path.
+    // Verify referral + idempotency financial completion precedes the final commit.
+    const commit = relevant.lastIndexOf('await transaction.commit()');
+    const idempotencyCommit = relevant.indexOf('await completeSaleRequest(');
     const rollback = relevant.indexOf('await transaction.rollback()');
     expect(before).toBeGreaterThanOrEqual(0);
     expect(execute).toBeGreaterThan(before);
     expect(after).toBeGreaterThan(execute);
-    expect(commit).toBeGreaterThan(after);
+    expect(idempotencyCommit).toBeGreaterThan(after);
+    expect(commit).toBeGreaterThan(idempotencyCommit);
     expect(rollback).toBeGreaterThan(commit);
     expect(relevant).toContain('clientId: input.clientId');
     expect(relevant).toContain('referralCode: input.referralCode');
