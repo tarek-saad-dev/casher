@@ -91,7 +91,7 @@ jobs:
         run: npx vitest run src/lib/__tests__/referralAdminDashboard.service.test.ts src/lib/__tests__/referralAdminDashboard.route.test.ts src/lib/__tests__/referralAdminDashboard.page.test.tsx
 
       - name: CUT persistent sale UUID retry, financial locks and writer wiring regressions
-        run: npx vitest run src/lib/__tests__/saleRequestIdempotency.test.ts src/lib/__tests__/saleIdempotencyWiring.test.ts
+        run: npx vitest run src/lib/__tests__/saleRequestIdempotency.test.ts src/lib/__tests__/saleIdempotencyWiring.test.ts src/lib/__tests__/clientSaleRequestId.test.ts
 
       - name: DRVO migration + rollout + runner tests
         run: >
