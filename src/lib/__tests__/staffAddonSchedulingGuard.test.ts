@@ -62,6 +62,6 @@ describe('CUT STAFF safe extra-service workflow', () => {
     expect(modal).toContain('expectedEndAt');
     expect(modal).toContain('await loadDetail()');
     expect(modal).not.toContain("source: 'added',");
-    expect(modal).toContain('الوقت مش متاح عندك');
+    expect(modal).toContain('مش متاح عندك وقت للخدمة دي');
   });
 });
