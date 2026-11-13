@@ -21,6 +21,7 @@ import { tariffResearchReviewMigration } from './019-tariff-research-review';
 import { employeeLateDeductionMigration } from './020-employee-late-deduction';
 import { bookingCashierHandoffMigration } from './021-booking-cashier-handoff';
 import { retailProductCatalogMigration } from './022-retail-product-catalog';
+import { referralDiscountMigration } from './023-referral-discounts';
 import { drvoModuleRequiredMigrationsFromManifest } from '../../../src/platform/drvo/moduleManifest';
 
 /** Ordered DRVO migration manifest — single source of truth for migration order. */
@@ -47,6 +48,7 @@ export const DRVO_MIGRATIONS: DrvoMigrationDefinition[] = [
   employeeLateDeductionMigration,
   bookingCashierHandoffMigration,
   retailProductCatalogMigration,
+  referralDiscountMigration,
 ];
 
 export function assertDrvoMigrationManifestValid(): void {

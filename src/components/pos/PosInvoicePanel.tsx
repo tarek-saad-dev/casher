@@ -5,6 +5,10 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import CartPanel from '@/components/pos/CartPanel';
 import InvoiceSummary from '@/components/pos/InvoiceSummary';
+import PosReferralPreview from '@/components/pos/PosReferralPreview';
+import PosReferralRewardWallet from '@/components/pos/PosReferralRewardWallet';
+import { REFERRAL_PREVIEW_ENABLED } from '@/lib/referrals/posReferralPreview';
+import { POS_REFERRAL_CHECKOUT_UI_ENABLED, POS_REFERRAL_WALLET_UI_ENABLED, canUsePosReferralCart } from '@/lib/referrals/posReferralCheckoutPolicy';
 import PaymentMethodSelect from '@/components/pos/PaymentMethodSelect';
 import SplitPaymentInput from '@/components/pos/SplitPaymentInput';
 import type { Barber, CartItem, PaymentMethod, SaleState, SaleTotals } from '@/lib/types';
@@ -27,6 +31,11 @@ interface PosInvoicePanelProps {
   onPaymentAllocationsChange: (allocations: SaleState['paymentAllocations']) => void;
   onSave: (forcePrint?: boolean, source?: string) => void;
   showKeyboardHints?: boolean;
+  isEditingSale?: boolean;
+  onApplyReferral: (code: string, clientId: number) => void;
+  onClearReferral: () => void;
+  onApplyReferralReward: (voucherId: number, clientId: number) => void;
+  onClearReferralReward: () => void;
 }
 
 export default function PosInvoicePanel({
@@ -47,6 +56,11 @@ export default function PosInvoicePanel({
   onPaymentAllocationsChange,
   onSave: _onSave,
   showKeyboardHints = true,
+  isEditingSale = false,
+  onApplyReferral,
+  onClearReferral,
+  onApplyReferralReward,
+  onClearReferralReward,
 }: PosInvoicePanelProps) {
   const hasSplitAllocations = state.paymentAllocations.some(
     (pa) => pa.amount > 0 && pa.amount !== totals.grandTotal,
@@ -66,9 +80,31 @@ export default function PosInvoicePanel({
         totals={totals}
         discountPercent={state.discountPercent}
         discountValue={state.discountValue}
+        referralApplied={Boolean(state.referralCode || state.referralVoucherId)}
+        referralRewardApplied={Boolean(state.referralVoucherId)}
         onDiscountPercentChange={onDiscountPercentChange}
         onDiscountValueChange={onDiscountValueChange}
       />
+      {(REFERRAL_PREVIEW_ENABLED || POS_REFERRAL_CHECKOUT_UI_ENABLED) && state.customer && !isEditingSale && !state.referralVoucherId && (
+        <PosReferralPreview
+          key={state.customer.ClientID}
+          clientId={state.customer.ClientID}
+          appliedCode={state.referralCode}
+          canApply={canUsePosReferralCart(state)}
+          onApply={POS_REFERRAL_CHECKOUT_UI_ENABLED ? onApplyReferral : undefined}
+          onRemove={POS_REFERRAL_CHECKOUT_UI_ENABLED ? onClearReferral : undefined}
+        />
+      )}
+      {POS_REFERRAL_WALLET_UI_ENABLED && state.customer && !isEditingSale && (
+        <PosReferralRewardWallet
+          key={state.customer.ClientID}
+          clientId={state.customer.ClientID}
+          appliedVoucherId={state.referralVoucherId}
+          canApply={canUsePosReferralCart(state)}
+          onApply={onApplyReferralReward}
+          onRemove={onClearReferralReward}
+        />
+      )}
       <Separator />
       {paymentMethods.length > 0 && (
         <>
@@ -113,6 +149,11 @@ export default function PosInvoicePanel({
             </button>
           </div>
 
+          {splitPaymentActive && (state.referralCode || state.referralVoucherId) && (
+            <p role="status" data-testid="referral-split-reallocate" className="text-xs text-amber-700 dark:text-amber-300">
+              بعد تطبيق خصم الإحالة أو المكافأة، أعد توزيع المبلغ المدفوع على طرق الدفع — الإجمالي الجديد {totals.grandTotal.toFixed(2)} ج.م.
+            </p>
+          )}
           {splitPaymentActive && (
             <SplitPaymentInput
               methods={paymentMethods}

@@ -91,6 +91,10 @@ export interface SaleState {
   items: CartItem[];
   discountPercent: number;     // header-level discount %
   discountValue: number;       // header-level discount value
+  /** Verified 50% referral code applied to this draft, server verifies again. */
+  referralCode?: string | null;
+  /** 20% earned voucher (mutually exclusive with referralCode). */
+  referralVoucherId?: number | null;
   paymentMethodId: number | null;  // legacy single payment method
   paymentAllocations: PaymentAllocation[]; // split payment allocations
   notes: string;
