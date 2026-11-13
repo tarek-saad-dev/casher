@@ -69,7 +69,7 @@ export async function ensureBookingCashierHandoffTable(): Promise<void> {
 
 export type UpsertHandoffResult =
   | { ok: true; handoffId: number; updated: boolean }
-  | { ok: false; error: 'not_found' | 'forbidden' | 'not_sendable' | 'already_charged' | 'empty_services' };
+  | { ok: false; error: 'not_found' | 'forbidden' | 'not_sendable' | 'already_charged' | 'empty_services' | 'services_not_reserved' };
 
 export async function upsertEmployeeHandoff(input: {
   bookingId: number;
@@ -127,6 +127,22 @@ export async function upsertEmployeeHandoff(input: {
     if (charged.recordset[0] || booking.ConvertedInvID != null) {
       return { ok: false, error: 'already_charged' };
     }
+  }
+
+  // A cashier handoff may only contain services already reserved by booking.
+  // Previously the client could append arbitrary extras without a schedule check.
+  const reserved = await pool.request()
+    .input('bookingId', sql.Int, input.bookingId)
+    .query(
+      "SELECT ProID, SUM(ISNULL(Qty,1)) AS Qty " +
+      "FROM dbo.BookingServices WHERE BookingID=@bookingId GROUP BY ProID"
+    );
+  const allowedQty = new Map<number, number>();
+  for (const row of reserved.recordset as Array<{ProID:number;Qty:number}>) {
+    allowedQty.set(Number(row.ProID), Number(row.Qty));
+  }
+  if (services.some(line => line.qty > (allowedQty.get(line.proId) ?? 0))) {
+    return { ok: false, error: 'services_not_reserved' };
   }
 
   const payloadJson = serializeHandoffPayload({ services });
