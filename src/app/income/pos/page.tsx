@@ -803,7 +803,9 @@ export default function PosPage() {
 
   // ───────────────── New sale handler ─────────────────
   const handleNewSale = useCallback(() => {
-    // Reset everything including barber selection and edit mode
+    // Explicit New Invoice starts a NEW request; the user must check any
+    // uncertain previous invoice in Recent Invoices first.
+    saleRequestIdRef.current = null;
     reset();
     setActiveHandoffId(null);
     setHandoffBanner(null);
