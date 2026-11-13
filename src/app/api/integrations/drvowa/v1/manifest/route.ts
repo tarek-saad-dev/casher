@@ -2,6 +2,7 @@ import {
   drvowaIntegrationErrorResponse,
   requireDrvowaIntegrationAuth,
 } from '@/lib/integrations/drvowaAuth';
+import { getDrvowaCrmSyncToolDefinitions } from '@/modules/integrations/drvowa';
 
 export const runtime = 'nodejs';
 
@@ -13,6 +14,8 @@ export async function GET(request: Request) {
       provider: 'DRVOERP',
       providerVersion: 'casher-v1',
       capabilities: [
+        'crm.sync',
+        'catalog.read',
         'booking.read',
         'booking.availability',
         'booking.plan',
@@ -21,6 +24,7 @@ export async function GET(request: Request) {
         'booking.reschedule',
       ],
       tools: [
+        ...getDrvowaCrmSyncToolDefinitions(),
         {
           name: 'booking.get_upcoming',
           description: 'Get upcoming bookings for a customer phone number.',
