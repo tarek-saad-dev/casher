@@ -59,6 +59,9 @@ describe('drvowa CRM sync validate + manifest', () => {
     const invoice = tools.find((t) => t.name === 'invoice.list_changes');
     expect(invoice?.description).toMatch(/includeInactive=true/i);
     expect(invoice?.description).toMatch(/append-only/i);
+    expect(invoice?.description).toMatch(/statusSweep/i);
     expect(invoice?.inputSchema?.properties).toHaveProperty('includeInactive');
+    expect(invoice?.inputSchema?.properties).toHaveProperty('statusSweep');
+    expect(invoice?.inputSchema?.properties).toHaveProperty('statusSweepSinceInvId');
   });
 });

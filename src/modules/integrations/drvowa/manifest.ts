@@ -21,7 +21,7 @@ export function getDrvowaCrmSyncToolDefinitions(): DrvowaToolDefinition[] {
     {
       name: 'invoice.list_changes',
       description:
-        'List sales invoices (invType=مبيعات) after an append-only sinceInvId cursor. Composite key is invType+invID. Pass includeInactive=true during sync so cancelled/voided rows (legacy isActive=yes) are returned for CRM mirror invalidation. sinceInvId does not re-emit late cancellations of already-seen IDs.',
+        'List sales invoices (invType=مبيعات). Default mode uses append-only sinceInvId. Pass includeInactive=true so newly inserted cancelled rows (legacy isActive=yes) are returned. Pass statusSweep=true with statusSweepSinceInvId to rotate through historical headers so late cancellations of already-synced IDs are not permanently missed. Composite key is invType+invID.',
       mode: 'READ',
       approval: 'AUTO',
       inputSchema: {
@@ -30,13 +30,23 @@ export function getDrvowaCrmSyncToolDefinitions(): DrvowaToolDefinition[] {
           sinceInvId: {
             type: 'number',
             description:
-              'Append-only high-water mark: return rows with invID > sinceInvId ordered ASC. Does not replay updates to older IDs.',
+              'Append-only high-water mark: return rows with invID > sinceInvId ordered ASC.',
+          },
+          statusSweepSinceInvId: {
+            type: 'number',
+            description:
+              'Rotating status-reconcile cursor used with statusSweep=true. Wraps to 0 at end of table.',
+          },
+          statusSweep: {
+            type: 'boolean',
+            description:
+              'When true, re-read historical sales headers (including already synced IDs) for cancellation status.',
           },
           limit: { type: 'number' },
           includeInactive: {
             type: 'boolean',
             description:
-              'When true, include cancelled sales so CRM can mark mirrors invalid. Recommended true for sync.',
+              'When true in append mode, include cancelled sales so CRM can mark mirrors invalid. Recommended true for sync.',
           },
         },
       },
