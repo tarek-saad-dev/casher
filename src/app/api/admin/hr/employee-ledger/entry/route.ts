@@ -94,7 +94,10 @@ async function runAction(request: NextRequest, mode: 'edit' | 'delete') {
             .input('notes', sql.NVarChar(500), notes || null)
             .query('UPDATE dbo.TblEmpLedgerEntry SET Notes = @notes, UpdatedAt = SYSDATETIME() WHERE ID = @entryId AND IsVoided = 0');
         } else {
-          const originalMonth = existing.PayrollMonth || String(existing.EntryDate).slice(0, 7);
+          const originalDate = existing.EntryDate instanceof Date
+            ? existing.EntryDate.toISOString().slice(0, 10)
+            : String(existing.EntryDate).slice(0, 10);
+          const originalMonth = existing.PayrollMonth || originalDate.slice(0, 7);
           if (mode === 'edit') {
             let updated: ReturnType<typeof validateEditableLedgerFields>;
             try { updated = validateEditableLedgerFields(body); }
