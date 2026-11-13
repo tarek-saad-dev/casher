@@ -368,6 +368,8 @@ export interface CreateSalePayload {
   referralCode?: string;
   /** 20% referrer reward redemption, distinct from first-visit referralCode. */
   referralVoucherId?: number;
+  /** Stable UUID v4 for once-only POST sale; never regenerated for a failed/unknown retry. */
+  requestId?: string;
   items: {
     proId: number;
     /** `0` for retail product lines (no barber). */
