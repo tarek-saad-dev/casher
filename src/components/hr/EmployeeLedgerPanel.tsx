@@ -2,11 +2,14 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  BookOpen, Loader2, AlertCircle, RefreshCw, TrendingUp, TrendingDown, Scale, Wallet, HandCoins, CalendarDays, Gift, ArrowLeftRight, Banknote,
+  BookOpen, Loader2, AlertCircle, RefreshCw, TrendingUp, TrendingDown, Scale, Wallet, HandCoins, CalendarDays, Gift, ArrowLeftRight, Banknote, Pencil, Trash2,
 } from 'lucide-react';
 import KpiCard from '@/components/shared/KpiCard';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
@@ -16,10 +19,12 @@ import type {
   EmpLedgerEmployeeBranchBreakdown,
   EmpLedgerEmployeeSummaryRow,
   EmpLedgerListResponse,
+  EmpLedgerEntryRow,
   EmpLedgerSummaryResponse,
   EmpLedgerTableBranch,
 } from '@/lib/types/employee-ledger';
-import { EMP_LEDGER_REASON_LABELS } from '@/lib/types/employee-ledger';
+import { EMP_LEDGER_ENTRY_REASONS, EMP_LEDGER_REASON_LABELS } from '@/lib/types/employee-ledger';
+import { isSourceLinkedLedgerEntry } from '@/lib/hr/employee-ledger-entry-actions';
 import { hrBranchLabel } from '@/lib/hr/legacyHrBranchPolicy';
 import EmployeePayoutModal, { type EmployeePayoutTarget } from '@/components/hr/EmployeePayoutModal';
 import EmployeeFundingModal from '@/components/hr/EmployeeFundingModal';
@@ -185,6 +190,16 @@ export default function EmployeeLedgerPanel() {
   const [settlementOpen, setSettlementOpen] = useState(false);
   const [monthlySalaryOpen, setMonthlySalaryOpen] = useState(false);
   const [targetDetailsId, setTargetDetailsId] = useState<number | null>(null);
+  const [entryDialog, setEntryDialog] = useState<{ entry: EmpLedgerEntryRow; action: 'edit' | 'delete' } | null>(null);
+  const [entryAmount, setEntryAmount] = useState('');
+  const [entryDate, setEntryDate] = useState('');
+  const [entryDirection, setEntryDirection] = useState<'credit' | 'debit'>('credit');
+  const [entryReason, setEntryReason] = useState<EmpLedgerEntryRow['entryReason']>('adjustment');
+  const [entryPayrollMonth, setEntryPayrollMonth] = useState('');
+  const [entryNotes, setEntryNotes] = useState('');
+  const [entryChangeReason, setEntryChangeReason] = useState('');
+  const [entryBusy, setEntryBusy] = useState(false);
+  const [entryActionError, setEntryActionError] = useState('');
 
   const loadEmployees = useCallback(async () => {
     try {
@@ -448,8 +463,60 @@ export default function EmployeeLedgerPanel() {
       ? Number(branchFilter)
       : null;
 
+  const openEntryDialog = (entry: EmpLedgerEntryRow, action: 'edit' | 'delete') => {
+    setEntryDialog({ entry, action });
+    setEntryAmount(String(entry.amount));
+    setEntryDate(entry.entryDate);
+    setEntryDirection(entry.entryDirection);
+    setEntryReason(entry.entryReason);
+    setEntryPayrollMonth(entry.payrollMonth ?? '');
+    setEntryNotes(entry.notes ?? '');
+    setEntryChangeReason('');
+    setEntryActionError('');
+  };
+
+  const entryLinked = entryDialog ? isSourceLinkedLedgerEntry(entryDialog.entry) : false;
+  const entryWrongBranch = !!entryDialog && entryDialog.entry.branchId !== operatingBranch?.branchId;
+  const entryDeleteBlocked = entryLinked && entryDialog?.action === 'delete';
+
+  const submitEntryAction = async () => {
+    if (!entryDialog || entryBusy || entryWrongBranch || entryDeleteBlocked) return;
+    setEntryBusy(true);
+    setEntryActionError('');
+    try {
+      const payload: Record<string, unknown> = {
+        entryId: entryDialog.entry.id,
+        reason: entryChangeReason,
+      };
+      if (entryDialog.action === 'edit') {
+        payload.notes = entryNotes;
+        if (!entryLinked) {
+          Object.assign(payload, {
+            entryDate, entryDirection, entryReason,
+            amount: Number(entryAmount),
+            payrollMonth: entryPayrollMonth || null,
+          });
+        }
+      }
+      const response = await fetch('/api/admin/hr/employee-ledger/entry', {
+        method: entryDialog.action === 'edit' ? 'PATCH' : 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || 'تعذر تنفيذ العملية');
+      setEntryDialog(null);
+      setSuccessMsg(entryDialog.action === 'edit' ? 'تم تعديل القيد وتحديث كشف الحساب' : 'تم إلغاء القيد وتحديث كشف الحساب');
+      await refresh();
+    } catch (error) {
+      setEntryActionError(error instanceof Error ? error.message : 'حدث خطأ');
+    } finally {
+      setEntryBusy(false);
+    }
+  };
+
   const loading = loadingSummary || loadingEntries;
-  const entryColSpan = (showRunningBalance ? 9 : 8) + (showBranchColumn ? 1 : 0);
+  const entryColSpan = (showRunningBalance ? 9 : 8) + (showBranchColumn ? 1 : 0) + 1;
 
   return (
     <div className="space-y-5">
@@ -909,6 +976,7 @@ export default function EmployeeLedgerPanel() {
                 <th className="px-4 py-3 text-right font-medium">شهر الرواتب</th>
                 <th className="px-4 py-3 text-right font-medium">مرجع</th>
                 <th className="px-4 py-3 text-right font-medium">ملاحظات</th>
+                <th className="px-4 py-3 text-right font-medium">إجراء</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-800/60">
@@ -974,6 +1042,20 @@ export default function EmployeeLedgerPanel() {
                     <td className="px-4 py-3 text-xs text-zinc-500 max-w-[200px] truncate">
                       {entry.notes ?? '—'}
                     </td>
+                    <td className="px-3 py-2">
+                      <div className="flex items-center gap-1.5">
+                        <Button type="button" size="sm" variant="outline"
+                          className="h-8 gap-1.5 border-zinc-700 text-zinc-200 hover:text-white"
+                          onClick={(event) => { event.stopPropagation(); openEntryDialog(entry, 'edit'); }}>
+                          <Pencil className="w-3.5 h-3.5" /> تعديل
+                        </Button>
+                        <Button type="button" size="sm" variant="outline"
+                          className="h-8 gap-1.5 border-rose-900/60 text-rose-400 hover:bg-rose-950/30 hover:text-rose-300"
+                          onClick={(event) => { event.stopPropagation(); openEntryDialog(entry, 'delete'); }}>
+                          <Trash2 className="w-3.5 h-3.5" /> حذف
+                        </Button>
+                      </div>
+                    </td>
                   </tr>
                 );
               })}
@@ -981,6 +1063,90 @@ export default function EmployeeLedgerPanel() {
           </table>
         </div>
       </div>
+
+      <Dialog
+        open={Boolean(entryDialog)}
+        onOpenChange={(open) => { if (!open && !entryBusy) setEntryDialog(null); }}
+      >
+        <DialogContent dir="rtl" className="bg-zinc-950 border-zinc-800 text-zinc-100 sm:max-w-lg">
+          <DialogHeader className="text-right">
+            <DialogTitle>{entryDialog?.action === 'edit' ? 'تعديل قيد دفتر الموظف' : 'حذف قيد دفتر الموظف'}</DialogTitle>
+            <DialogDescription className="text-zinc-400 text-right">
+              {entryDialog?.entry.empName} — قيد #{entryDialog?.entry.id} — {entryDialog?.entry.entryDate}
+            </DialogDescription>
+          </DialogHeader>
+
+          {entryWrongBranch && (
+            <p role="alert" className="rounded-lg border border-amber-800 bg-amber-950/30 p-3 text-sm text-amber-300">
+              القيد تابع لفرع آخر. بدّل الفرع التشغيلي أولًا قبل التعديل أو الحذف.
+            </p>
+          )}
+          {entryDeleteBlocked && (
+            <p role="alert" className="rounded-lg border border-amber-800 bg-amber-950/30 p-3 text-sm text-amber-300">
+              القيد ده مرتبط بحركة أصلية ({entryDialog?.entry.refType ?? 'حركة مالية أو حضور'}).
+              علشان رصيد الموظف والخزنة يفضلوا متطابقين، احذف أو عدّل الحركة من مصدرها.
+              الحذف من دفتر الموظف غير متاح للقيد ده.
+            </p>
+          )}
+
+          {entryDialog?.action === 'edit' && (
+            <div className="space-y-3">
+              {entryLinked ? (
+                <p className="rounded-lg border border-sky-900 bg-sky-950/25 p-3 text-xs text-sky-200">
+                  القيد متولد تلقائيًا؛ تقدر تعدّل ملاحظاته هنا فقط. لتعديل المبلغ أو التاريخ ارجع للحركة الأصلية.
+                </p>
+              ) : (
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="space-y-1 text-xs text-zinc-400">التاريخ
+                    <Input type="date" value={entryDate} onChange={(e) => setEntryDate(e.target.value)} className="bg-zinc-900 border-zinc-700" />
+                  </label>
+                  <label className="space-y-1 text-xs text-zinc-400">المبلغ
+                    <Input type="number" min="0.01" step="0.01" value={entryAmount} onChange={(e) => setEntryAmount(e.target.value)} className="bg-zinc-900 border-zinc-700" />
+                  </label>
+                  <label className="space-y-1 text-xs text-zinc-400">الاتجاه
+                    <select value={entryDirection} onChange={(e) => setEntryDirection(e.target.value as 'credit' | 'debit')} className="block w-full h-9 rounded-md border border-zinc-700 bg-zinc-900 px-2 text-sm text-zinc-100">
+                      <option value="credit">دائن</option><option value="debit">مدين</option>
+                    </select>
+                  </label>
+                  <label className="space-y-1 text-xs text-zinc-400">السبب
+                    <select value={entryReason} onChange={(e) => setEntryReason(e.target.value as EmpLedgerEntryRow['entryReason'])} className="block w-full h-9 rounded-md border border-zinc-700 bg-zinc-900 px-2 text-sm text-zinc-100">
+                      {EMP_LEDGER_ENTRY_REASONS.map((reason) => <option key={reason} value={reason}>{EMP_LEDGER_REASON_LABELS[reason] ?? reason}</option>)}
+                    </select>
+                  </label>
+                  <label className="space-y-1 text-xs text-zinc-400 col-span-2">شهر الرواتب (اختياري)
+                    <Input type="month" value={entryPayrollMonth} onChange={(e) => setEntryPayrollMonth(e.target.value)} className="bg-zinc-900 border-zinc-700" />
+                  </label>
+                </div>
+              )}
+              <label className="block space-y-1 text-xs text-zinc-400">الملاحظات
+                <Input value={entryNotes} maxLength={500} onChange={(e) => setEntryNotes(e.target.value)} className="bg-zinc-900 border-zinc-700" />
+              </label>
+            </div>
+          )}
+          {entryDialog?.action === 'delete' && !entryDeleteBlocked && (
+            <p className="rounded-lg border border-rose-900/50 bg-rose-950/20 p-3 text-sm text-rose-300">
+              هل تريد حذف هذا القيد من كشف الحساب؟ سيتم إلغاؤه مع الاحتفاظ به في سجل المراجعة، وسيُعاد حساب الأرصدة.
+            </p>
+          )}
+          {!entryWrongBranch && !entryDeleteBlocked && (
+            <label className="block space-y-1 text-xs text-zinc-400">سبب {entryDialog?.action === 'edit' ? 'التعديل' : 'الحذف'} (إجباري)
+              <Input value={entryChangeReason} maxLength={500} onChange={(e) => setEntryChangeReason(e.target.value)} placeholder="اكتب سبب الإجراء" className="bg-zinc-900 border-zinc-700" />
+            </label>
+          )}
+          {entryActionError && <p role="alert" className="text-sm text-rose-400">{entryActionError}</p>}
+          <DialogFooter className="gap-2 sm:justify-start">
+            <Button type="button" variant="outline" onClick={() => setEntryDialog(null)} disabled={entryBusy}>إغلاق</Button>
+            {!entryWrongBranch && !entryDeleteBlocked && (
+              <Button type="button" onClick={() => void submitEntryAction()}
+                disabled={entryBusy || entryChangeReason.trim().length < 3}
+                className={entryDialog?.action === 'delete' ? 'bg-rose-700 hover:bg-rose-600 text-white' : ''}>
+                {entryBusy && <Loader2 className="w-4 h-4 animate-spin ml-2" />}
+                {entryDialog?.action === 'edit' ? 'حفظ التعديل' : 'تأكيد الحذف'}
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <EmployeePayoutModal
         open={payoutOpen}
