@@ -257,6 +257,77 @@ async function main() {
     const repeatAfterSuccess = await reserveAddon({ ...addonActor, expectedEndAt: addonPreview.expectedEndAt });
     check(!repeatAfterSuccess.ok && repeatAfterSuccess.status === 409,
       'Old preview token cannot be replayed after successful extension');
+    // Reject handoffs containing services without reserved time.
+    const { upsertEmployeeHandoff, claimHandoffForPos } = await import('../../src/lib/booking/cashierHandoff');
+    const extraHandoff = await upsertEmployeeHandoff({
+      bookingId, empId, tenantId,
+      services: [{ proId: service.serviceId, qty: beforeCount + 2, source: 'added' }],
+    });
+    check(!extraHandoff.ok && extraHandoff.error === 'services_not_reserved',
+      'POS refuses addon quantities that were not booked');
+    const handoff = await upsertEmployeeHandoff({
+      bookingId, empId, tenantId,
+      services: [{ proId: service.serviceId, qty: beforeCount + 1, source: 'booked' }],
+    });
+    check(handoff.ok, 'POS accepts booked service quantities');
+    if (handoff.ok) {
+      const cart = await claimHandoffForPos({
+        handoffId: handoff.handoffId, branchId, tenantId, userId: actor.actorUserId,
+      });
+      check(cart.ok && cart.lines.some(line =>
+        line.ProID === service.serviceId && line.EmpID === empId && line.Qty === beforeCount + 1),
+        'POS cart receives added service with performing employee');
+      // The staging handoff is a disposable test record; allow cancellation below.
+      await pool.request().input('id', sql.Int, handoff.handoffId)
+        .query('DELETE FROM dbo.TblBookingCashierHandoff WHERE HandoffID=@id');
+    }
+
+    // One disposable follow-up booking begins 10m into the would-be extension.
+    // Its priority must block the addon. All writes belong to the staging tenant.
+    const newEnd = new Date(afterAddon.recordset[0].AbsoluteEndUtc);
+    const blockerStart = new Date(newEnd.getTime() + 10 * 60_000);
+    const blockerEnd = new Date(blockerStart.getTime() + 20 * 60_000);
+    const cairoTime = (at: Date) => new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Africa/Cairo', hour: '2-digit', minute: '2-digit', hour12: false,
+    }).format(at);
+    const blockerDate = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Africa/Cairo', year: 'numeric', month: '2-digit', day: '2-digit',
+    }).format(blockerStart);
+    const originalClient = await pool.request().input('id', sql.Int, bookingId)
+      .query('SELECT ClientID FROM dbo.Bookings WHERE BookingID=@id');
+    const blocker = await pool.request()
+      .input('clientId', sql.Int, Number(originalClient.recordset[0].ClientID))
+      .input('empId', sql.Int, empId)
+      .input('branchId', sql.Int, branchId)
+      .input('workDate', sql.Date, blockerDate)
+      .input('startTime', sql.VarChar(8), cairoTime(blockerStart))
+      .input('endTime', sql.VarChar(8), cairoTime(blockerEnd))
+      .input('startUtc', sql.DateTime2, blockerStart)
+      .input('endUtc', sql.DateTime2, blockerEnd)
+      .input('code', sql.NVarChar(40), 'QA-ADD-' + crypto.randomBytes(5).toString('hex'))
+      .input('userId', sql.Int, actor.actorUserId)
+      .query(
+        'INSERT INTO dbo.Bookings ' +
+        '(ClientID, AssignedEmpID, BookingDate, StartTime, EndTime, Status, Source, ' +
+        'BookingCode, CreatedByUserID, BranchID, PublicWorkDate, PublicDayOffset, AbsoluteStartUtc, AbsoluteEndUtc) ' +
+        'OUTPUT INSERTED.BookingID VALUES ' +
+        '(@clientId, @empId, @workDate, @startTime, @endTime, N\'confirmed\', N\'operations\', ' +
+        '@code, @userId, @branchId, @workDate, 0, @startUtc, @endUtc)'
+      );
+    const blockerId = Number(blocker.recordset[0]?.BookingID);
+    try {
+      const blocked = await previewAddon(addonActor);
+      check(!blocked.available, 'Future confirmed booking blocks extra time');
+      const attempted = await reserveAddon({ ...addonActor, expectedEndAt: blocked.expectedEndAt });
+      check(!attempted.ok && attempted.status === 409, 'Commit also protects the next booking');
+      const afterRejected = await pool.request().input('bid', sql.Int, bookingId)
+        .query('SELECT COUNT(*) AS n FROM dbo.BookingServices WHERE BookingID=@bid');
+      check(Number(afterRejected.recordset[0]?.n) === beforeCount + 1,
+        'Rejected addon creates no additional service lines');
+    } finally {
+      await pool.request().input('bid', sql.Int, blockerId)
+        .query('DELETE FROM dbo.BookingServices WHERE BookingID=@bid; DELETE FROM dbo.Bookings WHERE BookingID=@bid');
+    }
     console.log('SALON_STAFF_ADDON_E2E_STAGING_PASS');
 
     // Public cancellation releases the previously moved appointment and leaves a
