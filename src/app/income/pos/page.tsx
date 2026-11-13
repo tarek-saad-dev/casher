@@ -41,6 +41,9 @@ import type { Barber, Service, PaymentMethod, Customer, CartItem } from '@/lib/t
 import { isGroomHomeVisitCategory } from '@/lib/catalog/groomOptionalAddons';
 import { referralSalePayloadDiscount } from '@/lib/referrals/posReferralCheckoutPolicy';
 
+const POS_SALE_IDEMPOTENCY_UI_ENABLED =
+  process.env.NEXT_PUBLIC_POS_SALE_IDEMPOTENCY_ENABLED === 'true';
+
 // ─── Toast Types ─────────────────────────────────────────────────────────
 interface Toast { id: number; type: 'success' | 'error' | 'info'; message: string }
 
@@ -163,6 +166,8 @@ export default function PosPage() {
   const previousCustomerIdRef = useRef<number | null>(null);
   const [saving, setSaving] = useState(false);
   const saveLockRef = useRef(false); // synchronous guard — prevents concurrent saves
+  // Persist a UUID across retry attempts after an unknown network response.
+  const saleRequestIdRef = useRef<string | null>(null);
   const [saveError, setSaveError] = useState('');
   const [printInvID, setPrintInvID] = useState<number | null>(null);
   const [printOpen, setPrintOpen] = useState(false);
@@ -621,6 +626,10 @@ export default function PosPage() {
         // Full [groomPackage] metadata (Notes is NVARCHAR(100) — too short)
         notes2: packageNotes,
         handoffId: activeHandoffId,
+        ...(POS_SALE_IDEMPOTENCY_UI_ENABLED && editingSaleId === null
+          ? { requestId: saleRequestIdRef.current ??
+              (saleRequestIdRef.current = crypto.randomUUID()) }
+          : {}),
       };
 
       // Use PUT for editing, POST for new sale
@@ -644,6 +653,8 @@ export default function PosPage() {
       const savedInvID: number = result.invID;
       setPrintInvID(savedInvID);
 
+      // Only a confirmed newly created/replayed invoice releases this request ID.
+      saleRequestIdRef.current = null;
       // Reset everything (customer, barber, items, discount, payment, edit mode)
       reset();
       setActiveHandoffId(null);
@@ -753,9 +764,11 @@ export default function PosPage() {
       }
       console.log('[POS SAVE] SUCCESS', { requestId });
     } catch {
-      setSaveError(state.referralCode || state.referralVoucherId
-        ? 'تعذر تأكيد حفظ فاتورة الإحالة. راجع الفواتير الأخيرة قبل إعادة المحاولة، تجنبًا للتكرار.'
-        : 'خطأ في الاتصال بالخادم');
+      setSaveError(POS_SALE_IDEMPOTENCY_UI_ENABLED && editingSaleId === null
+        ? 'تعذر تأكيد حفظ الفاتورة. أعد المحاولة بنفس الطلب بدون تغيير البيانات؛ النظام سيتحقق من وجودها أولًا.'
+        : state.referralCode || state.referralVoucherId
+          ? 'تعذر تأكيد حفظ فاتورة الإحالة. راجع الفواتير الأخيرة قبل إعادة المحاولة، تجنبًا للتكرار.'
+          : 'خطأ في الاتصال بالخادم');
       console.error('[POS SAVE] ERROR', { requestId });
     } finally {
       saveLockRef.current = false;
