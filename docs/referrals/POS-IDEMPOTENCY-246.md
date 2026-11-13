@@ -9,7 +9,7 @@ If the card terminal or Wi-Fi drops AFTER a paid invoice commits and BEFORE the 
 ## Implemented mechanism
 
 - New DRVO-024 additive, checksum-controlled schema `dbo.TblPosSaleRequest` with unique PK `(TenantId, RequestID)`, staff user+branch binding, immutable SHA-256 request fingerprint, PENDING/COMMITTED state and invoice reference.
-- Browser uses `crypto.randomUUID()` once on a new sale; retries after an unknown error keep the same UUID; confirmed successful creation/replay resets it. Explicit **New Invoice** rotates to a new draft after staff checks prior invoices. PUT edits do not send the UUID.
+- Browser uses `crypto.randomUUID()` once on a new sale; retries after an unknown error keep the same UUID. A **sessionStorage** copy survives a same-tab page reload without storing any customer, cart or payment data. Successful creation/replay clears both the in-memory and stored UUID. Explicit **New Invoice** first asks the cashier to confirm checking recent invoices if the pending key is unresolved, then rotates to a fresh draft. PUT edits do not send the UUID.
 - POST authenticates tenant/user/active branch; computes SHA-256 over tenant/user/branch and exact original JSON payload minus `requestId`. Same request ID with different client, amount, service, payment, referrer, voucher or user/branch fails 409. Does not store original PII, only the digest.
 - Before asking whether the shift is still open, the route performs a read-only fast lookup of a previously committed request and checks original invoice still exists, is fully paid, active and belongs to the same tenant/branch. A valid replay immediately returns HTTP **200** with original invID and `replayed:true`. A refunded/deleted original invoice results in 409 and is NOT silently recreated.
 - Both independent extracted and legacy POS sale writers first acquire SQL `UPDLOCK,HOLDLOCK` on the unique tenant+request key inside their existing **SERIALIZABLE** transaction. Duplicate completed request returns the same persisted invoice and skips stock, payments, referral issuance/redemption, cash and post-commit effects. For new sale, PENDING reservation is created BEFORE any invoice mutation.
@@ -32,3 +32,5 @@ If the card terminal or Wi-Fi drops AFTER a paid invoice commits and BEFORE the 
 `src/lib/__tests__/saleIdempotencyWiring.test.ts`: route replay order before shift checks, no repeated handoff, both writers reserve before invoice and complete before commit, browser retry UUID stable and SQL UNIQUE composite key.
 
 Full Next build and existing refund/referral/booking/printing CI required; end-to-end schema and financial staging required separately.
+
+- Browser guard regression: `clientSaleRequestId.test.ts` verifies UUID retention on uncertain response/reload, corrupt stored UUID replacement, deliberate/success clearing, and no PII stored. The network retry ID is per browser-tab; unrelated devices or tabs require operational reconciliation.
