@@ -46,7 +46,7 @@ describe('drvowa CRM sync validate + manifest', () => {
     expect(parseOptionalBoolean('no')).toBe(false);
   });
 
-  it('exposes CRM sync tools with invoice includeInactive cursor docs', () => {
+  it('exposes CRM sync tools with append + rotating reconcile cursors', () => {
     const tools = getDrvowaCrmSyncToolDefinitions();
     const names = tools.map((t) => t.name);
     expect(names).toEqual([
@@ -56,6 +56,10 @@ describe('drvowa CRM sync validate + manifest', () => {
     ]);
     expect(listImplementedDrvowaCrmTools()).toEqual(names);
 
+    const customer = tools.find((t) => t.name === 'customer.list_changes');
+    expect(customer?.description).toMatch(/identitySweep/i);
+    expect(customer?.inputSchema?.properties).toHaveProperty('identitySweep');
+
     const invoice = tools.find((t) => t.name === 'invoice.list_changes');
     expect(invoice?.description).toMatch(/includeInactive=true/i);
     expect(invoice?.description).toMatch(/append-only/i);
@@ -63,5 +67,9 @@ describe('drvowa CRM sync validate + manifest', () => {
     expect(invoice?.inputSchema?.properties).toHaveProperty('includeInactive');
     expect(invoice?.inputSchema?.properties).toHaveProperty('statusSweep');
     expect(invoice?.inputSchema?.properties).toHaveProperty('statusSweepSinceInvId');
+
+    const catalog = tools.find((t) => t.name === 'catalog.list_services');
+    expect(catalog?.description).toMatch(/identitySweep/i);
+    expect(catalog?.inputSchema?.properties).toHaveProperty('identitySweepSinceProId');
   });
 });

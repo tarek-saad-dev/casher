@@ -7,13 +7,24 @@ export function getDrvowaCrmSyncToolDefinitions(): DrvowaToolDefinition[] {
   return [
     {
       name: 'customer.list_changes',
-      description: 'List customers changed after a ClientID cursor for CRM sync',
+      description:
+        'List customers after an append-only sinceClientId cursor. Pass identitySweep=true with identitySweepSinceClientId to rotate through historical ClientIDs so name/phone/email/state updates are not permanently missed.',
       mode: 'READ',
       approval: 'AUTO',
       inputSchema: {
         type: 'object',
         properties: {
           sinceClientId: { type: 'number' },
+          identitySweepSinceClientId: {
+            type: 'number',
+            description:
+              'Rotating identity-reconcile cursor used with identitySweep=true. Wraps to 0 at end of table.',
+          },
+          identitySweep: {
+            type: 'boolean',
+            description:
+              'When true, re-read historical customers (including already synced IDs) for identity updates.',
+          },
           limit: { type: 'number' },
         },
       },
@@ -53,13 +64,24 @@ export function getDrvowaCrmSyncToolDefinitions(): DrvowaToolDefinition[] {
     },
     {
       name: 'catalog.list_services',
-      description: 'List catalog services after a ProID cursor',
+      description:
+        'List catalog services after an append-only sinceProId cursor. Pass identitySweep=true with identitySweepSinceProId to rotate through historical ProIDs so renames, category moves, and isDeleted flips are not permanently missed.',
       mode: 'READ',
       approval: 'AUTO',
       inputSchema: {
         type: 'object',
         properties: {
           sinceProId: { type: 'number' },
+          identitySweepSinceProId: {
+            type: 'number',
+            description:
+              'Rotating catalog-reconcile cursor used with identitySweep=true. Wraps to 0 at end of table.',
+          },
+          identitySweep: {
+            type: 'boolean',
+            description:
+              'When true, re-read historical services (including already synced IDs) for name/delete updates.',
+          },
           limit: { type: 'number' },
         },
       },
