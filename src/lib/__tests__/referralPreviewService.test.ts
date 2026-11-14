@@ -68,6 +68,10 @@ describe('tenant-owned referral preview repository', () => {
     expect(queries[2].statement).toContain('TenantId = @tenantId');
     expect(queries[3].statement).toContain('TenantId = @tenantId');
     expect(queries[3].statement).toContain('h.Payment >= h.GrandTotal');
+    // A globally-unique client ID is not sufficient: only a paid invoice on
+    // the same tenant-owned branch qualifies. Both EXISTS predicates enforce it.
+    expect(queries[3].statement.match(/INNER JOIN dbo.Location l ON l.LegacyBranchId = h.BranchID AND l.TenantId = @tenantId/g))
+      .toHaveLength(2);
   });
 
   it('does not disclose out-of-tenant code or customer data', async () => {
