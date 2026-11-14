@@ -56,6 +56,9 @@ describe('transaction-bound permanent code activation', () => {
     expect(state.calls[0]!.query).toContain('WITH (UPDLOCK, HOLDLOCK)');
     expect(state.calls[0]!.query).toContain('c.TenantId = @tenantId');
     expect(state.calls[0]!.query).toContain('h.Payment >= h.GrandTotal');
+    expect(state.calls[0]!.query).toContain(
+      'l.LegacyBranchId = h.BranchID AND l.TenantId = @tenantId',
+    );
   });
 
   it('creates exactly one code for the first confirmed paid sale in the transaction', async () => {
