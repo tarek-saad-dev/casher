@@ -1,5 +1,6 @@
 import 'server-only';
 import { getPool, sql } from '@/lib/db';
+import { matchesPaidHandoffLines } from '@/lib/booking/cashierHandoffReconciliationPolicy';
 import {
   normalizeHandoffServices,
   parseHandoffPayload,
@@ -521,67 +522,141 @@ export async function markHandoffCharged(input: {
   invId: number;
   invType?: string;
 }): Promise<boolean> {
+  if (!Number.isSafeInteger(input.handoffId) || input.handoffId <= 0 ||
+      !Number.isSafeInteger(input.invId) || input.invId <= 0) return false;
   await ensureBookingCashierHandoffTable();
   const pool = await getPool();
   const tx = pool.transaction();
-  await tx.begin();
+  await tx.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
   try {
     const current = await new sql.Request(tx)
       .input('handoffId', sql.Int, input.handoffId)
       .input('branchId', sql.Int, input.branchId)
       .input('tenantId', sql.NVarChar(100), input.tenantId)
-      .query(`
-        SELECT HandoffID, BookingID, Status
-        FROM dbo.TblBookingCashierHandoff
-        WHERE HandoffID = @handoffId
-          AND BranchID = @branchId
-          AND TenantId = @tenantId
-          AND Status IN (N'pending', N'loaded')
-      `);
+      .query(
+        "SELECT h.HandoffID,h.BookingID,h.Status,h.ChargedInvID,h.PayloadJson, " +
+        "b.ClientID,b.Status AS BookingStatus,b.ConvertedInvID " +
+        "FROM dbo.TblBookingCashierHandoff h WITH (UPDLOCK,HOLDLOCK) " +
+        "INNER JOIN dbo.Bookings b WITH (UPDLOCK,HOLDLOCK) ON b.BookingID=h.BookingID " +
+        "INNER JOIN dbo.TblEmp e ON e.EmpID=b.AssignedEmpID AND e.TenantId=@tenantId " +
+        "WHERE h.HandoffID=@handoffId AND h.BranchID=@branchId AND h.TenantId=@tenantId " +
+        "AND b.BranchID=@branchId AND h.Status IN (N'pending',N'loaded',N'charged')"
+      );
     const row = current.recordset[0] as
-      | { HandoffID: number; BookingID: number; Status: string }
+      | { HandoffID:number;BookingID:number;Status:string;ChargedInvID:number|null;
+          PayloadJson:string;ClientID:number|null;BookingStatus:string;ConvertedInvID:number|null }
       | undefined;
-    if (!row) {
+    if (!row) { await tx.rollback(); return false; }
+
+    // Repair retries must never create another sale, and a different invoice
+    // cannot take over a handoff already charged to another invoice.
+    if (row.Status === 'charged') {
+      const same = row.ChargedInvID === input.invId &&
+        row.ConvertedInvID === input.invId;
+      await tx.rollback();
+      return same;
+    }
+    if (row.ConvertedInvID != null && row.ConvertedInvID !== input.invId) {
+      await tx.rollback(); return false;
+    }
+    if (['cancelled','no_show'].includes(String(row.BookingStatus).toLowerCase())) {
+      await tx.rollback(); return false;
+    }
+
+    // Verify that the invoice is real, paid, belongs to the same
+    // branch/tenant, and still belongs to this appointment customer.
+    const invType = input.invType || 'مبيعات';
+    const invoice = await new sql.Request(tx)
+      .input('invId', sql.Int, input.invId)
+      .input('invType', sql.NVarChar(50), invType)
+      .input('branchId', sql.Int, input.branchId)
+      .input('tenantId', sql.NVarChar(100), input.tenantId)
+      .query(
+        "SELECT TOP 1 h.invID,h.ClientID,h.GrandTotal,h.PayDue,h.Notes2,ISNULL(p.Paid,0) AS Paid " +
+        "FROM dbo.TblinvServHead h WITH (HOLDLOCK) " +
+        "INNER JOIN dbo.Location l ON l.LegacyBranchId=h.BranchID " +
+        "OUTER APPLY (SELECT SUM(PayValue) AS Paid FROM dbo.TblinvServPayment " +
+        "WHERE invID=h.invID AND invType=h.invType) p " +
+        "WHERE h.invID=@invId AND h.invType=@invType AND h.BranchID=@branchId " +
+        "AND l.TenantId=TRY_CONVERT(UNIQUEIDENTIFIER,@tenantId)"
+      );
+    const paid = invoice.recordset[0] as
+      | { invID:number;ClientID:number|null;GrandTotal:number;PayDue:number;Paid:number;Notes2:string|null }
+      | undefined;
+    // Bind the invoice to this *specific* handoff, not merely to a customer
+    // and a matching service cart. Prevent an unrelated paid invoice from
+    // being reused to close a different booking.
+    const marker = 'CUT_HANDOFF:' + input.handoffId + '|';
+    if (!paid || !String(paid.Notes2 ?? '').endsWith(marker) ||
+        Number(paid.GrandTotal) < 0 ||
+        (row.ClientID != null && paid.ClientID !== row.ClientID) ||
+        Number(paid.PayDue) > 0.01 ||
+        Number(paid.Paid) + 0.01 < Number(paid.GrandTotal)) {
+      await tx.rollback(); return false;
+    }
+
+    // One paid invoice belongs to one cashier handoff. Refuse to re-use it
+    // for a different booking even if the service names and client match.
+    const duplicateLink = await new sql.Request(tx)
+      .input('invId', sql.Int, input.invId)
+      .input('handoff', sql.Int, input.handoffId)
+      .query(
+        "SELECT TOP 1 HandoffID FROM dbo.TblBookingCashierHandoff WITH (UPDLOCK,HOLDLOCK) " +
+        "WHERE ChargedInvID=@invId AND HandoffID<>@handoff AND Status=N'charged'"
+      );
+    if (duplicateLink.recordset.length) { await tx.rollback(); return false; }
+
+    // At a minimum the paid invoice must contain every selected booked line
+    // attributed to the *actual* performing barber, not the handoff owner.
+    const requested = parseHandoffPayload(row.PayloadJson).services;
+    if (!requested.length) { await tx.rollback(); return false; }
+    const booked = await new sql.Request(tx)
+      .input('booking', sql.Int, row.BookingID)
+      .query(
+        "SELECT bs.ProID,ISNULL(bs.EmpID,b.AssignedEmpID) AS EmpID,bs.Qty " +
+        "FROM dbo.BookingServices bs JOIN dbo.Bookings b ON b.BookingID=bs.BookingID " +
+        "WHERE bs.BookingID=@booking ORDER BY bs.BookingServiceID"
+      );
+    const details = await new sql.Request(tx)
+      .input('inv', sql.Int, input.invId)
+      .input('type', sql.NVarChar(50), invType)
+      .query(
+        "SELECT ProID,EmpID,SUM(Qty) AS Qty FROM dbo.TblinvServDetail " +
+        "WHERE invID=@inv AND invType=@type GROUP BY ProID,EmpID"
+      );
+    const bookedLines = booked.recordset as Array<{ProID:number;EmpID:number;Qty:number}>;
+    const paidLines = details.recordset as Array<{ProID:number;EmpID:number|null;Qty:number}>;
+    if (!matchesPaidHandoffLines(requested, bookedLines, paidLines)) {
       await tx.rollback();
       return false;
     }
 
-    await new sql.Request(tx)
+    const charged = await new sql.Request(tx)
       .input('handoffId', sql.Int, input.handoffId)
       .input('invId', sql.Int, input.invId)
-      .query(`
-        UPDATE dbo.TblBookingCashierHandoff
-        SET Status = N'charged',
-            ChargedInvID = @invId,
-            ChargedAt = SYSUTCDATETIME(),
-            LockedByUserID = NULL,
-            LockedAt = NULL,
-            UpdatedAt = SYSUTCDATETIME()
-        WHERE HandoffID = @handoffId
-          AND Status IN (N'pending', N'loaded')
-      `);
-
-    await new sql.Request(tx)
+      .query(
+        "UPDATE dbo.TblBookingCashierHandoff " +
+        "SET Status=N'charged',ChargedInvID=@invId,ChargedAt=SYSUTCDATETIME(), " +
+        "LockedByUserID=NULL,LockedAt=NULL,UpdatedAt=SYSUTCDATETIME() " +
+        "WHERE HandoffID=@handoffId AND Status IN (N'pending',N'loaded')"
+      );
+    if (charged.rowsAffected[0] !== 1) { await tx.rollback(); return false; }
+    const booking = await new sql.Request(tx)
       .input('bookingId', sql.Int, row.BookingID)
       .input('invId', sql.Int, input.invId)
-      .input('invType', sql.NVarChar(50), input.invType ?? 'مبيعات')
-      .query(`
-        UPDATE dbo.Bookings
-        SET Status = N'completed',
-            ConvertedInvID = CASE WHEN ConvertedInvID IS NULL THEN @invId ELSE ConvertedInvID END,
-            ConvertedInvType = CASE WHEN ConvertedInvID IS NULL THEN @invType ELSE ConvertedInvType END
-        WHERE BookingID = @bookingId
-          AND Status NOT IN (N'cancelled', N'no_show')
-      `);
-
+      .input('invType', sql.NVarChar(50), invType)
+      .query(
+        "UPDATE dbo.Bookings SET Status=N'completed', " +
+        "ConvertedInvID=CASE WHEN ConvertedInvID IS NULL THEN @invId ELSE ConvertedInvID END, " +
+        "ConvertedInvType=CASE WHEN ConvertedInvID IS NULL THEN @invType ELSE ConvertedInvType END " +
+        "WHERE BookingID=@bookingId AND (ConvertedInvID IS NULL OR ConvertedInvID=@invId) " +
+        "AND Status NOT IN (N'cancelled',N'no_show')"
+      );
+    if (booking.rowsAffected[0] !== 1) { await tx.rollback(); return false; }
     await tx.commit();
     return true;
   } catch (err) {
-    try {
-      await tx.rollback();
-    } catch {
-      /* ignore */
-    }
+    try { await tx.rollback(); } catch { /* already rolled back */ }
     throw err;
   }
 }
