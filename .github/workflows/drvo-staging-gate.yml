@@ -172,25 +172,31 @@ jobs:
           set -euo pipefail
           npx tsx scripts/drvo/staging-gate-preflight.ts migration9
 
-      - name: Verify DRVO after migration
-        id: verify_after_migration
-        continue-on-error: true
-        run: npm run drvo:verify
-
-      - name: Reconcile grandfathered subscriptions if required
-        if: steps.verify_after_migration.outcome == 'failure'
-        run: |
-          set -euo pipefail
-          npm run drvo-012:reconcile-subscriptions -- --expected-database=last132_agent
-          npm run drvo:verify
-
-      # Existing staging tenants predating DRVO-012 may lack subscriptions.
-      # This insert-only guarded repair is restricted to stacked #248 staging.
+      # #248 integration is deterministic: repair missing historical commercial
+      # subscriptions BEFORE full readiness validation, then fail closed on
+      # every other check. Never mask bootstrap/ownership failures by repeating
+      # an unrelated subscription repair.
       - name: Reconcile missing DRVO-012 subscriptions on staging integration only
         if: >-
           github.event_name == 'pull_request' &&
           github.event.pull_request.head.ref == 'feat/pos-sale-idempotency-246'
         run: npm run drvo-012:reconcile-subscriptions -- --expected-database=last132_agent
+
+      - name: Verify DRVO after migration
+        id: verify_after_migration
+        continue-on-error: ${{ github.event.pull_request.head.ref != 'feat/pos-sale-idempotency-246' }}
+        run: npm run drvo:verify
+
+      # Legacy DRVO branches keep their pre-existing recovery behavior.
+      # For #248 this step MUST NEVER be a fallback for a noncommercial error.
+      - name: Reconcile grandfathered subscriptions if required
+        if: >-
+          steps.verify_after_migration.outcome == 'failure' &&
+          github.event.pull_request.head.ref != 'feat/pos-sale-idempotency-246'
+        run: |
+          set -euo pipefail
+          npm run drvo-012:reconcile-subscriptions -- --expected-database=last132_agent
+          npm run drvo:verify
 
       - name: DRVO-012 staging smoke
         run: npm run drvo-012:smoke
