@@ -11,8 +11,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import CustomerSourceFields from '@/components/pos/CustomerSourceFields';
-import CustomerProfileFields from '@/components/pos/CustomerProfileFields';
-import { validateCustomerProfile, type CustomerProfileDraft } from '@/lib/customerProfile';
 import {
   validateCustomerSource,
   isCustomerSourceMissing,
@@ -37,10 +35,6 @@ export default function QuickCustomerModal({ open, onClose, onCreated, initialQu
   const [cameFromDetails, setCameFromDetails] = useState('');
   const [referralCode, setReferralCode] = useState('');
   const [sourceErrors, setSourceErrors] = useState<Record<string, string>>({});
-  const [profile, setProfile] = useState<CustomerProfileDraft>({
-    customerCategory: null, educationLevel: null, institutionName: '', occupation: '',
-  });
-  const [profileErrors, setProfileErrors] = useState<Record<string, string>>({});
   const [saving,    setSaving]    = useState(false);
   const [error,     setError]     = useState('');
 
@@ -58,8 +52,6 @@ export default function QuickCustomerModal({ open, onClose, onCreated, initialQu
     setCameFromDetails('');
     setReferralCode('');
     setSourceErrors({});
-    setProfile({ customerCategory: null, educationLevel: null, institutionName: '', occupation: '' });
-    setProfileErrors({});
     setError('');
   }, [open, initialQuery]);
 
@@ -77,12 +69,6 @@ export default function QuickCustomerModal({ open, onClose, onCreated, initialQu
       return;
     }
 
-    const validatedProfile = validateCustomerProfile(
-      profile.customerCategory, profile.educationLevel, profile.institutionName, profile.occupation
-    );
-    setProfileErrors(validatedProfile.errors);
-    if (Object.keys(validatedProfile.errors).length) return;
-
     setSaving(true);
     setError('');
     try {
@@ -98,10 +84,6 @@ export default function QuickCustomerModal({ open, onClose, onCreated, initialQu
           cameFrom: sourceValidation.cameFrom,
           cameFromDetails: sourceValidation.cameFromDetails,
           referralCode: sourceValidation.referralCode,
-          customerCategory: validatedProfile.customerCategory,
-          educationLevel: validatedProfile.educationLevel,
-          institutionName: validatedProfile.institutionName,
-          occupation: validatedProfile.occupation,
         }),
       });
       if (!res.ok) {
@@ -119,7 +101,6 @@ export default function QuickCustomerModal({ open, onClose, onCreated, initialQu
       setCameFrom(null);
       setCameFromDetails('');
       setReferralCode('');
-      setProfile({ customerCategory: null, educationLevel: null, institutionName: '', occupation: '' });
     } catch {
       setError('خطأ في الاتصال');
     } finally {
@@ -129,7 +110,7 @@ export default function QuickCustomerModal({ open, onClose, onCreated, initialQu
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
-      <DialogContent className="sm:max-w-md max-h-[90dvh] overflow-y-auto">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <UserPlus className="w-5 h-5" />
@@ -181,11 +162,6 @@ export default function QuickCustomerModal({ open, onClose, onCreated, initialQu
               onChange={(e) => setAddress(e.target.value)}
             />
           </div>
-          <CustomerProfileFields
-            value={profile}
-            onChange={(next) => { setProfile(next); setProfileErrors({}); }}
-            errors={profileErrors}
-          />
           <CustomerSourceFields
             cameFrom={cameFrom}
             cameFromDetails={cameFromDetails}
