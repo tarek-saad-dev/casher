@@ -27,7 +27,7 @@ function sign(data: Record<string, unknown> = claims, key = secret): string {
   const signature = createHmac("sha256", key).update(body).digest("base64url");
   return body + "." + signature;
 }
-const verify = (token: unknown, tenant?: string, key: string | undefined = secret) =>
+const verify = (token: unknown, tenant: string = "salon-tenant-A", key: string | undefined = secret) =>
   verifyCutClubCustomerSession(token, { secret: key, expectedTenantId: tenant, nowSeconds: now });
 
 describe("CUT CLUB verified customer session foundation", () => {
@@ -42,7 +42,7 @@ describe("CUT CLUB verified customer session foundation", () => {
   });
 
   it("refuses missing, short or unconfigured secrets", () => {
-    expect(verifyCutClubCustomerSession(sign(), { secret: undefined, nowSeconds: now })).toEqual({ ok: false, reason: "misconfigured" });
+    expect(verifyCutClubCustomerSession(sign(), { secret: undefined, expectedTenantId: "salon-tenant-A", nowSeconds: now })).toEqual({ ok: false, reason: "misconfigured" });
     expect(verify(sign(), undefined, "short")).toEqual({ ok: false, reason: "misconfigured" });
   });
 
