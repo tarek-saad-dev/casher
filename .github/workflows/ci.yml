@@ -154,6 +154,9 @@ jobs:
       - name: Cashier-assisted addon transfer safety contracts
         run: npx vitest run src/lib/__tests__/cashierAssistedAddonContracts.test.ts src/lib/__tests__/staffAddonSchedulingBehavior.test.ts
 
+      - name: Paid booking handoff reconciliation safety contracts
+        run: npx vitest run src/lib/__tests__/handoffChargeReconciliationContracts.test.ts src/lib/__tests__/handoffPaidLinePolicy.test.ts
+
       - name: Production build
         run: npm run build
 

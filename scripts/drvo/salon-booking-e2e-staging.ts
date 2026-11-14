@@ -502,6 +502,13 @@ async function main() {
     });
     check(cancelReplay.body.cancellation.alreadyCancelled === true, 'Repeat cancellation does not mutate again');
     console.log('SALON_BOOKING_LIFECYCLE_E2E_STAGING_PASS');
+    const { runHandoffRecoveryStaging } =
+      await import('./salon-handoff-recovery-staging');
+    await runHandoffRecoveryStaging({
+      pool, tenantId, branchId, empId, originalBookingId: bookingId,
+      actorUserId: actor.actorUserId,
+      serviceId: service.serviceId, servicePrice: service.price,
+    });
     console.log('SALON_BOOKING_E2E_STAGING_PASS');
   } finally {
     if (tenantCode) {
