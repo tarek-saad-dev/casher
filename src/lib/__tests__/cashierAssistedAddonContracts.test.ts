@@ -58,5 +58,7 @@ describe('Cashier-assisted extra-service transfer safety contracts', () => {
     expect(ui).toContain('تأكيد الحجز');
     const staffUI = read('src/app/employee-portal/bookings/booking-handoff-sheet.tsx');
     expect(staffUI).toContain('إرسال طلب تحويل الخدمة للكاشير');
+    expect(staffUI).toContain('تأكيد وصول العميل');
+    expect(staffUI).toContain('إنهاء الخدمة');
   });
 });
