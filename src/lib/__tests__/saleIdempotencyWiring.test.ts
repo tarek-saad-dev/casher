@@ -171,6 +171,30 @@ describe('persistent POST /api/sales request token across both POS writers (#246
     expect(smoke).toContain('NOT a full browser HTTP POST');
   });
 
+  it('runs isolated authenticated HTTP 50/20, replay, refund and verified cleanup on staging', () => {
+    const gate = get('.github/workflows/drvo-staging-gate.yml');
+    const code = get('scripts/drvo/drvo248-referral-http-staging.ts');
+    expect(gate).toContain('CUT referral 248 authenticated HTTP checkout and audited refund E2E');
+    expect(gate).toContain('scripts/drvo/drvo248-referral-http-staging.ts');
+    for (const token of [
+      "DB_DATABASE: DB", "DB_USER: LOGIN",
+      "DRVO_FORCE_POS_PATH: 'extracted'",
+      "WHATSAPP_SALE_ENABLED: 'false'",
+      "await onboardBusiness(",
+      "'/api/auth/login'",
+      "'/api/sales'",
+      "'/api/pos/referrals/preview?code='",
+      "'/api/pos/referrals/wallet?clientId='",
+      "'/api/sales/'+invoiceId",
+      "await purgeSmokeTenant(pool,tenantCode)",
+      "'synthetic UUID ledger cleanup proved'",
+    ]) {
+      expect(code).toContain(token);
+    }
+    expect(code).toContain("process.env.DB_DATABASE !== 'last132'");
+    expect(code).toContain('Refusing production'.toLowerCase().slice(0, 0) + 'production env refused');
+  });
+
   it('idempotency remains independent from referral issue flags and is OFF until SQL migration approval', () => {
     const server = get('src/lib/sales/saleRequestIdempotency.service.ts');
     expect(server).toContain("process.env.POS_SALE_IDEMPOTENCY_ENABLED === 'true'");
