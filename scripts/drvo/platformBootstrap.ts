@@ -215,23 +215,25 @@ export async function verifyPlatformBootstrap(
       }
     }
 
-    const mappedBranchIds = new Set(locs.map((loc) => Number(loc.LegacyBranchId)));
-    const unmappedBranches = await pool.request().query(`
-      SELECT BranchID FROM dbo.TblBranch WITH (NOLOCK) ORDER BY BranchID;
+    // This is a *consistency* check, not a dirty-read reporting query.
+    // During staging onboarding another transaction creates TblBranch and its
+    // tenant-owned Location together. NOLOCK used to observe an uncommitted
+    // TblBranch and falsely report "Unmapped legacy branch" while the new
+    // Location was still locked/uncommitted. Use a single committed SELECT.
+    // Real committed orphan branches still fail this verification.
+    const branchMappings = await pool.request().query(`
+      SELECT b.BranchID,
+        CASE WHEN EXISTS (
+          SELECT 1 FROM dbo.Location l WITH (READCOMMITTEDLOCK)
+          WHERE l.LegacyBranchId = b.BranchID
+        ) THEN 0 ELSE 1 END AS Unmapped
+      FROM dbo.TblBranch b WITH (READCOMMITTEDLOCK)
+      ORDER BY b.BranchID;
     `);
-    branchCount = unmappedBranches.recordset.length;
-
-    for (const row of unmappedBranches.recordset as Array<{ BranchID: number }>) {
-      const branchId = Number(row.BranchID);
-      const mappedAnywhere = await pool
-        .request()
-        .input('legacyBranchId', sql.Int, branchId)
-        .query(`
-          SELECT TOP 1 TenantId FROM dbo.Location WITH (NOLOCK)
-          WHERE LegacyBranchId = @legacyBranchId;
-        `);
-      if (!mappedAnywhere.recordset.length) {
-        failures.push(`Unmapped legacy branch ${branchId} (no Location row in any tenant)`);
+    branchCount = branchMappings.recordset.length;
+    for (const row of branchMappings.recordset as Array<{ BranchID: number; Unmapped: number }>) {
+      if (Number(row.Unmapped) === 1) {
+        failures.push(`Unmapped legacy branch ${Number(row.BranchID)} (no Location row in any tenant)`);
       }
     }
 
