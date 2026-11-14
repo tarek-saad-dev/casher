@@ -100,6 +100,22 @@ describe('persistent POST /api/sales request token across both POS writers (#246
     expect(script).toContain('reconcileGrandfatheredSubscriptions(pool)');
   });
 
+  it('financial staging audit is strictly staging-read-only and fails on real ledger discrepancies', () => {
+    const gate = get('.github/workflows/drvo-staging-gate.yml');
+    expect(gate).toContain('CUT referral 248 financial ledger audit (staging read-only)');
+    expect(gate).toContain('scripts/drvo/drvo248-referral-financial-audit-staging.ts');
+    const code = get('scripts/drvo/drvo248-referral-financial-audit-staging.ts');
+    expect(code).toContain("database: 'last132_agent'");
+    expect(code).toContain("user: 'drvo_agent'");
+    expect(code).toContain('InvalidAppliedInvoice');
+    expect(code).toContain('MissingEarnedVoucher');
+    expect(code).toContain('InvalidUsedInvoice');
+    expect(code).toContain('InvalidCommittedRequest');
+    expect(code).toContain('for (const name of defects)');
+    expect(code).not.toMatch(/\\b(?:INSERT|UPDATE|DELETE)\\s+(?:INTO\\s+|FROM\\s+)?dbo\\./i);
+    expect(code).toContain('not an E2E proof');
+  });
+
   it('idempotency remains independent from referral issue flags and is OFF until SQL migration approval', () => {
     const server = get('src/lib/sales/saleRequestIdempotency.service.ts');
     expect(server).toContain("process.env.POS_SALE_IDEMPOTENCY_ENABLED === 'true'");
