@@ -6,7 +6,7 @@ import type { DrvoMigrationDefinition } from '../types';
 
 const SCHEMA = path.join(
   __dirname, '..', '..', '..', 'db', 'drvo-migrations',
-  '023-customer-education-occupation-profile', 'schema.sql',
+  '025-customer-education-occupation-profile', 'schema.sql',
 );
 
 export async function verifyCustomerProfileSchema(pool: ConnectionPool) {
@@ -21,7 +21,7 @@ export async function verifyCustomerProfileSchema(pool: ConnectionPool) {
 }
 
 export const customerEducationOccupationProfileMigration: DrvoMigrationDefinition = {
-  migrationId: 23,
+  migrationId: 25,
   migrationKey: 'customer-education-occupation-profile',
   name: 'Optional customer student education or adult occupation fields',
   dependencies: ['master-data-tenancy'],

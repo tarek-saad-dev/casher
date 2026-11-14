@@ -21,7 +21,7 @@ import { tariffResearchReviewMigration } from './019-tariff-research-review';
 import { employeeLateDeductionMigration } from './020-employee-late-deduction';
 import { bookingCashierHandoffMigration } from './021-booking-cashier-handoff';
 import { retailProductCatalogMigration } from './022-retail-product-catalog';
-import { customerEducationOccupationProfileMigration } from './023-customer-education-occupation-profile';
+import { customerEducationOccupationProfileMigration } from './025-customer-education-occupation-profile';
 import { drvoModuleRequiredMigrationsFromManifest } from '../../../src/platform/drvo/moduleManifest';
 
 /** Ordered DRVO migration manifest — single source of truth for migration order. */
@@ -84,10 +84,17 @@ export function assertDrvoMigrationManifestValid(): void {
       }
     }
   }
+  // IDs 23 and 24 are allocated in the still-unmerged referral-discounts and
+  // POS sale idempotency tracks. They already exist in the protected staging
+  // registry. Never reuse or renumber those identities for customer profiles.
+  // Preserve strict contiguous ordering outside exactly these reserved slots.
+  const reservedMigrationIds = new Set([23, 24]);
   let expected = 1;
   for (let i = 0; i < DRVO_MIGRATIONS.length; i++) {
-    if (DRVO_MIGRATIONS[i]!.migrationId !== expected) {
-      throw new Error(`DRVO migration ids must be contiguous starting at 1 (gap at index ${i})`);
+    const actual = DRVO_MIGRATIONS[i]!.migrationId;
+    while (expected < actual && reservedMigrationIds.has(expected)) expected++;
+    if (actual !== expected) {
+      throw new Error(`DRVO migration ids must be contiguous except reserved IDs 23/24 (gap at index ${i})`);
     }
     expected++;
   }
