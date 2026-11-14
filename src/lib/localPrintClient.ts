@@ -189,7 +189,10 @@ export type FetchLike = (
 export async function checkLocalPrintServiceHealth(
   timeoutMs = 1500, fetchImpl: FetchLike = fetch,
 ): Promise<boolean> {
-  try { return (await getLocalAgentHealth(timeoutMs, fetchImpl)).ok === true; }
+  try {
+    const health = await getLocalAgentHealth(timeoutMs, fetchImpl);
+    return health.ok === true || health.status === 'ok';
+  }
   catch { return false; }
 }
 
