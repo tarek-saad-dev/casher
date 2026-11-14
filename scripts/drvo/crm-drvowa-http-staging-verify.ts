@@ -111,6 +111,14 @@ async function run(): Promise<void> {
           redirect: 'error',
         });
         if (res.status === 200) { ready = true; break; }
+        if (res.status === 401) {
+          const payload = limitBody(await res.json().catch(() => ({})));
+          const err = payload.error;
+          const errorCode = typeof err === 'string'
+            ? 'EDGE_SESSION_GATE'
+            : String(limitBody(err).code ?? 'UNKNOWN_BEARER_REJECTION');
+          throw new Error(`Staging manifest bearer rejected at ${errorCode}; no bypass attempted`);
+        }
         if (![404, 503, 502, 500].includes(res.status)) {
           throw new Error(`Unexpected staging manifest HTTP ${res.status}`);
         }
