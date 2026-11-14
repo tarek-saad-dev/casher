@@ -11,7 +11,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import {
-  COMPACT_CUT_RECEIPT_V1, DEFAULT_RECEIPT_FIELDS, RECEIPT_FIELDS_BY_KIND, validateReceiptTemplateV1,
+  COMPACT_CUT_RECEIPT_V1, CUT_CLASSIC_ORIGINAL_V1, newCutClassicEditableCopy,
+  DEFAULT_RECEIPT_FIELDS, RECEIPT_FIELDS_BY_KIND, validateReceiptTemplateV1,
   type ReceiptField, type ReceiptBlockV1, type ReceiptBlockKind, type ReceiptTemplateV1,
 } from '@/lib/receipt-studio/template';
 import {
@@ -42,6 +43,10 @@ const FIELD_TITLES: Record<ReceiptField, string> = {
   brandName: 'اسم البراند',
   brandTagline: 'الوصف تحت الشعار',
   receiptLabel: 'عنوان الفاتورة',
+  invoiceNumberLabel: 'عنوان رقم الفاتورة',
+  dateLabel: 'عنوان التاريخ',
+  timeLabel: 'عنوان الوقت',
+  customerPhoneLabel: 'عنوان هاتف العميل',
   customerLabel: 'عنوان العميل',
   numberHeader: 'عنوان رقم الخدمة',
   serviceHeader: 'عنوان عمود الخدمات',
