@@ -2,7 +2,7 @@ name: CI
 
 on:
   pull_request:
-    branches: [main, feat/pos-sale-idempotency-246]
+    branches: [main]
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
