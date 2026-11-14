@@ -2,6 +2,7 @@ import { createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
   customerOwnsRecord,
+  customerMayReadScopedResource,
   CUT_CLUB_AUDIENCE,
   CUT_CLUB_ISSUER,
   verifyCutClubCustomerSession,
@@ -90,4 +91,31 @@ describe("CUT CLUB verified customer session foundation", () => {
     expect(customerOwnsRecord(result.subject, { customerId: 101, tenantId: "salon-tenant-B" })).toBe(false);
     expect(customerOwnsRecord(result.subject, { customerId: 0, tenantId: "salon-tenant-A" })).toBe(false);
   });
+  it("fails closed without a live, matching, unrevoked session for customer data", () => {
+    const verified = verify(sign(), "salon-tenant-A");
+    expect(verified.ok).toBe(true);
+    const live = {
+      tenantId: "salon-tenant-A", customerId: 101,
+      sessionId: "test_session_10000001",
+      active: true, expiresAt: now + 1200, revokedAt: null as number | null,
+    };
+    const owner = { tenantId: "salon-tenant-A", customerId: 101 };
+    const allowed = (session: typeof live | null, record: typeof owner | null = owner, tenant = "salon-tenant-A") =>
+      customerMayReadScopedResource(verified, tenant, session, record, now);
+
+    expect(allowed(live)).toBe(true);
+    expect(allowed(null)).toBe(false);
+    expect(allowed({ ...live, active: false })).toBe(false);
+    expect(allowed({ ...live, revokedAt: now - 1 })).toBe(false);
+    expect(allowed({ ...live, expiresAt: now })).toBe(false);
+    expect(allowed({ ...live, sessionId: "another_session_123" })).toBe(false);
+    expect(allowed({ ...live, customerId: 102 })).toBe(false);
+    expect(allowed({ ...live, tenantId: "salon-tenant-B" })).toBe(false);
+    expect(allowed(live, { ...owner, customerId: 102 })).toBe(false);
+    expect(allowed(live, { ...owner, tenantId: "salon-tenant-B" })).toBe(false);
+    expect(allowed(live, owner, "salon-tenant-B")).toBe(false);
+    expect(allowed(live, null)).toBe(false);
+    expect(customerMayReadScopedResource({ ok: false, reason: "invalid" }, "salon-tenant-A", live, owner, now)).toBe(false);
+  });
+
 });
