@@ -91,6 +91,10 @@ export interface SaleState {
   items: CartItem[];
   discountPercent: number;     // header-level discount %
   discountValue: number;       // header-level discount value
+  /** Verified 50% referral code applied to this draft, server verifies again. */
+  referralCode?: string | null;
+  /** 20% earned voucher (mutually exclusive with referralCode). */
+  referralVoucherId?: number | null;
   paymentMethodId: number | null;  // legacy single payment method
   paymentAllocations: PaymentAllocation[]; // split payment allocations
   notes: string;
@@ -360,6 +364,12 @@ export interface EmpPayrollTxn {
 
 export interface CreateSalePayload {
   clientId: number | null;
+  /** Optional referral for a new, fully-paid invoice only; validated by server. Feature OFF by default. */
+  referralCode?: string;
+  /** 20% referrer reward redemption, distinct from first-visit referralCode. */
+  referralVoucherId?: number;
+  /** Stable UUID v4 for once-only POST sale; never regenerated for a failed/unknown retry. */
+  requestId?: string;
   items: {
     proId: number;
     /** `0` for retail product lines (no barber). */

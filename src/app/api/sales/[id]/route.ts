@@ -25,6 +25,11 @@ import {
   requireActiveBranchContext,
 } from '@/lib/branch';
 import { requireTenantSession } from '@/lib/api-auth';
+import { assertReferralInvoiceNotMutated } from '@/lib/referrals/referralInvoiceMutationGuard';
+import {
+  getReferralRefundAuditSnapshot,
+  reverseReferralInvoiceOnFullRefund,
+} from '@/lib/referrals/referralInvoiceRefund.service';
 
 // GET /api/sales/[id] — Get sale by invID for printing
 export async function GET(
@@ -146,6 +151,9 @@ export async function PUT(
     const userID = sessionUser.UserID;
 
     const body = await req.json();
+    if (body?.referralCode !== undefined) {
+      return NextResponse.json({ error: 'كود الإحالة متاح للفاتورة الجديدة فقط', code: 'REFERRAL_NEW_SALE_ONLY' }, { status: 409 });
+    }
 
     const loaded = await loadAndAuthorizeFinancialMutation(
       userID,
@@ -212,6 +220,7 @@ export async function PUT(
         return snapshot as unknown as Record<string, unknown> | null;
       },
       execute: async (transaction) => {
+        await assertReferralInvoiceNotMutated(transaction, String(sessionUser.TenantId), invID);
         const updateInput = {
         clientId: body.clientId,
         subTotal: body.subTotal,
@@ -302,7 +311,7 @@ export async function PUT(
     });
   } catch (err: unknown) {
     if (isAuditedActionError(err)) {
-      return NextResponse.json({ error: err.message, auditId: err.failedAuditId }, { status: 500 });
+      return NextResponse.json({ error: err.message, auditId: err.failedAuditId }, { status: err.statusCode });
     }
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error('[api/sales/id] PUT error:', message);
@@ -354,12 +363,27 @@ export async function DELETE(
         const snapshot = isPosPortEnabled()
           ? await getSaleSnapshot(transaction, invID)
           : await getInvoiceSnapshot(transaction, invID);
-        return snapshot as unknown as Record<string, unknown> | null;
+        if (!snapshot) return null;
+        // The audited old-data record captures linked voucher IDs and status,
+        // along with staff, mandatory reason and invoice snapshot.
+        const referralLedger = await getReferralRefundAuditSnapshot(
+          transaction, String(session.TenantId), invID,
+        );
+        return { ...snapshot, ...(referralLedger ? { referralLedger } : {}) } as Record<string, unknown>;
       },
-      execute: async (transaction) =>
-        isPosPortEnabled()
-          ? deleteSale(transaction, invID, loaded.ownership.branchId, session.UserID)
-          : deleteInvoice(transaction, invID, loaded.ownership.branchId),
+      execute: async (transaction) => {
+        // Same SERIALIZABLE audited SQL transaction as stock/cash/payment reversal.
+        // The source reward is preserved when its claim becomes REVERSED.
+        const reversal = await reverseReferralInvoiceOnFullRefund(transaction, {
+          tenantId: String(session.TenantId), invoiceId: invID,
+        });
+        if (isPosPortEnabled()) {
+          await deleteSale(transaction, invID, loaded.ownership.branchId, session.UserID);
+        } else {
+          await deleteInvoice(transaction, invID, loaded.ownership.branchId);
+        }
+        return reversal;
+      },
       loadNewData: async () => null,
       beforeCommit: async ({ transaction, oldData }) => {
         const { enqueueTargetRecalcFromInvoiceSnapshots } = await import(
@@ -390,6 +414,7 @@ export async function DELETE(
       success: true,
       message: 'تم حذف الفاتورة',
       auditId: auditResult.auditId,
+      referralRefund: auditResult.data,
     });
 
   } catch (err: unknown) {
@@ -397,7 +422,7 @@ export async function DELETE(
       const isValidation = err.message.includes('تتطلب سبباً') || err.message.includes('مطلوب');
       return NextResponse.json(
         { success: false, error: err.message, auditId: err.failedAuditId },
-        { status: isValidation ? 400 : 500 },
+        { status: isValidation ? 400 : err.statusCode },
       );
     }
     const msg = err instanceof Error ? err.message : 'Unknown error';

@@ -66,6 +66,33 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: CUT referral tenant code activation, preview and core policy
+        run: npx vitest run src/lib/__tests__/referralPolicy.test.ts src/lib/__tests__/referralCodeActivation.test.ts src/lib/__tests__/referralPreviewPolicy.test.ts src/lib/__tests__/referralPreviewService.test.ts src/lib/__tests__/referralPreviewRoute.test.ts
+
+      - name: CUT POS referral 50% Apply and 20% Wallet / preview regressions
+        run: npx vitest run src/lib/__tests__/posReferralPreview.test.ts src/lib/__tests__/posReferralPreviewComponent.test.tsx src/lib/__tests__/posReferralApplyState.test.tsx src/lib/__tests__/posReferralCheckoutUi.test.tsx src/lib/__tests__/posReferralSalePayload.test.ts src/lib/__tests__/posReferralWalletApplyState.test.tsx src/lib/__tests__/posReferralWalletUi.test.tsx
+
+      - name: CUT end-to-end referral cross-layer static contract
+        run: npx vitest run src/lib/__tests__/cutReferralFullIntegration.test.ts
+
+      - name: CUT referral atomic checkout and monetary invariants
+        run: npx vitest run src/lib/__tests__/referralCheckoutPolicy.test.ts src/lib/__tests__/referralSaleTransaction.test.ts src/lib/__tests__/referralWriterWiring.test.ts src/lib/__tests__/referralInvoiceMutationGuard.test.ts src/lib/__tests__/referralCatalogPriceGuard.test.ts
+
+      - name: CUT referral reward wallet, price and atomic voucher redemption tests
+        run: npx vitest run src/lib/__tests__/referralRewardPolicy.test.ts src/lib/__tests__/referralRewardWallet.test.ts src/lib/__tests__/referralRewardRedemption.test.ts
+
+      - name: CUT referral refund reward-preservation and audit regressions
+        run: npx vitest run src/lib/__tests__/referralInvoiceRefund.test.ts src/lib/__tests__/referralRefundRouteWiring.test.ts src/lib/__tests__/referralRewardWallet.test.ts src/lib/__tests__/referralRewardRedemption.test.ts src/lib/__tests__/salesInvoiceDelete.test.ts
+
+      - name: CUT staff customer referral profile and WhatsApp share regressions
+        run: npx vitest run src/lib/__tests__/customerReferralProfile.service.test.ts src/lib/__tests__/customerReferralProfile.route.test.ts src/lib/__tests__/posCustomerReferralProfile.test.tsx
+
+      - name: CUT admin referral ledger dashboard and tenant/report UI regressions
+        run: npx vitest run src/lib/__tests__/referralAdminDashboard.service.test.ts src/lib/__tests__/referralAdminDashboard.route.test.ts src/lib/__tests__/referralAdminDashboard.page.test.tsx
+
+      - name: CUT persistent sale UUID retry, financial locks and writer wiring regressions
+        run: npx vitest run src/lib/__tests__/saleRequestIdempotency.test.ts src/lib/__tests__/saleIdempotencyWiring.test.ts src/lib/__tests__/clientSaleRequestId.test.ts
+
       - name: DRVO migration + rollout + runner tests
         run: >
           npx vitest run

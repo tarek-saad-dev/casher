@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getPool } from "@/lib/db";
+import { getPool, sql } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import type { CreateSalePayload } from "@/lib/types";
 import { resolveSplitPaymentConfig } from "@/lib/clearingMethod";
@@ -17,13 +17,23 @@ import {
 } from '@/apps/pos/public';
 import { createSaleLegacyFromRoute } from '@/lib/sales/legacyRouteSaleCreate';
 import { findForeignServiceIds } from '@/lib/catalog/tenantCatalogGuards';
+import {
+  ReferralCheckoutError, parseReferralCheckoutRequest, parseReferralRewardVoucherId,
+  priceFirstVisitReferral, priceReferralRewardVoucher,
+} from '@/lib/referrals/referralCheckoutPolicy';
+import {
+  createSaleIdempotencyIntent, lookupCommittedSaleReplay, SaleIdempotencyError,
+} from '@/lib/sales/saleRequestIdempotency.service';
 
 export const runtime = "nodejs";
 
 // POST /api/sales — Create a new sale (head + details + payment + cash move)
 export async function POST(req: NextRequest) {
+  let referralRequest = false;
   try {
     const body: CreateSalePayload = await req.json();
+    referralRequest = Object.prototype.hasOwnProperty.call(body, 'referralCode') ||
+      Object.prototype.hasOwnProperty.call(body, 'referralVoucherId');
 
     // Validation
     if (!body.items || body.items.length === 0) {
@@ -36,6 +46,24 @@ export async function POST(req: NextRequest) {
     const sessionUser = await getSession();
     if (!sessionUser?.TenantId) {
       return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
+    }
+
+    const idempotency = createSaleIdempotencyIntent({
+      tenantId: String(sessionUser.TenantId),
+      userId: sessionUser.UserID,
+      branchId: sessionUser.ActiveBranchID,
+      rawRequestId: body.requestId,
+      payload: body as unknown as Record<string, unknown>,
+    });
+    // A committed retry is safe even when the original shift has since closed.
+    // Always return the persisted invoice; NEVER re-apply stock or referral rewards.
+    const prior = await lookupCommittedSaleReplay(await getPool(), idempotency);
+    if (prior) return NextResponse.json(prior, { status: 200 });
+
+    const referralCode = parseReferralCheckoutRequest(body.referralCode, body.clientId);
+    const referralVoucherId = parseReferralRewardVoucherId(body.referralVoucherId, referralCode);
+    if (referralVoucherId != null && (!Number.isSafeInteger(body.clientId) || Number(body.clientId) <= 0)) {
+      throw new ReferralCheckoutError('REFERRAL_CLIENT_REQUIRED', 'اختار العميل قبل استخدام المكافأة', 400);
     }
 
     // Lines may only name services/products of the caller's tenant.
@@ -136,7 +164,22 @@ export async function POST(req: NextRequest) {
     }
 
     // ──── Server-side totals from line items + optional header discount ────
-    const computed = computeInvoiceItemsTotals(
+    const lineItemsForTotals = body.items.map((item) => ({
+        sPrice: item.sPrice,
+        qty: item.qty,
+        discountPercent: item.dis,
+        discountValue: item.disVal,
+        bonus: item.bonus,
+      }));
+    const computed = referralCode
+      ? priceFirstVisitReferral(lineItemsForTotals, {
+          discountPercent: body.dis, discountValue: body.disVal,
+        })
+      : referralVoucherId != null
+      ? priceReferralRewardVoucher(lineItemsForTotals, {
+          discountPercent: body.dis, discountValue: body.disVal,
+        })
+      : computeInvoiceItemsTotals(
       body.items.map((item) => ({
         sPrice: item.sPrice,
         qty: item.qty,
@@ -211,6 +254,31 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Referral money may only be allocated to payment methods belonging to
+    // this staff session's tenant. A syntactically valid global PaymentID is
+    // not proof that the tenant may record a receipt on that account.
+    // Referral-only until the broader legacy payment-method migration is
+    // independently reconciled across all existing POS flows.
+    if (referralCode || referralVoucherId != null) {
+      const allowed = db.request()
+        .input('tenantId', sql.UniqueIdentifier, String(sessionUser.TenantId));
+      const binds = activeAllocations.map((allocation, index) => {
+        const key = 'method' + index;
+        allowed.input(key, sql.Int, Number(allocation.paymentMethodId));
+        return '@' + key;
+      });
+      const methods = await allowed.query(`
+        SELECT PaymentID FROM dbo.TblPaymentMethods
+        WHERE TenantId = @tenantId AND PaymentID IN (${binds.join(',')});
+      `);
+      if (methods.recordset.length !== activeAllocations.length) {
+        return NextResponse.json({
+          error: 'طريقة الدفع المختارة غير متاحة لهذه المنشأة',
+          code: 'REFERRAL_PAYMENT_METHOD_NOT_OWNED',
+        }, { status: 404 });
+      }
+    }
+
     // Decimal-safe total comparison (round to 2dp)
     const totalAllocated = Math.round(
       activeAllocations.reduce((sum, pa) => sum + Number(pa.amount), 0) * 100,
@@ -249,9 +317,8 @@ export async function POST(req: NextRequest) {
       `[pos-api]   Payment: headerMethodId=${headerPaymentMethodId}, isSplit=${isSplitPayment}, allocations=${activeAllocations.length}`,
     );
 
-    // Store a durable handoff reference INSIDE the same paid invoice write.
-    // If post-sale handoff status synchronization fails or the browser closes,
-    // the cashier recovery queue can locate this existing invoice safely.
+    // Persist the handoff reference with the same paid invoice write so an
+    // interrupted post-commit link can be reconciled without another charge.
     const sourceHandoffId = Number(body.handoffId);
     const handoffNoteMarker =
       Number.isSafeInteger(sourceHandoffId) && sourceHandoffId > 0
@@ -259,6 +326,10 @@ export async function POST(req: NextRequest) {
         : '';
 
     const saleInput = {
+      tenantId: String(sessionUser.TenantId),
+      idempotency,
+      referralCode,
+      referralVoucherId,
       items: body.items.map((item) => ({
         proId: item.proId,
         empId: item.empId,
@@ -294,7 +365,7 @@ export async function POST(req: NextRequest) {
 
     const handoffId = Number(body.handoffId);
     let handoffSync: 'not_applicable' | 'linked' | 'needs_reconciliation' = 'not_applicable';
-    if (Number.isInteger(handoffId) && handoffId > 0) {
+    if (!result.replayed && Number.isInteger(handoffId) && handoffId > 0) {
       try {
         const { markHandoffCharged } = await import('@/lib/booking/cashierHandoff');
         const linked = await markHandoffCharged({
@@ -315,8 +386,16 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    return NextResponse.json({ invID: result.invID, invType: result.invType, handoffSync }, { status: 201 });
+    return NextResponse.json({
+      invID: result.invID, invType: result.invType, replayed: result.replayed === true, handoffSync,
+    }, { status: result.replayed ? 200 : 201 });
   } catch (err: unknown) {
+    if (err instanceof SaleIdempotencyError) {
+      return NextResponse.json({ error: err.message, code: err.code }, { status: err.status });
+    }
+    if (err instanceof ReferralCheckoutError) {
+      return NextResponse.json({ error: err.message, code: err.code }, { status: err.status });
+    }
     const { InventoryDomainError } = await import(
       '@/lib/inventory/inventoryMutation.service'
     );
@@ -331,6 +410,24 @@ export async function POST(req: NextRequest) {
     if (mapped) return mapped;
     const message = err instanceof Error ? err.message : "Unknown error";
     const stack = err instanceof Error ? err.stack : "";
+    // Never disclose SQL table/index names, customer IDs or transaction internals
+    // when a referral claim loses a concurrency race.
+    if (referralRequest) {
+      const dbError = err as { number?: number; originalError?: { number?: number } } | null;
+      const number = dbError?.number ?? dbError?.originalError?.number;
+      if (number === 2601 || number === 2627) {
+        console.error('[pos-api] Referral uniqueness conflict; sale was rolled back');
+        return NextResponse.json({
+          error: 'الإحالة اتسجلت قبل كده أو مستخدمة في فاتورة تانية',
+          code: 'REFERRAL_ALREADY_CLAIMED',
+        }, { status: 409 });
+      }
+      console.error('[pos-api] Referral sale failed; transaction rolled back', err instanceof Error ? err.name : 'unknown');
+      return NextResponse.json({
+        error: 'تعذر إكمال فاتورة الإحالة. راجع حالة الفاتورة قبل إعادة المحاولة',
+        code: 'REFERRAL_CHECKOUT_FAILED',
+      }, { status: 500 });
+    }
     console.error(`[pos-api] ❌ POST /api/sales FAILED: ${message}`);
     if (stack) console.error(`[pos-api]   Stack: ${stack}`);
     return NextResponse.json({ error: message }, { status: 500 });

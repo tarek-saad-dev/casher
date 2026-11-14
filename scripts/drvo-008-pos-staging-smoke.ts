@@ -70,6 +70,10 @@ async function main() {
   let createdInvId: number | null = null;
   let createdBranchId: number | null = null;
   let smokeClientId: number | null = null;
+  let smokeUserId: number | null = null;
+  let smokeTenantId: string | null = null;
+  let createdWriter: 'extracted' | 'legacy' | null = null;
+  let cleanupFailed = false;
   try {
     const guard = await pool.request().query(`SELECT DB_NAME() AS db, SUSER_SNAME() AS login`);
     const db = String(guard.recordset[0]?.db ?? '');
@@ -80,22 +84,32 @@ async function main() {
     }
     console.log('PASS: staging DB guard');
 
+    // DRVO-008 is already source-controlled extracted in production. This
+    // smoke must validate the CURRENT manifest, not its historical pre-cutover
+    // legacy value, while proving the emergency rollback still wins.
     delete process.env.POS_SCHEDULING_PORT;
     delete process.env.DRVO_FORCE_POS_PATH;
     const posSpec = getDrvoModuleRolloutSpec('pos');
-    if (posSpec.rollout !== 'legacy') fail('expected POS rollout legacy for DRVO-008');
+    if (posSpec.rollout !== 'extracted') fail('expected POS rollout extracted for DRVO-008');
+    if (posSpec.rollbackRollout !== 'legacy') fail('expected POS rollback target legacy');
     if (posSpec.forcePathEnv !== 'DRVO_FORCE_POS_PATH') fail('POS force-path env missing');
     if (posSpec.compatEnvFlag !== 'POS_SCHEDULING_PORT') fail('POS compat env missing');
     if (posSpec.requiredMigrationKeys.includes('pos-prerequisites')) {
       fail('pos-prerequisites must not be a POS required migration');
     }
-    if (isPosPortEnabled()) fail('default POS path must stay legacy');
+    if (!isPosPortEnabled()) fail('manifest extracted must enable default POS path');
+    process.env.POS_SCHEDULING_PORT = 'false';
+    if (!isPosPortEnabled()) fail('compat false must not override extracted manifest');
     process.env.POS_SCHEDULING_PORT = 'true';
     if (!isPosPortEnabled()) fail('compat true must enable extracted path');
     process.env.DRVO_FORCE_POS_PATH = 'legacy';
-    if (isPosPortEnabled()) fail('force legacy must beat compat true');
+    if (isPosPortEnabled()) fail('emergency force legacy must beat compat true');
+    process.env.DRVO_FORCE_POS_PATH = 'extracted';
+    if (!isPosPortEnabled()) fail('emergency force extracted must enable POS port');
     delete process.env.DRVO_FORCE_POS_PATH;
-    console.log('PASS: POS manifest legacy with break-glass override');
+    delete process.env.POS_SCHEDULING_PORT;
+    if (!isPosPortEnabled()) fail('POS default did not return to manifest extracted');
+    console.log('PASS: POS manifest extracted, compat semantics and legacy rollback override');
 
     const trigger = await pool.request().query(`
       SELECT t.name, t.is_disabled, OBJECT_DEFINITION(t.object_id) AS def
@@ -117,39 +131,96 @@ async function main() {
     }
     console.log('PASS: legacy update/delete/snapshot are distinct from the POS repository');
 
-    const shift = await pool.request().query(`
+    // Pick a REAL staging shift that can successfully complete a paid service
+    // sale. A plain TOP 1 shift might belong to a new/empty tenant with no
+    // priced service or active assigned barber (false DRVO-008 failure).
+    // All required entities must belong to the SAME branch and TenantId.
+    const splitCfg = await resolveSplitPaymentConfig(pool);
+    const shift = await pool.request()
+      .input('clearing', sql.Int, splitCfg.clearingMethodId)
+      .query(`
       SELECT TOP 1
         sm.ID AS shiftMoveId,
         sm.UserID AS userId,
         sm.BranchID AS branchId,
         sm.BusinessDayID AS businessDayId,
         CONVERT(varchar(10), nd.NewDay, 23) AS businessDate,
-        b.BranchName AS branchName
+        b.BranchName AS branchName,
+        l.TenantId AS tenantId
       FROM dbo.TblShiftMove sm
       JOIN dbo.TblNewDay nd ON nd.ID = sm.BusinessDayID
-      JOIN dbo.TblBranch b ON b.BranchID = sm.BranchID
+        AND nd.BranchID = sm.BranchID AND nd.Status = 1
+      JOIN dbo.TblBranch b ON b.BranchID = sm.BranchID AND b.IsActive = 1
+      JOIN dbo.Location l ON l.LegacyBranchId = sm.BranchID
+      JOIN dbo.Tenant t ON t.TenantId = l.TenantId AND t.Status = N'active'
       WHERE sm.Status = 1
+        AND EXISTS (
+          SELECT 1 FROM dbo.TenantMembership m
+          WHERE m.TenantId = l.TenantId AND m.LegacyUserId = sm.UserID
+        )
+        AND EXISTS (
+          SELECT 1
+          FROM dbo.TblPro p
+          LEFT JOIN dbo.TblCat c ON c.CatID = p.CatID
+            AND c.TenantId = l.TenantId
+          WHERE p.TenantId = l.TenantId
+            AND ISNULL(p.isDeleted, 0) = 0
+            AND CAST(ISNULL(p.SPrice1, 0) AS decimal(10, 2)) > 0
+            AND LOWER(LTRIM(RTRIM(ISNULL(c.CatType, N'')))) <> N'pro'
+            AND LOWER(LTRIM(RTRIM(ISNULL(p.ProType, N'')))) NOT IN (N'pro',N'product')
+        )
+        AND EXISTS (
+          SELECT 1
+          FROM dbo.TblEmpBranchAssignment ea
+          JOIN dbo.TblEmp e ON e.EmpID = ea.EmpID
+            AND e.TenantId = l.TenantId AND ISNULL(e.isActive, 1) = 1
+          WHERE ea.BranchID = sm.BranchID AND ea.IsActive = 1
+            AND ea.EffectiveFrom <= nd.NewDay
+            AND (ea.EffectiveTo IS NULL OR ea.EffectiveTo >= nd.NewDay)
+        )
+        AND EXISTS (
+          SELECT 1 FROM dbo.TblPaymentMethods pm
+          WHERE pm.TenantId = l.TenantId AND pm.PaymentID <> @clearing
+        )
       ORDER BY sm.ID DESC
     `);
     const open = shift.recordset[0];
-    if (!open) fail('no open shift on staging');
+    if (!open) fail('no tenant-owned open shift with an eligible service, assigned barber and payment method on staging');
     const branchId = Number(open.branchId);
+    const tenantId = String(open.tenantId);
+    if (!/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(tenantId)) {
+      fail('open staging shift has no tenant-owned Location');
+    }
     const userId = Number(open.userId);
+    smokeUserId = userId;
+    smokeTenantId = tenantId;
     const shiftMoveId = Number(open.shiftMoveId);
     const businessDayId = Number(open.businessDayId);
     const businessDate = String(open.businessDate);
     const branchName = String(open.branchName ?? 'staging');
     createdBranchId = branchId;
 
-    const service = await pool.request().input('branchId', sql.Int, branchId).query(`
+    // Real paid staging invoice must use one tenant-owned service and
+    // a barber actually assigned to this open shift's branch/business day.
+    // Otherwise a smoke may pass despite cross-tenant POS financial leakage.
+    const service = await pool.request()
+      .input('tenantId', sql.UniqueIdentifier, tenantId)
+      .input('branchId', sql.Int, branchId)
+      .input('day', sql.Date, businessDate)
+      .query(`
       SELECT TOP 1
         p.ProID AS proId,
         CAST(ISNULL(p.SPrice1, 0) AS decimal(10, 2)) AS price,
         e.EmpID AS empId
       FROM dbo.TblPro p
-      LEFT JOIN dbo.TblCat c ON c.CatID = p.CatID
-      JOIN dbo.TblEmp e ON e.isActive = 1
-      WHERE ISNULL(p.isDeleted, 0) = 0
+      LEFT JOIN dbo.TblCat c ON c.CatID = p.CatID AND c.TenantId = @tenantId
+      JOIN dbo.TblEmpBranchAssignment ea ON ea.BranchID = @branchId
+        AND ea.IsActive = 1 AND ea.EffectiveFrom <= @day
+        AND (ea.EffectiveTo IS NULL OR ea.EffectiveTo >= @day)
+      JOIN dbo.TblEmp e ON e.EmpID = ea.EmpID
+        AND e.TenantId = @tenantId AND ISNULL(e.isActive, 1) = 1
+      WHERE p.TenantId = @tenantId
+        AND ISNULL(p.isDeleted, 0) = 0
         AND CAST(ISNULL(p.SPrice1, 0) AS decimal(10, 2)) > 0
         AND LOWER(LTRIM(RTRIM(ISNULL(c.CatType, N'')))) <> N'pro'
         AND LOWER(LTRIM(RTRIM(ISNULL(p.ProType, N'')))) NOT IN (N'pro', N'product')
@@ -161,23 +232,26 @@ async function main() {
     const empId = Number(line.empId);
     const price = Number(line.price);
 
-    const splitCfg = await resolveSplitPaymentConfig(pool);
+
     const payMethod = await pool
       .request()
       .input('clearing', sql.Int, splitCfg.clearingMethodId)
+      .input('tenantId', sql.UniqueIdentifier, tenantId)
       .query(`
         SELECT TOP 1 PaymentID AS paymentMethodId
         FROM dbo.TblPaymentMethods
-        WHERE PaymentID <> @clearing
+        WHERE TenantId = @tenantId AND PaymentID <> @clearing
         ORDER BY PaymentID
       `);
     const paymentMethodId = Number(payMethod.recordset[0]?.paymentMethodId ?? 0);
     if (!paymentMethodId) fail('no payment method');
 
-    const client = await pool.request().query(`
+    const client = await pool.request()
+      .input('tenantId', sql.UniqueIdentifier, tenantId)
+      .query(`
       INSERT INTO dbo.TblClient (TenantId, Name, Notes, RegisterDate)
       OUTPUT INSERTED.ClientID AS clientId
-      VALUES ((SELECT TenantId FROM dbo.Tenant WHERE Code = N'CASHER_BOOT'), N'DRVO008-SMOKE', N'DRVO008-SMOKE', CAST(GETDATE() AS date))
+      VALUES (@tenantId, N'DRVO008-SMOKE', N'DRVO008-SMOKE', CAST(GETDATE() AS date))
     `);
     const clientId = Number(client.recordset[0]?.clientId ?? 0);
     if (!clientId) fail('could not create smoke client');
@@ -201,6 +275,7 @@ async function main() {
     );
 
     const created = await createSale({
+      tenantId,
       items: [
         {
           proId,
@@ -232,6 +307,7 @@ async function main() {
       branchName,
     });
     createdInvId = created.invID;
+    createdWriter = 'extracted';
     console.log('PASS: extracted createSale', created);
 
     const snapTx = new sql.Transaction(pool);
@@ -369,6 +445,7 @@ async function main() {
       fail(`delete left rows ${JSON.stringify(left)}`);
     }
     createdInvId = null;
+    createdWriter = null;
     await new Promise((resolve) => setTimeout(resolve, 1500));
     await pool.request().input('invID', sql.Int, created.invID).query(`
       DELETE FROM dbo.TblLoyaltyPointLedger WHERE SourceInvID = @invID
@@ -376,6 +453,7 @@ async function main() {
     console.log('PASS: extracted deleteSale cleaned header, detail, and CashMove');
 
     const legacyCreated = await createSaleLegacyFromRoute({
+      tenantId,
       items: [
         {
           proId,
@@ -407,6 +485,7 @@ async function main() {
       branchName,
     });
     createdInvId = legacyCreated.invID;
+    createdWriter = 'legacy';
     console.log('PASS: legacy createSaleLegacyFromRoute', legacyCreated);
 
     const legacyUpdateTx = new sql.Transaction(pool);
@@ -490,6 +569,7 @@ async function main() {
     }
     const legacyInvId = legacyCreated.invID;
     createdInvId = null;
+    createdWriter = null;
     await new Promise((resolve) => setTimeout(resolve, 1500));
     await pool.request().input('invID', sql.Int, legacyInvId).query(`
       DELETE FROM dbo.TblLoyaltyPointLedger WHERE SourceInvID = @invID
@@ -505,12 +585,12 @@ async function main() {
         {
           actorType: 'staff',
           actorId: 'drvo-008-smoke',
-          tenantId: 'smoke',
+          tenantId,
           membershipId: null,
           viewLocationId: null,
         },
         {
-          tenantId: 'smoke',
+          tenantId,
           locationId: branchId,
           bookingId: 0,
           clientId,
@@ -558,40 +638,144 @@ async function main() {
     }
 
     console.log('DRVO-008 POS staging smoke complete');
+  } catch (error) {
+    // Log the original SQL/test exception before any cleanup can mask it.
+    console.error('DRVO-008 PRIMARY FAILURE (before cleanup):', error);
+    throw error;
   } finally {
-    if (createdInvId != null && createdBranchId != null) {
+    if (createdInvId != null) {
+      let cleanupTx: InstanceType<typeof sql.Transaction> | null = null;
       try {
-        const cleanup = new sql.Transaction(pool);
-        await cleanup.begin();
-        await deleteSale(cleanup, createdInvId, createdBranchId, userId);
-        await cleanup.commit();
-        console.log('CLEANUP: deleted smoke invoice', createdInvId);
+        if (createdBranchId == null || smokeUserId == null ||
+            smokeClientId == null || smokeTenantId == null ||
+            createdWriter == null) {
+          fail('cleanup refused: missing staging invoice provenance');
+        }
+        const expectedMarker = createdWriter === 'legacy'
+          ? 'drvo-008-legacy-staging-smoke'
+          : 'drvo-008-pos-staging-smoke';
+        // Only delete the one invoice belonging to THIS synthetic client.
+        // Never delete a real or unowned invoice, even if IDs collide.
+        const owned = await pool.request()
+          .input('invID', sql.Int, createdInvId)
+          .input('branchId', sql.Int, createdBranchId)
+          .input('clientId', sql.Int, smokeClientId)
+          .input('tenantId', sql.UniqueIdentifier, smokeTenantId)
+          .input('marker', sql.NVarChar(100), expectedMarker)
+          .query(`
+            SELECT h.invID FROM dbo.TblinvServHead h
+            JOIN dbo.Location l ON l.LegacyBranchId=h.BranchID AND l.TenantId=@tenantId
+            JOIN dbo.TblClient c ON c.ClientID=h.ClientID AND c.TenantId=@tenantId
+            WHERE h.invID=@invID AND h.invType=N'مبيعات'
+              AND h.BranchID=@branchId AND h.ClientID=@clientId
+              AND c.Name=N'DRVO008-SMOKE' AND c.Notes=N'DRVO008-SMOKE'
+              AND h.Notes2=@marker;
+          `);
+        if (owned.recordset.length !== 1) {
+          fail('cleanup refused: invoice is not an exclusively owned staging fixture');
+        }
+        cleanupTx = new sql.Transaction(pool);
+        await cleanupTx.begin();
+        if (createdWriter === 'legacy') {
+          await legacyInvoice.deleteInvoice(cleanupTx, createdInvId, createdBranchId);
+        } else {
+          await deleteSale(cleanupTx, createdInvId, createdBranchId, smokeUserId);
+        }
+        await cleanupTx.commit();
+        cleanupTx = null;
+        const remain = await pool.request().input('invID', sql.Int, createdInvId).query(`
+          SELECT (SELECT COUNT(*) FROM dbo.TblinvServHead
+                   WHERE invID=@invID AND invType=N'مبيعات') AS Heads,
+                 (SELECT COUNT(*) FROM dbo.TblinvServDetail
+                   WHERE invID=@invID AND invType=N'مبيعات') AS Details,
+                 (SELECT COUNT(*) FROM dbo.TblCashMove
+                   WHERE invID=@invID AND invType=N'مبيعات') AS Cash;
+        `);
+        const rest = remain.recordset[0];
+        if (Number(rest.Heads) !== 0 || Number(rest.Details) !== 0 ||
+            Number(rest.Cash) !== 0) {
+          fail('cleanup financial residual proof failed: ' + JSON.stringify(rest));
+        }
+        console.log('CLEANUP: deleted owned ' + createdWriter + ' staging invoice', createdInvId);
+        createdInvId = null;
+        createdWriter = null;
       } catch (cleanupErr) {
-        console.error('CLEANUP failed', cleanupErr);
+        cleanupFailed = true;
+        if (cleanupTx) {
+          try { await cleanupTx.rollback(); } catch { /* already rolled back */ }
+        }
+        console.error('DRVO-008 CLEANUP FAILURE (manual staging review):', cleanupErr);
       }
     }
     if (smokeClientId != null) {
       try {
-        const leftover = await pool.request().input('id', sql.Int, smokeClientId).query(`
-          SELECT COUNT(*) AS cnt FROM dbo.TblinvServHead WHERE ClientID = @id
-        `);
-        if (Number(leftover.recordset[0]?.cnt ?? 0) === 0) {
-          await pool.request().input('id', sql.Int, smokeClientId).query(`
-            DELETE FROM dbo.TblClientLoyalty WHERE ClientID = @id;
-            DELETE FROM dbo.TblLoyaltyPointLedger WHERE ClientID = @id;
-            DELETE FROM dbo.TblClient WHERE ClientID = @id AND Name = N'DRVO008-SMOKE';
+        if (smokeTenantId == null) fail('cleanup refused: missing tenant identity');
+        const identity = await pool.request()
+          .input('id', sql.Int, smokeClientId)
+          .input('tenant', sql.UniqueIdentifier, smokeTenantId)
+          .query(`
+            SELECT COUNT(*) AS cnt FROM dbo.TblClient
+            WHERE ClientID=@id AND TenantId=@tenant
+              AND Name=N'DRVO008-SMOKE' AND Notes=N'DRVO008-SMOKE';
           `);
-          console.log('CLEANUP: removed smoke client', smokeClientId);
+        if (Number(identity.recordset[0]?.cnt) !== 1) {
+          fail('cleanup refused: synthetic client ownership mismatch');
         }
+        const leftover = await pool.request()
+          .input('id', sql.Int, smokeClientId)
+          .query('SELECT COUNT(*) AS cnt FROM dbo.TblinvServHead WHERE ClientID=@id;');
+        if (Number(leftover.recordset[0]?.cnt) !== 0) {
+          fail('cleanup refused: synthetic client still has a paid invoice');
+        }
+        await pool.request()
+          .input('id', sql.Int, smokeClientId)
+          .input('tenant', sql.UniqueIdentifier, smokeTenantId)
+          .query(`
+            DELETE FROM dbo.TblClientLoyalty WHERE ClientID=@id;
+            DELETE FROM dbo.TblLoyaltyPointLedger WHERE ClientID=@id;
+            DELETE FROM dbo.TblClient
+            WHERE ClientID=@id AND TenantId=@tenant
+              AND Name=N'DRVO008-SMOKE' AND Notes=N'DRVO008-SMOKE';
+          `);
+        const remaining = await pool.request()
+          .input('id', sql.Int, smokeClientId)
+          .query('SELECT COUNT(*) AS cnt FROM dbo.TblClient WHERE ClientID=@id;');
+        if (Number(remaining.recordset[0]?.cnt) !== 0) {
+          fail('synthetic client cleanup left a row');
+        }
+        console.log('CLEANUP: removed synthetic staging client', smokeClientId);
       } catch (cleanupErr) {
-        console.error('CLEANUP client failed', cleanupErr);
+        cleanupFailed = true;
+        console.error('DRVO-008 CLIENT CLEANUP FAILURE:', cleanupErr);
       }
     }
-    await closePool();
+    // Avoid a background pages-sync pool close masking a real smoke exception.
+    let closeTimer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        closePool(),
+        new Promise<never>((_, reject) => {
+          closeTimer = setTimeout(() => reject(new Error('staging SQL pool close timed out')), 15000);
+          closeTimer.unref();
+        }),
+      ]);
+    } catch (closeErr) {
+      cleanupFailed = true;
+      console.error('DRVO-008 POOL CLOSE FAILURE:', closeErr);
+    } finally {
+      if (closeTimer) clearTimeout(closeTimer);
+    }
+    if (cleanupFailed) {
+      process.exitCode = 1;
+      console.error('DRVO-008 NO-GO: staging fixture not fully reconciled');
+    }
   }
 }
 
-main().catch((err) => {
-  console.error(err);
+main().then(() => {
+  console.log('DRVO-008 POS STAGING SCRIPT DONE');
+  process.exit(process.exitCode ?? 0);
+}).catch((err) => {
+  console.error('DRVO-008 POS STAGING SCRIPT FAILED:', err);
   process.exit(1);
 });
