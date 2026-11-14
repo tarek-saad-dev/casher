@@ -127,7 +127,14 @@ async function main() {
     }
     console.log('PASS: legacy update/delete/snapshot are distinct from the POS repository');
 
-    const shift = await pool.request().query(`
+    // Pick a REAL staging shift that can successfully complete a paid service
+    // sale. A plain TOP 1 shift might belong to a new/empty tenant with no
+    // priced service or active assigned barber (false DRVO-008 failure).
+    // All required entities must belong to the SAME branch and TenantId.
+    const splitCfg = await resolveSplitPaymentConfig(pool);
+    const shift = await pool.request()
+      .input('clearing', sql.Int, splitCfg.clearingMethodId)
+      .query(`
       SELECT TOP 1
         sm.ID AS shiftMoveId,
         sm.UserID AS userId,
@@ -143,10 +150,38 @@ async function main() {
       JOIN dbo.Location l ON l.LegacyBranchId = sm.BranchID
       JOIN dbo.Tenant t ON t.TenantId = l.TenantId AND t.Status = N'active'
       WHERE sm.Status = 1
+        AND EXISTS (
+          SELECT 1 FROM dbo.TenantMembership m
+          WHERE m.TenantId = l.TenantId AND m.LegacyUserId = sm.UserID
+        )
+        AND EXISTS (
+          SELECT 1
+          FROM dbo.TblPro p
+          LEFT JOIN dbo.TblCat c ON c.CatID = p.CatID
+            AND c.TenantId = l.TenantId
+          WHERE p.TenantId = l.TenantId
+            AND ISNULL(p.isDeleted, 0) = 0
+            AND CAST(ISNULL(p.SPrice1, 0) AS decimal(10, 2)) > 0
+            AND LOWER(LTRIM(RTRIM(ISNULL(c.CatType, N'')))) <> N'pro'
+            AND LOWER(LTRIM(RTRIM(ISNULL(p.ProType, N'')))) NOT IN (N'pro',N'product')
+        )
+        AND EXISTS (
+          SELECT 1
+          FROM dbo.TblEmpBranchAssignment ea
+          JOIN dbo.TblEmp e ON e.EmpID = ea.EmpID
+            AND e.TenantId = l.TenantId AND ISNULL(e.isActive, 1) = 1
+          WHERE ea.BranchID = sm.BranchID AND ea.IsActive = 1
+            AND ea.EffectiveFrom <= nd.NewDay
+            AND (ea.EffectiveTo IS NULL OR ea.EffectiveTo >= nd.NewDay)
+        )
+        AND EXISTS (
+          SELECT 1 FROM dbo.TblPaymentMethods pm
+          WHERE pm.TenantId = l.TenantId AND pm.PaymentID <> @clearing
+        )
       ORDER BY sm.ID DESC
     `);
     const open = shift.recordset[0];
-    if (!open) fail('no open shift on staging');
+    if (!open) fail('no tenant-owned open shift with an eligible service, assigned barber and payment method on staging');
     const branchId = Number(open.branchId);
     const tenantId = String(open.tenantId);
     if (!/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(tenantId)) {
@@ -172,7 +207,7 @@ async function main() {
         CAST(ISNULL(p.SPrice1, 0) AS decimal(10, 2)) AS price,
         e.EmpID AS empId
       FROM dbo.TblPro p
-      LEFT JOIN dbo.TblCat c ON c.CatID = p.CatID
+      LEFT JOIN dbo.TblCat c ON c.CatID = p.CatID AND c.TenantId = @tenantId
       JOIN dbo.TblEmpBranchAssignment ea ON ea.BranchID = @branchId
         AND ea.IsActive = 1 AND ea.EffectiveFrom <= @day
         AND (ea.EffectiveTo IS NULL OR ea.EffectiveTo >= @day)
@@ -191,7 +226,7 @@ async function main() {
     const empId = Number(line.empId);
     const price = Number(line.price);
 
-    const splitCfg = await resolveSplitPaymentConfig(pool);
+
     const payMethod = await pool
       .request()
       .input('clearing', sql.Int, splitCfg.clearingMethodId)
