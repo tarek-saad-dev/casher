@@ -1,4 +1,5 @@
 import 'server-only';
+import { ensureStaffBookingLifecycleTable } from '@/lib/employee-portal/bookingLifecycle';
 import { getPool, sql } from '@/lib/db';
 import {
   cairoTodayIso,
@@ -43,6 +44,7 @@ export async function getMaskedTodayBookingsForEmployee(input: {
     console.warn('[todayBookings] handoff table ensure skipped', err);
   }
 
+  await ensureStaffBookingLifecycleTable();
   const pool = await getPool();
   const result = await pool
     .request()
@@ -55,6 +57,7 @@ export async function getMaskedTodayBookingsForEmployee(input: {
         b.StartTime,
         b.EndTime,
         b.Status,
+        l.Phase AS StaffPhase,
         c.[Name] AS ClientName,
         br.BranchName,
         (
@@ -77,6 +80,7 @@ export async function getMaskedTodayBookingsForEmployee(input: {
         ) AS HandoffStatus
       FROM dbo.Bookings b
       INNER JOIN dbo.TblEmp e ON e.EmpID = b.AssignedEmpID
+      LEFT JOIN dbo.TblBookingStaffLifecycle l ON l.BookingID = b.BookingID
       LEFT JOIN dbo.TblClient c ON c.ClientID = b.ClientID
       LEFT JOIN dbo.TblBranch br ON br.BranchID = b.BranchID
       WHERE b.AssignedEmpID = @empId
@@ -95,6 +99,7 @@ export async function getMaskedTodayBookingsForEmployee(input: {
     BranchName: string | null;
     ServiceNamesRaw: string | null;
     HandoffStatus: string | null;
+    StaffPhase: 'arrived' | 'in_service' | 'finished' | null;
   }>).map((row) => ({
     bookingId: Number(row.BookingID),
     startTime: formatSqlTime(row.StartTime),
@@ -107,6 +112,7 @@ export async function getMaskedTodayBookingsForEmployee(input: {
       .filter(Boolean),
     branchName: row.BranchName ? String(row.BranchName) : null,
     handoffStatus: toHandoffBadge(row.HandoffStatus),
+    staffPhase: row.StaffPhase ?? 'scheduled',
   }));
 }
 
@@ -132,6 +138,7 @@ export async function getMaskedBookingDetailForEmployee(input: {
     console.warn('[todayBookings] handoff table ensure skipped', err);
   }
 
+  await ensureStaffBookingLifecycleTable();
   const pool = await getPool();
   const bookingRes = await pool
     .request()
@@ -145,6 +152,7 @@ export async function getMaskedBookingDetailForEmployee(input: {
         b.EndTime,
         b.Status,
         b.ConvertedInvID,
+        l.Phase AS StaffPhase,
         c.[Name] AS ClientName,
         br.BranchName,
         (
@@ -161,6 +169,7 @@ export async function getMaskedBookingDetailForEmployee(input: {
         ) AS HandoffStatus
       FROM dbo.Bookings b
       INNER JOIN dbo.TblEmp e ON e.EmpID = b.AssignedEmpID
+      LEFT JOIN dbo.TblBookingStaffLifecycle l ON l.BookingID = b.BookingID
       LEFT JOIN dbo.TblClient c ON c.ClientID = b.ClientID
       LEFT JOIN dbo.TblBranch br ON br.BranchID = b.BranchID
       WHERE b.BookingID = @bookingId
@@ -179,6 +188,7 @@ export async function getMaskedBookingDetailForEmployee(input: {
         ClientName: string | null;
         BranchName: string | null;
         HandoffStatus: string | null;
+    StaffPhase: 'arrived' | 'in_service' | 'finished' | null;
       }
     | undefined;
   if (!row) return null;
@@ -215,6 +225,7 @@ export async function getMaskedBookingDetailForEmployee(input: {
     ),
     branchName: row.BranchName ? String(row.BranchName) : null,
     handoffStatus,
+    staffPhase: row.StaffPhase ?? 'scheduled',
     services: (servicesRes.recordset as Array<{
       ProID: number;
       Qty: number | null;

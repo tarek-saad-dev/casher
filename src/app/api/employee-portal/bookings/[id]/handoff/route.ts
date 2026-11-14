@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getEmployeePortalIdentity } from '@/lib/employee-portal/auth';
+import { getStaffBookingPhase } from '@/lib/employee-portal/bookingLifecycle';
 import {
   normalizeHandoffServices,
   upsertEmployeeHandoff,
@@ -53,6 +54,10 @@ export async function POST(req: Request, { params }: Ctx) {
   }
 
   try {
+    const phase = await getStaffBookingPhase({ bookingId, empId: identity.empId, tenantId: identity.tenantId });
+    if (phase !== 'finished') {
+      return NextResponse.json({ error: 'أكد وصول العميل وبدء وإنهاء الخدمة قبل الإرسال للكاشير' }, { status: 409 });
+    }
     const result = await upsertEmployeeHandoff({
       bookingId,
       empId: identity.empId,

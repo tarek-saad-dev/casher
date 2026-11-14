@@ -53,6 +53,8 @@ export default function BookingHandoffSheet({ booking, open, onClose, onSent }: 
   const [canSend, setCanSend] = useState(true);
   const [handoffPending, setHandoffPending] = useState(booking.handoffStatus === 'pending');
   const [displayEndTime, setDisplayEndTime] = useState(booking.endTime);
+  const [staffPhase, setStaffPhase] = useState(booking.staffPhase ?? 'scheduled');
+  const [phaseSaving, setPhaseSaving] = useState(false);
 
   const selectedCount = useMemo(
     () => lines.filter((l) => l.selected).reduce((n, l) => n + l.qty, 0),
@@ -74,6 +76,7 @@ export default function BookingHandoffSheet({ booking, open, onClose, onSent }: 
         readOnly: boolean;
         handoffStatus: string;
         endTime?: string;
+        staffPhase?: 'scheduled' | 'arrived' | 'in_service' | 'finished';
       };
       setLines(
         (detail.services ?? []).map((s) => ({
@@ -85,6 +88,7 @@ export default function BookingHandoffSheet({ booking, open, onClose, onSent }: 
         })),
       );
       setDisplayEndTime(detail.endTime || booking.endTime);
+      setStaffPhase(detail.staffPhase ?? 'scheduled');
       setCanSend(Boolean(detail.canSend));
       setReadOnly(Boolean(detail.readOnly));
       setHandoffPending(detail.handoffStatus === 'pending');
@@ -103,6 +107,7 @@ export default function BookingHandoffSheet({ booking, open, onClose, onSent }: 
     setAddonCandidate(null);
     setAddonPreview(null);
     setDisplayEndTime(booking.endTime);
+    setStaffPhase(booking.staffPhase ?? 'scheduled');
     setToast('');
   }, [open, loadDetail]);
 
@@ -129,6 +134,31 @@ export default function BookingHandoffSheet({ booking, open, onClose, onSent }: 
     return () => window.clearTimeout(id);
   }, [catalogOpen, catalogQuery, loadCatalog]);
 
+
+  async function advancePhase(action: 'arrive' | 'start' | 'finish') {
+    if (phaseSaving || readOnly || handoffPending) return;
+    setPhaseSaving(true);
+    setError('');
+    try {
+      const res = await fetch('/api/employee-portal/bookings/' + booking.bookingId + '/lifecycle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || 'تعذر تحديث حالة الخدمة');
+      setStaffPhase(result.phase);
+      await loadDetail();
+      setToast(action === 'arrive' ? 'تم تأكيد وصول العميل'
+        : action === 'start' ? 'تم تسجيل بدء الخدمة'
+        : 'تم تأكيد انتهاء الخدمة — جاهزة للإرسال للكاشير');
+      onSent();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'تعذر تحديث حالة الخدمة');
+    } finally {
+      setPhaseSaving(false);
+    }
+  }
 
   async function checkAddon(service: CatalogService) {
     if (readOnly || !canSend || addonChecking || addonCommitting) return;
@@ -273,6 +303,44 @@ export default function BookingHandoffSheet({ booking, open, onClose, onSent }: 
           ) : null}
 
           {!loading ? (
+            <section className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-3">
+              <p className="mb-2 text-xs font-bold text-amber-200">حالة خدمة العميل</p>
+              <div className="mb-3 flex flex-wrap gap-1.5 text-[11px]">
+                {(['scheduled','arrived','in_service','finished'] as const).map((phase) => (
+                  <span key={phase} className={
+                    "rounded-lg px-2 py-1 " +
+                    (phase === staffPhase ? "bg-amber-400 text-zinc-950" : "bg-white/5 text-zinc-400")
+                  }>
+                    {{
+                      scheduled: 'محجوز', arrived: 'وصل', in_service: 'جارٍ التنفيذ',
+                      finished: 'تم التنفيذ',
+                    }[phase]}
+                  </span>
+                ))}
+              </div>
+              {!readOnly && !handoffPending && staffPhase !== 'finished' ? (
+                <button
+                  type="button"
+                  disabled={phaseSaving}
+                  onClick={() => void advancePhase(
+                    staffPhase === 'scheduled' ? 'arrive' : staffPhase === 'arrived' ? 'start' : 'finish'
+                  )}
+                  className="w-full rounded-xl bg-amber-400 px-3 py-2.5 text-sm font-bold text-zinc-950 disabled:opacity-50"
+                >
+                  {phaseSaving ? 'جاري الحفظ…' :
+                    staffPhase === 'scheduled' ? 'تأكيد وصول العميل' :
+                    staffPhase === 'arrived' ? 'بدء الخدمة' : 'إنهاء الخدمة'}
+                </button>
+              ) : (
+                <p className="text-xs text-zinc-300">
+                  {staffPhase === 'finished' ? 'الخدمة منتهية — راجع الخدمات قبل إرسالها للكاشير'
+                    : 'الطلب عند الكاشير بالفعل'}
+                </p>
+              )}
+            </section>
+          ) : null}
+
+          {!loading ? (
             <section className="space-y-2">
               <h2 className="text-xs font-bold text-zinc-400">الخدمات</h2>
               {lines.length === 0 ? (
@@ -410,11 +478,11 @@ export default function BookingHandoffSheet({ booking, open, onClose, onSent }: 
           </p>
           <button
             type="button"
-            disabled={muted || selectedCount === 0 || sending || loading || addonCommitting}
+            disabled={muted || staffPhase !== 'finished' || selectedCount === 0 || sending || loading || addonCommitting || phaseSaving}
             onClick={() => setConfirmOpen(true)}
             className="w-full rounded-2xl bg-amber-400 px-4 py-3 text-sm font-black text-zinc-950 disabled:opacity-40"
           >
-            {handoffPending ? 'تحديث الإرسال' : 'إرسال للكاشير'}
+            {handoffPending ? 'تحديث الإرسال' : staffPhase === 'finished' ? 'إنهاء وإرسال للكاشير' : 'أنهِ الخدمة أولًا'}
           </button>
         </footer>
       </div>
