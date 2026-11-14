@@ -112,7 +112,7 @@ describe('persistent POST /api/sales request token across both POS writers (#246
     expect(code).toContain('InvalidUsedInvoice');
     expect(code).toContain('InvalidCommittedRequest');
     expect(code).toContain('for (const name of defects)');
-    expect(code).not.toMatch(/\\b(?:INSERT|UPDATE|DELETE)\\s+(?:INTO\\s+|FROM\\s+)?dbo\\./i);
+    expect(code).not.toMatch(/\b(?:INSERT|UPDATE|DELETE)\s+(?:INTO\s+|FROM\s+)?dbo\./i);
     expect(code).toContain('not an E2E proof');
   });
 
