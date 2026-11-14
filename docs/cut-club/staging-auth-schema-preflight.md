@@ -80,3 +80,22 @@ DONE: documented source mismatch, schema-only inspection, proposed tables and co
 BLOCKED: B1 independent security review, tenant-client authority proof, OTP provider/channel/operating cost, session lifetime decision, real manifest migration and staging DB verification.
 
 No connections, production database operations, OTP sends, customer/booking mutations or merges were performed.
+
+## Update: executable **offline** metadata checker (2026-11-14)
+
+Added `scripts/cut-club/customer-auth-schema-preflight.mjs` and Node test fixtures to the **existing Draft PR #259**, with a targeted CI step. The utility has NO DB driver, network access, SQL execution or credentials:
+
+```sh
+# Print a guarded, metadata-only SQL statement for an authorized operator.
+node scripts/cut-club/customer-auth-schema-preflight.mjs --sql
+
+# Optional: inspect a sanitized JSON result captured from the DEDICATED
+# staging executor; do not upload sensitive rows or run in production.
+node scripts/cut-club/customer-auth-schema-preflight.mjs --check sanitized-staging-metadata.json
+```
+
+The SQL refuses anything except `last132_agent` / `drvo_agent` and reads only `sys.tables`, `sys.columns`, `sys.types`, `sys.foreign_keys`. The offline checker verifies expected `dbo.Tenant`, `dbo.LegacyIdMap` and `dbo.TblClient` column **types and metadata** and the mapping table's FK to Tenant. It never inspects any customer row. It accepts only metadata JSON; an invalid shape or incorrect database/login fails closed.
+
+**A successful schema fingerprint is NOT identity proof.** Every result includes `customerIdentityProven: false` and `readyToIssueOtp: false`, even if all expected tables exist. It does not prove that `LegacyIdMap` maps all CUT Salon customers, disambiguates shared phone numbers, or that CustomerSession/Challenge schemas are safe. A separate source-of-truth review, real staging concurrency validation and provider decision are still mandatory before any OTP use.
+
+No query was executed on staging or production by this update; no migration was added or applied. Previous status lines describing the original preflight as documentation-only refer to the initial commit; the *current* PR now contains this offline operator tool and tests.
