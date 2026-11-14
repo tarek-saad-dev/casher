@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
-  PRINT_SERVICE_URL, checkLocalPrintServiceHealth, type PrintErrorCode,
+  PRINT_SERVICE_URL, getLocalAgentHealth, REQUIRED_AGENT_VERSION, type PrintErrorCode,
 } from '@/lib/localPrintClient';
 
 export function isLocalAgentConnectionError(code: PrintErrorCode | null | undefined): boolean {
@@ -23,7 +23,7 @@ type Props = {
   compact?: boolean;
 };
 
-type CheckState = 'idle' | 'checking' | 'connected' | 'disconnected';
+type CheckState = 'idle' | 'checking' | 'connected' | 'disconnected' | 'outdated';
 type PrinterLocation = 'this-device' | 'another-device';
 
 const TASK_NAME = 'CUT Salon Print Agent';
@@ -39,9 +39,13 @@ export default function LocalPrintConnectionHelp({ onReconnect, errorCode, compa
   async function checkConnection() {
     if (checkState === 'checking') return;
     setCheckState('checking');
-    const alive = await checkLocalPrintServiceHealth(2200);
-    setCheckState(alive ? 'connected' : 'disconnected');
-    if (alive && onReconnect) {
+    let status: CheckState = 'disconnected';
+    try {
+      const health = await getLocalAgentHealth(2500);
+      status = health.version === REQUIRED_AGENT_VERSION ? 'connected' : 'outdated';
+    } catch { /* Browser CORS/LNA and offline Agent both fail fetch. */ }
+    setCheckState(status);
+    if (status === 'connected' && onReconnect) {
       try { await onReconnect(); }
       catch { /* This is not printer readiness; settings errors remain visible separately. */ }
     }
@@ -67,7 +71,7 @@ export default function LocalPrintConnectionHelp({ onReconnect, errorCode, compa
         <div className="min-w-0 flex-1">
           <h3 className="text-sm font-bold sm:text-base">خدمة الطباعة غير متصلة — حلها في 3 خطوات</h3>
           <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-            Cashier مش قادر يتصل بخدمة الطباعة على الكمبيوتر ده. من المتصفح لوحده
+            Cashier مش قادر يتصل بخدمة الطباعة على الكمبيوتر ده. جرّب فحص الاتصال بإذن منك؛ من المتصفح لوحده
             ما نقدرش نحدد هل مهمة Windows مش موجودة ولا موجودة ومتوقفة؛ أداة التثبيت بتفحص ده على جهازك.
           </p>
         </div>
@@ -113,7 +117,7 @@ export default function LocalPrintConnectionHelp({ onReconnect, errorCode, compa
                 <strong>نزّل أداة CUT Print Agent</strong>، وبعد التنزيل اضغط كليك يمين على الملف
                 واختر <strong>Run with PowerShell</strong> على الكمبيوتر الحالي.
                 <p className="mt-1 text-xs text-muted-foreground">
-                  الأداة هتفحص مهمة {TASK_NAME} في Task Scheduler. لو موجودة بتحاول تشغّلها، ولو مش موجودة بتثبتها وتشغّلها.
+                  الأداة هتفحص مهمة {TASK_NAME} في Task Scheduler. لو موجودة بتحاول تشغّلها، ولو مش موجودة بتثبتها وتشغّلها. لو الإصدار قديم بتعمل تحديث مع نسخة احتياطية واسترجاع عند الفشل.
                   مش هتطبع أي ورق أثناء التثبيت.
                 </p>
                 <a href={INSTALLER_URL} download="Install-CUT-Print-Agent.ps1"
@@ -183,6 +187,11 @@ export default function LocalPrintConnectionHelp({ onReconnect, errorCode, compa
           <span>الخدمة بتستجيب على الجهاز الحالي. الاتصال فقط اتأكد، مش خروج ورقة فعلية؛ اطبع اختبارًا واحدًا من زر الطباعة المعتاد.</span>
         </div>
       )}
+      {printerLocation === 'this-device' && checkState === 'outdated' && (
+        <div role="alert" className="mt-3 rounded-lg border border-amber-500/30 bg-background/60 p-3 text-xs">
+          نسخة Print Agent قديمة. نزّل أداة V2 وشغّلها لتحديث النسخة مع الحفاظ على الإعدادات، ثم أعد فحص الاتصال.
+        </div>
+      )}
       {printerLocation === 'this-device' && checkState === 'disconnected' && (
         <div role="status" className="mt-3 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-background/60 p-3 text-xs">
           <TriangleAlert className="size-4 shrink-0 text-amber-600" aria-hidden/>
@@ -201,7 +210,7 @@ export default function LocalPrintConnectionHelp({ onReconnect, errorCode, compa
             <p>لو البرنامج طلب تعريف XP-80 أو Node.js، ثبّتهم على الجهاز الحالي أولًا ثم شغّل الملف مرة تانية.</p>
             <p>لو مهمة Windows متثبتة لكنها مش بتشتغل، افتح Task Scheduler وابحث عن <strong>{TASK_NAME}</strong>، واضغط Run.</p>
             <code dir="ltr" className="block max-w-full overflow-x-auto rounded-lg bg-muted p-2 text-[11px] text-foreground">{START_COMMAND}</code>
-            <p>لو رابط الفحص بيظهر <code>"status":"ok"</code> لكن الموقع مش بيتصل، اسمح لموقع Cashier بالوصول للشبكة المحلية في Chrome، وراجع إعدادات <code>ALLOWED_ORIGINS</code> مع مسؤول النظام.</p>
+            <p>لو رابط الفحص بيظهر <code>"status":"ok"</code> لكن الموقع مش بيتصل، اسمح لموقع Cashier بصلاحية Loopback network من إعدادات Chrome، وراجع إعدادات <code>ALLOWED_ORIGINS</code> مع مسؤول النظام.</p>
             {errorCode === 'CORS_BLOCKED' && <p>خطأ CORS: لازم مصدر الموقع الرسمي يكون ضمن إعدادات Agent المسموحة.</p>}
           </div>
         )}

@@ -9,6 +9,8 @@ const { buildReceiptHTML } = require('./receipt-template');
 const { printPdf, getAdapterMode } = require('./printerAdapter');
 const { buildEscPosFromPng } = require('./escpos');
 const { printRawEscPos } = require('./rawPrinterAdapter');
+const { diagnoseWindowsPrinter } = require('./printerDiagnostics');
+const AGENT_VERSION = require('./package.json').version;
 const { createSettingsStore, assertAllowed, TYPES } = require('./printSettings');
 const printSettings = createSettingsStore();
 
@@ -23,6 +25,16 @@ const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS ||
 ).split(',').map((s) => s.trim()).filter(Boolean);
 
 app.use(express.json({ limit: '10mb' }));
+// Legacy Private Network Access preflight: allow only the explicitly trusted site.
+// Never expose this to arbitrary origins or to non-loopback listeners.
+app.use((req, res, next) => {
+  const origin = req.get('Origin');
+  if (req.method === 'OPTIONS' && origin && ALLOWED_ORIGINS.includes(origin)
+      && req.get('Access-Control-Request-Private-Network') === 'true') {
+    res.set('Access-Control-Allow-Private-Network', 'true');
+  }
+  return next();
+});
 app.use(cors({
   origin(origin, callback) {
     // Allow non-browser clients (curl/PowerShell) that send no Origin
@@ -277,7 +289,7 @@ app.get('/health', (req, res) => {
     status: 'ok',
     ok: true,
     service: 'pos-print-service',
-    version: '1.1.0',
+    version: AGENT_VERSION,
     printer: PRINTER_NAME,
     adapter: getAdapterMode(),
     engine: PRINT_ENGINE,
@@ -287,9 +299,16 @@ app.get('/health', (req, res) => {
   });
 });
 
+// Read-only spooler diagnostics; Windows queue acceptance is not proof of paper.
+app.get('/diagnostics', async (_req, res) => {
+  const result = await diagnoseWindowsPrinter(PRINTER_NAME);
+  return res.json({ ok: true, agentVersion: AGENT_VERSION, ...result });
+});
+
 // This page controls the LOCAL Windows PC, not other branches or the VPS.
 app.get('/settings', (req, res) => res.json({
   ok: true,
+  version: AGENT_VERSION,
   ...printSettings.get(),
   printer: PRINTER_NAME,
   engine: PRINT_ENGINE,

@@ -1,4 +1,5 @@
 // Local Print Service Integration
+import { fetchLocalPrintAgent } from '@/lib/localPrintClient';
 const PRINT_SERVICE_URL = 'http://127.0.0.1:7788';
 
 export interface PrintReceiptData {
@@ -44,7 +45,7 @@ async function isLocalPrintServiceAvailable(): Promise<boolean> {
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 1500);
-    const res = await fetch(`${PRINT_SERVICE_URL}/health`, {
+    const res = await fetchLocalPrintAgent(`${PRINT_SERVICE_URL}/health`, {
       method: 'GET',
       signal: controller.signal,
     });
@@ -66,7 +67,7 @@ async function sendToLocalPrintService(data: PrintReceiptData): Promise<PrintSer
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15000);
 
-  const res = await fetch(`${PRINT_SERVICE_URL}/print/receipt`, {
+  const res = await fetchLocalPrintAgent(`${PRINT_SERVICE_URL}/print/receipt`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
