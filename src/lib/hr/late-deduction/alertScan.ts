@@ -1,10 +1,9 @@
 import 'server-only';
 
 import { getPool, sql } from '@/lib/db';
-import { getCairoBusinessDate, getCairoTimeStr, SALON_TZ } from '@/lib/businessDate';
+import { getCairoBusinessDate, getCairoTimeStr } from '@/lib/businessDate';
 import { calcLateMinutes } from '@/lib/timeUtils';
-import { resolveScheduleForDay } from '@/lib/hr/attendance-eligibility';
-import { normalizeEmploymentType } from '@/lib/hr/employee-hr-model';
+import { financialScheduleDayOfWeek, resolveFinancialWorkScheduleRow } from './financialWorkSchedule';
 import { isLateDeductionExcludedAttendanceStatus } from './attendanceStatus';
 import {
   getLateDeductionConfig,
@@ -133,24 +132,12 @@ export async function runLateDeductionAlertScan(params?: {
     });
 
     const nowHhmm = getCairoTimeStr(now).slice(0, 5);
-    const dayOfWeek = (() => {
-      // Sunday=0 … Saturday=6 in Cairo
-      const parts = new Intl.DateTimeFormat('en-US', {
-        timeZone: SALON_TZ,
-        weekday: 'short',
-      }).formatToParts(now);
-      const wd = parts.find((p) => p.type === 'weekday')?.value ?? 'Sun';
-      const map: Record<string, number> = {
-        Sun: 0,
-        Mon: 1,
-        Tue: 2,
-        Wed: 3,
-        Thu: 4,
-        Fri: 5,
-        Sat: 6,
-      };
-      return map[wd] ?? 0;
-    })();
+    // Match the *business* workday, including 00:00–03:59 Cairo next calendar day.
+    const dayOfWeek = financialScheduleDayOfWeek(workDate);
+    if (dayOfWeek === null) {
+      return { candidates: 0, notified: 0, errors: 1, workDate, reason: 'invalid_work_date' }
+        satisfies LateAlertScanResult;
+    }
 
     const req = db
       .request()
@@ -171,13 +158,16 @@ export async function runLateDeductionAlertScan(params?: {
         END AS LateDeductionExempt,
         a.BranchID AS HomeBranchID,
         s.BranchID AS ScheduleBranchID,
-        s.IsWorking AS IsWorkingDay,
-        CONVERT(VARCHAR(5), s.StartTime, 108) AS ScheduleStartTime,
-        CONVERT(VARCHAR(5), s.EndTime, 108) AS ScheduleEndTime,
+        fin.DayOfWeek AS ScheduleDayOfWeek,
+        fin.IsWorkingDay,
+        CONVERT(VARCHAR(5), fin.StartTime, 108) AS ScheduleStartTime,
+        CONVERT(VARCHAR(5), fin.EndTime, 108) AS ScheduleEndTime,
         att.AttendanceID,
         CONVERT(VARCHAR(8), att.CheckInTime, 108) AS CheckInTime,
         att.Status AS AttendanceStatus
       FROM dbo.TblEmp e
+      LEFT JOIN dbo.TblEmpWorkSchedule fin
+        ON fin.EmpID=e.EmpID AND fin.DayOfWeek=@dow
       OUTER APPLY (
         SELECT TOP 1 ea.BranchID
         FROM dbo.TblEmpBranchAssignment ea
@@ -229,15 +219,14 @@ export async function runLateDeductionAlertScan(params?: {
     for (const row of employees.recordset as Array<Record<string, unknown>>) {
       try {
         const empId = Number(row.EmpID);
-        const employmentType = normalizeEmploymentType(String(row.EmploymentType ?? '')) ?? 'full_time';
-        const schedule = resolveScheduleForDay(employmentType, {
-          hasScheduleRow: row.ScheduleStartTime != null || row.IsWorkingDay != null,
-          isWorkingDayFromSchedule:
-            row.IsWorkingDay == null ? null : Boolean(row.IsWorkingDay),
-          scheduleStart: (row.ScheduleStartTime as string) || null,
-          scheduleEnd: (row.ScheduleEndTime as string) || null,
-          defaultStart: (row.DefaultCheckInTime as string) || null,
-          defaultEnd: (row.DefaultCheckOutTime as string) || null,
+        const schedule = resolveFinancialWorkScheduleRow({
+          EmploymentType: String(row.EmploymentType ?? ''),
+          ScheduleDayOfWeek: row.ScheduleDayOfWeek as number | null,
+          IsWorkingDay: row.IsWorkingDay as number | boolean | null,
+          ScheduleStartTime: row.ScheduleStartTime as string | null,
+          ScheduleEndTime: row.ScheduleEndTime as string | null,
+          DefaultCheckInTime: row.DefaultCheckInTime as string | null,
+          DefaultCheckOutTime: row.DefaultCheckOutTime as string | null,
         });
 
         if (!schedule.isScheduledWorkingDay || !schedule.scheduledStart) continue;

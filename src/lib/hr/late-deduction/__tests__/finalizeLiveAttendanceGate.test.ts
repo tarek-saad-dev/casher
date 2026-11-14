@@ -17,6 +17,7 @@ const m = {
   upsertLedger: vi.fn(),
   exempt: vi.fn(async () => false),
   pay: vi.fn(async () => ({ dailyBasePay: 260, reason: null })),
+  financial: vi.fn(),
   claim: vi.fn(async () => true),
   release: vi.fn(),
   sendWa: vi.fn(async () => ({ sent: true, skipped: false })),
@@ -57,6 +58,9 @@ vi.mock('../ledger', () => ({
 vi.mock('../dailyBasePay', () => ({
   resolveLateDeductionDailyBasePay: (...a: unknown[]) => m.pay(...a),
 }));
+vi.mock('../financialWorkSchedule', () => ({
+  resolveEmployeeFinancialWorkSchedule: (...a: unknown[]) => m.financial(...a),
+}));
 vi.mock('../whatsapp', () => ({
   sendLateDeductionWhatsApp: (...a: unknown[]) => m.sendWa(...a),
 }));
@@ -95,6 +99,7 @@ describe('finalizeLateDeductionOnCheckIn live attendance gate', () => {
     m.config.mockResolvedValue({ enabled: true, activationDate: '2020-01-01' });
     m.exempt.mockResolvedValue(false);
     m.pay.mockResolvedValue({ dailyBasePay: 260, reason: null });
+    m.financial.mockResolvedValue({ isScheduledWorkingDay: true, scheduledStart: '09:00', scheduledEnd: '18:00' });
     m.findCase.mockResolvedValue({
       caseId: 9,
       status: 'alerting',
@@ -135,6 +140,21 @@ describe('finalizeLateDeductionOnCheckIn live attendance gate', () => {
       expect.anything(),
       expect.objectContaining({ status: 'skipped', amount: null, lateMinutes: 0 }),
     );
+  });
+
+  it('voids instead of charging on an HR financial day off despite booking allocation', async () => {
+    m.financial.mockResolvedValueOnce({
+      isScheduledWorkingDay: false, scheduledStart: null, scheduledEnd: null,
+    });
+    const { finalizeLateDeductionOnCheckIn } = await import('../finalizeOnCheckIn');
+    const result = await finalizeLateDeductionOnCheckIn({
+      empId: 1, branchId: 10, workDate: '2026-11-08', attendanceId: 55,
+      checkInTime: '10:30', scheduledStart: '09:00', scheduledEnd: '18:00',
+      suppressWhatsApp: true,
+    });
+    expect(result.reason).toBe('financial_workday_not_scheduled');
+    expect(m.voidLedger).toHaveBeenCalled();
+    expect(m.upsertLedger).not.toHaveBeenCalled();
   });
 
   it('voids instead of charging when live check-in was cleared', async () => {
