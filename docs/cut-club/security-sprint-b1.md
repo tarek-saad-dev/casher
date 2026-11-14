@@ -52,6 +52,25 @@ Proposed flow:
 
 A server-to-server assertion from predecessor PR #251 **may** be useful but its security semantics are not approved: identify issuer/audience, lifetime, replay protection, authorized tenant, and when session is revoked. Do not implicitly use it as a customer browser session.
 
+## Atomic transition contract verified in offline tests
+
+The proposed adapter now includes `loadChallenge` and a pure
+`verifyOtpAfterAtomicCommit` boundary that only accepts a correct code
+**after** `commitAttempt` reports a successful tenant-scoped,
+revision-guarded transition to `consumed`.
+
+Synthetic concurrent tests submit two correct attempts against the same
+challenge using a fake compare-and-swap store and assert **at most one
+acceptance**. Wrong attempts update a fake attempt counter without
+granting a session. A mismatched tenant, missing pepper, failed CAS or
+thrown repository error is rejected.
+
+This is a **contract simulation, not proof of SQL atomicity**. Real B2
+requires durable SQL Server transactions on last132_agent, concurrent
+multiworker tests, rate-limit persistence, verified account ownership
+and an approved OTP provider/session policy. There is still no HTTP
+OTP route, session cookie or customer data mutation in B1.
+
 ## Tests and gates
 
 \`src/lib/__tests__/cutClubOtpDomain.test.ts\` tests creation, secret checks, TTL, one-time consume, lockout after 5 wrong attempts, replacement and provider failure invalidation, tenant mismatch, duplicate/shared phone rejection, session token randomness and revoked/expired/foreign record denial.
