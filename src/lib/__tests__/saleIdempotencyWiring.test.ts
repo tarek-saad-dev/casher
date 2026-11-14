@@ -316,4 +316,26 @@ describe('persistent POST /api/sales request token across both POS writers (#246
     expect(review).toContain('No programmatic tool may fill a human approval');
   });
 
+  it('DRVO-008 selects a tenant-owned eligible operational shift, not arbitrary latest shift', () => {
+    const source = get('scripts/drvo-008-pos-staging-smoke.ts');
+    const start = source.indexOf('const shift = await pool.request()');
+    const end = source.indexOf('const open = shift.recordset[0]', start);
+    expect(start).toBeGreaterThan(0);
+    expect(end).toBeGreaterThan(start);
+    const selection = source.slice(start, end);
+    expect(selection).toContain('WHERE sm.Status = 1');
+    expect(selection).toContain('FROM dbo.TenantMembership m');
+    expect(selection).toContain('m.TenantId = l.TenantId');
+    expect(selection).toContain('FROM dbo.TblPro p');
+    expect(selection).toContain('p.TenantId = l.TenantId');
+    expect(selection).toContain('FROM dbo.TblEmpBranchAssignment ea');
+    expect(selection).toContain('e.TenantId = l.TenantId');
+    expect(selection).toContain('FROM dbo.TblPaymentMethods pm');
+    expect(selection).toContain('pm.TenantId = l.TenantId');
+    expect(selection).toContain('pm.PaymentID <> @clearing');
+    expect(selection).toContain('ORDER BY sm.ID DESC');
+    expect(source).toContain('AND c.TenantId = @tenantId');
+    expect(source).toContain('no tenant-owned open shift with an eligible service');
+  });
+
 });
