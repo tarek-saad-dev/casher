@@ -1,5 +1,6 @@
 import 'server-only';
 import { getPool, sql } from '@/lib/db';
+import { ensureBookingCashierHandoffTable } from '@/lib/booking/cashierHandoff';
 
 export type StaffBookingPhase = 'scheduled' | 'arrived' | 'in_service' | 'finished';
 export type StaffBookingAction = 'arrive' | 'start' | 'finish';
@@ -42,6 +43,7 @@ export async function advanceStaffBookingPhase(input: {
   const transition = STAFF_BOOKING_TRANSITIONS[input.action];
   if (!transition) return { ok: false, status: 409, error: 'حالة خدمة غير صالحة' };
   try {
+    await ensureBookingCashierHandoffTable();
     await ensureStaffBookingLifecycleTable();
     const pool = await getPool();
     const tx = pool.transaction();
