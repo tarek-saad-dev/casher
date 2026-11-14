@@ -11,6 +11,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import CustomerSourceFields from '@/components/pos/CustomerSourceFields';
+import CustomerProfileFields from '@/components/pos/CustomerProfileFields';
+import { validateCustomerProfile, isCustomerProfileIncomplete, type CustomerProfileDraft } from '@/lib/customerProfile';
 import {
   isCustomerSourceMissing,
   isKnownCustomerSource,
@@ -48,12 +50,23 @@ export default function CompleteCustomerModal({
   const [referralCode, setReferralCode] = useState(customer.ReferralCode ?? '');
   const [sourceErrors, setSourceErrors] = useState<Record<string, string>>({});
   const [sourceChanged, setSourceChanged] = useState(false);
+  const [profile, setProfile] = useState<CustomerProfileDraft>({
+    customerCategory: customer.CustomerCategory === 'student' || customer.CustomerCategory === 'adult'
+      ? customer.CustomerCategory : null,
+    educationLevel: customer.EducationLevel === 'school' || customer.EducationLevel === 'college'
+      ? customer.EducationLevel : null,
+    institutionName: customer.InstitutionName ?? '',
+    occupation: customer.Occupation ?? '',
+  });
+  const [profileErrors, setProfileErrors] = useState<Record<string, string>>({});
+  const [profileChanged, setProfileChanged] = useState(false);
   const [saving,    setSaving]    = useState(false);
   const [error,     setError]     = useState('');
 
   const missingBirthDate = !customer.BirthDate;
   const missingAddress   = !customer.Address;
   const missingSource    = isCustomerSourceMissing(customer.CameFrom);
+  const missingProfile   = isCustomerProfileIncomplete(customer);
 
   async function handleSave() {
     setSaving(true);
@@ -96,6 +109,20 @@ export default function CompleteCustomerModal({
         payload.referralCode = sourceValidation.referralCode;
       }
 
+      if (profileChanged) {
+        const validatedProfile = validateCustomerProfile(
+          profile.customerCategory, profile.educationLevel, profile.institutionName, profile.occupation
+        );
+        if (Object.keys(validatedProfile.errors).length) {
+          setProfileErrors(validatedProfile.errors);
+          return;
+        }
+        payload.customerCategory = validatedProfile.customerCategory;
+        payload.educationLevel = validatedProfile.educationLevel;
+        payload.institutionName = validatedProfile.institutionName;
+        payload.occupation = validatedProfile.occupation;
+      }
+
       if (Object.keys(payload).length === 0) {
         onClose();
         return;
@@ -120,7 +147,7 @@ export default function CompleteCustomerModal({
 
   return (
     <Dialog open onOpenChange={(v) => { if (!v) onClose(); }}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md max-h-[90dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2" dir="rtl">
             {isEditMode ? (
@@ -230,6 +257,19 @@ export default function CompleteCustomerModal({
               </div>
             )}
           </div>
+
+          {(isEditMode || missingProfile) && (
+            <CustomerProfileFields
+              value={profile}
+              errors={profileErrors}
+              showMissing={!isEditMode && missingProfile}
+              onChange={(next) => {
+                setProfile(next);
+                setProfileChanged(true);
+                setProfileErrors({});
+              }}
+            />
+          )}
 
           {/* Source selection */}
           {(isEditMode || missingSource) && (

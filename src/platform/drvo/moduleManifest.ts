@@ -299,7 +299,7 @@ export const DRVO_MODULE_ROLLOUT: DrvoModuleRolloutSpec[] = [
     classification: 'always_on_infrastructure',
     classificationRationale:
       'DRVO-015 tenant ownership of shared master data (customers, services, categories, packages, payment methods, expense categories; TblEmp column only). Every repository read/write is bound to the authoritative TenantId; no strangler path. CUT data is backfilled to CASHER_BOOT by migration.',
-    requiredMigrationKeys: ['platform-core', 'platform-bootstrap', 'master-data-tenancy'],
+    requiredMigrationKeys: ['platform-core', 'platform-bootstrap', 'master-data-tenancy', 'customer-education-occupation-profile'],
     dependencies: ['platform-core'],
     readinessCheckIds: [
       'migration.platform-core',

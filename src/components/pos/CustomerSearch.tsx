@@ -10,6 +10,8 @@ import {
   isCustomerIncomplete,
 } from '@/lib/customerSource';
 import type { Customer } from '@/lib/types';
+import { isCustomerProfileIncomplete } from '@/lib/customerProfile';
+import { formatCustomerProfileDisplay } from '@/lib/customerProfile';
 import { cn } from '@/lib/utils';
 
 interface CustomerSearchProps {
@@ -91,6 +93,7 @@ export default function CustomerSearch({
   }, [selected, updatedCustomer]);
 
   const missingSource = effectiveSelected && isCustomerSourceMissing(effectiveSelected.CameFrom);
+  const missingProfile = effectiveSelected && isCustomerProfileIncomplete(effectiveSelected);
   const hasMissingData = effectiveSelected && isCustomerIncomplete(effectiveSelected);
 
   if (effectiveSelected) {
@@ -124,6 +127,13 @@ export default function CustomerSearch({
                 <span className="truncate max-w-[200px]">{effectiveSelected.Notes}</span>
               </p>
             )}
+            {effectiveSelected.CustomerCategory && (
+              <p className="text-xs text-muted-foreground">
+                {formatCustomerProfileDisplay(effectiveSelected.CustomerCategory,
+                  effectiveSelected.EducationLevel, effectiveSelected.InstitutionName,
+                  effectiveSelected.Occupation)}
+              </p>
+            )}
             {effectiveSelected.CameFrom && (
               <p className="text-xs text-primary/90 flex items-center gap-1">
                 <Sparkles className="w-3 h-3" />
@@ -141,14 +151,17 @@ export default function CustomerSearch({
           >
             <AlertCircle className="w-3.5 h-3.5 shrink-0" />
             <span>
-              {missingSource && !effectiveSelected.BirthDate && !effectiveSelected.Address
-                ? 'بيانات ناقصة — مصدر العميل غير مسجل'
-                : 'بيانات ناقصة — اضغط لإتمامها'}
+              {missingProfile && !missingSource && effectiveSelected.BirthDate && effectiveSelected.Address
+                ? 'بيانات ناقصة — الدراسة أو الوظيفة غير مسجلة'
+                : missingSource && !effectiveSelected.BirthDate && !effectiveSelected.Address
+                  ? 'بيانات ناقصة — مصدر العميل غير مسجل'
+                  : 'بيانات ناقصة — اضغط لإتمامها'}
             </span>
             <span className="mr-auto flex gap-0.5">
               {!effectiveSelected.BirthDate && <span className="w-1.5 h-1.5 rounded-full bg-warning" />}
               {!effectiveSelected.Address   && <span className="w-1.5 h-1.5 rounded-full bg-warning" />}
               {missingSource                && <span className="w-1.5 h-1.5 rounded-full bg-warning" />}
+              {missingProfile               && <span className="w-1.5 h-1.5 rounded-full bg-warning" />}
             </span>
           </button>
         )}

@@ -21,7 +21,8 @@ jobs:
         github.event.pull_request.head.repo.full_name == github.repository &&
         (
           github.event.pull_request.head.ref == 'drvo-012-commercial-plans-tenant-apps' ||
-          github.event.pull_request.head.ref == 'feat/automatic-employee-late-deductions'
+          github.event.pull_request.head.ref == 'feat/automatic-employee-late-deductions' ||
+          github.event.pull_request.head.ref == 'feat/sales-customer-profile-completion'
         )
       )
     runs-on: ubuntu-latest
@@ -131,6 +132,9 @@ jobs:
         run: |
           set -euo pipefail
           npx tsx scripts/drvo/staging-gate-preflight.ts identity
+
+      - name: Read-only staging migration 23 collision diagnostic
+        run: npx tsx scripts/drvo/staging-gate-preflight.ts migration23
 
       - name: Apply DRVO migrations to staging only
         run: npm run drvo:migrate -- --expected-database=last132_agent
