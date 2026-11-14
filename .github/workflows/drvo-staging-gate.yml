@@ -158,6 +158,15 @@ jobs:
         timeout-minutes: 5
         run: npx tsx scripts/drvo/drvo248-referral-financial-audit-staging.ts
 
+      # Runs actual extracted/legacy SQL sale executors in one SERIALIZABLE
+      # transaction. All synthetic customer, invoice, reward, stock and cash
+      # writes are rolled back, and residual absence is asserted afterwards.
+      # Not a browser HTTP or independently audited production acceptance.
+      - name: CUT referral 248 SQL 50-20 both-writer transaction E2E (ROLLBACK)
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'feat/pos-sale-idempotency-246'
+        timeout-minutes: 10
+        run: npx tsx scripts/drvo/drvo248-referral-transaction-e2e-staging.ts
+
       - name: Verify migration 9 ledger
         run: |
           set -euo pipefail
