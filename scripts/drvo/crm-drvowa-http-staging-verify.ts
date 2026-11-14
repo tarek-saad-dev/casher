@@ -4,7 +4,7 @@
  * Runs only from the dedicated staging GitHub Action / drvo_agent SQL tunnel.
  * No pairing, token rotation, inserts, updates, sends, or production access.
  */
-import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { spawn, type ChildProcess } from 'node:child_process';
 import sql from 'mssql';
 
@@ -68,11 +68,12 @@ async function run(): Promise<void> {
   }
 
   const configuredToken = process.env.DRVO_STAGING_CONNECTOR_TOKEN?.trim();
-  if (existingTokenHash && !configuredToken) {
-    console.log('CASHIER_STAGING_HTTP_BLOCKED: staging database has a configured token; dedicated DRVO_STAGING_CONNECTOR_TOKEN not supplied');
+  if (!configuredToken) {
+    console.log('CASHIER_STAGING_HTTP_BLOCKED: dedicated staging connector bearer token not configured. SQL-contract gate is separate and remains valid.');
     return;
   }
-  const token = configuredToken ?? `ci_ephemeral_${randomBytes(20).toString('hex')}`;
+  // Never guess or replace a database-backed connector token.
+  const token = configuredToken;
   if (existingTokenHash
     && createHash('sha256').update(token).digest('hex') !== existingTokenHash) {
     throw new Error('Dedicated staging HTTP token does not match the staging DB hash');
