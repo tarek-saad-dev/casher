@@ -71,7 +71,7 @@ type LegacySaleCreateTransactionResult = {
   targetRecalcScopes: TargetRecalcScope[];
 };
 
-async function executeInRouteSaleCreateTransaction(
+export async function executeInRouteSaleCreateTransaction(
   transaction: Transaction,
   input: LegacySaleCreateTransactionInput,
 ): Promise<LegacySaleCreateTransactionResult> {
