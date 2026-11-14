@@ -5,6 +5,7 @@ import { Printer, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { createPrintRequestId, printHtmlViaLocalService, openBrowserPrintFallback, type PrintErrorCode } from '@/lib/localPrintClient';
 import LocalPrintConnectionHelp, { isLocalAgentConnectionError } from '@/components/printing/LocalPrintConnectionHelp';
+import MissingChromeRepairPrompt from '@/components/printing/MissingChromeRepairPrompt';
 import { validateReceiptTemplateV1 } from '@/lib/receipt-studio/template';
 import { renderStudioReceiptHtml, type StudioInvoiceModel } from '@/lib/receipt-studio/render';
 import { getPrintBrandHtml, usePrintBrand } from '@/lib/tenant/tenantBrandClient';
@@ -1058,6 +1059,8 @@ export default function PrintInvoiceModal({ open, invID, onClose }: PrintInvoice
             {printError && (
               <p role="alert" className="text-sm text-destructive mt-2">{printError}</p>
             )}
+            {/* Error-based recovery: never show Chrome download for other failures. */}
+            <MissingChromeRepairPrompt errorCode={printErrorCode} />
             {isLocalAgentConnectionError(printErrorCode) && (
               <div className="mt-3">
                 <LocalPrintConnectionHelp errorCode={printErrorCode} compact />
