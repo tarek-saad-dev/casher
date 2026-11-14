@@ -322,7 +322,7 @@ export async function POST(req: NextRequest) {
     // subsequently repaired by the cashier recovery queue.
     const sourceHandoffId = Number(body.handoffId);
     const handoffMarker = Number.isSafeInteger(sourceHandoffId) && sourceHandoffId > 0
-      ? '\\nCUT_HANDOFF:' + sourceHandoffId + '|'
+      ? '\nCUT_HANDOFF:' + sourceHandoffId + '|'
       : '';
 
     const saleInput = {
