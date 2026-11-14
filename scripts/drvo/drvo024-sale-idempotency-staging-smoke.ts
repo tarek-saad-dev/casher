@@ -131,18 +131,28 @@ async function main(): Promise<void> {
           .query(`
             SET LOCK_TIMEOUT 1500;
             DECLARE @errorNumber INT = 0;
+            DECLARE @seen UNIQUEIDENTIFIER = NULL;
             BEGIN TRY
-              SELECT RequestID FROM dbo.TblPosSaleRequest WITH (UPDLOCK, HOLDLOCK)
+              -- Assignment SELECT produces no intermediate resultset.
+              -- Read the final ErrorNumber, not an empty SELECT recordset.
+              SELECT @seen = RequestID
+              FROM dbo.TblPosSaleRequest WITH (UPDLOCK, HOLDLOCK)
               WHERE TenantId = @tenantId AND RequestID = @requestId;
             END TRY
             BEGIN CATCH
               SET @errorNumber = ERROR_NUMBER();
             END CATCH;
             SET LOCK_TIMEOUT -1;
-            SELECT @errorNumber AS ErrorNumber;
+            SELECT @errorNumber AS ErrorNumber,
+              CASE WHEN @seen IS NULL THEN 0 ELSE 1 END AS SawPending;
           `);
-        assertSafe(Number(blocked.recordset[0]?.ErrorNumber) === 1222,
-          'second cashier acquired same request key while first held it');
+        const outcome = blocked.recordsets.at(-1)?.[0] as {
+          ErrorNumber?: number; SawPending?: number;
+        } | undefined;
+        assertSafe(Number(outcome?.ErrorNumber) === 1222,
+          'expected 1222 SQL lock timeout; got ' +
+          String(outcome?.ErrorNumber) + ' (saw pending row=' +
+          String(outcome?.SawPending) + ')');
       } finally {
         await second.rollback();
       }
