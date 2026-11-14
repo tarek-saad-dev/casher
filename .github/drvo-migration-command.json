@@ -1,12 +1,13 @@
 {
-  "action": "APPLY",
+  "action": "PLAN",
   "requested_by": "tarek-saad-dev",
-  "pr_number": 206,
-  "target_sha": "00295ac88ed919211a837d55afb501b2b86aba88",
-  "manifest_digest": "961c7ed13a880d43cb3544411769e9a7ff3cac2f3e214abbc72b2f04b306b299",
+  "pr_number": 248,
+  "target_sha": "b429905945ea9c35889962483fdc87d16f27b138",
+  "manifest_digest": "",
   "migrations": [
-    "retail-product-catalog"
+    "referral-discounts",
+    "pos-sale-idempotency"
   ],
-  "backup_reference": "/var/opt/mssql/backup/last132_20261107T015205Z.bak",
-  "approval": "TAREK_APPROVED_PRODUCTION_MIGRATION"
+  "backup_reference": "",
+  "approval": ""
 }
