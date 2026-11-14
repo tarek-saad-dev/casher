@@ -196,7 +196,7 @@ export async function verifyPlatformBootstrap(
         .input('tenantId', sql.UniqueIdentifier, tenantId)
         .input('legacyKey', sql.NVarChar(128), String(branchId))
         .query(`
-          SELECT DrvoId FROM dbo.LegacyIdMap WITH (NOLOCK)
+          SELECT DrvoId FROM dbo.LegacyIdMap WITH (READCOMMITTEDLOCK)
           WHERE TenantId = @tenantId AND EntityName = N'branch' AND LegacyKey = @legacyKey;
         `);
       if (mapRows.recordset.length === 0) {
@@ -241,7 +241,7 @@ export async function verifyPlatformBootstrap(
       .request()
       .input('tenantId', sql.UniqueIdentifier, tenantId)
       .query(`
-        SELECT MembershipId, LegacyUserId FROM dbo.TenantMembership WITH (NOLOCK)
+        SELECT MembershipId, LegacyUserId FROM dbo.TenantMembership WITH (READCOMMITTEDLOCK)
         WHERE TenantId = @tenantId;
       `);
     type MemRow = { MembershipId: string; LegacyUserId: number };
@@ -253,7 +253,7 @@ export async function verifyPlatformBootstrap(
         .request()
         .input('userId', sql.Int, userId)
         .query(`
-          SELECT UserID FROM dbo.TblUser WITH (NOLOCK)
+          SELECT UserID FROM dbo.TblUser WITH (READCOMMITTEDLOCK)
           WHERE UserID = @userId AND ISNULL(isDeleted, 0) = 0;
         `);
       if (!user.recordset.length) {
@@ -285,40 +285,39 @@ export async function verifyPlatformBootstrap(
       }
     }
 
-    const users = await pool.request().query(`
-      SELECT UserID FROM dbo.TblUser WITH (NOLOCK) WHERE ISNULL(isDeleted, 0) = 0;
+    // Membership verification must read a single committed view of users and
+    // their tenant associations. NOLOCK + separate SELECTs could see a
+    // transient onboarding user before its still-uncommitted membership,
+    // spuriously blocking all POS rollouts. Real committed orphans still fail.
+    const userMembershipRows = await pool.request().query(`
+      SELECT u.UserID, m.TenantId
+      FROM dbo.TblUser u WITH (READCOMMITTEDLOCK)
+      LEFT JOIN dbo.TenantMembership m WITH (READCOMMITTEDLOCK)
+        ON m.LegacyUserId = u.UserID
+      WHERE ISNULL(u.isDeleted, 0) = 0
+      ORDER BY u.UserID;
     `);
-    const memByUser = new Map<number, MemRow[]>();
-    for (const row of memberships) {
-      const uid = Number(row.LegacyUserId);
-      const list = memByUser.get(uid) ?? [];
-      list.push(row);
-      memByUser.set(uid, list);
+    const membershipsByUser = new Map<number, string[]>();
+    for (const row of userMembershipRows.recordset as Array<{
+      UserID: number; TenantId: string | null;
+    }>) {
+      const userId = Number(row.UserID);
+      const list = membershipsByUser.get(userId) ?? [];
+      if (row.TenantId != null) list.push(String(row.TenantId).toLowerCase());
+      membershipsByUser.set(userId, list);
     }
-
-    for (const user of users.recordset as Array<{ UserID: number }>) {
-      const userId = Number(user.UserID);
-      const tenantMemberships = await pool
-        .request()
-        .input('legacyUserId', sql.Int, userId)
-        .query(`
-          SELECT TenantId FROM dbo.TenantMembership WITH (NOLOCK)
-          WHERE LegacyUserId = @legacyUserId;
-        `);
-      if (!tenantMemberships.recordset.length) {
+    for (const [userId, allTenantIds] of membershipsByUser) {
+      if (allTenantIds.length === 0) {
         failures.push(`Missing TenantMembership for UserID ${userId}`);
         continue;
       }
-      const bootstrapMatches = (tenantMemberships.recordset as Array<{ TenantId: string }>).filter(
-        (row) => String(row.TenantId).toLowerCase() === tenantId!.toLowerCase(),
+      const bootstrapMatches = allTenantIds.filter(
+        id => id === tenantId!.toLowerCase(),
       );
       if (bootstrapMatches.length > 1) {
         failures.push(`Duplicate CASHER_BOOT TenantMembership for UserID ${userId}`);
       }
-      if (
-        tenantMemberships.recordset.length === 1 &&
-        bootstrapMatches.length === 0
-      ) {
+      if (allTenantIds.length === 1 && bootstrapMatches.length === 0) {
         // User belongs exclusively to another tenant — valid after DRVO-011.
         continue;
       }
