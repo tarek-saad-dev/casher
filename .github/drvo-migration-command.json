@@ -1,13 +1,10 @@
 {
   "action": "PLAN",
   "requested_by": "tarek-saad-dev",
-  "pr_number": 248,
-  "target_sha": "cae33aea3c77b6d26a1fcdd54c324394a3949bca",
+  "pr_number": 292,
+  "target_sha": "088c9e0ea9d68e3e530d6b1a1878d408a08f6b7f",
   "manifest_digest": "",
-  "migrations": [
-    "referral-discounts",
-    "pos-sale-idempotency"
-  ],
+  "migrations": [],
   "backup_reference": "",
   "approval": ""
 }
