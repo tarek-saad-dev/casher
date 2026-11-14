@@ -64,6 +64,18 @@ describe('print-service', () => {
     assert.ok(res.body.printer);
   });
 
+  it('exposes v2 version and read-only printer diagnostics with allowlisted origin', async () => {
+    const health = await request(server, { method: 'GET', path: '/health', headers: { Origin: 'https://ops.cutsaloon.com' } });
+    assert.equal(health.status, 200);
+    assert.equal(health.body.version, '2.0.0');
+    const diagnostics = await request(server, { method: 'GET', path: '/diagnostics' });
+    assert.equal(diagnostics.status, 200);
+    assert.equal(diagnostics.body.agentVersion, '2.0.0');
+    assert.equal(diagnostics.body.physicalPrinterStatus, 'unknown');
+    const denied = await request(server, { method: 'GET', path: '/diagnostics', headers: { Origin: 'https://untrusted.invalid' } });
+    assert.equal(denied.status, 403);
+  });
+
   it('print/receipt rejects invalid body', async () => {
     const res = await request(server, {
       method: 'POST',

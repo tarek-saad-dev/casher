@@ -4,6 +4,70 @@
  */
 
 export const PRINT_SERVICE_URL = 'http://127.0.0.1:7788';
+export const REQUIRED_AGENT_VERSION = '2.0.0';
+
+export type LoopbackPermissionState = 'granted' | 'prompt' | 'denied' | 'unsupported';
+
+/** Query granular Chrome Loopback permission. Avoid deprecated local-network-access. */
+export async function getLoopbackPermissionState(): Promise<LoopbackPermissionState> {
+  if (typeof navigator === 'undefined' || !navigator.permissions?.query) return 'unsupported';
+  try {
+    const status = await navigator.permissions.query({ name: 'loopback-network' as PermissionName });
+    return status.state;
+  } catch { return 'unsupported'; }
+}
+
+/** Chrome LNA: declare the address space explicitly; older browsers ignore the option. */
+const LOOPBACK_OPTIONS = { targetAddressSpace: 'loopback' } as RequestInit;
+export function fetchLocalPrintAgent(
+  url: string,
+  init: RequestInit = {},
+  fetchImpl: FetchLike = fetch,
+): Promise<Response> {
+  return fetchImpl(url, { ...init, ...LOOPBACK_OPTIONS, mode: 'cors' });
+}
+
+export interface LocalAgentHealth {
+  ok: boolean;
+  status?: string;
+  version?: string;
+  printer?: string;
+  engine?: string;
+}
+export interface PrinterDiagnostics {
+  agentVersion: string;
+  probe: 'ok' | 'failed' | 'unsupported';
+  printerFound: boolean | null;
+  printerName: string;
+  printerStatus?: string;
+  spoolerStatus: string;
+  queuedJobs: number | null;
+  physicalPrinterStatus: 'unknown';
+}
+export async function getLocalAgentHealth(timeoutMs = 2500, fetchImpl: FetchLike = fetch): Promise<LocalAgentHealth> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetchLocalPrintAgent(`${PRINT_SERVICE_URL}/health`, {
+      method: 'GET', signal: controller.signal, cache: 'no-store',
+    }, fetchImpl);
+    if (!response.ok) throw new Error(`Print Agent health HTTP ${response.status}`);
+    const data = await response.json();
+    if (data?.ok !== true && data?.status !== 'ok') throw new Error('Invalid print agent health response');
+    return data as LocalAgentHealth;
+  } finally { clearTimeout(timeout); }
+}
+export async function getLocalPrinterDiagnostics(): Promise<PrinterDiagnostics> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    const response = await fetchLocalPrintAgent(`${PRINT_SERVICE_URL}/diagnostics`, {
+      method: 'GET', signal: controller.signal, cache: 'no-store',
+    });
+    if (!response.ok) throw new Error(`Print diagnostics HTTP ${response.status}`);
+    return (await response.json()) as PrinterDiagnostics;
+  } finally { clearTimeout(timeout); }
+}
 
 export type PrintErrorCode =
   | 'SERVICE_UNAVAILABLE'
@@ -50,7 +114,7 @@ export interface PrintHtmlPayload {
 
 const ARABIC_MESSAGES: Record<PrintErrorCode, string> = {
   SERVICE_UNAVAILABLE: 'تعذر الوصول إلى خدمة الطباعة المحلية على هذا الجهاز.',
-  NETWORK_ERROR: 'فشل الاتصال بخدمة الطباعة المحلية. تحقق من تشغيل الخدمة.',
+  NETWORK_ERROR: 'تعذر الاتصال؛ ربما Agent متوقف أو المتصفح منع صلاحية Loopback.',
   CORS_BLOCKED: 'المتصفح منع الاتصال بخدمة الطباعة المحلية (CORS).',
   HTTP_ERROR: 'خدمة الطباعة أعادت خطأ غير متوقع.',
   INVALID_PAYLOAD: 'بيانات الإيصال غير صالحة للطباعة.',
@@ -123,23 +187,13 @@ export type FetchLike = (
  * Health-check with short timeout. Does not throw.
  */
 export async function checkLocalPrintServiceHealth(
-  timeoutMs = 1500,
-  fetchImpl: FetchLike = fetch,
+  timeoutMs = 1500, fetchImpl: FetchLike = fetch,
 ): Promise<boolean> {
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
-    const res = await fetchImpl(`${PRINT_SERVICE_URL}/health`, {
-      method: 'GET',
-      signal: controller.signal,
-    });
-    clearTimeout(timeout);
-    if (!res.ok) return false;
-    const data = await res.json().catch(() => null);
-    return data?.status === 'ok' || data?.ok === true;
-  } catch {
-    return false;
+    const health = await getLocalAgentHealth(timeoutMs, fetchImpl);
+    return health.ok === true || health.status === 'ok';
   }
+  catch { return false; }
 }
 
 /**
@@ -181,7 +235,7 @@ export async function printHtmlViaLocalService(
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const res = await fetchImpl(`${PRINT_SERVICE_URL}/print/html`, {
+    const res = await fetchLocalPrintAgent(`${PRINT_SERVICE_URL}/print/html`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -195,7 +249,7 @@ export async function printHtmlViaLocalService(
         requestId,
       }),
       signal: controller.signal,
-    });
+    }, fetchImpl);
 
     clearTimeout(timeout);
 
@@ -328,6 +382,7 @@ export type ReceiptType = 'invoice' | 'expense' | 'deduction' | 'other';
 
 export interface LocalPrinterSettings {
   enabled: boolean;
+  version?: string;
   autoCut: boolean;
   types: Record<ReceiptType, boolean>;
   printer: string;
@@ -347,7 +402,7 @@ async function settingsRequest<T>(
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), options.timeoutMs ?? 6000);
   try {
-    const response = await fetch(PRINT_SERVICE_URL + endpoint, {
+    const response = await fetchLocalPrintAgent(PRINT_SERVICE_URL + endpoint, {
       method: options.method ?? 'GET',
       headers: { 'Content-Type': 'application/json' },
       ...(options.body ? { body: JSON.stringify(options.body) } : {}),
