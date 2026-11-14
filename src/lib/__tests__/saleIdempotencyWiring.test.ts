@@ -307,7 +307,7 @@ describe('persistent POST /api/sales request token across both POS writers (#246
     expect(runbook).toContain('## Incident policy — preserve financial evidence');
     expect(runbook).toContain('SOURCE_COMMIT_SHA=<APPROVED_40_CHAR_SHA>');
     expect(runbook).toContain('npm run drvo:migration-control -- --mode=plan');
-    expect(runbook).toContain('NEVER');
+    expect(runbook).toContain('No entry may be marked PASS by the code author');
     expect(review).toContain('**Status: NOT SIGNED OFF.**');
     expect(review).toContain('## Accounting: exact operations, SQL counts, expectations');
     expect(review).toContain('## Security review');
