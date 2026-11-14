@@ -26,7 +26,7 @@ export type CustomerVerification =
 
 type VerifyOptions = Readonly<{
   secret: string | undefined;
-  expectedTenantId?: string;
+  expectedTenantId: string;
   nowSeconds?: number;
 }>;
 
@@ -97,10 +97,11 @@ export function verifyCutClubCustomerSession(
     claims.issuedAt - claims.verifiedAt > 600
   ) return invalid();
 
-  if (expectedTenantId !== undefined && (
+  if (
+    typeof expectedTenantId !== "string" ||
     expectedTenantId.trim().length === 0 ||
     claims.tenantId !== expectedTenantId
-  )) return invalid();
+  ) return invalid();
 
   return {
     ok: true,
