@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getPool } from "@/lib/db";
+import { getPool, sql } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import type { CreateSalePayload } from "@/lib/types";
 import { resolveSplitPaymentConfig } from "@/lib/clearingMethod";
@@ -252,6 +252,31 @@ export async function POST(req: NextRequest) {
         { error: "لا يمكن تكرار طريقة الدفع" },
         { status: 400 },
       );
+    }
+
+    // Referral money may only be allocated to payment methods belonging to
+    // this staff session's tenant. A syntactically valid global PaymentID is
+    // not proof that the tenant may record a receipt on that account.
+    // Referral-only until the broader legacy payment-method migration is
+    // independently reconciled across all existing POS flows.
+    if (referralCode || referralVoucherId != null) {
+      const allowed = db.request()
+        .input('tenantId', sql.UniqueIdentifier, String(sessionUser.TenantId));
+      const binds = activeAllocations.map((allocation, index) => {
+        const key = 'method' + index;
+        allowed.input(key, sql.Int, Number(allocation.paymentMethodId));
+        return '@' + key;
+      });
+      const methods = await allowed.query(`
+        SELECT PaymentID FROM dbo.TblPaymentMethods
+        WHERE TenantId = @tenantId AND PaymentID IN (${binds.join(',')});
+      `);
+      if (methods.recordset.length !== activeAllocations.length) {
+        return NextResponse.json({
+          error: 'طريقة الدفع المختارة غير متاحة لهذه المنشأة',
+          code: 'REFERRAL_PAYMENT_METHOD_NOT_OWNED',
+        }, { status: 404 });
+      }
     }
 
     // Decimal-safe total comparison (round to 2dp)
