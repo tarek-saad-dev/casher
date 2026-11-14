@@ -76,6 +76,8 @@ export interface OtpDurableRepository {
    * Compare-and-swap on tenantId, id, revision and prior pending status.
    * Return true only if exactly one row committed; replay must return false.
    */
+  /** Return only a challenge under authoritative tenant scope; never public ID-only lookup. */
+  loadChallenge(input: Readonly<{ tenantId: string; challengeId: string }>): Promise<OtpChallenge | null>;
   commitAttempt(input: Readonly<{ before: OtpChallenge; after: OtpChallenge }>): Promise<boolean>;
   createSession(record: OpaqueSessionRecord): Promise<boolean>;
   getSession(input: Readonly<{ tenantId: string; tokenDigest: string }>): Promise<OpaqueSessionRecord | null>;
@@ -213,6 +215,54 @@ export function checkOtpAttempt(
       revision: record.revision + 1,
     },
   };
+}
+
+/**
+ * Offline adapter contract: a successful OTP calculation is NOT sufficient.
+ * Return true only after an authoritative tenant-scoped, single-row
+ * compare-and-swap update actually commits the consumed transition.
+ *
+ * This deliberately does not issue sessions or resolve accounts. The durable
+ * SQL adapter, rate-limit repository, account lookup and provider do not exist
+ * yet. Tests use a fake CAS repository, never production/staging storage.
+ */
+export async function verifyOtpAfterAtomicCommit(input: Readonly<{
+  tenantId: string;
+  challengeId: string;
+  code: unknown;
+  secret: string | undefined;
+  nowSeconds: number;
+  repository: Pick<OtpDurableRepository, "loadChallenge" | "commitAttempt">;
+}>): Promise<boolean> {
+  if (!validTenant(input.tenantId) ||
+      !/^[A-Za-z0-9_-]{32}$/.test(input.challengeId) ||
+      !validPepper(input.secret) || !validInt(input.nowSeconds)) return false;
+
+  try {
+    const before = await input.repository.loadChallenge({
+      tenantId: input.tenantId,
+      challengeId: input.challengeId,
+    });
+    if (!before || before.tenantId !== input.tenantId ||
+        before.id !== input.challengeId) return false;
+
+    const transition = checkOtpAttempt(before, input.code, {
+      tenantId: input.tenantId,
+      secret: input.secret,
+      nowSeconds: input.nowSeconds,
+    });
+    // No state transition to persist; never authorize from a stale record.
+    if (transition.updated.revision === before.revision) return false;
+
+    const committed = await input.repository.commitAttempt({
+      before,
+      after: transition.updated,
+    });
+    return committed === true && transition.ok;
+  } catch {
+    // No code/PII or underlying DB error may reach the client or logs here.
+    return false;
+  }
 }
 
 /** Used only by a durable store after replacement or failed delivery. */
