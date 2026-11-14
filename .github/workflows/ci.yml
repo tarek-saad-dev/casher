@@ -66,6 +66,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: CUT CLUB read-only staging schema preflight fixtures
+        run: node --test scripts/cut-club/customer-auth-schema-preflight.test.mjs
+
       - name: DRVO migration + rollout + runner tests
         run: >
           npx vitest run
