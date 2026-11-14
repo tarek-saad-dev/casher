@@ -196,6 +196,44 @@ async function main() {
     const persisted = await pool.request().input('bookingId', sql.Int, bookingId).query(`SELECT BookingID, BranchID, AssignedEmpID FROM dbo.Bookings WHERE BookingID=@bookingId`);
     check(persisted.recordset[0]?.BranchID === branchId, 'Persisted booking uses new salon branch');
     check(persisted.recordset[0]?.AssignedEmpID === empId, 'Persisted booking uses new salon barber');
+    // CUT STAFF staff lifecycle: real disposable-tenant SQL transitions.
+    const { advanceStaffBookingPhase, getStaffBookingPhase } =
+      await import('../../src/lib/employee-portal/bookingLifecycle');
+    const lifecycleActor = { bookingId, empId, tenantId };
+    try {
+      const badStart = await advanceStaffBookingPhase({ ...lifecycleActor, action: 'start' });
+      check(!badStart.ok && badStart.status === 409, 'Service cannot begin before arrival');
+      const arrived = await advanceStaffBookingPhase({ ...lifecycleActor, action: 'arrive' });
+      check(arrived.ok && arrived.phase === 'arrived', 'Assigned barber confirms arrival');
+      const duplicateArrive = await advanceStaffBookingPhase({ ...lifecycleActor, action: 'arrive' });
+      check(duplicateArrive.ok && duplicateArrive.alreadyApplied,
+        'Arrival confirmation replay is idempotent');
+      const started = await advanceStaffBookingPhase({ ...lifecycleActor, action: 'start' });
+      check(started.ok && started.phase === 'in_service', 'Assigned barber starts service');
+      const finished = await advanceStaffBookingPhase({ ...lifecycleActor, action: 'finish' });
+      check(finished.ok && finished.phase === 'finished',
+        'Assigned barber finishes service without creating a paid invoice');
+      const phase = await getStaffBookingPhase(lifecycleActor);
+      check(phase === 'finished', 'Finished phase is durably visible to cashier handoff gate');
+      const wrongEmployee = await advanceStaffBookingPhase({
+        ...lifecycleActor, empId: empId + 99999, action: 'arrive',
+      });
+      check(!wrongEmployee.ok && wrongEmployee.status === 404,
+        'Another employee cannot mutate a booking they do not own');
+      const notPaid = await pool.request().input('bookingId', sql.Int, bookingId)
+        .query('SELECT Status,ConvertedInvID FROM dbo.Bookings WHERE BookingID=@bookingId');
+      check(notPaid.recordset[0].ConvertedInvID == null &&
+        String(notPaid.recordset[0].Status).toLowerCase() !== 'completed',
+        'Finishing service never marks an invoice paid');
+      console.log('SALON_STAFF_LIFECYCLE_E2E_STAGING_PASS');
+    } finally {
+      await pool.request().input('bookingId', sql.Int, bookingId)
+        .query(
+          "IF OBJECT_ID(N'dbo.TblBookingStaffLifecycle',N'U') IS NOT NULL " +
+          "DELETE FROM dbo.TblBookingStaffLifecycle WHERE BookingID=@bookingId"
+        );
+    }
+
     const replay = await createPublicBooking(payload);
     check(replay.body.meta.idempotentReplay === true, 'Retry reuses the existing booking');
 
