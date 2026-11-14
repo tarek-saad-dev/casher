@@ -48,11 +48,19 @@ async function main() {
     }
     console.log('PASS: pre-existing audited invoice deletion schema present');
 
+    const owner=await pool.request().query(
+      "SELECT TenantId FROM dbo.Tenant WHERE Code=N'CASHER_BOOT'");
+    if (owner.recordset.length !== 1 || !owner.recordset[0].TenantId) {
+      throw new Error('Missing unique CASHER_BOOT tenant on staging');
+    }
+    const ownerTenantId=String(owner.recordset[0].TenantId);
+
     // Validate the query executed under the actual staging user's READ rights,
     // including conversion, parameterization and bounded cursor ordering.
     const records = await pool.request()
       .input('sinceAuditId', sql.Int, 0)
       .input('limit', sql.Int, 20)
+      .input('tenantId', sql.UniqueIdentifier, ownerTenantId)
       .input('actionType', sql.NVarChar(100), 'delete_invoice')
       .input('status', sql.NVarChar(30), 'success')
       .input('method', sql.NVarChar(20), 'DELETE')
@@ -66,6 +74,14 @@ async function main() {
           AND a.ActionMethod = @method
           AND a.EndpointPath LIKE N'/api/sales/%'
           AND TRY_CONVERT(int, a.EntityID) > 0
+          AND EXISTS (
+            SELECT 1 FROM dbo.Location l
+            WHERE l.TenantId=@tenantId
+              AND l.LegacyBranchId=TRY_CONVERT(int, JSON_VALUE(
+                CASE WHEN ISJSON(a.OldData)=1 THEN a.OldData ELSE N'{}' END,
+                '$.header.BranchID'
+              ))
+          )
         ORDER BY a.AuditID ASC;
       `);
     let cursor=0;
@@ -78,6 +94,35 @@ async function main() {
       }
       cursor=Number(line.auditId);
     }
+    // A deliberately unmatched tenant must never observe any deletion IDs.
+    const denied=await pool.request()
+      .input('sinceAuditId',sql.Int,0)
+      .input('limit',sql.Int,20)
+      .input('tenantId',sql.UniqueIdentifier,'00000000-0000-0000-0000-000000000000')
+      .input('actionType',sql.NVarChar(100),'delete_invoice')
+      .input('status',sql.NVarChar(30),'success')
+      .input('method',sql.NVarChar(20),'DELETE')
+      .query(`
+        SELECT TOP (@limit) a.AuditID
+        FROM dbo.TblSensitiveActionAuditLog a WITH (READCOMMITTEDLOCK)
+        WHERE a.AuditID>@sinceAuditId
+          AND a.ActionType=@actionType AND a.ExecutionStatus=@status
+          AND a.ActionMethod=@method AND a.EndpointPath LIKE N'/api/sales/%'
+          AND TRY_CONVERT(int,a.EntityID)>0
+          AND EXISTS (
+            SELECT 1 FROM dbo.Location l
+            WHERE l.TenantId=@tenantId
+              AND l.LegacyBranchId=TRY_CONVERT(int, JSON_VALUE(
+                CASE WHEN ISJSON(a.OldData)=1 THEN a.OldData ELSE N'{}' END,
+                '$.header.BranchID'
+              ))
+          )
+        ORDER BY a.AuditID ASC;
+      `);
+    if (denied.recordset.length !== 0) {
+      throw new Error('Cross-tenant audited deletion exposure detected');
+    }
+    console.log('PASS: cross-tenant negative query yields zero audit IDs');
     console.log('PASS: bounded successful-delete cursor SQL executed, count=' +
       records.recordset.length + ' (no row values, audit PII or customer details printed)');
     if (records.recordset.length === 0) {
