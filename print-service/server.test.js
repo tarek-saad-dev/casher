@@ -76,6 +76,22 @@ describe('print-service', () => {
     assert.equal(denied.status, 403);
   });
 
+  it('allows PNA preflight only for trusted Cashier origin', async () => {
+    const trusted = await request(server, {
+      method: 'OPTIONS', path: '/diagnostics',
+      headers: { Origin: 'https://ops.cutsaloon.com', 'Access-Control-Request-Private-Network': 'true',
+        'Access-Control-Request-Method': 'GET' },
+    });
+    assert.equal(trusted.status, 204);
+    // Test direct HTTP headers separately; request helper intentionally returns JSON only.
+    const untrusted = await request(server, {
+      method: 'OPTIONS', path: '/diagnostics',
+      headers: { Origin: 'https://untrusted.invalid', 'Access-Control-Request-Private-Network': 'true',
+        'Access-Control-Request-Method': 'GET' },
+    });
+    assert.equal(untrusted.status, 403);
+  });
+
   it('print/receipt rejects invalid body', async () => {
     const res = await request(server, {
       method: 'POST',

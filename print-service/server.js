@@ -25,6 +25,16 @@ const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS ||
 ).split(',').map((s) => s.trim()).filter(Boolean);
 
 app.use(express.json({ limit: '10mb' }));
+// Legacy Private Network Access preflight: allow only the explicitly trusted site.
+// Never expose this to arbitrary origins or to non-loopback listeners.
+app.use((req, res, next) => {
+  const origin = req.get('Origin');
+  if (req.method === 'OPTIONS' && origin && ALLOWED_ORIGINS.includes(origin)
+      && req.get('Access-Control-Request-Private-Network') === 'true') {
+    res.set('Access-Control-Allow-Private-Network', 'true');
+  }
+  return next();
+});
 app.use(cors({
   origin(origin, callback) {
     // Allow non-browser clients (curl/PowerShell) that send no Origin

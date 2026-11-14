@@ -8,7 +8,7 @@ import {
   RefreshCw, Scissors, ShieldCheck, TestTube2, Wifi, WifiOff,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import LocalPrintConnectionHelp from '@/components/printing/LocalPrintConnectionHelp';
+import PrintRecoveryCenter from '@/components/printing/PrintRecoveryCenter';
 import { Switch } from '@/components/ui/switch';
 import {
   getLocalPrinterSettings, patchLocalPrinterSettings, printLocalTestReceipt,
@@ -47,6 +47,7 @@ export default function PrinterControlPage() {
   const [connected, setConnected] = useState(false);
   const [permission, setPermission] = useState<LoopbackPermissionState>('unsupported');
   const [attempted, setAttempted] = useState(false);
+  const [healthVersion, setHealthVersion] = useState<string | null>(null);
   const [diagnostics, setDiagnostics] = useState<PrinterDiagnostics | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -65,17 +66,20 @@ export default function PrinterControlPage() {
       }
       setSettings(data);
       setConnected(true);
+      setHealthVersion(data.version || null);
       if (!quiet) setError(null);
       try { setDiagnostics(await getLocalPrinterDiagnostics()); }
       catch { setDiagnostics(null); }
     } catch {
       setConnected(false);
+      setHealthVersion(null);
       setSettings(null);
       setDiagnostics(null);
       if (!quiet) {
         let message = 'تعذر الاتصال بالـ Agent؛ افتح رابط /health لمعرفة إذا كانت الخدمة متوقفة أو Chrome منع الاتصال.';
         try {
           const health = await getLocalAgentHealth();
+          setHealthVersion(health.version || 'unknown');
           message = health.version !== REQUIRED_AGENT_VERSION
             ? `نسخة الطباعة قديمة (${health.version || 'غير معروفة'}). شغّل أداة Repair V2 على جهاز الكاشير.`
             : 'الـ Agent شغال لكن إعداداته غير متاحة. شغّل أداة Repair V2 لإصلاح التثبيت.';
@@ -141,6 +145,10 @@ export default function PrinterControlPage() {
   };
 
   const inactive = !connected || loading || saving || testing;
+  const checkAgain = () => {
+    void getLoopbackPermissionState().then(setPermission);
+    void refresh();
+  };
   const running = connected && settings?.enabled;
   const statusLabel = !attempted && !connected ? 'بانتظار إذن الاتصال'
     : !connected ? 'الخدمة غير متصلة' : running ? 'الطباعة مفعّلة' : 'الطباعة متوقفة';
@@ -170,10 +178,10 @@ export default function PrinterControlPage() {
           >
             معاينة الفاتورة المختصرة
           </Link>
-          <Button onClick={() => void refresh()} disabled={loading || saving || testing}>
+          <Button onClick={checkAgain} disabled={loading || saving || testing}>
             <Printer className="h-4 w-4" /> الاتصال / فحص الطابعة
           </Button>
-          <Button variant="outline" onClick={() => void refresh()} disabled={loading || saving || testing}>
+          <Button variant="outline" onClick={checkAgain} disabled={loading || saving || testing}>
           <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
             تحديث الحالة
           </Button>
@@ -213,9 +221,19 @@ export default function PrinterControlPage() {
         </div>
       )}
       {error && !connected && <div role="alert" className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm">{error}</div>}
-      {!connected && !loading && (
-        <LocalPrintConnectionHelp onReconnect={() => refresh()} />
-      )}
+      <PrintRecoveryCenter
+        attempted={attempted}
+        connected={connected}
+        permission={permission}
+        healthVersion={healthVersion}
+        settings={settings}
+        diagnostics={diagnostics}
+        busy={loading || saving || testing}
+        onCheck={checkAgain}
+        onEnable={() => void change({ enabled: true })}
+        onEnableTest={() => void change({ types: { other: true } })}
+        onTest={() => void test()}
+      />
       {error && connected && <div role="alert" className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">{error}</div>}
       {notice && <div role="status" className="flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 text-sm text-foreground"><CheckCircle2 className="h-4 w-4 text-emerald-500" />{notice}</div>}
 

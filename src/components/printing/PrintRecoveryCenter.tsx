@@ -9,6 +9,7 @@ type Props = RecoveryContext & {
   busy: boolean;
   onCheck: () => void;
   onEnable: () => void;
+  onEnableTest: () => void;
   onTest: () => void;
 };
 
@@ -44,7 +45,10 @@ export default function PrintRecoveryCenter(props: Props) {
           {step.action === 'enable' && (
             <Button onClick={props.onEnable} disabled={props.busy}>تفعيل الطباعة</Button>
           )}
-          {step.action === 'test' && (
+          {step.action === 'test' && props.settings?.types.other === false && (
+            <Button onClick={props.onEnableTest} disabled={props.busy}>تفعيل إيصالات الاختبار</Button>
+          )}
+          {step.action === 'test' && props.settings?.types.other !== false && (
             <Button onClick={props.onTest} disabled={props.busy}>إرسال ورقة اختبار واحدة</Button>
           )}
           {step.action === 'local-check' && (
