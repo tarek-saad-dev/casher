@@ -325,8 +325,9 @@ async function main() {
       const cart = await claimHandoffForPos({
         handoffId: handoff.handoffId, branchId, tenantId, userId: actor.actorUserId,
       });
-      check(cart.ok && cart.lines.some(line =>
-        line.ProID === service.serviceId && line.EmpID === empId && line.Qty === beforeCount + 1),
+      check(cart.ok && cart.lines.filter(line =>
+        line.ProID === service.serviceId && line.EmpID === empId)
+        .reduce((qty, line) => qty + line.Qty, 0) === beforeCount + 1,
         'POS cart receives added service with performing employee');
       // The staging handoff is a disposable test record; allow cancellation below.
       await pool.request().input('id', sql.Int, handoff.handoffId)
