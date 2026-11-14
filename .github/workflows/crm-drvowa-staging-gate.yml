@@ -35,6 +35,7 @@ jobs:
       DRVO_STAGING_SSH_HOST: ${{ secrets.DRVO_STAGING_SSH_HOST || secrets.VPS_HOST }}
       DRVO_STAGING_SSH_KEY: ${{ secrets.DRVO_STAGING_SSH_KEY }}
       DRVO_STAGING_DB_PASSWORD: ${{ secrets.DRVO_STAGING_DB_PASSWORD }}
+      DRVO_STAGING_CONNECTOR_TOKEN: ${{ secrets.DRVO_STAGING_CONNECTOR_TOKEN }}
       DB_SERVER: 127.0.0.1
       DB_PORT: '14330'
       DB_DATABASE: last132_agent
@@ -158,6 +159,14 @@ jobs:
           npx tsx scripts/drvo/staging-gate-preflight.ts identity
           npx tsx scripts/drvo/crm-drvowa-staging-verify.ts | tee /tmp/crm-drvowa-staging-evidence.jsonl
 
+      - name: Exercise actual Cashier staging Next.js CRM HTTP routes
+        shell: bash
+        env:
+          CI: 'true'
+        run: |
+          set -euo pipefail
+          npx tsx scripts/drvo/crm-drvowa-http-staging-verify.ts | tee /tmp/crm-drvowa-staging-http-evidence.jsonl
+
       - name: Publish evidence summary
         if: always()
         shell: bash
@@ -176,6 +185,15 @@ jobs:
               echo '```'
               tail -n 80 /tmp/crm-drvowa-staging-evidence.jsonl
               echo '```'
+            fi
+            if [[ -f /tmp/crm-drvowa-staging-http-evidence.jsonl ]]; then
+              echo
+              echo "### Live Cashier Next HTTP"
+              echo '```'
+              tail -n 25 /tmp/crm-drvowa-staging-http-evidence.jsonl
+              echo '```'
+            else
+              echo "- Live Cashier HTTP: NOT_EXECUTED"
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
