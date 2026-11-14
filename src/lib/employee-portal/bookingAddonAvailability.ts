@@ -28,7 +28,7 @@ async function getBooking(db: DbHandle, actor: { bookingId: number; empId: numbe
     .input('tenant', sql.NVarChar(100), actor.tenantId)
     .query(
       "SELECT b.BookingID, b.BranchID, b.BookingDate, b.PublicWorkDate, " +
-      "b.StartTime, b.EndTime, b.AbsoluteEndUtc, b.Status, b.ConvertedInvID, (SELECT COALESCE(SUM(COALESCE(bs.DurationMinutes,30)),30) FROM dbo.BookingServices bs WHERE bs.BookingID=b.BookingID) AS TotalDuration " +
+      "b.StartTime, b.EndTime, b.AbsoluteEndUtc, b.Status, b.ConvertedInvID, (SELECT COALESCE(SUM(COALESCE(bs.DurationMinutes,30)),30) FROM dbo.BookingServices bs WHERE bs.BookingID=b.BookingID AND (bs.EmpID=b.AssignedEmpID OR bs.EmpID IS NULL)) AS TotalDuration " +
       "FROM dbo.Bookings b " + (lock ? "WITH (UPDLOCK, HOLDLOCK) " : "") +
       "INNER JOIN dbo.TblEmp e ON e.EmpID = b.AssignedEmpID " +
       "WHERE b.BookingID=@bid AND b.AssignedEmpID=@emp AND e.TenantId=@tenant AND e.isActive=1"

@@ -31,6 +31,7 @@ import CloseDayModal from '@/components/session/CloseDayModal';
 import { useShiftOperationalGate } from '@/components/session/ShiftOperationalGateProvider';
 import TeamAttendanceWidget from '@/components/pos/TeamAttendanceWidget';
 import BarberHandoffInbox from '@/components/pos/BarberHandoffInbox';
+import AddonTransferInbox from '@/components/pos/AddonTransferInbox';
 import { useTeamAttendance } from '@/hooks/useTeamAttendance';
 import { useSaleState } from '@/hooks/useSaleState';
 import { useSession } from '@/hooks/useSession';
@@ -1061,7 +1062,8 @@ export default function PosPage() {
         />
 
         <div className="sticky top-0 z-30 shrink-0 border-b border-border bg-background/95 px-3 py-2 backdrop-blur-sm">
-          <div className="mb-2 flex justify-end">
+          <div className="mb-2 flex flex-wrap justify-end gap-2">
+            <AddonTransferInbox enabled={Boolean(shift?.ID)} />
             <BarberHandoffInbox
               enabled={Boolean(shift?.ID)}
               onClaim={handleClaimHandoff}
@@ -1127,7 +1129,8 @@ export default function PosPage() {
       <div className="relative hidden h-full flex-1 flex-col overflow-hidden md:flex lg:flex-row">
         {/* ═══════ RIGHT PANEL: Customer + History ═══════ */}
         <aside className="order-1 flex w-full shrink-0 flex-col gap-3 overflow-y-auto border-l border-border p-3 scrollbar-luxury-v lg:order-1 lg:w-80 lg:gap-4 lg:p-4">
-          <div className="flex justify-end">
+          <div className="flex flex-wrap justify-end gap-2">
+            <AddonTransferInbox enabled={Boolean(shift?.ID)} />
             <BarberHandoffInbox
               enabled={Boolean(shift?.ID)}
               onClaim={handleClaimHandoff}
