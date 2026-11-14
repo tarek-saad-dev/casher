@@ -42,6 +42,15 @@ jobs:
       DB_PASSWORD: ${{ secrets.DRVO_STAGING_DB_PASSWORD }}
       DB_ENCRYPT: 'false'
       DB_TRUST_SERVER_CERTIFICATE: 'true'
+      BOOKING_V2_FORCE_LOCAL_DB: '1'
+      HAWAI_DB_CLASS: local
+      CLOUD_DB_SERVER: 127.0.0.1
+      CLOUD_DB_PORT: '14330'
+      CLOUD_DB_NAME: last132_agent
+      CLOUD_DB_USER: drvo_agent
+      CLOUD_DB_PASSWORD: ${{ secrets.DRVO_STAGING_DB_PASSWORD }}
+      CLOUD_DB_ENCRYPT: 'false'
+      CLOUD_DB_TRUST_CERT: 'true'
       DEPLOY_COMMIT_SHA: ${{ github.event.pull_request.head.sha || inputs.pr_head_sha || github.sha }}
 
     steps:

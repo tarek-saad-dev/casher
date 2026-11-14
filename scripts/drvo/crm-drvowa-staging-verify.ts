@@ -66,13 +66,37 @@ async function main(): Promise<void> {
     fail(`DB_USER must be ${EXPECTED_LOGIN}`);
   }
 
-  process.env.DB_SERVER = '127.0.0.1';
-  process.env.DB_PORT = '14330';
-  process.env.DB_DATABASE = EXPECTED_DB;
-  process.env.DB_USER = EXPECTED_LOGIN;
-  process.env.DB_PASSWORD = password;
-  process.env.DB_ENCRYPT = 'false';
-  process.env.DB_TRUST_SERVER_CERTIFICATE = 'true';
+  // Force both local + cloud pool configs through the staging tunnel only.
+  // Tools call getPool(); without CLOUD_* + local force they hang on Azure retries.
+  Object.assign(process.env, {
+    BOOKING_V2_FORCE_LOCAL_DB: '1',
+    HAWAI_DB_CLASS: 'local',
+    DB_SERVER: '127.0.0.1',
+    DB_PORT: '14330',
+    DB_DATABASE: EXPECTED_DB,
+    DB_USER: EXPECTED_LOGIN,
+    DB_PASSWORD: password,
+    DB_ENCRYPT: 'false',
+    DB_TRUST_SERVER_CERTIFICATE: 'true',
+    LOCAL_DB_SERVER: '127.0.0.1',
+    LOCAL_DB_PORT: '14330',
+    LOCAL_DB_NAME: EXPECTED_DB,
+    LOCAL_DB_USER: EXPECTED_LOGIN,
+    LOCAL_DB_PASSWORD: password,
+    LOCAL_DB_TRUST_CERT: 'true',
+    CLOUD_DB_SERVER: '127.0.0.1',
+    CLOUD_DB_PORT: '14330',
+    CLOUD_DB_NAME: EXPECTED_DB,
+    CLOUD_DB_USER: EXPECTED_LOGIN,
+    CLOUD_DB_PASSWORD: password,
+    CLOUD_DB_ENCRYPT: 'false',
+    CLOUD_DB_TRUST_CERT: 'true',
+  });
+
+  const { setDbTarget, getPool } = await import('../../src/lib/db');
+  await setDbTarget('local');
+  const toolPool = await getPool();
+  await assertStaging(toolPool);
 
   const {
     executeCatalogListServices,
