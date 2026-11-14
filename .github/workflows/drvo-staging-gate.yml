@@ -133,6 +133,9 @@ jobs:
           set -euo pipefail
           npx tsx scripts/drvo/staging-gate-preflight.ts identity
 
+      - name: Read-only staging migration 23 collision diagnostic
+        run: npx tsx scripts/drvo/staging-gate-preflight.ts migration23
+
       - name: Apply DRVO migrations to staging only
         run: npm run drvo:migrate -- --expected-database=last132_agent
 

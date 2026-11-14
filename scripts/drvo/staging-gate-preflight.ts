@@ -12,8 +12,8 @@ const DB_NAME = 'last132_agent';
 const DB_LOGIN = 'drvo_agent';
 const MIGRATION_9_SHA = 'a711f08b6e4ff2954611145120ed6d26634e55d0c67a9ecbc35bc3b792f96427';
 
-type Action = 'identity' | 'migration9' | 'cleanup';
-const accepted = ['identity', 'migration9', 'cleanup'] as const;
+type Action = 'identity' | 'migration9' | 'migration23' | 'cleanup';
+const accepted = ['identity', 'migration9', 'migration23', 'cleanup'] as const;
 
 async function main(): Promise<void> {
   const action = process.argv[2] as Action;
@@ -41,6 +41,25 @@ async function main(): Promise<void> {
     }
     console.log('DB identity:', row.db, '/', row.login);
     if (action === 'identity') return;
+
+    if (action === 'migration23') {
+      // Read-only fingerprint to diagnose conflicting migration IDs on staging.
+      const r = await pool.request().query(
+        "SELECT MigrationId, MigrationKey, Checksum, AppCommitSha " +
+        "FROM dbo.DrvoSchemaMigration " +
+        "WHERE MigrationId BETWEEN 20 AND 25 OR MigrationKey = 'customer-education-occupation-profile' " +
+        "ORDER BY MigrationId"
+      );
+      console.log('Staging migration IDs 20-25:', JSON.stringify(r.recordset));
+      const cols = await pool.request().query(
+        "SELECT COL_LENGTH(N'dbo.TblClient', N'CustomerCategory') AS CustomerCategory, " +
+        "COL_LENGTH(N'dbo.TblClient', N'EducationLevel') AS EducationLevel, " +
+        "COL_LENGTH(N'dbo.TblClient', N'InstitutionName') AS InstitutionName, " +
+        "COL_LENGTH(N'dbo.TblClient', N'Occupation') AS Occupation"
+      );
+      console.log('Staging customer profile columns:', JSON.stringify(cols.recordset[0]));
+      return;
+    }
 
     if (action === 'migration9') {
       const r = await pool.request().query(
