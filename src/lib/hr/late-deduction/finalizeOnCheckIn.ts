@@ -9,6 +9,7 @@ import {
   isWorkDateEligibleForLateDeduction,
 } from './config';
 import { resolveLateDeductionDailyBasePay } from './dailyBasePay';
+import { resolveEmployeeFinancialWorkSchedule } from './financialWorkSchedule';
 import {
   upsertLateDeductionLedgerEntry,
   voidLateDeductionLedgerEntry,
@@ -122,8 +123,8 @@ export async function finalizeLateDeductionOnCheckIn(
     return { handled: false, reason: 'feature_disabled_or_before_activation' };
   }
 
-  if (!input.checkInTime || !input.scheduledStart) {
-    return { handled: false, reason: 'missing_checkin_or_schedule' };
+  if (!input.checkInTime) {
+    return { handled: false, reason: 'missing_checkin' };
   }
 
   return withLateDeductionCaseLock(input, async (db) => {
@@ -162,15 +163,21 @@ export async function finalizeLateDeductionOnCheckIn(
     sqlTimeToHHmm(live?.CheckInTime) ||
     (live?.CheckInTime ? String(live.CheckInTime).slice(0, 5) : null);
   const liveStatus = live?.Status ?? null;
-  const scheduledStart =
-    sqlTimeToHHmm(live?.ScheduledStartTime) || input.scheduledStart || null;
-  const scheduledEnd =
-    sqlTimeToHHmm(live?.ScheduledEndTime) || input.scheduledEnd || null;
+  // The attendance booking-window snapshot is not an employee's financial shift.
+  const financial = await resolveEmployeeFinancialWorkSchedule({
+    empId: input.empId, branchId: input.branchId, workDate: input.workDate, db,
+  });
+  const scheduledStart = financial?.isScheduledWorkingDay
+    ? financial.scheduledStart : null;
+  const scheduledEnd = financial?.isScheduledWorkingDay
+    ? financial.scheduledEnd : null;
 
   if (
     !live ||
     !liveCheckIn ||
-    isLateDeductionExcludedAttendanceStatus(liveStatus)
+    isLateDeductionExcludedAttendanceStatus(liveStatus) ||
+    !financial?.isScheduledWorkingDay ||
+    !scheduledStart
   ) {
     if (existing?.doNotAutoRecreate || existing?.status === 'cancelled') {
       return {
@@ -187,7 +194,9 @@ export async function finalizeLateDeductionOnCheckIn(
         branchId: input.branchId,
         voidReason: !liveCheckIn
           ? 'إلغاء خصم التأخير — حذف وقت الحضور'
-          : `إلغاء خصم التأخير — تصحيح الحضور إلى ${String(liveStatus ?? 'excluded').trim() || 'excluded'}`,
+          : !financial?.isScheduledWorkingDay || !scheduledStart
+            ? 'إلغاء خصم التأخير — يوم غير مجدول ماليًا في HR'
+            : `إلغاء خصم التأخير — تصحيح الحضور إلى ${String(liveStatus ?? 'excluded').trim() || 'excluded'}`,
       });
     }
     const row = await upsertLateDeductionCase(db, {
@@ -208,17 +217,15 @@ export async function finalizeLateDeductionOnCheckIn(
       handled: true,
       reason: !liveCheckIn
         ? 'checkin_cleared'
-        : 'excluded_attendance_status',
+        : !financial?.isScheduledWorkingDay || !scheduledStart
+          ? 'financial_workday_not_scheduled'
+          : 'excluded_attendance_status',
       caseId: row.caseId,
       status: 'skipped',
       bracket: 'none' as LateDeductionBracket,
       amount: null,
       lateMinutes: 0,
     };
-  }
-
-  if (!scheduledStart) {
-    return { handled: false, reason: 'missing_checkin_or_schedule' };
   }
 
   const lateMinutes = calcLateMinutes(liveCheckIn, scheduledStart);

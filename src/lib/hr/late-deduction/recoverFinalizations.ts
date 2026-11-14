@@ -169,7 +169,7 @@ export async function recoverPendingLateDeductionFinalizations(params?: {
         sqlTimeToHHmm(row.ScheduledEndTime) ??
         (row.ScheduledEndTime == null ? null : String(row.ScheduledEndTime).slice(0, 5));
 
-      if (!checkIn || !scheduledStart) continue;
+      if (!checkIn) continue;
 
       const result = await finalizeLateDeductionOnCheckIn({
         empId: Number(row.EmpID),
