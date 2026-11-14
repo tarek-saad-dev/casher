@@ -61,6 +61,9 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
     const profileSent = [customerCategory, educationLevel, institutionName, occupation].some(
       (value) => value !== undefined
     );
+    if (profileSent && customerCategory === undefined) {
+      return NextResponse.json({ error: 'لازم تبعت نوع العميل مع بيانات الدراسة أو الوظيفة' }, { status: 400 });
+    }
     const profile = profileSent
       ? validateCustomerProfile(customerCategory, educationLevel, institutionName, occupation)
       : null;

@@ -65,7 +65,13 @@ export default function CustomerProfileFields({ value, onChange, errors = {} }: 
           </button>
         ))}
       </div>
-      {errors.customerCategory && <p className="text-xs text-destructive">{errors.customerCategory}</p>}
+      {value.customerCategory && (
+        <button type="button" className="text-xs text-muted-foreground underline underline-offset-2 text-right"
+          onClick={() => onChange({ customerCategory: null, educationLevel: null, institutionName: '', occupation: '' })}>
+          إزالة التصنيف
+        </button>
+      )}
+      {errors.customerCategory && <p className="text-xs text-destructive">{errors.customerCategory}</p>
       {value.customerCategory === 'student' && (
         <div className="space-y-2">
           <label htmlFor={`${listId}-stage`} className="text-sm font-medium">بيدرس فين؟</label>
