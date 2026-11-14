@@ -56,6 +56,7 @@ function mapCustomers(rows: ClientRow[]) {
  */
 export async function executeCustomerListChanges(
   input: Record<string, unknown>,
+  context: { tenantId: string },
 ): Promise<DrvowaToolResult> {
   try {
     const sinceClientId = parseOptionalNonNegativeInt(
@@ -86,7 +87,7 @@ export async function executeCustomerListChanges(
         c.CameFrom AS cameFrom,
         c.State AS state
       FROM dbo.TblClient c
-      WHERE c.ClientID > @sinceClientId
+      WHERE c.ClientID > @sinceClientId AND c.TenantId = @tenantId
       ORDER BY c.ClientID ASC
     `;
 
@@ -95,6 +96,7 @@ export async function executeCustomerListChanges(
         .request()
         .input('sinceClientId', sql.Int, identitySweepSinceClientId)
         .input('limit', sql.Int, limit)
+        .input('tenantId', sql.UniqueIdentifier, context.tenantId)
         .query(selectSql);
       let rows = result.recordset as ClientRow[];
       let wrapped = false;
@@ -104,6 +106,7 @@ export async function executeCustomerListChanges(
           .request()
           .input('sinceClientId', sql.Int, 0)
           .input('limit', sql.Int, limit)
+        .input('tenantId', sql.UniqueIdentifier, context.tenantId)
           .query(selectSql);
         rows = result.recordset as ClientRow[];
       }
@@ -128,6 +131,7 @@ export async function executeCustomerListChanges(
       .request()
       .input('sinceClientId', sql.Int, sinceClientId)
       .input('limit', sql.Int, limit)
+        .input('tenantId', sql.UniqueIdentifier, context.tenantId)
       .query(selectSql);
 
     const customers = mapCustomers(result.recordset as ClientRow[]);
