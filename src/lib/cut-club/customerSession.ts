@@ -129,3 +129,47 @@ export function customerOwnsRecord(
     subject.tenantId === record.tenantId &&
     record.tenantId.trim().length > 0;
 }
+
+
+/**
+ * Defense-in-depth for a FUTURE trusted BFF-to-Casher delegation.
+ *
+ * Caller MUST independently:
+ * 1. cryptographically verify the server-to-server assertion;
+ * 2. load the session state from an authoritative, revocable DB store;
+ * 3. read the requested resource under tenant scope.
+ * None of those storage/routing steps are implemented in this PR.
+ *
+ * A signed assertion BY ITSELF can outlive logout until expiration;
+ * fail closed without explicit active session evidence.
+ */
+export function customerMayReadScopedResource(
+  verification: CustomerVerification,
+  trustedTenantId: string,
+  liveSession: Readonly<{
+    tenantId: string;
+    customerId: number;
+    sessionId: string;
+    active: boolean;
+    expiresAt: number;
+    revokedAt: number | null;
+  }> | null,
+  record: Readonly<{ tenantId: string; customerId: number }> | null,
+  nowSeconds: number,
+): boolean {
+  if (!verification.ok || !liveSession || !record ||
+      typeof trustedTenantId !== "string" || trustedTenantId.trim().length === 0 ||
+      !positiveInt(nowSeconds) || liveSession.active !== true ||
+      liveSession.revokedAt !== null || !positiveInt(liveSession.expiresAt) ||
+      liveSession.expiresAt <= nowSeconds) return false;
+
+  const subject = verification.subject;
+  return subject.tenantId === trustedTenantId &&
+    liveSession.tenantId === trustedTenantId &&
+    record.tenantId === trustedTenantId &&
+    subject.customerId === liveSession.customerId &&
+    subject.customerId === record.customerId &&
+    positiveInt(record.customerId) &&
+    subject.sessionId === liveSession.sessionId &&
+    subject.expiresAt > nowSeconds;
+}
