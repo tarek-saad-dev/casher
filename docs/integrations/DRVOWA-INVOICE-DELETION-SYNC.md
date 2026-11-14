@@ -58,6 +58,7 @@ These are **illustrative synthetic IDs only**. A response with no rows retains t
 
 ## Security, scope and limitations
 
+- **All four CRM readers** (`customer.list_changes`, `catalog.list_services`, `invoice.list_changes`, `invoice.list_deletions`) are bound to the authenticated instance owner `CASHER_BOOT` TenantId supplied by the protected integration route, never to client input. Customers and catalog use TenantId columns, invoices use tenant-owned Location.BranchID, and audited deletions use the original invoice's branch from the sanitized audit snapshot. Missing tenant context fails closed.
 - The SQL tool returns only `AuditID` and positive numeric `EntityID`, and filters `ActionType=delete_invoice`, `ActionMethod=DELETE`, `ExecutionStatus=success`, `EndpointPath LIKE /api/sales/%` **and the authenticated CASHER_BOOT TenantId**. It uses SQL `JSON_VALUE` to inspect only `$.header.BranchID` inside `OldData` to match the original deleted invoice's tenant-owned `Location`; neither `OldData` nor any name, phone, cashier/employee, IP, reason or customer field is returned.
 - Caller authentication and repository authorization remain enforced by the existing DRVOWA tool route. Never expose the bearer token in browser code, GitHub logs or customer-facing reports.
 - The cursor is **AuditID**, not sale ID or creation date. It is append-only for successful *audited* API deletions only. Unlogged historical manual SQL deletions and other unaudited legacy delete endpoints cannot be recovered from this stream; perform an independently approved periodic source/mirror reconciliation for those.
@@ -71,7 +72,7 @@ These are **illustrative synthetic IDs only**. A response with no rows retains t
 - [ ] Consumer starts with `sinceAuditId=0`, handles paginated results, retries same page after an injected failure
 - [ ] Synthetic paid sale is synchronized to CRM, then the same sale is audited-deleted, then CRM marks the original record cancelled
 - [ ] Repeat the deletion-poll response: no duplicate refund/accounting side effect
-- [ ] Confirm cross-tenant integration access scope, negative test with a foreign TenantId (zero audit rows), audit-table grants and SQL query load with a security reviewer
+- [ ] Confirm cross-tenant isolation for customer/catalog/invoice/delete cursors and negative tests with a foreign TenantId (all zero rows), audit-table grants and SQL query load with a security reviewer
 - [ ] Obtain explicit independent operations and accounting sign-off before enabling production consumption
 
 **Independent note:** This read-only CRM change does not approve or merge financial PR #248, its DRVO-023/024 production migrations, or new referral feature flags.
