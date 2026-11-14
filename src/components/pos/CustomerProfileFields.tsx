@@ -71,7 +71,7 @@ export default function CustomerProfileFields({ value, onChange, errors = {} }: 
           إزالة التصنيف
         </button>
       )}
-      {errors.customerCategory && <p className="text-xs text-destructive">{errors.customerCategory}</p>
+      {errors.customerCategory && <p className="text-xs text-destructive">{errors.customerCategory}</p>}
       {value.customerCategory === 'student' && (
         <div className="space-y-2">
           <label htmlFor={`${listId}-stage`} className="text-sm font-medium">بيدرس فين؟</label>
