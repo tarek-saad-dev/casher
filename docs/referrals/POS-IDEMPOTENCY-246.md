@@ -21,7 +21,7 @@ If the card terminal or Wi-Fi drops AFTER a paid invoice commits and BEFORE the 
 - This PR is stacked on **unmerged integration #245**, with schema DRVO-023 and all referral screens, and is NOT safe to merge independently.
 - Because two schema migrations (023+024) are needed, first run controlled staging migration + real SQL concurrent same-key paid invoice/refund/payment tests and independent review. Test suites use SQL mocks and static wiring but are not a substitute for a real sale E2E with final money reconciliation.
 - Repeated POST without a UUID when the server feature flag is enabled **fails closed**. Existing POS will need a coordinated client+server flag rollout and rebuilt client.
-- An unknown response after a Post-Commit handoff side effect may leave a handoff follow-up unprocessed if it failed first time; this handler explicitly prevents the effect from running twice. Reconciliation/manual review for this unrelated side effect is still required.
+- A paid sale's handoff reference is now persisted in `Notes2` on the same invoice write as `CUT_HANDOFF:<id>|` and the cashier receives `handoffSync`. A failed post-commit handoff link is recovered by the dedicated authenticated `/api/pos/barber-handoffs/recovery` and `/reconcile` endpoints against the **existing** paid invoice. Replay must not charge or re-link the handoff twice; full real staging sign-off and operator testing of the recovery button remain required.
 - **No production DB `last132` access, no merge and no production deployment.** DRVO-024 migration risk MEDIUM with backup required; read-only production PLAN and separately human-approved APPLY required.
 - Full 50/20 referral integrated financial E2E, reward refunds and permission review stay hard gates from #245.
 
