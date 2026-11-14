@@ -260,7 +260,7 @@ async function main(): Promise<void> {
     const method = Number(methodR.recordset[0].PaymentID);
 
     const clientIds: number[] = [];
-    for (const suffix of ['REFERRER','REFERRED']) {
+    for (const suffix of ['REFERRER','REFERRED','REFERRED_CONCURRENT']) {
       const customer = await pool.request()
         .input('tenant', mssql.UniqueIdentifier, testTenantId)
         .input('name', mssql.NVarChar(60), MARKER + '-' + suffix)
@@ -271,7 +271,7 @@ async function main(): Promise<void> {
       check(Number.isSafeInteger(id) && id>0, 'synthetic client row created');
       clientIds.push(id);
     }
-    const [referrer, referred] = clientIds;
+    const [referrer, referred, referredConcurrent] = clientIds;
 
     // Authenticated requests run through real Next.js route handlers,
     // signed staff cookie, tenant resolution, branch and open-shift gates.
@@ -476,6 +476,61 @@ async function main(): Promise<void> {
     check(rejectedMethod.code==='REFERRAL_PAYMENT_METHOD_NOT_OWNED',
       'staff tenant must own payment method on referral checkout');
 
+
+    // Different UUIDs competing for one FIRST visit are NOT retries.
+    // Only one paid 50% invoice and one earned voucher may exist.
+    // The loser must roll back its invoice, request key and discount claim.
+    const competingA=salePayload(referredConcurrent,'first',code);
+    const competingB=salePayload(referredConcurrent,'first',code);
+    const beforeFirstRace=await tenantClientSaleCount(referredConcurrent);
+    const firstRace=await Promise.all([
+      http('/api/sales',asJson('POST',competingA,cookie)),
+      http('/api/sales',asJson('POST',competingB,cookie)),
+    ]);
+    const firstOutcomes=await Promise.all(firstRace.map(async response=>({
+      status:response.status,data:await response.json() as Record<string,unknown>,
+    })));
+    const winnerIndices=firstOutcomes
+      .map((o,index)=>o.status===201?index:-1).filter(index=>index>=0);
+    const loserIndices=firstOutcomes
+      .map((o,index)=>o.status===409?index:-1).filter(index=>index>=0);
+    check(winnerIndices.length===1 && loserIndices.length===1,
+      'two distinct UUIDs racing for first-visit 50% create one sale and reject the other');
+    const winnerIndex=winnerIndices[0], loserIndex=loserIndices[0];
+    const wonRequest=[competingA,competingB][winnerIndex];
+    const lostRequest=[competingA,competingB][loserIndex];
+    const raceReferralInvoice=Number(firstOutcomes[winnerIndex].data.invID);
+    check(Number.isSafeInteger(raceReferralInvoice) && raceReferralInvoice>0,
+      'winning first-visit race persisted one valid paid invoice');
+    smokeIds.push(raceReferralInvoice);
+    smokeRequestIds.push(wonRequest.requestId);
+    const afterFirstRace=await tenantClientSaleCount(referredConcurrent);
+    check(afterFirstRace===beforeFirstRace+1,
+      'losing distinct-UUID referral race did not create a second invoice');
+    const loss=await pool.request()
+      .input('tenant',mssql.UniqueIdentifier,testTenantId)
+      .input('requestId',mssql.UniqueIdentifier,lostRequest.requestId)
+      .query('SELECT COUNT(*) AS cnt FROM dbo.TblPosSaleRequest WHERE TenantId=@tenant AND RequestID=@requestId;');
+    check(Number(loss.recordset[0].cnt)===0,
+      'losing first-visit referral UUID was rolled back without request tombstone');
+    const firstRaceClaim=await pool.request()
+      .input('tenant',mssql.UniqueIdentifier,testTenantId)
+      .input('client',mssql.Int,referredConcurrent)
+      .query(`SELECT COUNT(*) AS Claims, COUNT(DISTINCT v.VoucherID) AS Vouchers
+        FROM dbo.TblReferralVisitClaim c
+        LEFT JOIN dbo.TblReferralDiscountVoucher v
+          ON v.TenantId=c.TenantId AND v.ClaimID=c.ClaimID
+        WHERE c.TenantId=@tenant AND c.ReferredClientID=@client
+          AND c.Status=N'APPLIED';`);
+    check(Number(firstRaceClaim.recordset[0].Claims)===1 &&
+      Number(firstRaceClaim.recordset[0].Vouchers)===1,
+      'one referral claim and one reward voucher survive competing different UUIDs');
+    const wonReplay=await requireStatus(
+      await http('/api/sales',asJson('POST',wonRequest,cookie)),200,
+      'winning first-visit UUID replay after competing purchase');
+    check(Number(wonReplay.invID)===raceReferralInvoice && wonReplay.replayed===true,
+      'winning first-visit request replay returns identical invoice without duplicate discount');
+
     const first=salePayload(referred,'first',code);
     const firstInvoice=await postSale(first,'50% referred first visit');
     const claim=await pool.request()
@@ -552,6 +607,7 @@ async function main(): Promise<void> {
       'refunded invoice UUID tombstone still rejects replay');
     check(afterRefund.code==='IDEMPOTENCY_INCONSISTENT',
       'no double charge even after original paid invoice deleted');
+    await refund(raceReferralInvoice,'competing different-UUID 50% referral winner');
     await refund(racedInvoice,'concurrent same-UUID plain sale');
     await refund(ownerInvoice,'referrer baseline');
     console.log('CUT248_REFERRAL_AUTHENTICATED_HTTP_STAGING_PASS');

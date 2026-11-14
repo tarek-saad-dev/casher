@@ -8,6 +8,20 @@
 - Stacked gate now runs both 023 and 024, and `scripts/drvo/drvo248-referral-financial-audit-staging.ts` checks persisted financial ledger inconsistencies with **SELECT only**. It is not a real invoice E2E and an empty ledger must never be recorded as E2E pass.
 - DRVO-012 historical missing subscription on staging is reconciled **INSERT-only on staging for #248**, via the existing guarded CLI before the commercial smoke. This action must not run against production.
 
+
+## 2026-11-14 — candidate evidence status and operator handoff
+
+**No launch approval.** The initial "still unproven" statement below describes the earlier baseline; subsequent automated E2E evidence exists, but it is NOT a substitute for independent financial, security or operations sign-off.
+
+- [CI #43548360501](https://github.com/tarek-saad-dev/casher/actions/runs/43548360501), SHA `b429905945ea9c35889962483fdc87d16f27b138`: 3/3 **PASS**, including production build.
+- [Staging Gate #43548360467](https://github.com/tarek-saad-dev/casher/actions/runs/43548360467), same SHA: DRVO-023/024, real SQL both-writer 50/20 transaction, read-only ledger audit and authenticated HTTP invoice/referral/replay/refund **PASS** as separate steps. Full gate outcome including DRVO-008 and readiness still requires exact final confirmation before APPROVED.
+- Historical [Staging #43545221692](https://github.com/tarek-saad-dev/casher/actions/runs/43545221692) failed on `Missing TenantMembership for UserID 170`; recent bootstrap verification now reads a consistent committed user/membership set, with strict orphan failure maintained.
+- Next candidate adds distinct-UUID first-visit competition, tenant-owned split-payment proof and review-documentation contracts. These new checks must pass *on their own final SHA* before any rollout.
+- An old, outdated deployment failure is **not** a final candidate production deploy check.
+
+Use [CUT-248 launch runbook](./CUT-248-LAUNCH-RUNBOOK.md) and [independent review worksheet](./CUT-248-INDEPENDENT-REVIEW.md). Both are intentionally unapproved. No authorized production PLAN/APPLY, backup proof, or human sign-offs have been recorded.
+
+
 ## Mandatory *real paid-sale* acceptance (still unproven)
 Use an isolated, disposable **staging tenant**, two test clients, an owned branch, one real service with known list price, legitimate open business day/shift and mock/excluded WhatsApp/payment-gateway integrations. Never use CUT customer records, live payment terminals or production tenant IDs. Test extracted and legacy POS writer separately. Preserve redacted evidence with invoice IDs only from synthetic staging data.
 

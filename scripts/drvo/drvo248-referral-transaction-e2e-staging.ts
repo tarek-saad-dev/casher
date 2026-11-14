@@ -130,11 +130,15 @@ async function main(): Promise<void> {
     check(Number.isFinite(price) && price > 0, 'positive catalog list price');
 
     const splitCfg = await resolveSplitPaymentConfig(db);
+    // Two *tenant-owned* methods: a global TOP 2 can otherwise silently
+    // exercise foreign accounts and give false financial readiness evidence.
     const methods = await db.request()
       .input('clearing', sql.Int, splitCfg.clearingMethodId)
+      .input('tenantId', sql.UniqueIdentifier, tenantId)
       .query(`SELECT TOP 2 PaymentID FROM dbo.TblPaymentMethods
-        WHERE PaymentID <> @clearing ORDER BY PaymentID;`);
-    check(methods.recordset.length === 2, 'two real payment methods for split-payment proof');
+        WHERE TenantId=@tenantId AND PaymentID <> @clearing ORDER BY PaymentID;`);
+    check(methods.recordset.length === 2,
+      'two tenant-owned payment methods for split-payment proof');
     const paymentA = Number(methods.recordset[0].PaymentID);
     const paymentB = Number(methods.recordset[1].PaymentID);
 

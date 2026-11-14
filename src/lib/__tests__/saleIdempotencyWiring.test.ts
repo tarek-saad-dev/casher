@@ -192,6 +192,8 @@ describe('persistent POST /api/sales request token across both POS writers (#246
     const smoke = get('scripts/drvo/drvo248-referral-transaction-e2e-staging.ts');
     expect(gate).toContain('CUT referral 248 SQL 50-20 both-writer transaction E2E (ROLLBACK)');
     expect(gate).toContain('scripts/drvo/drvo248-referral-transaction-e2e-staging.ts');
+    expect(smoke).toContain('two tenant-owned payment methods for split-payment proof');
+    expect(smoke).toContain('WHERE TenantId=@tenantId AND PaymentID <> @clearing');
     expect(smoke).toContain('executeInRouteSaleCreateTransaction');
     expect(smoke).toContain('executeLegacySaleCreateTransaction');
     expect(smoke).toContain('priceFirstVisitReferral(');
@@ -272,6 +274,13 @@ describe('persistent POST /api/sales request token across both POS writers (#246
   it('staging HTTP acceptance runs simultaneous identical UUIDs and audits money/stock snapshots', () => {
     const file=get('scripts/drvo/drvo248-referral-http-staging.ts');
     expect(file).toContain("const racing=await Promise.all([");
+    expect(file).toContain("const firstRace=await Promise.all([");
+    expect(file).toContain("two distinct UUIDs racing for first-visit 50% create one sale and reject the other");
+    expect(file).toContain("afterFirstRace===beforeFirstRace+1");
+    expect(file).toContain("losing first-visit referral UUID was rolled back without request tombstone");
+    expect(file).toContain("one referral claim and one reward voucher survive competing different UUIDs");
+    expect(file).toContain("await refund(raceReferralInvoice,'competing different-UUID 50% referral winner')");
+
     expect(file).toContain("same UUID concurrent HTTP posts have one sale and one replay");
     expect(file).toContain("statuses[0]===200 && statuses[1]===201");
     expect(file).toContain("afterRace===beforeRace+1");
@@ -288,6 +297,23 @@ describe('persistent POST /api/sales request token across both POS writers (#246
     expect(file).toContain("await purgeSmokeTenant(pool,tenantCode)");
     expect(file).toContain("const DB = 'last132_agent'");
     expect(file).toContain("const LOGIN = 'drvo_agent'");
+  });
+
+  it('release readiness never interprets CI alone as human schema and finance approval', () => {
+    const runbook = get('docs/referrals/CUT-248-LAUNCH-RUNBOOK.md');
+    const review = get('docs/referrals/CUT-248-INDEPENDENT-REVIEW.md');
+    expect(runbook).toContain('**Status: DRAFT / NOT APPROVED.**');
+    expect(runbook).toContain('## Release decision board (all required)');
+    expect(runbook).toContain('## Incident policy — preserve financial evidence');
+    expect(runbook).toContain('SOURCE_COMMIT_SHA=<APPROVED_40_CHAR_SHA>');
+    expect(runbook).toContain('npm run drvo:migration-control -- --mode=plan');
+    expect(runbook).toContain('NEVER');
+    expect(review).toContain('**Status: NOT SIGNED OFF.**');
+    expect(review).toContain('## Accounting: exact operations, SQL counts, expectations');
+    expect(review).toContain('## Security review');
+    expect(review).toContain('## Operations review');
+    expect(review).toContain('NOT APPROVED');
+    expect(review).toContain('No programmatic tool may fill a human approval');
   });
 
 });
