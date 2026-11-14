@@ -80,22 +80,32 @@ async function main() {
     }
     console.log('PASS: staging DB guard');
 
+    // DRVO-008 is already source-controlled extracted in production. This
+    // smoke must validate the CURRENT manifest, not its historical pre-cutover
+    // legacy value, while proving the emergency rollback still wins.
     delete process.env.POS_SCHEDULING_PORT;
     delete process.env.DRVO_FORCE_POS_PATH;
     const posSpec = getDrvoModuleRolloutSpec('pos');
-    if (posSpec.rollout !== 'legacy') fail('expected POS rollout legacy for DRVO-008');
+    if (posSpec.rollout !== 'extracted') fail('expected POS rollout extracted for DRVO-008');
+    if (posSpec.rollbackRollout !== 'legacy') fail('expected POS rollback target legacy');
     if (posSpec.forcePathEnv !== 'DRVO_FORCE_POS_PATH') fail('POS force-path env missing');
     if (posSpec.compatEnvFlag !== 'POS_SCHEDULING_PORT') fail('POS compat env missing');
     if (posSpec.requiredMigrationKeys.includes('pos-prerequisites')) {
       fail('pos-prerequisites must not be a POS required migration');
     }
-    if (isPosPortEnabled()) fail('default POS path must stay legacy');
+    if (!isPosPortEnabled()) fail('manifest extracted must enable default POS path');
+    process.env.POS_SCHEDULING_PORT = 'false';
+    if (!isPosPortEnabled()) fail('compat false must not override extracted manifest');
     process.env.POS_SCHEDULING_PORT = 'true';
     if (!isPosPortEnabled()) fail('compat true must enable extracted path');
     process.env.DRVO_FORCE_POS_PATH = 'legacy';
-    if (isPosPortEnabled()) fail('force legacy must beat compat true');
+    if (isPosPortEnabled()) fail('emergency force legacy must beat compat true');
+    process.env.DRVO_FORCE_POS_PATH = 'extracted';
+    if (!isPosPortEnabled()) fail('emergency force extracted must enable POS port');
     delete process.env.DRVO_FORCE_POS_PATH;
-    console.log('PASS: POS manifest legacy with break-glass override');
+    delete process.env.POS_SCHEDULING_PORT;
+    if (!isPosPortEnabled()) fail('POS default did not return to manifest extracted');
+    console.log('PASS: POS manifest extracted, compat semantics and legacy rollback override');
 
     const trigger = await pool.request().query(`
       SELECT t.name, t.is_disabled, OBJECT_DEFINITION(t.object_id) AS def
