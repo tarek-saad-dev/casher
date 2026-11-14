@@ -45,6 +45,7 @@ Routes outside /api/public/client also require separate review.
   cross-tenant denial and different client ID denial.
 
 **The module cannot issue a session, send OTP, or authenticate a phone.**
+This HMAC verifier is a possible **short-lived server-to-server BFF delegation** building block, not approval to store customer identity tokens in the browser. The preferred browser login is a revocable opaque customer session, with independently reviewed BFF-to-Casher authorization; final delegation semantics, expiry and issuer remain a design decision.
 No existing route calls it yet, so it does not cure the existing risks.
 
 ## Next security phases (blocked until design approved)
