@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import PrintRecoveryCenter from '@/components/printing/PrintRecoveryCenter';
+import PrintAgentInstallerDownload from '@/components/printing/PrintAgentInstallerDownload';
 import { Switch } from '@/components/ui/switch';
 import {
   getLocalPrinterSettings, patchLocalPrinterSettings, printLocalTestReceipt,
@@ -215,6 +216,8 @@ export default function PrinterControlPage() {
           المفتاح يوقف إرسال مهام طباعة جديدة؛ لا يوقف خدمة Windows ولا يلغي المهام التي وصلت للطابعة بالفعل.
         </p>
       </section>
+
+      <PrintAgentInstallerDownload />
 
       {permission === 'denied' && !connected && (
         <div role="alert" className="rounded-xl border border-amber-500/35 bg-amber-500/5 p-4 text-sm">
