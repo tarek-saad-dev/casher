@@ -22,6 +22,14 @@ export type FinancialScheduleRow = {
   DefaultCheckOutTime?: string | null;
 };
 
+/** Workday may be yesterday until Cut Salon's 04:00 Cairo business cutoff. */
+export function financialScheduleDayOfWeek(workDate: string): number | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(workDate)) return null;
+  const date = new Date(workDate + 'T12:00:00Z');
+  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== workDate) return null;
+  return date.getUTCDay();
+}
+
 export function resolveFinancialWorkScheduleRow(
   row: FinancialScheduleRow,
 ): FinancialWorkSchedule {
@@ -54,8 +62,8 @@ export async function resolveEmployeeFinancialWorkSchedule(params: {
   db?: LateCaseDb;
 }): Promise<FinancialWorkSchedule | null> {
   const db = params.db ?? (await getPool());
-  const dow = new Date(params.workDate + 'T12:00:00Z').getUTCDay();
-  if (!Number.isFinite(dow)) return null;
+  const dow = financialScheduleDayOfWeek(params.workDate);
+  if (dow === null) return null;
   const result = await db.request()
     .input('empId', sql.Int, params.empId)
     .input('branchId', sql.Int, params.branchId)

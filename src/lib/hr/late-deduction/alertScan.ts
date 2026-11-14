@@ -1,9 +1,9 @@
 import 'server-only';
 
 import { getPool, sql } from '@/lib/db';
-import { getCairoBusinessDate, getCairoTimeStr, SALON_TZ } from '@/lib/businessDate';
+import { getCairoBusinessDate, getCairoTimeStr } from '@/lib/businessDate';
 import { calcLateMinutes } from '@/lib/timeUtils';
-import { resolveFinancialWorkScheduleRow } from './financialWorkSchedule';
+import { financialScheduleDayOfWeek, resolveFinancialWorkScheduleRow } from './financialWorkSchedule';
 import { isLateDeductionExcludedAttendanceStatus } from './attendanceStatus';
 import {
   getLateDeductionConfig,
@@ -132,24 +132,12 @@ export async function runLateDeductionAlertScan(params?: {
     });
 
     const nowHhmm = getCairoTimeStr(now).slice(0, 5);
-    const dayOfWeek = (() => {
-      // Sunday=0 … Saturday=6 in Cairo
-      const parts = new Intl.DateTimeFormat('en-US', {
-        timeZone: SALON_TZ,
-        weekday: 'short',
-      }).formatToParts(now);
-      const wd = parts.find((p) => p.type === 'weekday')?.value ?? 'Sun';
-      const map: Record<string, number> = {
-        Sun: 0,
-        Mon: 1,
-        Tue: 2,
-        Wed: 3,
-        Thu: 4,
-        Fri: 5,
-        Sat: 6,
-      };
-      return map[wd] ?? 0;
-    })();
+    // Match the *business* workday, including 00:00–03:59 Cairo next calendar day.
+    const dayOfWeek = financialScheduleDayOfWeek(workDate);
+    if (dayOfWeek === null) {
+      return { candidates: 0, notified: 0, errors: 1, workDate, reason: 'invalid_work_date' }
+        satisfies LateAlertScanResult;
+    }
 
     const req = db
       .request()

@@ -7,9 +7,15 @@ vi.mock('@/lib/db', () => ({
 import {
   resolveFinancialWorkScheduleRow,
   resolveEmployeeFinancialWorkSchedule,
+  financialScheduleDayOfWeek,
 } from '../financialWorkSchedule';
 
 describe('HR financial schedule is independent of booking allocation', () => {
+  it('uses business-date weekday, including yesterday at 01:00 Cairo', () => {
+    expect(financialScheduleDayOfWeek('2026-11-13')).toBe(5);
+    expect(financialScheduleDayOfWeek('2026-11-14')).toBe(6);
+    expect(financialScheduleDayOfWeek('2026-11-31')).toBeNull();
+  });
   const row = {
     EmploymentType: 'full_time',
     ScheduleDayOfWeek: 6,
