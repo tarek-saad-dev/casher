@@ -97,3 +97,22 @@ No existing route calls it yet, so it does not cure the existing risks.
 - [ ] Explicit owner merge approval and production verification
 
 No production customer data or credentials were accessed to produce this audit.
+
+
+## 2026-11-14 — Future resource authorization helper
+
+The isolated `customerMayReadScopedResource` helper was added with negative tests
+for absent/revoked/expired session, foreign session ID, different customer,
+cross-tenant records and invalid verification. This is deliberately **not**
+wired into existing `/api/public/client/**` routes.
+
+The future trusted caller MUST perform the signed-assertion verification,
+independent durable session lookup/revocation check, server-authoritative
+tenant resolution and real database resource ownership checks. In particular,
+a signed subject alone is not a live session and cannot supersede logout,
+revocation or a tenant-specific customer record. Unit tests use fake session
+objects only, not a production/session store or integration route.
+
+No API behavior was changed; legacy identifier-based endpoints remain
+unprotected by this PR. Owner migration and cross-account staging integration
+tests are required before any Wallet or redemption exposure.
