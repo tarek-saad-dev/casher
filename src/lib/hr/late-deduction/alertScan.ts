@@ -135,8 +135,9 @@ export async function runLateDeductionAlertScan(params?: {
     // Match the *business* workday, including 00:00–03:59 Cairo next calendar day.
     const dayOfWeek = financialScheduleDayOfWeek(workDate);
     if (dayOfWeek === null) {
-      return { candidates: 0, notified: 0, errors: 1, workDate, reason: 'invalid_work_date' }
-        satisfies LateAlertScanResult;
+      return {
+        candidates: 0, notified: 0, errors: 1, workDate, reason: 'invalid_work_date',
+      } satisfies LateAlertScanResult;
     }
 
     const req = db
