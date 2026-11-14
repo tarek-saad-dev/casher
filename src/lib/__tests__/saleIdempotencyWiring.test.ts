@@ -127,6 +127,24 @@ describe('persistent POST /api/sales request token across both POS writers (#246
     expect(excerpt).toContain("WHATSAPP_SALE_ENABLED: 'false'");
   });
 
+  it('runs both real POS SQL executors for 50/20 with guaranteed rollback', () => {
+    const gate = get('.github/workflows/drvo-staging-gate.yml');
+    const smoke = get('scripts/drvo/drvo248-referral-transaction-e2e-staging.ts');
+    expect(gate).toContain('CUT referral 248 SQL 50-20 both-writer transaction E2E (ROLLBACK)');
+    expect(gate).toContain('scripts/drvo/drvo248-referral-transaction-e2e-staging.ts');
+    expect(smoke).toContain('executeInRouteSaleCreateTransaction');
+    expect(smoke).toContain('executeLegacySaleCreateTransaction');
+    expect(smoke).toContain('priceFirstVisitReferral(');
+    expect(smoke).toContain('priceReferralRewardVoucher(');
+    expect(smoke).toContain('reverseReferralInvoiceOnFullRefund(');
+    expect(smoke).toContain('completeSaleRequest(');
+    expect(smoke).toContain('await localTx.rollback()');
+    expect(smoke).toContain('if (tx && !wasRolledBack)');
+    expect(smoke).toContain("database: 'last132_agent'");
+    expect(smoke).toContain("sql.ISOLATION_LEVEL.SERIALIZABLE");
+    expect(smoke).toContain('not a browser HTTP');
+  });
+
   it('idempotency remains independent from referral issue flags and is OFF until SQL migration approval', () => {
     const server = get('src/lib/sales/saleRequestIdempotency.service.ts');
     expect(server).toContain("process.env.POS_SALE_IDEMPOTENCY_ENABLED === 'true'");
