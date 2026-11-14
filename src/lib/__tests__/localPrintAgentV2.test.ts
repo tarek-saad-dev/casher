@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   getLoopbackPermissionState, getLocalAgentHealth, checkLocalPrintServiceHealth,
-  REQUIRED_AGENT_VERSION, fetchLocalPrintAgent,
+  REQUIRED_AGENT_VERSION, fetchLocalPrintAgent, hasUsablePrintSettings,
 } from '../localPrintClient';
 
 afterEach(() => vi.unstubAllGlobals());
@@ -26,6 +26,13 @@ describe('CUT local print Chrome Loopback V2', () => {
     expect(mock).toHaveBeenCalledWith('http://127.0.0.1:7788/health', expect.objectContaining({
       mode: 'cors', targetAddressSpace: 'loopback',
     }));
+  });
+  it('allows correctly shaped V1 controls, rejects invalid responses', () => {
+    expect(hasUsablePrintSettings({ enabled: true, printer: 'XP-80', types: {
+      invoice: true, expense: true, deduction: true, other: true,
+    } })).toBe(true);
+    expect(hasUsablePrintSettings({ enabled: true, printer: 'XP-80', types: { invoice: true } })).toBe(false);
+    expect(hasUsablePrintSettings({ ok: true })).toBe(false);
   });
   it('reports agent version and unavailable connections without claiming CORS is confirmed', async () => {
     const healthy = vi.fn(async () => new Response(JSON.stringify({ ok: true, version: '2.0.0' }), { status: 200 }));

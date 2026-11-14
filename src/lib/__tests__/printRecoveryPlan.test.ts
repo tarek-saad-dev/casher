@@ -30,6 +30,11 @@ describe('layered CUT print recovery plan', () => {
     expect(kind({ connected: false, healthVersion: '2.0.0' })).toBe('settings');
     expect(kind({ connected: false, healthVersion: null })).toBe('agent');
   });
+  it('keeps legacy agents connected and recommends upgrade without disabling printing', () => {
+    const legacy = { ...context.settings!, version: undefined };
+    expect(kind({ settings: legacy, healthVersion: '1.1.0' })).toBe('upgrade');
+    expect(kind({ settings: { ...context.settings!, version: '2.0.0' } })).toBe('ready');
+  });
   it('does not offer a print test when print policy is paused', () => {
     expect(kind({ settings: { ...context.settings!, enabled: false } })).toBe('settings');
   });

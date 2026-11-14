@@ -13,6 +13,7 @@ import { Switch } from '@/components/ui/switch';
 import {
   getLocalPrinterSettings, patchLocalPrinterSettings, printLocalTestReceipt,
   getLocalAgentHealth, getLocalPrinterDiagnostics, getLoopbackPermissionState, REQUIRED_AGENT_VERSION,
+  hasUsablePrintSettings,
   type LocalPrinterSettings, type ReceiptType, type PrinterDiagnostics, type LoopbackPermissionState,
 } from '@/lib/localPrintClient';
 
@@ -61,15 +62,19 @@ export default function PrinterControlPage() {
     if (!quiet) { setLoading(true); setAttempted(true); }
     try {
       const data = await getLocalPrinterSettings();
-      if (data.version !== REQUIRED_AGENT_VERSION) {
-        throw new Error('Agent version does not support V2');
-      }
+      // Preserve functioning V1 devices while rolling out V2 one cashier PC at a time.
+      // Only use the legacy agent when the existing settings endpoint has expected controls.
+      if (!hasUsablePrintSettings(data)) throw new Error('Unsupported local Agent settings');
       setSettings(data);
       setConnected(true);
-      setHealthVersion(data.version || null);
+      setHealthVersion(data.version || 'legacy');
       if (!quiet) setError(null);
-      try { setDiagnostics(await getLocalPrinterDiagnostics()); }
-      catch { setDiagnostics(null); }
+      if (data.version === REQUIRED_AGENT_VERSION) {
+        try { setDiagnostics(await getLocalPrinterDiagnostics()); }
+        catch { setDiagnostics(null); }
+      } else {
+        setDiagnostics(null); // V1 has no /diagnostics endpoint.
+      }
     } catch {
       setConnected(false);
       setHealthVersion(null);
@@ -215,6 +220,12 @@ export default function PrinterControlPage() {
         <div role="alert" className="rounded-xl border border-amber-500/35 bg-amber-500/5 p-4 text-sm">
           Chrome منع صلاحية Loopback. من إعدادات موقع ops.cutsaloon.com افتح Site settings
           ثم غيّر Loopback network إلى Allow، وبعدها اضغط «الاتصال / فحص الطابعة».
+        </div>
+      )}
+      {connected && settings?.version !== REQUIRED_AGENT_VERSION && (
+        <div role="status" className="rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm">
+          برنامج الطباعة الحالي قديم لكنه متصل. التحكم والطباعة الأساسية يفضلوا متاحين أثناء تحديث باقي الأجهزة.
+          عشان تستفيد من التشخيص الجديد حدّثه إلى V2 على جهاز الكاشير.
         </div>
       )}
       {error && !connected && <div role="alert" className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm">{error}</div>}

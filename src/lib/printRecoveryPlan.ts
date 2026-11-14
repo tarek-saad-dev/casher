@@ -35,6 +35,11 @@ export function buildPrintRecoveryPlan(c: RecoveryContext): RecoveryStep[] {
     detail: 'افتح إعدادات موقع ops.cutsaloon.com واسمح بصلاحية Loopback network ثم افحص الاتصال. لا تغيّر إعدادات أمان الجهاز العامة.',
     action: 'permissions',
   }];
+  if (c.connected && c.settings && c.settings.version !== REQUIRED_AGENT_VERSION) return [{
+    kind: 'upgrade', level: 2, title: 'النسخة الحالية شغالة، لكن محتاجة تحديث V2',
+    detail: 'تقدر تكمل استخدام الطباعة الأساسية لحين تحديث جهاز Windows ده. افتح أداة Repair V2 على نفس الجهاز لتحصل على الفحص والإصلاح المتدرّج.',
+    action: 'upgrade',
+  }];
   if (!c.connected && c.healthVersion && c.healthVersion !== REQUIRED_AGENT_VERSION) return [{
     kind: 'upgrade', level: 2, title: 'برنامج الطباعة يحتاج تحديث أو إصلاح',
     detail: 'البرنامج المحلي بيرد لكنه غير متوافق مع صفحة الطباعة. استخدم أداة Repair V2 على جهاز الكاشير فقط، بعد اعتماد الإصدار.',

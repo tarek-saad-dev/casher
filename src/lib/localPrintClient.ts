@@ -380,6 +380,19 @@ export function openBrowserPrintFallback(html: string, requestId?: string): { ok
 
 export type ReceiptType = 'invoice' | 'expense' | 'deduction' | 'other';
 
+/** Legacy V1 agents can serve basic controls before the Windows V2 upgrade. */
+export function hasUsablePrintSettings(value: unknown): value is LocalPrinterSettings {
+  if (!value || typeof value !== 'object') return false;
+  const data = value as Record<string, unknown>;
+  const types = data.types as Record<string, unknown> | null;
+  return typeof data.enabled === 'boolean'
+    && typeof data.printer === 'string'
+    && data.printer.length > 0
+    && !!types
+    && typeof types === 'object'
+    && ['invoice', 'expense', 'deduction', 'other'].every(t => typeof types[t] === 'boolean');
+}
+
 export interface LocalPrinterSettings {
   enabled: boolean;
   version?: string;
