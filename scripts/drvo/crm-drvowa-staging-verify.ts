@@ -326,11 +326,10 @@ async function main(): Promise<void> {
       | { yearMonth: string; clientCnt: number }
       | undefined;
     if (positive) {
-      const startDate = `${positive.yearMonth}-01`;
       const monthlyRefine = await pool
         .request()
         .input('invType', sql.NVarChar(20), SALE_TYPE)
-        .input('startDate', sql.Date, startDate)
+        .input('yearMonth', sql.NVarChar(7), positive.yearMonth)
         .query(`
           WITH proteinClients AS (
             SELECT DISTINCT h.ClientID
@@ -340,8 +339,8 @@ async function main(): Promise<void> {
             WHERE h.invType = @invType
               AND ISNULL(h.isActive, N'no') = N'no'
               AND h.ClientID IS NOT NULL
-              AND h.invDate >= @startDate
-              AND h.invDate < DATEADD(MONTH, 1, @startDate)
+              AND h.invDate >= CONVERT(DATE, @yearMonth + N'-01', 23)
+              AND h.invDate < DATEADD(MONTH, 1, CONVERT(DATE, @yearMonth + N'-01', 23))
               AND d.ProID IN (15, 16, 1077)
           )
           SELECT COUNT(1) AS clientCnt
