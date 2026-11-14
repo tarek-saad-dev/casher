@@ -42,7 +42,7 @@ describe("CUT CLUB verified customer session foundation", () => {
   });
 
   it("refuses missing, short or unconfigured secrets", () => {
-    expect(verify(sign(), undefined, undefined)).toEqual({ ok: false, reason: "misconfigured" });
+    expect(verifyCutClubCustomerSession(sign(), { secret: undefined, nowSeconds: now })).toEqual({ ok: false, reason: "misconfigured" });
     expect(verify(sign(), undefined, "short")).toEqual({ ok: false, reason: "misconfigured" });
   });
 
@@ -54,7 +54,8 @@ describe("CUT CLUB verified customer session foundation", () => {
 
   it("refuses altered signatures, swapped subject, and wrong signing keys", () => {
     const token = sign();
-    const modified = token.slice(0, -1) + (token.endsWith("A") ? "B" : "A");
+    const [body, signature] = token.split(".");
+    const modified = body + "." + (signature.startsWith("A") ? "B" : "A") + signature.slice(1);
     expect(verify(modified).ok).toBe(false);
     expect(verify(sign({ ...claims, customerId: 102 }), undefined, secret + "-wrong").ok).toBe(false);
   });
