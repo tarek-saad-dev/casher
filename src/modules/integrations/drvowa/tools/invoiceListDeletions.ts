@@ -36,7 +36,7 @@ export async function executeInvoiceListDeletions(
         SELECT TOP (@limit)
           a.AuditID AS auditId,
           TRY_CONVERT(int, a.EntityID) AS invId
-        FROM dbo.TblSensitiveActionAuditLog a
+        FROM dbo.TblSensitiveActionAuditLog a WITH (READCOMMITTEDLOCK)
         WHERE a.AuditID > @sinceAuditId
           AND a.ActionType = @actionType
           AND a.ExecutionStatus = @status
