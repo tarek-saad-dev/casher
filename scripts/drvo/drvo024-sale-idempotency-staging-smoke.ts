@@ -104,6 +104,62 @@ async function main(): Promise<void> {
       `);
     assertSafe(Number(gone.recordset[0]?.Cnt) === 0,
       'ROLLBACK fixture was not cleaned up');
+    // Two independent SQL connections must serialize on the same tenant/UUID.
+    // A second cashier must NOT acquire the request-key update lock while
+    // the first has an uncommitted PENDING reservation. Both transactions
+    // are always rolled back; no invoice or customer data is touched.
+    const concurrentToken = randomUUID();
+    const first = new sql.Transaction(db);
+    await first.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
+    try {
+      await new sql.Request(first)
+        .input('tenantId', sql.UniqueIdentifier, tenant.recordset[0].TenantId)
+        .input('requestId', sql.UniqueIdentifier, concurrentToken)
+        .input('hash', sql.VarChar(64), 'b'.repeat(64))
+        .query(`
+          INSERT INTO dbo.TblPosSaleRequest
+            (TenantId, RequestID, UserID, BranchID, PayloadHash, Status)
+          VALUES (@tenantId, @requestId, 1, 1, @hash, N'PENDING');
+        `);
+
+      const second = new sql.Transaction(db);
+      await second.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
+      try {
+        const blocked = await new sql.Request(second)
+          .input('tenantId', sql.UniqueIdentifier, tenant.recordset[0].TenantId)
+          .input('requestId', sql.UniqueIdentifier, concurrentToken)
+          .query(`
+            SET LOCK_TIMEOUT 1500;
+            DECLARE @errorNumber INT = 0;
+            BEGIN TRY
+              SELECT RequestID FROM dbo.TblPosSaleRequest WITH (UPDLOCK, HOLDLOCK)
+              WHERE TenantId = @tenantId AND RequestID = @requestId;
+            END TRY
+            BEGIN CATCH
+              SET @errorNumber = ERROR_NUMBER();
+            END CATCH;
+            SET LOCK_TIMEOUT -1;
+            SELECT @errorNumber AS ErrorNumber;
+          `);
+        assertSafe(Number(blocked.recordset[0]?.ErrorNumber) === 1222,
+          'second cashier acquired same request key while first held it');
+      } finally {
+        await second.rollback();
+      }
+    } finally {
+      await first.rollback();
+    }
+    const concurrentAfter = await db.request()
+      .input('tenantId', sql.UniqueIdentifier, tenant.recordset[0].TenantId)
+      .input('requestId', sql.UniqueIdentifier, concurrentToken)
+      .query(`
+        SELECT COUNT(*) AS Cnt FROM dbo.TblPosSaleRequest
+        WHERE TenantId = @tenantId AND RequestID = @requestId;
+      `);
+    assertSafe(Number(concurrentAfter.recordset[0]?.Cnt) === 0,
+      'concurrent request fixture persisted after rollback');
+    console.log('PASS: second cashier blocked by real SQL same-request lock; both rollbacks clean');
+
     console.log('PASS: DRVO-024 staging unique request ledger + transactional state + ROLLBACK');
     console.log('No invoice, voucher, payment, cash, production DB or persistent staging record changed.');
   } finally {
