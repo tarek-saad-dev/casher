@@ -251,4 +251,25 @@ describe('persistent POST /api/sales request token across both POS writers (#246
     expect(server).toContain('confirmedInvoice(');
     expect(server).not.toContain('DB_PASSWORD');
   });
+  it('staging HTTP acceptance runs simultaneous identical UUIDs and audits money/stock snapshots', () => {
+    const file=get('scripts/drvo/drvo248-referral-http-staging.ts');
+    expect(file).toContain("const racing=await Promise.all([");
+    expect(file).toContain("same UUID concurrent HTTP posts have one sale and one replay");
+    expect(file).toContain("statuses[0]===200 && statuses[1]===201");
+    expect(file).toContain("afterRace===beforeRace+1");
+    expect(file).toContain("Number(raceEffects.RequestRows)===1");
+    expect(file).toContain("const beforeReplay=await invoiceEffects(id)");
+    expect(file).toContain("JSON.stringify(afterReplay)===JSON.stringify(beforeReplay)");
+    for (const table of [
+      'dbo.TblinvServHead','dbo.TblinvServDetail','dbo.TblinvServPayment',
+      'dbo.TblCashMove','dbo.TblProMove','dbo.TblPosSaleRequest',
+    ]) {
+      expect(file).toContain(table);
+    }
+    expect(file).toContain("await refund(racedInvoice,'concurrent same-UUID plain sale')");
+    expect(file).toContain("await purgeSmokeTenant(pool,tenantCode)");
+    expect(file).toContain("const DB = 'last132_agent'");
+    expect(file).toContain("const LOGIN = 'drvo_agent'");
+  });
+
 });
