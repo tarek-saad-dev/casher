@@ -1,143 +1,167 @@
 #Requires -Version 5.1
 <#
-CUT Salon Print Agent - Windows guided installer.
-Download only from https://ops.cutsaloon.com/downloads/Install-CUT-Print-Agent.ps1
-Run intentionally on the Windows computer connected to an XP-80 printer.
-
-The script:
-  1) Checks whether CUT Salon Print Agent Scheduled Task is registered.
-  2) If registered, starts it if necessary and checks local /health.
-  3) If missing, installs the public, official repo's print-service into LOCALAPPDATA,
-     installs Node dependencies, registers per-user autostart, starts, and checks health.
-
-No auto print, no admin escalation, no firewall/port exposure, no driver install.
+CUT Salon Print Agent V2 - explicit installer/repair on the Windows cashier PC.
+No driver changes, elevation, print jobs, firewall changes or production server changes.
+Downloads the official casher main source; should be used after V2 is released on main.
 #>
 [CmdletBinding()]
-param()
+param([string]$PrinterName = '')
 $ErrorActionPreference = 'Stop'
 $taskName = 'CUT Salon Print Agent'
+$expectedVersion = '2.0.0'
 $healthUrl = 'http://127.0.0.1:7788/health'
 $installRoot = Join-Path $env:LOCALAPPDATA 'CUT-Salon\Print-Agent'
 $serviceDir = Join-Path $installRoot 'print-service'
+$configFile = Join-Path $env:LOCALAPPDATA 'CUT-Salon\print-agent.config.json'
 $tempRoot = Join-Path ([IO.Path]::GetTempPath()) ('cut-print-agent-' + [guid]::NewGuid().ToString('N'))
 $archiveUrl = 'https://github.com/tarek-saad-dev/casher/archive/refs/heads/main.zip'
-$guideUrl = 'https://ops.cutsaloon.com/admin/settings/printing'
+$backupDir = $null
+$oldTaskXml = $null
+$wasRunning = $false
+$oldConfig = $null
+$hadConfig = Test-Path -LiteralPath $configFile
+$swapped = $false
 
-function Step([string]$message) { Write-Host ("  > " + $message) -ForegroundColor Cyan }
-function Healthy {
-  try {
-    $response = Invoke-RestMethod -Uri $healthUrl -Method Get -TimeoutSec 3 -ErrorAction Stop
-    return ($response.status -eq 'ok' -or $response.ok -eq $true)
-  } catch { return $false }
+function Step([string]$message) { Write-Host ("> " + $message) -ForegroundColor Cyan }
+function Get-AgentHealth {
+  try { return Invoke-RestMethod -Uri $healthUrl -Method Get -TimeoutSec 3 -ErrorAction Stop }
+  catch { return $null }
 }
-function ExplainError([string]$message) {
-  Write-Host ''
-  Write-Host 'لم تكتمل تهيئة خدمة الطباعة.' -ForegroundColor Yellow
-  Write-Host $message -ForegroundColor Yellow
-  Write-Host ('للمساعدة افتح: ' + $guideUrl)
+function Choose-Printer([string]$requested) {
+  $all = @(Get-Printer -ErrorAction Stop)
+  if ($requested) {
+    $found = @($all | Where-Object { $_.Name -eq $requested })
+    if ($found.Count -ne 1) { throw "Printer '$requested' not found. Windows printers: $($all.Name -join ', ')" }
+    return [string]$found[0].Name
+  }
+  $exact = @($all | Where-Object { $_.Name -eq 'XP-80' })
+  if ($exact.Count -eq 1) { return [string]$exact[0].Name }
+  $candidates = @($all | Where-Object { $_.Name -match '(?i)(XP.?80|XPrinter|POS.?80|Thermal|Receipt)' })
+  if ($candidates.Count -eq 1) { return [string]$candidates[0].Name }
+  throw "Cannot choose a thermal printer safely. Windows printers: $($all.Name -join ', '). Run this installer with -PrinterName 'Exact Windows Printer Name'."
 }
-
-Write-Host ''
-Write-Host 'CUT SALON — Print Agent Setup' -ForegroundColor Green
-Write-Host '----------------------------------------'
-Write-Host 'ده تثبيت على الكمبيوتر الحالي فقط. مش هيتم إرسال أي ورقة أثناء التثبيت.'
-Write-Host ''
-
-try {
-  if (-not $env:LOCALAPPDATA) { throw 'يجب تشغيل الملف من جلسة مستخدم Windows، وليس من حساب خدمة.' }
+function Wait-Agent([string]$version) {
+  for ($attempt = 1; $attempt -le 12; $attempt++) {
+    Start-Sleep -Seconds 2
+    $health = Get-AgentHealth
+    if ($health -and [string]$health.version -eq $version) {
+      try {
+        $settings = Invoke-RestMethod -Uri 'http://127.0.0.1:7788/settings' -TimeoutSec 3
+        if ($settings.ok -and [string]$settings.version -eq $version) { return $true }
+      } catch {}
+    }
+  }
+  return $false
+}
+function Stop-ExistingTask {
   $task = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
-  if ($null -ne $task) {
-    Step 'المهمة موجودة بالفعل في Windows. بنفحص الاتصال...'
-    if (Healthy) {
-      Write-Host 'الخدمة شغالة بالفعل. لا تحتاج إلى إعادة تثبيت.' -ForegroundColor Green
-      Write-Host ("افتح: " + $guideUrl)
-      exit 0
+  if ($task -and $task.State -eq 'Running') {
+    Stop-ScheduledTask -TaskName $taskName -ErrorAction Stop
+    for ($try = 1; $try -le 10; $try++) {
+      Start-Sleep -Milliseconds 500
+      if (-not (Get-AgentHealth)) { break }
     }
-    Step 'بنحاول تشغيل المهمة الموجودة...'
-    Start-ScheduledTask -TaskName $taskName -ErrorAction Stop
-    for ($attempt = 1; $attempt -le 5; $attempt++) {
-      Start-Sleep -Seconds 2
-      if (Healthy) {
-        Write-Host 'تم تشغيل خدمة الطباعة بنجاح.' -ForegroundColor Green
-        Write-Host 'ارجع لـ Cashier واضغط فحص الاتصال. ده مش اختبار طباعة.' -ForegroundColor Green
-        exit 0
-      }
-    }
-    throw ('مهمة ' + $taskName + ' موجودة لكن الخدمة مش بتستجيب. راجع ملف logs في مسار التثبيت أو خلي المسؤول يراجعها.')
   }
+  if (Get-AgentHealth) {
+    throw 'A local print server is still active on port 7788. Stop the old manual CMD/npm process first. No unrelated Node processes were killed.'
+  }
+}
 
-  Step 'المهمة مش موجودة. بنراجع متطلبات التثبيت...'
-  if (Healthy) {
-    throw 'فيه خدمة طباعة شغالة على المنفذ 7788 لكن المهمة مش موجودة. أوقف نسخة التشغيل اليدوي قبل تثبيت نسخة جديدة.'
-  }
-  $printer = Get-Printer -Name 'XP-80' -ErrorAction SilentlyContinue
-  if ($null -eq $printer) {
-    throw 'طابعة XP-80 مش متثبتة على الكمبيوتر ده. ثبّت تعريفها في Windows الأول. لو الجهاز هيطبع على طابعة جهاز تاني، مش محتاج تثبيت Agent محلي عليه.'
-  }
-  $node = Get-Command node.exe -ErrorAction SilentlyContinue
-  $npm = Get-Command npm.cmd -ErrorAction SilentlyContinue
-  if (-not $node -or -not $npm) {
-    throw 'Node.js مش مثبت. ثبّت إصدار Node.js LTS 22 أو أحدث من nodejs.org، افتح PowerShell جديد وشغّل نفس الملف مرة تانية.'
-  }
-  $version = & $node.Source -p 'process.versions.node'
-  $major = [int](($version -split '\.')[0])
-  if ($major -lt 22) {
-    throw ("إصدار Node.js على الجهاز هو " + $version + ". حدّثه إلى 22 أو أحدث ثم أعد تشغيل الملف.")
-  }
+Write-Host 'CUT SALON - Print Agent V2 install / repair' -ForegroundColor Green
+Write-Host 'This is a LOCAL Windows operation. No paper will be printed.'
+try {
+  if (-not $env:LOCALAPPDATA) { throw 'Sign into the Windows cashier account first.' }
+  $node = Get-Command node.exe -ErrorAction Stop
+  $npm = Get-Command npm.cmd -ErrorAction Stop
+  $nodeVersion = & $node.Source -p 'process.versions.node'
+  if ([int](($nodeVersion -split '\.')[0]) -lt 22) { throw 'Node.js 22+ required.' }
+  $selectedPrinter = Choose-Printer $PrinterName
+  Step "Windows printer: $selectedPrinter"
 
-  Step 'بننزّل ملفات CUT Print Agent الرسمية من GitHub...'
+  $task = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+  $agent = Get-AgentHealth
+  $managedTask = $false
+  if ($task) {
+    $managedTask = @($task.Actions | Where-Object { $_.Arguments -like "*$serviceDir*" }).Count -gt 0
+  }
+  if ($agent -and [string]$agent.version -eq $expectedVersion -and $managedTask -and
+      [string]$agent.printer -eq $selectedPrinter) {
+    Step 'V2 is already healthy and supervised; no reinstall needed.'
+    exit 0
+  }
+  Step 'Agent is outdated, incorrectly configured, or not supervised. Preparing repair.'
   New-Item -ItemType Directory -Path $tempRoot -Force | Out-Null
-  $archiveFile = Join-Path $tempRoot 'source.zip'
+  $archivePath = Join-Path $tempRoot 'source.zip'
   [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-  Invoke-WebRequest -Uri $archiveUrl -OutFile $archiveFile -UseBasicParsing -MaximumRedirection 5
-  if ((Get-Item $archiveFile).Length -lt 2000) { throw 'الملف اللي اتنزّل مش أرشيف صحيح.' }
-  Expand-Archive -LiteralPath $archiveFile -DestinationPath (Join-Path $tempRoot 'source') -Force
-  $candidate = Get-ChildItem -Path (Join-Path $tempRoot 'source') -Directory |
+  Invoke-WebRequest -Uri $archiveUrl -OutFile $archivePath -UseBasicParsing -MaximumRedirection 5
+  if ((Get-Item -LiteralPath $archivePath).Length -lt 2000) { throw 'Invalid source archive.' }
+  $expanded = Join-Path $tempRoot 'expanded'
+  Expand-Archive -LiteralPath $archivePath -DestinationPath $expanded -Force
+  $source = Get-ChildItem -LiteralPath $expanded -Directory |
     ForEach-Object { Join-Path $_.FullName 'print-service' } |
     Where-Object { Test-Path -LiteralPath (Join-Path $_ 'server.js') } |
     Select-Object -First 1
-  if (-not $candidate) { throw 'ملفات print-service مش موجودة داخل الأرشيف الرسمي.' }
+  if (-not $source) { throw 'Official print-service not found in archive.' }
+  $package = Get-Content -LiteralPath (Join-Path $source 'package.json') -Raw | ConvertFrom-Json
+  if ([string]$package.version -ne $expectedVersion) {
+    throw "Downloaded source is version $($package.version), expected $expectedVersion. Install only after V2 is released."
+  }
+  $stage = Join-Path $tempRoot 'ready'
+  Copy-Item -LiteralPath $source -Destination $stage -Recurse -Force
+  Step 'Installing dependencies in isolated staging directory.'
+  Push-Location $stage
+  try {
+    & $npm.Source ci --no-audit --no-fund
+    if ($LASTEXITCODE -ne 0) { throw 'npm ci failed; existing Agent was not changed.' }
+  } finally { Pop-Location }
 
-  Step 'بنجهّز نسخة محلية آمنة داخل حساب Windows الحالي...'
+  if ($task) {
+    $oldTaskXml = Export-ScheduledTask -TaskName $taskName
+    $wasRunning = $task.State -eq 'Running'
+  }
+  if ($hadConfig) { $oldConfig = Get-Content -LiteralPath $configFile -Raw -Encoding UTF8 }
+  Step 'Stopping the old Agent only after staging succeeded.'
+  Stop-ExistingTask
   if (Test-Path -LiteralPath $serviceDir) {
     $backupDir = $serviceDir + '.backup-' + (Get-Date -Format 'yyyyMMdd-HHmmss')
     Move-Item -LiteralPath $serviceDir -Destination $backupDir
-    Write-Host ("تم الاحتفاظ بنسخة من الملفات القديمة: " + $backupDir)
   }
-  New-Item -ItemType Directory -Path $serviceDir -Force | Out-Null
-  Copy-Item -Path (Join-Path $candidate '*') -Destination $serviceDir -Recurse -Force
-
-  Step 'بنثبّت متطلبات الطباعة المحلية...'
-  Push-Location $serviceDir
+  $swapped = $true
   try {
-    & $npm.Source ci --no-audit --no-fund
-    if ($LASTEXITCODE -ne 0) { throw 'npm ci failed. Verify internet connection and Node.js installation.' }
-  } finally { Pop-Location }
-
-  Step 'بننشئ مهمة التشغيل التلقائي مع تسجيل الدخول...'
-  $script = Join-Path $serviceDir 'windows\install-autostart.ps1'
-  if (-not (Test-Path -LiteralPath $script)) { throw 'ملف تثبيت Task Scheduler مفقود.' }
-  & $script
-  $task = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
-  if (-not $task) { throw 'تعذر إنشاء مهمة Windows. راجع صلاحيات المستخدم.' }
-  for ($attempt = 1; $attempt -le 5; $attempt++) {
-    Start-Sleep -Seconds 2
-    if (Healthy) {
-      Write-Host ''
-      Write-Host '✅ تم تثبيت وتشغيل CUT Print Agent بنجاح.' -ForegroundColor Green
-      Write-Host 'ارجع لـ Cashier واضغط «فحص الاتصال».'
-      Write-Host 'الطابعة نفسها لم تُختبر بعد؛ اطبع ورقة اختبار واحدة من إعدادات الطباعة.'
-      exit 0
+    New-Item -ItemType Directory -Path $installRoot -Force | Out-Null
+    Move-Item -LiteralPath $stage -Destination $serviceDir
+    New-Item -ItemType Directory -Path (Split-Path -Parent $configFile) -Force | Out-Null
+    $configJson = @{ printerName = $selectedPrinter; nodePath = $node.Source } | ConvertTo-Json -Compress
+    [IO.File]::WriteAllText($configFile, $configJson, (New-Object System.Text.UTF8Encoding($false)))
+    Step 'Repairing user-logon task and starting Agent V2.'
+    & (Join-Path $serviceDir 'windows\install-autostart.ps1')
+    if (-not (Wait-Agent $expectedVersion)) { throw 'V2 did not answer /health and /settings after installation.' }
+    Step "Repair successful: Agent $expectedVersion; printer $selectedPrinter."
+    Write-Host 'Open Cashier > Printer Center and explicitly test one physical paper receipt.' -ForegroundColor Green
+  } catch {
+    $failure = $_.Exception.Message
+    Write-Warning 'V2 repair failed; restoring previous files and task.'
+    Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+    if (Test-Path -LiteralPath $serviceDir) {
+      Move-Item -LiteralPath $serviceDir -Destination ($serviceDir + '.failed-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
     }
+    if ($backupDir -and (Test-Path -LiteralPath $backupDir)) {
+      Move-Item -LiteralPath $backupDir -Destination $serviceDir
+    }
+    if ($hadConfig) {
+      [IO.File]::WriteAllText($configFile, $oldConfig, (New-Object System.Text.UTF8Encoding($false)))
+    } elseif (Test-Path -LiteralPath $configFile) { Remove-Item -LiteralPath $configFile -Force }
+    if ($oldTaskXml) {
+      Register-ScheduledTask -TaskName $taskName -Xml $oldTaskXml -Force | Out-Null
+      if ($wasRunning) { Start-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue }
+    } else {
+      Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
+    }
+    throw "Repair failed ($failure). Rollback attempted; verify old Agent before resuming printing."
   }
-  throw 'المهمة اتثبتت لكن /health لا يستجيب. راجع سجل التشغيل داخل print-service\logs.'
 } catch {
-  ExplainError $_.Exception.Message
-  Write-Host ''
-  Write-Host 'لن يتم إرسال مهمة طباعة تلقائيًا. يمكنك تشغيل نفس الملف مرة أخرى بعد حل المشكلة.'
+  Write-Host ('Print Agent V2 setup stopped: ' + $_.Exception.Message) -ForegroundColor Yellow
   exit 1
 } finally {
-  if (Test-Path -LiteralPath $tempRoot) {
-    Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
-  }
+  if (Test-Path -LiteralPath $tempRoot) { Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue }
 }

@@ -1,21 +1,22 @@
-# Installs one logon task for the CURRENT Windows account (no admin rights needed).
-# Run from a PowerShell session after stopping the manually started npm service.
+# Install / repair user-session startup. Doesn't print or require elevation.
 [CmdletBinding()]
 param()
 $ErrorActionPreference = 'Stop'
 $taskName = 'CUT Salon Print Agent'
 $serviceDir = Split-Path -Parent $PSScriptRoot
 $runner = Join-Path $PSScriptRoot 'run-agent.ps1'
-$node = Get-Command node.exe -ErrorAction Stop
-if (-not (Test-Path -LiteralPath (Join-Path $serviceDir 'server.js'))) {
-  throw 'The print service folder is incomplete.'
+$configFile = Join-Path $env:LOCALAPPDATA 'CUT-Salon\print-agent.config.json'
+if (-not (Test-Path -LiteralPath (Join-Path $serviceDir 'server.js'))) { throw 'Print service folder is incomplete.' }
+if (-not (Test-Path -LiteralPath (Join-Path $serviceDir 'node_modules\express'))) { throw 'Run npm ci in print-service first.' }
+$config = $null
+if (Test-Path -LiteralPath $configFile) {
+  $config = Get-Content -LiteralPath $configFile -Raw -Encoding UTF8 | ConvertFrom-Json
 }
-if (-not (Test-Path -LiteralPath (Join-Path $serviceDir 'node_modules\express'))) {
-  throw 'First run npm ci inside print-service.'
-}
-$printer = Get-Printer -Name 'XP-80' -ErrorAction SilentlyContinue
-if (-not $printer) {
-  throw 'Printer XP-80 not found in Windows. Check the installed printer name.'
+$printerName = if ($config -and $config.printerName) { [string]$config.printerName } else { 'XP-80' }
+$nodePath = if ($config -and $config.nodePath) { [string]$config.nodePath } else { (Get-Command node.exe -ErrorAction Stop).Source }
+if (-not (Test-Path -LiteralPath $nodePath -PathType Leaf)) { throw 'Configured Node.js path is missing.' }
+if (-not (Get-Printer -Name $printerName -ErrorAction SilentlyContinue)) {
+  throw "Printer '$printerName' not found in Windows."
 }
 $account = "$env:USERDOMAIN\$env:USERNAME"
 $powerShell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
@@ -24,15 +25,11 @@ $action = New-ScheduledTaskAction -Execute $powerShell -Argument $arguments -Wor
 $trigger = New-ScheduledTaskTrigger -AtLogOn -User $account
 $principal = New-ScheduledTaskPrincipal -UserId $account -LogonType Interactive -RunLevel Limited
 $settings = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit ([TimeSpan]::Zero) -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
-Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Description 'CUT Salon ESC/POS local receipt printer; runs at cashier user sign-in' -Force | Out-Null
-Write-Host "Task installed: $taskName (logon: $account)" -ForegroundColor Green
-Write-Host "Engine=escpos, Printer=XP-80, AutoCut=1, Port=7788"
-Write-Host 'Log: print-service\logs\print-agent.log'
+Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Description 'CUT Salon Print Agent V2 user-session supervisor; localhost only' -Force | Out-Null
+Write-Host "Task repaired: $taskName; printer: $printerName; port: 7788" -ForegroundColor Green
 $listener = Get-NetTCPConnection -LocalAddress '127.0.0.1' -LocalPort 7788 -State Listen -ErrorAction SilentlyContinue
 if ($listener) {
-  Write-Warning 'Port 7788 is already in use. Stop the old CMD/npm start session with Ctrl+C, then run:'
-  Write-Host "Start-ScheduledTask -TaskName '$taskName'"
+  Write-Warning 'Port 7788 is already occupied. Stop the previous instance before starting this task.'
 } else {
   Start-ScheduledTask -TaskName $taskName -ErrorAction Stop
-  Write-Host 'Agent startup requested. Verify http://127.0.0.1:7788/health in Chrome.' -ForegroundColor Green
 }
