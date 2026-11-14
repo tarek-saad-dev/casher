@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
 import { validateCustomerSource } from '@/lib/customerSource';
-import { validateCustomerProfile } from '@/lib/customerProfile';
 import { getUserFriendlyError } from '@/lib/db';
 import { authenticate, isAuthResult } from '@/lib/api-auth';
 
@@ -24,8 +23,7 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
 
     // Support name / Name / customerName from frontend
     const rawName = body.name ?? body.Name ?? body.customerName;
-    const { mobile, birthDate, address, notes, cameFrom, cameFromDetails, referralCode,
-      customerCategory, educationLevel, institutionName, occupation } = body;
+    const { mobile, birthDate, address, notes, cameFrom, cameFromDetails, referralCode } = body;
 
     // Normalize payload for logging
     const normalized = { name: rawName, mobile, birthDate, address, notes, cameFrom, cameFromDetails, referralCode };
@@ -56,19 +54,6 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
     } else {
       // No source fields sent — keep DB values untouched by treating validation as empty
       sourceValidation = { cameFrom: null, cameFromDetails: null, referralCode: null, errors: {} };
-    }
-
-    const profileSent = [customerCategory, educationLevel, institutionName, occupation].some(
-      (value) => value !== undefined
-    );
-    if (profileSent && customerCategory === undefined) {
-      return NextResponse.json({ error: 'لازم تبعت نوع العميل مع بيانات الدراسة أو الوظيفة' }, { status: 400 });
-    }
-    const profile = profileSent
-      ? validateCustomerProfile(customerCategory, educationLevel, institutionName, occupation)
-      : null;
-    if (profile && Object.keys(profile.errors).length) {
-      return NextResponse.json({ error: Object.values(profile.errors)[0] }, { status: 400 });
     }
 
     // Build dynamic SET clause — only update fields that were sent
@@ -106,15 +91,6 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
       request.input('referralCode', sql.NVarChar(50), sourceValidation.referralCode);
     }
 
-    if (profile) {
-      setClauses.push('CustomerCategory = @customerCategory', 'EducationLevel = @educationLevel',
-        'InstitutionName = @institutionName', 'Occupation = @occupation');
-      request.input('customerCategory', sql.NVarChar(16), profile.customerCategory);
-      request.input('educationLevel', sql.NVarChar(16), profile.educationLevel);
-      request.input('institutionName', sql.NVarChar(150), profile.institutionName);
-      request.input('occupation', sql.NVarChar(100), profile.occupation);
-    }
-
     if (setClauses.length === 0) {
       return NextResponse.json({ error: 'لا توجد بيانات للتحديث' }, { status: 400 });
     }
@@ -138,8 +114,7 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
       .input('tenantId', sql.UniqueIdentifier, auth.tenantId)
       .query(`
         SELECT ClientID, [Name], Mobile, Phone, BirthDate, Address, Notes,
-               RegisterDate, CameFrom, CameFromDetails, ReferralCode,
-               CustomerCategory, EducationLevel, InstitutionName, Occupation
+               RegisterDate, CameFrom, CameFromDetails, ReferralCode
         FROM [dbo].[TblClient]
         WHERE ClientID = @clientID2 AND TenantId = @tenantId
       `);
