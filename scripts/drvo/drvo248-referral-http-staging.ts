@@ -345,12 +345,15 @@ async function main(): Promise<void> {
             WHERE invID=@id AND invType=N'مبيعات') AS PaymentValue,
           (SELECT COUNT(*) FROM dbo.TblCashMove
             WHERE invID=@id AND invType=N'مبيعات') AS CashRows,
-          (SELECT ISNULL(SUM(GrandTolal),0) FROM dbo.TblCashMove
-            WHERE invID=@id AND invType=N'مبيعات') AS CashValue,
-          (SELECT COUNT(*) FROM dbo.TblProMove
-            WHERE invID=@id AND invType=N'مبيعات') AS StockRows,
-          (SELECT ISNULL(SUM(Qty),0) FROM dbo.TblProMove
-            WHERE invID=@id AND invType=N'مبيعات') AS StockQty,
+          (SELECT m.* FROM dbo.TblCashMove m
+            WHERE m.invID=@id AND m.invType=N'مبيعات'
+            FOR JSON PATH, INCLUDE_NULL_VALUES) AS CashLedgerJson,
+          (SELECT COUNT(*) FROM dbo.TblInventoryMovement
+            WHERE ReferenceType=N'SALE_INVOICE'
+              AND ReferenceID=N'مبيعات:' + CONVERT(nvarchar(24),@id)) AS StockRows,
+          (SELECT ISNULL(SUM(QuantityDelta),0) FROM dbo.TblInventoryMovement
+            WHERE ReferenceType=N'SALE_INVOICE'
+              AND ReferenceID=N'مبيعات:' + CONVERT(nvarchar(24),@id)) AS StockDelta,
           (SELECT COUNT(*) FROM dbo.TblPosSaleRequest
             WHERE InvID=@id AND InvType=N'مبيعات') AS RequestRows;
       `);
@@ -384,6 +387,8 @@ async function main(): Promise<void> {
       check(Number(replay.invID)===id && replay.replayed===true,
         label+' replay never inserts another invoice');
       const afterReplay=await invoiceEffects(id);
+      // The ledger itself, not just its row count, must remain identical
+      // (a replay must not change the signed cash values).
       check(JSON.stringify(afterReplay)===JSON.stringify(beforeReplay),
         label+' replay preserves invoice, payments, cashier cash and stock ledgers');
       const hashChanged={...payload,notes:payload.notes+'-CHANGED'};
