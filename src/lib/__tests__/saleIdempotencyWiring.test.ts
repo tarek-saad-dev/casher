@@ -85,6 +85,32 @@ describe('persistent POST /api/sales request token across both POS writers (#246
     expect(smoke).toContain('await second.rollback()');
   });
 
+  it('validates committed branch/Location pairs without NOLOCK dirty-read false orphans', () => {
+    const file = get('scripts/drvo/platformBootstrap.ts');
+    const start = file.indexOf('const branchMappings = await pool.request().query(');
+    const end = file.indexOf('const mem = await pool', start);
+    expect(start).toBeGreaterThan(0);
+    expect(end).toBeGreaterThan(start);
+    const section = file.slice(start, end);
+    expect(section).toContain('WITH (READCOMMITTEDLOCK)');
+    expect(section).toContain('WHERE l.LegacyBranchId = b.BranchID');
+    expect(section).not.toContain('NOLOCK');
+    expect(section).toContain('Unmapped legacy branch');
+  });
+
+  it('runs #248 DRVO-012 repair BEFORE a fail-closed full verification', () => {
+    const gate = get('.github/workflows/drvo-staging-gate.yml');
+    const repair = gate.indexOf('name: Reconcile missing DRVO-012 subscriptions on staging integration only');
+    const verify = gate.indexOf('name: Verify DRVO after migration');
+    const legacy = gate.indexOf('name: Reconcile grandfathered subscriptions if required');
+    expect(repair).toBeGreaterThan(0);
+    expect(verify).toBeGreaterThan(repair);
+    expect(legacy).toBeGreaterThan(verify);
+    const verifyGate = gate.slice(verify, legacy);
+    expect(verifyGate).toContain("continue-on-error: ${{ github.event.pull_request.head.ref != 'feat/pos-sale-idempotency-246' }}");
+    expect(gate.slice(legacy, gate.indexOf('name: DRVO-012 staging smoke'))).toContain("github.event.pull_request.head.ref != 'feat/pos-sale-idempotency-246'");
+  });
+
   it('repairs missing DRVO-012 staging subscriptions before the integration smoke', () => {
     const gate = get('.github/workflows/drvo-staging-gate.yml');
     const fix = gate.indexOf('name: Reconcile missing DRVO-012 subscriptions on staging integration only');
