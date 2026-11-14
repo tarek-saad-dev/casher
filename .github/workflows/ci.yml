@@ -157,6 +157,14 @@ jobs:
       - name: Paid booking handoff reconciliation safety contracts
         run: npx vitest run src/lib/__tests__/handoffChargeReconciliationContracts.test.ts src/lib/__tests__/handoffPaidLinePolicy.test.ts
 
+      - name: DRVOWA CRM sync + audited deleted-sale tombstone regressions
+        run: >-
+          npx vitest run
+          src/modules/integrations/drvowa/__tests__/drvowaValidate.test.ts
+          src/modules/integrations/drvowa/__tests__/invoiceListDeletions.test.ts
+          src/modules/integrations/drvowa/__tests__/tenantScopedCrmTools.test.ts
+          scripts/drvo/__tests__/crmDrvowaStagingSafety.test.ts
+
       - name: Production build
         run: npm run build
 

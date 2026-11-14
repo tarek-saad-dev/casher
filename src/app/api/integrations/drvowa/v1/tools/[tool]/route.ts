@@ -78,9 +78,9 @@ export async function POST(request: Request, context: Context) {
 
     if (isDrvowaCrmSyncTool(tool)) {
       // CRM sync tools read POS operational tables (instance-scoped pairing).
-      void tenantId;
       void requestId;
-      const result = await executeDrvowaCrmTool(tool, input);
+      // Authenticated instance-pairing owner, never caller-controlled TenantId.
+      const result = await executeDrvowaCrmTool(tool, input, { tenantId });
       return Response.json(result, {
         status: result.ok
           ? 200
