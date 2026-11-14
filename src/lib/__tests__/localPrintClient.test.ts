@@ -169,6 +169,43 @@ describe('localPrintClient', () => {
     }
   });
 
+  it('recognizes missing Puppeteer Chrome even when a legacy Agent mislabels the error as printer not found', async () => {
+    const fetchImpl: FetchLike = vi.fn(async url => {
+      if (String(url).endsWith('/health')) return jsonResponse(200, { status: 'ok' });
+      return jsonResponse(500, {
+        ok: false,
+        code: 'PRINTER_NOT_FOUND',
+        message: 'Could not find Chrome (ver. 148.0.7778.97).',
+      });
+    });
+    const result = await printHtmlViaLocalService(
+      { html: '<html>receipt</html>', requestId: 'legacy-chrome-error' },
+      { fetchImpl },
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.code).toBe('BROWSER_MISSING');
+      expect(result.userMessage).toContain('Chrome');
+    }
+  });
+
+  it('does not offer Chrome repair for actual Windows printer-not-found messages', async () => {
+    const fetchImpl: FetchLike = vi.fn(async url => {
+      if (String(url).endsWith('/health')) return jsonResponse(200, { status: 'ok' });
+      return jsonResponse(500, {
+        ok: false,
+        code: 'PRINTER_NOT_FOUND',
+        message: 'Could not find printer XP-80',
+      });
+    });
+    const result = await printHtmlViaLocalService(
+      { html: '<html>receipt</html>', requestId: 'real-printer-error' },
+      { fetchImpl },
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe('PRINTER_NOT_FOUND');
+  });
+
   it('handles 500 structured error', async () => {
     const fetchImpl: FetchLike = vi.fn(async (url) => {
       if (String(url).endsWith('/health')) return jsonResponse(200, { status: 'ok' });
