@@ -192,7 +192,7 @@ describe('persistent POST /api/sales request token across both POS writers (#246
       expect(code).toContain(token);
     }
     expect(code).toContain("process.env.DB_DATABASE !== 'last132'");
-    expect(code).toContain('Refusing production'.toLowerCase().slice(0, 0) + 'production env refused');
+    expect(code).toContain('production env refused');
   });
 
   it('idempotency remains independent from referral issue flags and is OFF until SQL migration approval', () => {
