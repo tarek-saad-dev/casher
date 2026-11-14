@@ -11,8 +11,8 @@ const CRM_TOOL_HANDLERS: Record<
 > = {
   'customer.list_changes': executeCustomerListChanges,
   'invoice.list_changes': executeInvoiceListChanges,
-  'catalog.list_services': executeCatalogListServices,
   'sync.source_counts': async () => executeSourceSyncCounts(),
+  'catalog.list_services': executeCatalogListServices,
 };
 
 export function isDrvowaCrmSyncTool(tool: string): boolean {
