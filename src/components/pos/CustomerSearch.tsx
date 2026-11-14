@@ -10,6 +10,7 @@ import {
   isCustomerIncomplete,
 } from '@/lib/customerSource';
 import type { Customer } from '@/lib/types';
+import { isCustomerProfileIncomplete } from '@/lib/customerProfile';
 import { formatCustomerProfileDisplay } from '@/lib/customerProfile';
 import { cn } from '@/lib/utils';
 
@@ -92,6 +93,7 @@ export default function CustomerSearch({
   }, [selected, updatedCustomer]);
 
   const missingSource = effectiveSelected && isCustomerSourceMissing(effectiveSelected.CameFrom);
+  const missingProfile = effectiveSelected && isCustomerProfileIncomplete(effectiveSelected);
   const hasMissingData = effectiveSelected && isCustomerIncomplete(effectiveSelected);
 
   if (effectiveSelected) {
@@ -149,14 +151,17 @@ export default function CustomerSearch({
           >
             <AlertCircle className="w-3.5 h-3.5 shrink-0" />
             <span>
-              {missingSource && !effectiveSelected.BirthDate && !effectiveSelected.Address
-                ? 'بيانات ناقصة — مصدر العميل غير مسجل'
-                : 'بيانات ناقصة — اضغط لإتمامها'}
+              {missingProfile && !missingSource && effectiveSelected.BirthDate && effectiveSelected.Address
+                ? 'بيانات ناقصة — الدراسة أو الوظيفة غير مسجلة'
+                : missingSource && !effectiveSelected.BirthDate && !effectiveSelected.Address
+                  ? 'بيانات ناقصة — مصدر العميل غير مسجل'
+                  : 'بيانات ناقصة — اضغط لإتمامها'}
             </span>
             <span className="mr-auto flex gap-0.5">
               {!effectiveSelected.BirthDate && <span className="w-1.5 h-1.5 rounded-full bg-warning" />}
               {!effectiveSelected.Address   && <span className="w-1.5 h-1.5 rounded-full bg-warning" />}
               {missingSource                && <span className="w-1.5 h-1.5 rounded-full bg-warning" />}
+              {missingProfile               && <span className="w-1.5 h-1.5 rounded-full bg-warning" />}
             </span>
           </button>
         )}

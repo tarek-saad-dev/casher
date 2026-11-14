@@ -17,6 +17,23 @@ export interface CustomerProfileValidation {
   errors: Record<string, string>;
 }
 
+/** A customer needs the same POS completion popup if demographic answers are missing. */
+export function isCustomerProfileIncomplete(customer: {
+  CustomerCategory?: string | null;
+  EducationLevel?: string | null;
+  InstitutionName?: string | null;
+  Occupation?: string | null;
+}): boolean {
+  if (customer.CustomerCategory === 'student') {
+    return (customer.EducationLevel !== 'school' && customer.EducationLevel !== 'college')
+      || !customer.InstitutionName?.trim();
+  }
+  if (customer.CustomerCategory === 'adult') {
+    return !customer.Occupation?.trim();
+  }
+  return true;
+}
+
 export function validateCustomerProfile(
   rawCategory: unknown,
   rawLevel: unknown,

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { validateCustomerProfile, formatCustomerProfileDisplay } from '@/lib/customerProfile';
+import { validateCustomerProfile, formatCustomerProfileDisplay, isCustomerProfileIncomplete } from '@/lib/customerProfile';
+import { isCustomerIncomplete } from '@/lib/customerSource';
+import type { Customer } from '@/lib/types';
 
 describe('customer demographics', () => {
   it('preserves unknown legacy clients with an empty optional category', () => {
@@ -35,5 +37,22 @@ describe('customer demographics', () => {
   it('formats existing customer demographics', () => {
     expect(formatCustomerProfileDisplay('student', 'school', 'سان مارك', null)).toContain('سان مارك');
     expect(formatCustomerProfileDisplay('adult', null, null, 'طبيب')).toBe('بالغ — طبيب');
+  });
+  it('marks legacy customers and unfinished student/adult answers as incomplete', () => {
+    expect(isCustomerProfileIncomplete({ CustomerCategory: null })).toBe(true);
+    expect(isCustomerProfileIncomplete({ CustomerCategory: 'student', EducationLevel: null, InstitutionName: '' })).toBe(true);
+    expect(isCustomerProfileIncomplete({ CustomerCategory: 'student', EducationLevel: 'school', InstitutionName: '  ' })).toBe(true);
+    expect(isCustomerProfileIncomplete({ CustomerCategory: 'student', EducationLevel: 'college', InstitutionName: 'كلية الهندسة' })).toBe(false);
+    expect(isCustomerProfileIncomplete({ CustomerCategory: 'adult', Occupation: '' })).toBe(true);
+    expect(isCustomerProfileIncomplete({ CustomerCategory: 'adult', Occupation: 'طبيب' })).toBe(false);
+  });
+  it('flags POS customers for completion even when other personal data is already filled', () => {
+    const customer = {
+      BirthDate: '2000-01-01', Address: 'Alexandria', CameFrom: 'walk_by',
+      CustomerCategory: null,
+    } as Customer;
+    expect(isCustomerIncomplete(customer)).toBe(true);
+    expect(isCustomerIncomplete({ ...customer, CustomerCategory: 'adult', Occupation: 'مدرس' })).toBe(false);
+    expect(isCustomerIncomplete({ ...customer, CustomerCategory: 'student', EducationLevel: 'school', InstitutionName: '' })).toBe(true);
   });
 });

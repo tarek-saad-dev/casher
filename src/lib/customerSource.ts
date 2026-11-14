@@ -5,6 +5,7 @@
  */
 
 import type { Customer } from '@/lib/types';
+import { isCustomerProfileIncomplete } from '@/lib/customerProfile';
 
 export const CUSTOMER_SOURCE_OPTIONS = [
   { value: "existing_loyal", label: "عميل قديم / لويال" },
@@ -64,7 +65,8 @@ export function isCustomerIncomplete(customer: Customer): boolean {
   return (
     !customer.BirthDate ||
     !customer.Address ||
-    isCustomerSourceMissing(customer.CameFrom)
+    isCustomerSourceMissing(customer.CameFrom) ||
+    isCustomerProfileIncomplete(customer)
   );
 }
 

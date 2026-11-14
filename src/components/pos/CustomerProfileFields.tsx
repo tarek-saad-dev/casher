@@ -16,9 +16,10 @@ interface Props {
   value: CustomerProfileDraft;
   onChange: (value: CustomerProfileDraft) => void;
   errors?: Record<string, string>;
+  showMissing?: boolean;
 }
 
-export default function CustomerProfileFields({ value, onChange, errors = {} }: Props) {
+export default function CustomerProfileFields({ value, onChange, errors = {}, showMissing = false }: Props) {
   const [options, setOptions] = useState<ProfileOptions>(EMPTY_OPTIONS);
   const listId = useId();
 
@@ -48,7 +49,12 @@ export default function CustomerProfileFields({ value, onChange, errors = {} }: 
 
   return (
     <div className="space-y-3 rounded-lg border border-border p-3" dir="rtl">
-      <label className="block text-sm font-medium">العميل طالب ولا بالغ؟</label>
+      <div className="flex items-center justify-between gap-2">
+        <label className="block text-sm font-medium">العميل طالب ولا بالغ؟</label>
+        {showMissing && (
+          <span className="rounded-full border border-warning/20 bg-warning/10 px-1.5 py-0.5 text-[10px] text-warning">ناقص</span>
+        )}
+      </div>
       <div className="grid grid-cols-2 gap-2">
         {([
           { code: 'student', label: 'طالب' },

@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/dialog';
 import CustomerSourceFields from '@/components/pos/CustomerSourceFields';
 import CustomerProfileFields from '@/components/pos/CustomerProfileFields';
-import { validateCustomerProfile, type CustomerProfileDraft } from '@/lib/customerProfile';
+import { validateCustomerProfile, isCustomerProfileIncomplete, type CustomerProfileDraft } from '@/lib/customerProfile';
 import {
   isCustomerSourceMissing,
   isKnownCustomerSource,
@@ -66,6 +66,7 @@ export default function CompleteCustomerModal({
   const missingBirthDate = !customer.BirthDate;
   const missingAddress   = !customer.Address;
   const missingSource    = isCustomerSourceMissing(customer.CameFrom);
+  const missingProfile   = isCustomerProfileIncomplete(customer);
 
   async function handleSave() {
     setSaving(true);
@@ -257,15 +258,18 @@ export default function CompleteCustomerModal({
             )}
           </div>
 
-          <CustomerProfileFields
-            value={profile}
-            errors={profileErrors}
-            onChange={(next) => {
-              setProfile(next);
-              setProfileChanged(true);
-              setProfileErrors({});
-            }}
-          />
+          {(isEditMode || missingProfile) && (
+            <CustomerProfileFields
+              value={profile}
+              errors={profileErrors}
+              showMissing={!isEditMode && missingProfile}
+              onChange={(next) => {
+                setProfile(next);
+                setProfileChanged(true);
+                setProfileErrors({});
+              }}
+            />
+          )}
 
           {/* Source selection */}
           {(isEditMode || missingSource) && (
