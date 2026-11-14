@@ -1477,6 +1477,14 @@ describe('saveAdminAttendanceBulk', () => {
       DefaultCheckInTime: '09:00',
       DefaultCheckOutTime: '18:00',
     });
+    // This scenario changes the HR start for this employee to 09:00.
+    // Booking/branch availability does not define the financial clock.
+    const { resolveEmployeeFinancialWorkSchedule } = await import(
+      '@/lib/hr/late-deduction/financialWorkSchedule'
+    );
+    vi.mocked(resolveEmployeeFinancialWorkSchedule).mockResolvedValueOnce({
+      isScheduledWorkingDay: true, scheduledStart: '09:00', scheduledEnd: '18:00',
+    });
     const { saveAdminAttendanceBulk } = await import(
       '@/modules/attendance/application/AttendanceCommandService'
     );
