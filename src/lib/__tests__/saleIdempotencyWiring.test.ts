@@ -65,6 +65,26 @@ describe('persistent POST /api/sales request token across both POS writers (#246
     expect(m).toContain('posSaleIdempotencyMigration,');
   });
 
+  it('stacked #248 staging gate runs BOTH 023 referral and 024 idempotency smokes', () => {
+    const gate = get('.github/workflows/drvo-staging-gate.yml');
+    const step023 = gate.slice(
+      gate.indexOf('- name: DRVO-023 tenant referral SQL / concurrency smoke'),
+      gate.indexOf('- name: DRVO-024 POS sale idempotency SQL smoke'),
+    );
+    expect(step023).toContain("github.event.pull_request.head.ref == 'feat/pos-sale-idempotency-246'");
+    expect(step023).toContain('scripts/drvo/drvo023-referral-staging-smoke.ts');
+    const step024 = gate.slice(gate.indexOf('- name: DRVO-024 POS sale idempotency SQL smoke'));
+    expect(step024).toContain('scripts/drvo/drvo024-sale-idempotency-staging-smoke.ts');
+
+    const smoke = get('scripts/drvo/drvo024-sale-idempotency-staging-smoke.ts');
+    expect(smoke).toContain("sql.ISOLATION_LEVEL.SERIALIZABLE");
+    expect(smoke).toContain('WITH (UPDLOCK, HOLDLOCK)');
+    expect(smoke).toContain('LOCK_TIMEOUT 1500');
+    expect(smoke).toContain('ErrorNumber) === 1222');
+    expect(smoke).toContain('await first.rollback()');
+    expect(smoke).toContain('await second.rollback()');
+  });
+
   it('idempotency remains independent from referral issue flags and is OFF until SQL migration approval', () => {
     const server = get('src/lib/sales/saleRequestIdempotency.service.ts');
     expect(server).toContain("process.env.POS_SALE_IDEMPOTENCY_ENABLED === 'true'");
