@@ -8,8 +8,7 @@
  * Phase B6 — schedule-control day_off apply + tagged Absent revert. Best-effort.
  */
 import { calcLateMinutes, calcEarlyLeaveMinutes } from '@/lib/timeUtils';
-import { resolveScheduleForDay } from '@/lib/hr/attendance-eligibility';
-import { normalizeEmploymentType } from '@/lib/hr/employee-hr-model';
+import { resolveEmployeeFinancialWorkSchedule } from '@/lib/hr/late-deduction/financialWorkSchedule';
 import { replaceAttendanceBreaks } from '@/lib/hr/attendance-breaks-db';
 import { replaceAttendanceBreakTimes } from '@/lib/hr/attendance-break-time-db';
 import { normalizeBreaksInput } from '@/lib/hr/attendance-breaks';
@@ -243,18 +242,11 @@ export async function saveAdminAttendance(
   let employeeName: string | undefined;
   if (emp) {
     employeeName = emp.EmpName?.trim() || undefined;
-    const employmentType = normalizeEmploymentType(emp.EmploymentType as string) ?? 'full_time';
-    const schedule = resolveScheduleForDay(employmentType, {
-      hasScheduleRow: emp.ScheduleDayOfWeek != null,
-      isWorkingDayFromSchedule:
-        emp.ScheduleDayOfWeek != null ? !!emp.IsWorkingDay : null,
-      scheduleStart: emp.ScheduleStartTime || null,
-      scheduleEnd: emp.ScheduleEndTime || null,
-      defaultStart: emp.DefaultCheckInTime || null,
-      defaultEnd: emp.DefaultCheckOutTime || null,
+    const financial = await resolveEmployeeFinancialWorkSchedule({
+      empId: Number(EmpID), branchId, workDate: WorkDate, db,
     });
-    schedStart = schedule.scheduledStart;
-    schedEnd = schedule.scheduledEnd;
+    schedStart = financial?.isScheduledWorkingDay ? financial.scheduledStart : null;
+    schedEnd = financial?.isScheduledWorkingDay ? financial.scheduledEnd : null;
   }
 
   const lateMinutes = calcLateMinutes(CheckInTime || null, schedStart);
@@ -924,23 +916,13 @@ export async function saveAdminAttendanceBulk(
         WorkDate,
         branchId,
       );
-      const employmentType =
-        normalizeEmploymentType(String(empSchedule?.EmploymentType || '')) ?? 'full_time';
-      const resolved = resolveScheduleForDay(employmentType, {
-        hasScheduleRow: empSchedule?.ScheduleDayOfWeek != null,
-        isWorkingDayFromSchedule:
-          empSchedule?.ScheduleDayOfWeek == null
-            ? null
-            : Boolean(empSchedule.IsWorkingDay),
-        scheduleStart: empSchedule?.ScheduleStartTime || null,
-        scheduleEnd: empSchedule?.ScheduleEndTime || null,
-        defaultStart:
-          empSchedule?.DefaultCheckInTime || empDef?.schedStart || null,
-        defaultEnd:
-          empSchedule?.DefaultCheckOutTime || empDef?.schedEnd || null,
+      const financial = await resolveEmployeeFinancialWorkSchedule({
+        empId: Number(item.EmpID), branchId, workDate: WorkDate, db: txDb,
       });
-      const schedStart = resolved.scheduledStart ?? empDef?.schedStart ?? null;
-      const schedEnd = resolved.scheduledEnd ?? empDef?.schedEnd ?? null;
+      const schedStart = financial?.isScheduledWorkingDay
+        ? financial.scheduledStart : null;
+      const schedEnd = financial?.isScheduledWorkingDay
+        ? financial.scheduledEnd : null;
       const checkIn = (item.CheckInTime || null) as string | null;
       const checkOut = (item.CheckOutTime || null) as string | null;
       const lateMinutes = calcLateMinutes(checkIn, schedStart);

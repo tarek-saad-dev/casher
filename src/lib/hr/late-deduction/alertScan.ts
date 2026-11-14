@@ -3,8 +3,7 @@ import 'server-only';
 import { getPool, sql } from '@/lib/db';
 import { getCairoBusinessDate, getCairoTimeStr, SALON_TZ } from '@/lib/businessDate';
 import { calcLateMinutes } from '@/lib/timeUtils';
-import { resolveScheduleForDay } from '@/lib/hr/attendance-eligibility';
-import { normalizeEmploymentType } from '@/lib/hr/employee-hr-model';
+import { resolveFinancialWorkScheduleRow } from './financialWorkSchedule';
 import { isLateDeductionExcludedAttendanceStatus } from './attendanceStatus';
 import {
   getLateDeductionConfig,
@@ -171,13 +170,16 @@ export async function runLateDeductionAlertScan(params?: {
         END AS LateDeductionExempt,
         a.BranchID AS HomeBranchID,
         s.BranchID AS ScheduleBranchID,
-        s.IsWorking AS IsWorkingDay,
-        CONVERT(VARCHAR(5), s.StartTime, 108) AS ScheduleStartTime,
-        CONVERT(VARCHAR(5), s.EndTime, 108) AS ScheduleEndTime,
+        fin.DayOfWeek AS ScheduleDayOfWeek,
+        fin.IsWorkingDay,
+        CONVERT(VARCHAR(5), fin.StartTime, 108) AS ScheduleStartTime,
+        CONVERT(VARCHAR(5), fin.EndTime, 108) AS ScheduleEndTime,
         att.AttendanceID,
         CONVERT(VARCHAR(8), att.CheckInTime, 108) AS CheckInTime,
         att.Status AS AttendanceStatus
       FROM dbo.TblEmp e
+      LEFT JOIN dbo.TblEmpWorkSchedule fin
+        ON fin.EmpID=e.EmpID AND fin.DayOfWeek=@dow
       OUTER APPLY (
         SELECT TOP 1 ea.BranchID
         FROM dbo.TblEmpBranchAssignment ea
@@ -229,15 +231,14 @@ export async function runLateDeductionAlertScan(params?: {
     for (const row of employees.recordset as Array<Record<string, unknown>>) {
       try {
         const empId = Number(row.EmpID);
-        const employmentType = normalizeEmploymentType(String(row.EmploymentType ?? '')) ?? 'full_time';
-        const schedule = resolveScheduleForDay(employmentType, {
-          hasScheduleRow: row.ScheduleStartTime != null || row.IsWorkingDay != null,
-          isWorkingDayFromSchedule:
-            row.IsWorkingDay == null ? null : Boolean(row.IsWorkingDay),
-          scheduleStart: (row.ScheduleStartTime as string) || null,
-          scheduleEnd: (row.ScheduleEndTime as string) || null,
-          defaultStart: (row.DefaultCheckInTime as string) || null,
-          defaultEnd: (row.DefaultCheckOutTime as string) || null,
+        const schedule = resolveFinancialWorkScheduleRow({
+          EmploymentType: String(row.EmploymentType ?? ''),
+          ScheduleDayOfWeek: row.ScheduleDayOfWeek as number | null,
+          IsWorkingDay: row.IsWorkingDay as number | boolean | null,
+          ScheduleStartTime: row.ScheduleStartTime as string | null,
+          ScheduleEndTime: row.ScheduleEndTime as string | null,
+          DefaultCheckInTime: row.DefaultCheckInTime as string | null,
+          DefaultCheckOutTime: row.DefaultCheckOutTime as string | null,
         });
 
         if (!schedule.isScheduledWorkingDay || !schedule.scheduledStart) continue;

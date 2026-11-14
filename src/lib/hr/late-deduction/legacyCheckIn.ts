@@ -7,8 +7,7 @@ import { scheduleFinalizeLateDeductionOnCheckIn } from './finalizeOnCheckIn';
 import { isLateDeductionExcludedAttendanceStatus } from './attendanceStatus';
 import { voidLateDeductionForExcludedAttendance } from './voidExcludedAttendance';
 import { calcLateMinutes, sqlTimeToHHmm } from '@/lib/timeUtils';
-import { resolveScheduleForDay } from '@/lib/hr/attendance-eligibility';
-import { normalizeEmploymentType } from '@/lib/hr/employee-hr-model';
+import { resolveEmployeeFinancialWorkSchedule } from './financialWorkSchedule';
 import * as attendanceRepo from '@/modules/attendance/infra/AttendanceRepository';
 
 /**
@@ -80,36 +79,17 @@ export async function enqueueLegacyEmployeeCheckInLateDeduction(params: {
 
   const checkIn = sqlTimeToHHmm(saved.CheckInTime);
   if (!checkIn) return;
-  const emp = await attendanceRepo.loadEmployeeScheduleForAdminPut(
-    db, empId, workDate, branchId
-  );
-  if (!emp) return;
-  const employmentType = normalizeEmploymentType(String(emp.EmploymentType || '')) ?? 'full_time';
-  const schedule = resolveScheduleForDay(employmentType, {
-    hasScheduleRow: emp.ScheduleDayOfWeek != null,
-    isWorkingDayFromSchedule: emp.ScheduleDayOfWeek == null ? null : Boolean(emp.IsWorkingDay),
-    scheduleStart: emp.ScheduleStartTime || null,
-    scheduleEnd: emp.ScheduleEndTime || null,
-    defaultStart: emp.DefaultCheckInTime || null,
-    defaultEnd: emp.DefaultCheckOutTime || null,
+  const financial = await resolveEmployeeFinancialWorkSchedule({
+    empId, branchId, workDate, db,
   });
-  if (!schedule.isScheduledWorkingDay) {
-    // Approved non-working day: never create a debit; void if one exists.
+  if (!financial?.isScheduledWorkingDay || !financial.scheduledStart) {
     await voidLateDeductionForExcludedAttendance({
-      empId,
-      branchId,
-      workDate,
-      attendanceId,
-      status: status || 'DayOff',
-    }).catch((err) => console.warn(
-      '[legacy-late-deduction] non-working-day void failed:',
-      err instanceof Error ? err.message : err,
-    ));
+      empId, branchId, workDate, attendanceId, status: 'financial_day_off',
+    });
     return;
   }
-  const scheduledStart = saved.ScheduledStartTime || schedule.scheduledStart;
-  const scheduledEnd = saved.ScheduledEndTime || schedule.scheduledEnd;
-  if (!scheduledStart) return;
+  const scheduledStart = financial.scheduledStart;
+  const scheduledEnd = financial.scheduledEnd;
 
   const lateMinutes = calcLateMinutes(checkIn, scheduledStart);
   // Legacy punch writers do not populate these payroll/attendance metadata columns.
@@ -118,14 +98,10 @@ export async function enqueueLegacyEmployeeCheckInLateDeduction(params: {
     .input('attendanceId', sql.Int, attendanceId)
     .input('empId', sql.Int, empId)
     .input('branchId', sql.Int, branchId)
-    .input('scheduledStart', sql.VarChar(8), scheduledStart)
-    .input('scheduledEnd', sql.VarChar(8), scheduledEnd || null)
     .input('lateMinutes', sql.Int, lateMinutes)
     .query(
       'UPDATE dbo.TblEmpAttendance ' +
-      'SET ScheduledStartTime=COALESCE(ScheduledStartTime,TRY_CAST(@scheduledStart AS TIME)), ' +
-      'ScheduledEndTime=COALESCE(ScheduledEndTime,TRY_CAST(@scheduledEnd AS TIME)), ' +
-      'LateMinutes=@lateMinutes, UpdatedAt=SYSDATETIME() ' +
+      'SET LateMinutes=@lateMinutes, UpdatedAt=SYSDATETIME() ' +
       'WHERE ID=@attendanceId AND EmpID=@empId AND BranchID=@branchId AND CheckInTime IS NOT NULL'
     );
 
