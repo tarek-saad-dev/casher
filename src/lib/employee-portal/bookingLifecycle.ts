@@ -122,3 +122,25 @@ export async function advanceStaffBookingPhase(input: {
     return { ok: false, status: 503, error: 'تعذر تحديث حالة الخدمة، حاول مرة تانية' };
   }
 }
+
+/** Server authority for cashier handoff; the client cannot forge "finished". */
+export async function getStaffBookingPhase(input: {
+  bookingId: number;
+  empId: number;
+  tenantId: string;
+}): Promise<StaffBookingPhase> {
+  await ensureStaffBookingLifecycleTable();
+  const pool = await getPool();
+  const result = await pool.request()
+    .input('bid', sql.Int, input.bookingId)
+    .input('emp', sql.Int, input.empId)
+    .input('tenant', sql.NVarChar(100), input.tenantId)
+    .query(
+      "SELECT ISNULL(l.Phase,N'scheduled') AS Phase " +
+      "FROM dbo.Bookings b " +
+      "INNER JOIN dbo.TblEmp e ON e.EmpID=b.AssignedEmpID " +
+      "LEFT JOIN dbo.TblBookingStaffLifecycle l ON l.BookingID=b.BookingID " +
+      "WHERE b.BookingID=@bid AND b.AssignedEmpID=@emp AND e.TenantId=@tenant AND e.isActive=1"
+    );
+  return (result.recordset[0]?.Phase || 'scheduled') as StaffBookingPhase;
+}
