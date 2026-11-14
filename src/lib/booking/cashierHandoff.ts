@@ -589,7 +589,7 @@ export async function markHandoffCharged(input: {
     const marker = 'CUT_HANDOFF:' + input.handoffId + '|';
     if (!paid || !String(paid.Notes2 ?? '').endsWith(marker) ||
         Number(paid.GrandTotal) < 0 ||
-        (row.ClientID != null && paid.ClientID !== row.ClientID) ||
+        row.ClientID == null || paid.ClientID == null || paid.ClientID !== row.ClientID ||
         Number(paid.PayDue) > 0.01 ||
         Number(paid.Paid) + 0.01 < Number(paid.GrandTotal)) {
       await tx.rollback(); return false;
