@@ -107,6 +107,16 @@ describe('CUT referral FULL integration (#244): buyer -> cashier -> tenant ledge
     expect(source('src/app/api/sales/[id]/route.ts')).toContain('assertReferralInvoiceNotMutated(');
   });
 
+  it('blocks the unauthenticated legacy referral demo from returning fabricated balances', () => {
+    const publicApi = source('src/app/api/public/client/referral/route.ts');
+    expect(publicApi).toContain('status: 410');
+    expect(publicApi).toContain("Cache-Control");
+    expect(publicApi).not.toContain('generateReferralCode(');
+    expect(publicApi).not.toContain('generateReferralShareUrl(');
+    expect(publicApi).not.toContain('rewardPoints = 100');
+    expect(publicApi).not.toContain('clientIdParam');
+  });
+
   it('keeps all public switches OFF unless deliberately enabled by environment', () => {
     expect(source('src/lib/referrals/posReferralCheckoutPolicy.ts'))
       .toContain("process.env.NEXT_PUBLIC_POS_REFERRAL_CHECKOUT_ENABLED === 'true'");
