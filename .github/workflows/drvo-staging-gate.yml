@@ -170,6 +170,14 @@ jobs:
           npm run drvo-012:reconcile-subscriptions -- --expected-database=last132_agent
           npm run drvo:verify
 
+      # Existing staging tenants predating DRVO-012 may lack subscriptions.
+      # This insert-only guarded repair is restricted to stacked #248 staging.
+      - name: Reconcile missing DRVO-012 subscriptions on staging integration only
+        if: >-
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.ref == 'feat/pos-sale-idempotency-246'
+        run: npm run drvo-012:reconcile-subscriptions -- --expected-database=last132_agent
+
       - name: DRVO-012 staging smoke
         run: npm run drvo-012:smoke
 
