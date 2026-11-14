@@ -140,9 +140,9 @@ describe('persistent POST /api/sales request token across both POS writers (#246
     expect(smoke).toContain('completeSaleRequest(');
     expect(smoke).toContain('await localTx.rollback()');
     expect(smoke).toContain('if (tx && !wasRolledBack)');
-    expect(smoke).toContain("database: 'last132_agent'");
+    expect(smoke).toContain("DB_DATABASE: 'last132_agent'");
     expect(smoke).toContain("sql.ISOLATION_LEVEL.SERIALIZABLE");
-    expect(smoke).toContain('not a browser HTTP');
+    expect(smoke).toContain('NOT a full browser HTTP POST');
   });
 
   it('idempotency remains independent from referral issue flags and is OFF until SQL migration approval', () => {
