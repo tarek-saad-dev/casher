@@ -48,6 +48,9 @@ describe('layered CUT print recovery plan', () => {
   });
   it('distinguishes unavailable Windows diagnostics from ready-but-unverified hardware', () => {
     expect(kind({ diagnostics: null })).toBe('verify');
+    expect(kind({ diagnostics: { ...context.diagnostics!, browserFound: false } })).toBe('renderer');
+    expect(buildPrintRecoveryPlan({ ...context, diagnostics: { ...context.diagnostics!, browserFound: false } })[0].action).toBe('repair-browser');
+    expect(kind({ diagnostics: { ...context.diagnostics!, browserFound: true } })).toBe('ready');
     expect(kind({ diagnostics: { ...context.diagnostics!, spoolerStatus: 'unknown' } })).toBe('verify');
     expect(kind({ diagnostics: { ...context.diagnostics!, printerFound: null } })).toBe('verify');
     expect(kind({ diagnostics: { ...context.diagnostics!, printerStatus: 'unknown' } })).toBe('verify');

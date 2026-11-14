@@ -150,6 +150,25 @@ describe('localPrintClient', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
+  it('shows missing Chrome renderer instead of wrongly blaming Windows printer', async () => {
+    const fetchImpl: FetchLike = vi.fn(async url => {
+      if (String(url).endsWith('/health')) return jsonResponse(200, { status: 'ok' });
+      return jsonResponse(500, {
+        ok: false, code: 'BROWSER_MISSING', stage: 'rendering',
+        message: 'Could not find Chrome (ver. 148.0.7778.97).',
+      });
+    });
+    const result = await printHtmlViaLocalService(
+      { html: '<html><body>CUT</body></html>', requestId: 'missing-chrome-test' },
+      { fetchImpl },
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.code).toBe('BROWSER_MISSING');
+      expect(result.userMessage).toContain('Chrome');
+    }
+  });
+
   it('handles 500 structured error', async () => {
     const fetchImpl: FetchLike = vi.fn(async (url) => {
       if (String(url).endsWith('/health')) return jsonResponse(200, { status: 'ok' });

@@ -43,6 +43,8 @@ export interface PrinterDiagnostics {
   spoolerStatus: string;
   queuedJobs: number | null;
   physicalPrinterStatus: 'unknown';
+  /** Chrome for Testing bundled with Puppeteer; not the user's desktop Chrome. */
+  browserFound?: boolean;
 }
 export async function getLocalAgentHealth(timeoutMs = 2500, fetchImpl: FetchLike = fetch): Promise<LocalAgentHealth> {
   const controller = new AbortController();
@@ -76,6 +78,7 @@ export type PrintErrorCode =
   | 'HTTP_ERROR'
   | 'INVALID_PAYLOAD'
   | 'PRINTER_NOT_FOUND'
+  | 'BROWSER_MISSING'
   | 'PRINTER_OFFLINE'
   | 'SPOOLER_ERROR'
   | 'PRINT_COMMAND_FAILED'
@@ -119,6 +122,7 @@ const ARABIC_MESSAGES: Record<PrintErrorCode, string> = {
   HTTP_ERROR: 'خدمة الطباعة أعادت خطأ غير متوقع.',
   INVALID_PAYLOAD: 'بيانات الإيصال غير صالحة للطباعة.',
   PRINTER_NOT_FOUND: 'تم الوصول إلى خدمة الطباعة، لكن الطابعة غير متاحة.',
+  BROWSER_MISSING: 'برنامج الطباعة شغال لكن Chrome الخاص بتكوين صورة الفاتورة ناقص. افتح إدارة الطباعة ونزّل ملف إصلاح Chrome.',
   PRINTER_OFFLINE: 'الطابعة غير متصلة أو في وضع Offline.',
   SPOOLER_ERROR: 'فشل Windows في إرسال المهمة إلى الطابعة. راجع قائمة انتظار الطباعة.',
   PRINT_COMMAND_FAILED: 'فشلت عملية الطباعة داخل خدمة الطباعة المحلية.',
@@ -160,6 +164,7 @@ function classifyServiceCode(code?: string, message?: string): PrintErrorCode {
     'HTTP_ERROR',
     'INVALID_PAYLOAD',
     'PRINTER_NOT_FOUND',
+    'BROWSER_MISSING',
     'PRINTER_OFFLINE',
     'SPOOLER_ERROR',
     'PRINT_COMMAND_FAILED',
@@ -171,6 +176,7 @@ function classifyServiceCode(code?: string, message?: string): PrintErrorCode {
   if (known.includes(c as PrintErrorCode)) return c as PrintErrorCode;
 
   const msg = (message || '').toLowerCase();
+  if (msg.includes('could not find chrome') || msg.includes('chrome-headless-shell')) return 'BROWSER_MISSING';
   if (msg.includes('not found') || msg.includes('cannot find')) return 'PRINTER_NOT_FOUND';
   if (msg.includes('offline')) return 'PRINTER_OFFLINE';
   if (msg.includes('spool')) return 'SPOOLER_ERROR';

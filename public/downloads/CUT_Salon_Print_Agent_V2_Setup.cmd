@@ -14,7 +14,7 @@ echo Run from the Windows user account used for the cashier.
 echo.
 
 set "CUT_INSTALL_SCRIPT=%TEMP%\CUT_Salon_Print_Agent_V2_Official_Installer.ps1"
-set "CUT_INSTALL_URL=https://raw.githubusercontent.com/tarek-saad-dev/casher/19e77fc4041fca67434bc57bd5886a6873e0a753/public/downloads/Install-CUT-Print-Agent.ps1"
+set "CUT_INSTALL_URL=https://raw.githubusercontent.com/tarek-saad-dev/casher/main/public/downloads/Install-CUT-Print-Agent.ps1"
 
 where powershell.exe >nul 2>&1
 if errorlevel 1 (
@@ -23,7 +23,7 @@ if errorlevel 1 (
 )
 
 echo [1/3] Downloading the official V2 installer from CUT Salon GitHub...
-powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -UseBasicParsing -Uri $env:CUT_INSTALL_URL -OutFile $env:CUT_INSTALL_SCRIPT; if ((Get-Item -LiteralPath $env:CUT_INSTALL_SCRIPT).Length -lt 5000) { throw 'Installer download was incomplete.' }; if (-not (Select-String -LiteralPath $env:CUT_INSTALL_SCRIPT -Pattern 'CUT Salon Print Agent V2' -SimpleMatch -Quiet)) { throw 'Unexpected installer content.' }; Write-Host 'Download successful.' -ForegroundColor Green"
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -UseBasicParsing -Uri $env:CUT_INSTALL_URL -OutFile $env:CUT_INSTALL_SCRIPT; if ((Get-Item -LiteralPath $env:CUT_INSTALL_SCRIPT).Length -lt 5000) { throw 'Installer download was incomplete.' }; if (-not (Select-String -LiteralPath $env:CUT_INSTALL_SCRIPT -Pattern 'CUT Salon Print Agent V2' -SimpleMatch -Quiet)) { throw 'Unexpected installer content.' }; if (-not (Select-String -LiteralPath $env:CUT_INSTALL_SCRIPT -Pattern 'Ensure-PuppeteerChrome' -SimpleMatch -Quiet)) { throw 'Installer missing required Chrome repair. Refresh Casher and retry.' }; Write-Host 'Download successful.' -ForegroundColor Green"
 if errorlevel 1 (
   echo.
   echo [ERROR] Unable to download the official installer.

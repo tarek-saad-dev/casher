@@ -3,10 +3,10 @@ import { REQUIRED_AGENT_VERSION, type LoopbackPermissionState, type LocalPrinter
 /** Pure UI decision logic. No retries, mutation, network calls, or print jobs. */
 export type RecoveryKind =
   | 'check' | 'browser' | 'agent' | 'upgrade' | 'settings'
-  | 'spooler' | 'printer' | 'queue' | 'ready' | 'verify';
+  | 'spooler' | 'printer' | 'queue' | 'ready' | 'verify' | 'renderer';
 export type RecoveryAction =
   | 'check' | 'permissions' | 'local-check' | 'upgrade' | 'open-printers'
-  | 'enable' | 'test';
+  | 'enable' | 'test' | 'repair-browser';
 export interface RecoveryStep {
   kind: RecoveryKind;
   title: string;
@@ -66,6 +66,11 @@ export function buildPrintRecoveryPlan(c: RecoveryContext): RecoveryStep[] {
     action: 'enable',
   }];
   const d = c.diagnostics;
+  if (d?.browserFound === false) return [{
+    kind: 'renderer', level: 3, title: 'Chrome الخاص بطباعة الفاتورة ناقص',
+    detail: 'برنامج الطباعة متصل والطابعة ظاهرة، لكن مكتبة Puppeteer مش لاقية Chrome for Testing اللي بتحوّل الفاتورة لصورة. نزّل ملف الإصلاح على نفس كمبيوتر الكاشير وشغّله بدبل كليك. مش هيطبع أو يعيد فواتير.',
+    action: 'repair-browser',
+  }];
   if (!d || d.probe !== 'ok') return [{
     kind: 'verify', level: 3, title: 'الخدمة شغالة، لكن فحص Windows مش مكتمل',
     detail: 'اتأكد من طابعة Windows وافحص ورقة واحدة عند وجودك بالمحل. الحالة الفعلية للورق غير معروفة.',
