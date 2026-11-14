@@ -202,7 +202,9 @@ async function main(): Promise<void> {
       .query(`
         SELECT
           COUNT(*) AS saleCnt,
-          SUM(CASE WHEN ISNULL(isActive, N'no') = N'yes' THEN 1 ELSE 0 END) AS cancelledCnt
+          SUM(CASE WHEN ISNULL(isActive, N'no') = N'yes' THEN 1 ELSE 0 END) AS cancelledCnt,
+          (SELECT COUNT(*) FROM dbo.TblinvServDetail detail
+           WHERE detail.invType = @invType) AS saleLineCnt
         FROM dbo.TblinvServHead
         WHERE invType = @invType
       `);
@@ -248,6 +250,7 @@ async function main(): Promise<void> {
     evidence.invoices = {
       sourceSaleCount: Number(invoiceTotals.recordset[0]?.saleCnt ?? 0),
       sourceCancelledCount: Number(invoiceTotals.recordset[0]?.cancelledCnt ?? 0),
+      sourceSaleLineCount: Number(invoiceTotals.recordset[0]?.saleLineCnt ?? 0),
       firstPageCount: invoices.recordset.length,
       cancelledInFirstPage: (
         invoices.recordset as Array<Record<string, unknown>>
