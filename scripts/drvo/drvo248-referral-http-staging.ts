@@ -330,6 +330,43 @@ async function main(): Promise<void> {
         payCash:calculated.grandTotal,payVisa:0,notes:MARKER,notes2:MARKER,
       };
     }
+    // Exact synthetic invoice-side effects, including cashier money and stock.
+    // Compare snapshots around a replay: counts and amounts MUST be identical.
+    async function invoiceEffects(invoiceId: number) {
+      const q=await pool.request().input('id',mssql.Int,invoiceId).query(`
+        SELECT
+          (SELECT COUNT(*) FROM dbo.TblinvServHead
+            WHERE invID=@id AND invType=N'مبيعات') AS InvoiceHeads,
+          (SELECT COUNT(*) FROM dbo.TblinvServDetail
+            WHERE invID=@id AND invType=N'مبيعات') AS InvoiceLines,
+          (SELECT COUNT(*) FROM dbo.TblinvServPayment
+            WHERE invID=@id AND invType=N'مبيعات') AS PaymentRows,
+          (SELECT ISNULL(SUM(PayValue),0) FROM dbo.TblinvServPayment
+            WHERE invID=@id AND invType=N'مبيعات') AS PaymentValue,
+          (SELECT COUNT(*) FROM dbo.TblCashMove
+            WHERE invID=@id AND invType=N'مبيعات') AS CashRows,
+          (SELECT ISNULL(SUM(GrandTolal),0) FROM dbo.TblCashMove
+            WHERE invID=@id AND invType=N'مبيعات') AS CashValue,
+          (SELECT COUNT(*) FROM dbo.TblProMove
+            WHERE invID=@id AND invType=N'مبيعات') AS StockRows,
+          (SELECT ISNULL(SUM(Qty),0) FROM dbo.TblProMove
+            WHERE invID=@id AND invType=N'مبيعات') AS StockQty,
+          (SELECT COUNT(*) FROM dbo.TblPosSaleRequest
+            WHERE InvID=@id AND InvType=N'مبيعات') AS RequestRows;
+      `);
+      return q.recordset[0] as Record<string,unknown>;
+    }
+    async function tenantClientSaleCount(clientId:number) {
+      const q=await pool.request()
+        .input('tenant',mssql.UniqueIdentifier,testTenantId)
+        .input('client',mssql.Int,clientId)
+        .query(`SELECT COUNT(*) AS SaleCount
+          FROM dbo.TblinvServHead h
+          JOIN dbo.Location l ON l.LegacyBranchId=h.BranchID
+          WHERE l.TenantId=@tenant AND h.ClientID=@client
+            AND h.invType=N'مبيعات';`);
+      return Number(q.recordset[0].SaleCount);
+    }
     async function postSale(payload: ReturnType<typeof salePayload>, label: string) {
       const first=await requireStatus(
         await http('/api/sales',asJson('POST',payload,cookie)),201,label+' creates invoice');
@@ -337,10 +374,18 @@ async function main(): Promise<void> {
       check(Number.isSafeInteger(id) && id>0,'invoice ID persisted: '+label);
       smokeIds.push(id);
       smokeRequestIds.push(payload.requestId);
+      const beforeReplay=await invoiceEffects(id);
+      check(Number(beforeReplay.InvoiceHeads)===1 &&
+        Number(beforeReplay.RequestRows)===1 &&
+        Number(beforeReplay.PaymentRows)>=1,
+        label+' original invoice has one header, one UUID and payment rows');
       const replay=await requireStatus(
         await http('/api/sales',asJson('POST',payload,cookie)),200,label+' same UUID replay');
       check(Number(replay.invID)===id && replay.replayed===true,
         label+' replay never inserts another invoice');
+      const afterReplay=await invoiceEffects(id);
+      check(JSON.stringify(afterReplay)===JSON.stringify(beforeReplay),
+        label+' replay preserves invoice, payments, cashier cash and stock ledgers');
       const hashChanged={...payload,notes:payload.notes+'-CHANGED'};
       const conflicted=await requireStatus(
         await http('/api/sales',asJson('POST',hashChanged,cookie)),409,
@@ -365,6 +410,40 @@ async function main(): Promise<void> {
     }
     const ownerSale=salePayload(referrer,'plain');
     const ownerInvoice=await postSale(ownerSale,'referrer first visit');
+
+    // Two independently dispatched authenticated requests with the SAME UUID
+    // must serialize in the real POST handler. This does not simulate different
+    // cashier identities: both requests deliberately use the same staff actor.
+    const race=salePayload(referrer,'plain');
+    const beforeRace=await tenantClientSaleCount(referrer);
+    const racing=await Promise.all([
+      http('/api/sales',asJson('POST',race,cookie)),
+      http('/api/sales',asJson('POST',race,cookie)),
+    ]);
+    const raceOutcomes=await Promise.all(racing.map(async response=>({
+      status:response.status,
+      data:await response.json() as Record<string,unknown>,
+    })));
+    const statuses=raceOutcomes.map(o=>o.status).sort((a,b)=>a-b);
+    check(statuses.length===2 && statuses[0]===200 && statuses[1]===201,
+      'same UUID concurrent HTTP posts have one sale and one replay');
+    const racedInvoice=Number(raceOutcomes[0].data.invID);
+    check(Number.isSafeInteger(racedInvoice) && racedInvoice>0 &&
+      Number(raceOutcomes[1].data.invID)===racedInvoice &&
+      raceOutcomes.some(o=>o.status===200 && o.data.replayed===true),
+      'parallel HTTP retries return exactly the original paid invoice identity');
+    smokeIds.push(racedInvoice);
+    smokeRequestIds.push(race.requestId);
+    const afterRace=await tenantClientSaleCount(referrer);
+    check(afterRace===beforeRace+1,
+      'two concurrent HTTP saves produce only one tenant-owned sale header');
+    const raceEffects=await invoiceEffects(racedInvoice);
+    check(Number(raceEffects.InvoiceHeads)===1 &&
+      Number(raceEffects.RequestRows)===1 &&
+      Number(raceEffects.PaymentRows)>=1 &&
+      money(Number(raceEffects.PaymentValue))===money(race.grandTotal),
+      'concurrent HTTP sale has one UUID record and exactly one paid total');
+
 
     const sourceCodeR=await pool.request()
       .input('tenant',mssql.UniqueIdentifier,testTenantId)
@@ -468,6 +547,7 @@ async function main(): Promise<void> {
       'refunded invoice UUID tombstone still rejects replay');
     check(afterRefund.code==='IDEMPOTENCY_INCONSISTENT',
       'no double charge even after original paid invoice deleted');
+    await refund(racedInvoice,'concurrent same-UUID plain sale');
     await refund(ownerInvoice,'referrer baseline');
     console.log('CUT248_REFERRAL_AUTHENTICATED_HTTP_STAGING_PASS');
   } finally {
