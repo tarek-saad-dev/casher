@@ -300,6 +300,74 @@ async function main(): Promise<void> {
       distinctClients: Number(proteinSales30d.recordset[0]?.clientCnt ?? 0),
       note: 'Independent Cashier SQL baseline for AutoRespond AI audience comparison',
     };
+    // Find a historical month containing actual protein sales, without creating
+    // any staging/production fixture or exposing individual customer identities.
+    // This provides a positive read-only source baseline when the 30d period is empty.
+    const positiveProteinMonth = await pool
+      .request()
+      .input('invType', sql.NVarChar(20), SALE_TYPE)
+      .query(`
+        SELECT TOP (1)
+          CONVERT(CHAR(7), h.invDate, 126) AS yearMonth,
+          COUNT(DISTINCT h.ClientID) AS clientCnt
+        FROM dbo.TblinvServHead h
+        INNER JOIN dbo.TblinvServDetail d
+          ON d.invType = h.invType AND d.invID = h.invID
+        WHERE h.invType = @invType
+          AND ISNULL(h.isActive, N'no') = N'no'
+          AND h.ClientID IS NOT NULL
+          AND h.invDate IS NOT NULL
+          AND d.ProID IN (15, 16, 1077)
+        GROUP BY CONVERT(CHAR(7), h.invDate, 126)
+        HAVING COUNT(DISTINCT h.ClientID) > 0
+        ORDER BY yearMonth DESC
+      `);
+    const positive = positiveProteinMonth.recordset[0] as
+      | { yearMonth: string; clientCnt: number }
+      | undefined;
+    if (positive) {
+      const startDate = `${positive.yearMonth}-01`;
+      const monthlyRefine = await pool
+        .request()
+        .input('invType', sql.NVarChar(20), SALE_TYPE)
+        .input('startDate', sql.Date, startDate)
+        .query(`
+          WITH proteinClients AS (
+            SELECT DISTINCT h.ClientID
+            FROM dbo.TblinvServHead h
+            INNER JOIN dbo.TblinvServDetail d
+              ON d.invType = h.invType AND d.invID = h.invID
+            WHERE h.invType = @invType
+              AND ISNULL(h.isActive, N'no') = N'no'
+              AND h.ClientID IS NOT NULL
+              AND h.invDate >= @startDate
+              AND h.invDate < DATEADD(MONTH, 1, @startDate)
+              AND d.ProID IN (15, 16, 1077)
+          )
+          SELECT COUNT(1) AS clientCnt
+          FROM proteinClients pc
+          WHERE (
+            SELECT ISNULL(SUM(GrandTotal), 0)
+            FROM dbo.TblinvServHead sale
+            WHERE sale.ClientID = pc.ClientID
+              AND sale.invType = @invType
+              AND ISNULL(sale.isActive, N'no') = N'no'
+          ) >= 1000
+        `);
+      evidence.proteinHistoricalPositiveSource = {
+        yearMonth: positive.yearMonth,
+        distinctClients: Number(positive.clientCnt),
+        clientsSpendingAtLeast1000: Number(monthlyRefine.recordset[0]?.clientCnt ?? 0),
+        serviceProIds: [15, 16, 1077],
+        note: 'Read-only positive monthly baseline (and lifetime spend refine); no personal data emitted',
+      };
+    } else {
+      evidence.proteinHistoricalPositiveSource = {
+        status: 'NO_POSITIVE_HISTORICAL_WINDOW',
+        note: 'A synthetic positive fixture must be created only in a disposable isolated database',
+      };
+    }
+
 
     evidence.autoRespondCrossRepo = {
       customer360: 'BLOCKED_NO_STAGING_AUTORESPOND_RUNTIME',
