@@ -71,11 +71,12 @@ export async function runHandoffRecoveryStaging(a: Args): Promise<void> {
         "INSERT INTO dbo.BookingServices (BookingID,ProID,EmpID,Qty,Price,DurationMinutes) " +
         "SELECT @new,ProID,EmpID,Qty,Price,DurationMinutes FROM dbo.BookingServices WHERE BookingID=@copy"
       );
-    const booked = await a.pool.request().input('id', sql.Int, bookingId)
+    const booked = await a.pool.request()
+      .input('id', sql.Int, bookingId)
+      .input('defaultEmployee', sql.Int, a.empId)
       .query(
         "SELECT ProID,ISNULL(EmpID,@defaultEmployee) AS EmpID,Qty " +
         "FROM dbo.BookingServices WHERE BookingID=@id ORDER BY BookingServiceID"
-          .replace('@defaultEmployee', String(a.empId))
       );
     const rows = booked.recordset as Array<{ ProID:number; EmpID:number; Qty:number }>;
     const qty = rows.filter(row => row.ProID === a.serviceId)
