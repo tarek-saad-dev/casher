@@ -63,6 +63,13 @@ export function getDrvowaCrmSyncToolDefinitions(): DrvowaToolDefinition[] {
       },
     },
     {
+      name: 'sync.source_counts',
+      description: 'Read-only current source row counts for the customer, sales invoice and catalog append streams, including cancelled and soft-deleted records. No customer PII.',
+      mode: 'READ',
+      approval: 'AUTO',
+      inputSchema: { type: 'object', properties: {} },
+    },
+    {
       name: 'catalog.list_services',
       description:
         'List catalog services after an append-only sinceProId cursor. Pass identitySweep=true with identitySweepSinceProId to rotate through historical ProIDs so renames, category moves, and isDeleted flips are not permanently missed.',
