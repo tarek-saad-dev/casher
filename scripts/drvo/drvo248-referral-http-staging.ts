@@ -181,6 +181,52 @@ async function main(): Promise<void> {
       .query('SELECT EmpID FROM dbo.TblEmp WHERE TenantId=@tenant AND EmpName=@name');
     check(empR.recordset.length === 1, 'synthetic barber belongs to tenant');
     const empId = Number(empR.recordset[0].EmpID);
+
+    // The onboarding team stage uses today's UTC date for new assignments,
+    // while the POS operates on Africa/Cairo's 04:00 business-day cutoff.
+    // Before 04:00 Cairo, a just-onboarded barber can be effective *tomorrow*
+    // relative to the open POS business day. Correct the fixture's existing
+    // assignment (not the sale authorization guard) for this synthetic tenant.
+    const assignment = await pool.request()
+      .input('tenant', mssql.UniqueIdentifier, testTenantId)
+      .input('empId', mssql.Int, empId)
+      .input('branchId', mssql.Int, branchId)
+      .query(`
+        SELECT ea.ID, CONVERT(varchar(10), ea.EffectiveFrom, 120) AS EffectiveFrom
+        FROM dbo.TblEmpBranchAssignment ea
+        JOIN dbo.TblEmp e ON e.EmpID=ea.EmpID AND e.TenantId=@tenant
+        JOIN dbo.Location l ON l.LegacyBranchId=ea.BranchID AND l.TenantId=@tenant
+        WHERE ea.EmpID=@empId AND ea.BranchID=@branchId AND ea.IsActive=1
+          AND ea.EffectiveTo IS NULL;
+      `);
+    check(assignment.recordset.length===1,
+      'onboarding created exactly one active tenant-owned barber branch assignment');
+    const assignmentFrom = String(assignment.recordset[0].EffectiveFrom);
+    if (assignmentFrom > day.newDay) {
+      const adjusted = await pool.request()
+        .input('tenant', mssql.UniqueIdentifier, testTenantId)
+        .input('empId', mssql.Int, empId)
+        .input('branchId', mssql.Int, branchId)
+        .input('id', mssql.Int, Number(assignment.recordset[0].ID))
+        .input('date', mssql.Date, day.newDay)
+        .query(`
+          UPDATE ea SET EffectiveFrom=@date
+          FROM dbo.TblEmpBranchAssignment ea
+          JOIN dbo.TblEmp e ON e.EmpID=ea.EmpID AND e.TenantId=@tenant
+          JOIN dbo.Location l ON l.LegacyBranchId=ea.BranchID AND l.TenantId=@tenant
+          WHERE ea.ID=@id AND ea.EmpID=@empId AND ea.BranchID=@branchId
+            AND ea.IsActive=1 AND ea.EffectiveTo IS NULL AND ea.EffectiveFrom>@date;
+        `);
+      check(adjusted.rowsAffected.reduce((a,b)=>a+b,0)===1,
+        'synthetic barber assignment aligned with cutoff-aware business day');
+    }
+    const { isEmployeeEligibleForBranchBookings } =
+      await import('../../src/lib/branch/bookingQueueOwnership');
+    check(await isEmployeeEligibleForBranchBookings({
+      empId, branchId, operationalDate: day.newDay,
+      requireCanReceiveBookings: false,
+    }), 'actual POS barber assignment guard approves synthetic branch and business date');
+
     await saveEmployeeBranchWeeklySchedule({
       empId, branchId, effectiveFrom: workDate, skipPayrollCheck: true,
       cells: Array.from({ length: 7 }, (_, dayOfWeek) => ({
