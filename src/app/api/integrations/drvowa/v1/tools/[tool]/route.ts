@@ -14,6 +14,10 @@ import { createPublicBooking } from '@/lib/booking/publicBookingCreate';
 import { cancelPublicBooking } from '@/lib/booking/publicBookingCancellation';
 import { reschedulePublicBooking } from '@/lib/booking/publicBookingReschedule';
 import { resolveDrvowaOwnerTenantId } from '@/lib/integrations/drvowaTenant';
+import {
+  executeDrvowaCrmTool,
+  isDrvowaCrmSyncTool,
+} from '@/modules/integrations/drvowa';
 
 export const runtime = 'nodejs';
 
@@ -67,10 +71,24 @@ export async function POST(request: Request, context: Context) {
     await requireDrvowaIntegrationAuth(request);
     // The DRVOWA pairing is instance-wide and belongs to CASHER_BOOT; tools never reach other tenants.
     const tenantId = await resolveDrvowaOwnerTenantId();
-    tool = (await context.params).tool;
+    tool = decodeURIComponent((await context.params).tool || '').trim();
     const body = record(await request.json().catch(() => ({})));
     const input = record(body.input);
     const requestId = stringValue(body.requestId) || crypto.randomUUID();
+
+    if (isDrvowaCrmSyncTool(tool)) {
+      // CRM sync tools read POS operational tables (instance-scoped pairing).
+      void tenantId;
+      void requestId;
+      const result = await executeDrvowaCrmTool(tool, input);
+      return Response.json(result, {
+        status: result.ok
+          ? 200
+          : result.error?.code === 'UNKNOWN_TOOL'
+            ? 404
+            : 200,
+      });
+    }
 
     if (tool === 'booking.get_upcoming') {
       const result = await listPublicUpcomingBookings({
