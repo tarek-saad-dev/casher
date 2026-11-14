@@ -139,10 +139,23 @@ async function main() {
       .query("SELECT EmpID FROM dbo.TblEmp WHERE TenantId=@tenantId AND EmpName=@name");
     check(staff.recordset.length === 1, 'New barber belongs to the tenant');
     const empId = Number(staff.recordset[0].EmpID);
+    check(req.employees.length >= 2, 'Staging salon pack provides a separate alternative barber');
+    const altStaff = await pool.request()
+      .input('tenantId', sql.UniqueIdentifier, tenantId)
+      .input('name', sql.NVarChar(200), req.employees[1].name)
+      .query("SELECT EmpID FROM dbo.TblEmp WHERE TenantId=@tenantId AND EmpName=@name");
+    check(altStaff.recordset.length === 1, 'Second staging barber exists in isolated tenant');
+    const altEmpId = Number(altStaff.recordset[0].EmpID);
 
     // One controlled staging test roster. Payroll validation is outside booking scope.
     await saveEmployeeBranchWeeklySchedule({
       empId, branchId, effectiveFrom: futureDate(0), skipPayrollCheck: true,
+      cells: Array.from({ length: 7 }, (_, dayOfWeek) => ({
+        dayOfWeek, isWorking: true, startTime: '11:00', endTime: '23:00', canReceiveBookings: true,
+      })),
+    });
+    await saveEmployeeBranchWeeklySchedule({
+      empId: altEmpId, branchId, effectiveFrom: futureDate(0), skipPayrollCheck: true,
       cells: Array.from({ length: 7 }, (_, dayOfWeek) => ({
         dayOfWeek, isWorking: true, startTime: '11:00', endTime: '23:00', canReceiveBookings: true,
       })),
@@ -196,6 +209,44 @@ async function main() {
     const persisted = await pool.request().input('bookingId', sql.Int, bookingId).query(`SELECT BookingID, BranchID, AssignedEmpID FROM dbo.Bookings WHERE BookingID=@bookingId`);
     check(persisted.recordset[0]?.BranchID === branchId, 'Persisted booking uses new salon branch');
     check(persisted.recordset[0]?.AssignedEmpID === empId, 'Persisted booking uses new salon barber');
+    // CUT STAFF staff lifecycle: real disposable-tenant SQL transitions.
+    const { advanceStaffBookingPhase, getStaffBookingPhase } =
+      await import('../../src/lib/employee-portal/bookingLifecycle');
+    const lifecycleActor = { bookingId, empId, tenantId };
+    try {
+      const badStart = await advanceStaffBookingPhase({ ...lifecycleActor, action: 'start' });
+      check(!badStart.ok && badStart.status === 409, 'Service cannot begin before arrival');
+      const arrived = await advanceStaffBookingPhase({ ...lifecycleActor, action: 'arrive' });
+      check(arrived.ok && arrived.phase === 'arrived', 'Assigned barber confirms arrival');
+      const duplicateArrive = await advanceStaffBookingPhase({ ...lifecycleActor, action: 'arrive' });
+      check(duplicateArrive.ok && duplicateArrive.alreadyApplied,
+        'Arrival confirmation replay is idempotent');
+      const started = await advanceStaffBookingPhase({ ...lifecycleActor, action: 'start' });
+      check(started.ok && started.phase === 'in_service', 'Assigned barber starts service');
+      const finished = await advanceStaffBookingPhase({ ...lifecycleActor, action: 'finish' });
+      check(finished.ok && finished.phase === 'finished',
+        'Assigned barber finishes service without creating a paid invoice');
+      const phase = await getStaffBookingPhase(lifecycleActor);
+      check(phase === 'finished', 'Finished phase is durably visible to cashier handoff gate');
+      const wrongEmployee = await advanceStaffBookingPhase({
+        ...lifecycleActor, empId: empId + 99999, action: 'arrive',
+      });
+      check(!wrongEmployee.ok && wrongEmployee.status === 404,
+        'Another employee cannot mutate a booking they do not own');
+      const notPaid = await pool.request().input('bookingId', sql.Int, bookingId)
+        .query('SELECT Status,ConvertedInvID FROM dbo.Bookings WHERE BookingID=@bookingId');
+      check(notPaid.recordset[0].ConvertedInvID == null &&
+        String(notPaid.recordset[0].Status).toLowerCase() !== 'completed',
+        'Finishing service never marks an invoice paid');
+      console.log('SALON_STAFF_LIFECYCLE_E2E_STAGING_PASS');
+    } finally {
+      await pool.request().input('bookingId', sql.Int, bookingId)
+        .query(
+          "IF OBJECT_ID(N'dbo.TblBookingStaffLifecycle',N'U') IS NOT NULL " +
+          "DELETE FROM dbo.TblBookingStaffLifecycle WHERE BookingID=@bookingId"
+        );
+    }
+
     const replay = await createPublicBooking(payload);
     check(replay.body.meta.idempotentReplay === true, 'Retry reuses the existing booking');
 
@@ -228,6 +279,201 @@ async function main() {
     const movedReplay = await reschedulePublicBooking(moveInput);
     check(movedReplay.idempotentReplay === true && movedReplay.bookingId === bookingId, 'Move replay does not create another booking');
 
+    // CUT STAFF addon: real SQL in the disposable salon tenant only. Preview
+    // does not reserve; only one concurrent submit may commit the new duration.
+    const { previewAddon, reserveAddon } = await import('../../src/lib/employee-portal/bookingAddonAvailability');
+    const addonActor = { bookingId, empId, tenantId, proId: service.serviceId };
+    const addonPreview = await previewAddon(addonActor);
+    check(addonPreview.available === true, 'Employee addon preview finds a free extension');
+    const beforeAddonRows = await pool.request().input('bid', sql.Int, bookingId)
+      .query('SELECT COUNT(*) AS count FROM dbo.BookingServices WHERE BookingID=@bid');
+    const beforeCount = Number(beforeAddonRows.recordset[0]?.count || 0);
+    const [addonA, addonB] = await Promise.all([
+      reserveAddon({ ...addonActor, expectedEndAt: addonPreview.expectedEndAt }),
+      reserveAddon({ ...addonActor, expectedEndAt: addonPreview.expectedEndAt }),
+    ]);
+    check([addonA, addonB].filter(r => r.ok).length === 1,
+      'Exactly one concurrent addon request reserves extra time');
+    check([addonA, addonB].filter(r => !r.ok).length === 1,
+      'Stale duplicate addon request is rejected');
+    const afterAddon = await pool.request().input('bid', sql.Int, bookingId).query(`
+      SELECT b.AbsoluteEndUtc, b.EndTime,
+        (SELECT COUNT(*) FROM dbo.BookingServices bs WHERE bs.BookingID=b.BookingID) AS LineCount
+      FROM dbo.Bookings b WHERE b.BookingID=@bid
+    `);
+    check(Number(afterAddon.recordset[0]?.LineCount) === beforeCount + 1,
+      'Confirmed addon persists exactly one new booking service row');
+    check(new Date(afterAddon.recordset[0]?.AbsoluteEndUtc).getTime() > new Date(addonPreview.expectedEndAt).getTime(),
+      'Confirmed addon extends the persisted booking end time');
+    const repeatAfterSuccess = await reserveAddon({ ...addonActor, expectedEndAt: addonPreview.expectedEndAt });
+    check(!repeatAfterSuccess.ok && repeatAfterSuccess.status === 409,
+      'Old preview token cannot be replayed after successful extension');
+    // Reject handoffs containing services without reserved time.
+    const { upsertEmployeeHandoff, claimHandoffForPos } = await import('../../src/lib/booking/cashierHandoff');
+    const extraHandoff = await upsertEmployeeHandoff({
+      bookingId, empId, tenantId,
+      services: [{ proId: service.serviceId, qty: beforeCount + 2, source: 'added' }],
+    });
+    check(!extraHandoff.ok && extraHandoff.error === 'services_not_reserved',
+      'POS refuses addon quantities that were not booked');
+    const handoff = await upsertEmployeeHandoff({
+      bookingId, empId, tenantId,
+      services: [{ proId: service.serviceId, qty: beforeCount + 1, source: 'booked' }],
+    });
+    check(handoff.ok, 'POS accepts booked service quantities');
+    if (handoff.ok) {
+      const cart = await claimHandoffForPos({
+        handoffId: handoff.handoffId, branchId, tenantId, userId: actor.actorUserId,
+      });
+      check(cart.ok && cart.lines.filter(line =>
+        line.ProID === service.serviceId && line.EmpID === empId)
+        .reduce((qty, line) => qty + line.Qty, 0) === beforeCount + 1,
+        'POS cart receives added service with performing employee');
+      // The staging handoff is a disposable test record; allow cancellation below.
+      await pool.request().input('id', sql.Int, handoff.handoffId)
+        .query('DELETE FROM dbo.TblBookingCashierHandoff WHERE HandoffID=@id');
+    }
+
+    // One disposable follow-up booking begins 10m into the would-be extension.
+    // Its priority must block the addon. All writes belong to the staging tenant.
+    const newEnd = new Date(afterAddon.recordset[0].AbsoluteEndUtc);
+    const blockerStart = new Date(newEnd.getTime() + 10 * 60_000);
+    const blockerEnd = new Date(blockerStart.getTime() + 20 * 60_000);
+    const cairoTime = (at: Date) => new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Africa/Cairo', hour: '2-digit', minute: '2-digit', hour12: false,
+    }).format(at);
+    const blockerDate = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Africa/Cairo', year: 'numeric', month: '2-digit', day: '2-digit',
+    }).format(blockerStart);
+    const originalClient = await pool.request().input('id', sql.Int, bookingId)
+      .query('SELECT ClientID FROM dbo.Bookings WHERE BookingID=@id');
+    const blocker = await pool.request()
+      .input('clientId', sql.Int, Number(originalClient.recordset[0].ClientID))
+      .input('empId', sql.Int, empId)
+      .input('branchId', sql.Int, branchId)
+      .input('workDate', sql.Date, blockerDate)
+      .input('startTime', sql.VarChar(8), cairoTime(blockerStart))
+      .input('endTime', sql.VarChar(8), cairoTime(blockerEnd))
+      .input('startUtc', sql.DateTime2, blockerStart)
+      .input('endUtc', sql.DateTime2, blockerEnd)
+      .input('code', sql.NVarChar(40), 'QA-ADD-' + crypto.randomBytes(5).toString('hex'))
+      .input('userId', sql.Int, actor.actorUserId)
+      .query(
+        'INSERT INTO dbo.Bookings ' +
+        '(ClientID, AssignedEmpID, BookingDate, StartTime, EndTime, Status, Source, ' +
+        'BookingCode, CreatedByUserID, BranchID, PublicWorkDate, PublicDayOffset, AbsoluteStartUtc, AbsoluteEndUtc) ' +
+        'OUTPUT INSERTED.BookingID VALUES ' +
+        '(@clientId, @empId, @workDate, @startTime, @endTime, N\'confirmed\', N\'operations\', ' +
+        '@code, @userId, @branchId, @workDate, 0, @startUtc, @endUtc)'
+      );
+    const blockerId = Number(blocker.recordset[0]?.BookingID);
+    try {
+      const blocked = await previewAddon(addonActor);
+      check(!blocked.available, 'Future confirmed booking blocks extra time');
+      const attempted = await reserveAddon({ ...addonActor, expectedEndAt: blocked.expectedEndAt });
+      check(!attempted.ok && attempted.status === 409, 'Commit also protects the next booking');
+      const afterRejected = await pool.request().input('bid', sql.Int, bookingId)
+        .query('SELECT COUNT(*) AS n FROM dbo.BookingServices WHERE BookingID=@bid');
+      check(Number(afterRejected.recordset[0]?.n) === beforeCount + 1,
+        'Rejected addon creates no additional service lines');
+      // Cashier-assisted add-on transfer, isolated SQL and real scheduling.
+      const {
+        requestAddonTransfer, listPendingAddonTransfers, getTransferAlternatives, assignAddonTransfer,
+      } = await import('../../src/lib/booking/addonTransfer');
+      let transferRequestId: number | null = null;
+      try {
+        const transfer = await requestAddonTransfer({
+          bookingId, originalEmpId: empId, tenantId, proId: service.serviceId,
+        });
+        transferRequestId = transfer.requestId;
+        check(!transfer.existing, 'Blocked service produces a fresh cashier assistance request');
+        const replayTransfer = await requestAddonTransfer({
+          bookingId, originalEmpId: empId, tenantId, proId: service.serviceId,
+        });
+        check(replayTransfer.existing && replayTransfer.requestId === transferRequestId,
+          'Duplicate employee transfer request reuses pending record');
+        const inbox = await listPendingAddonTransfers({ branchId, tenantId });
+        check(inbox.some(r => r.requestId === transferRequestId),
+          'Only tenant-owned branch inbox exposes pending transfer');
+        check(!(await listPendingAddonTransfers({ branchId: branchId + 90000, tenantId }))
+          .some(r => r.requestId === transferRequestId),
+          'Other branches do not see a transfer request');
+        const alternatives = await getTransferAlternatives({
+          requestId: transferRequestId, branchId, tenantId,
+        });
+        const candidate = alternatives.alternatives.find(x => x.empId === altEmpId);
+        check(candidate, 'Alternate staging barber has a free service-sized slot');
+        const originalEndBefore = await pool.request().input('bid', sql.Int, bookingId)
+          .query('SELECT AbsoluteEndUtc FROM dbo.Bookings WHERE BookingID=@bid');
+        const expectedOriginalEnd = new Date(originalEndBefore.recordset[0].AbsoluteEndUtc).getTime();
+        const approvals = await Promise.allSettled([
+          assignAddonTransfer({
+            requestId: transferRequestId, assignedEmpId: altEmpId,
+            proposedStartAt: candidate.startAt, tenantId, branchId,
+          }),
+          assignAddonTransfer({
+            requestId: transferRequestId, assignedEmpId: altEmpId,
+            proposedStartAt: candidate.startAt, tenantId, branchId,
+          }),
+        ]);
+        check(approvals.filter(x => x.status === 'fulfilled').length === 1 &&
+          approvals.filter(x => x.status === 'rejected').length === 1,
+          'Concurrent cashier approvals produce one assigned service only');
+        const counted = await pool.request()
+          .input('bid', sql.Int, bookingId).input('emp', sql.Int, altEmpId)
+          .input('pro', sql.Int, service.serviceId)
+          .query('SELECT COUNT(*) AS n FROM dbo.BookingServices WHERE BookingID=@bid AND EmpID=@emp AND ProID=@pro');
+        check(Number(counted.recordset[0].n) === 1,
+          'Only extra service line is booked to the alternate barber');
+        const originalStillSame = await pool.request().input('bid', sql.Int, bookingId)
+          .query('SELECT AbsoluteEndUtc FROM dbo.Bookings WHERE BookingID=@bid');
+        check(new Date(originalStillSame.recordset[0].AbsoluteEndUtc).getTime() === expectedOriginalEnd,
+          'Original barber appointment end remains unchanged');
+        const { assertEmployeeIntervalAvailable, ScheduleConflictError } =
+          await import('../../src/lib/scheduleIntegrity');
+        let occupancyBlocked = false;
+        try {
+          await assertEmployeeIntervalAvailable({
+            empId: altEmpId, branchId, operationalDate: blockerDate,
+            startAt: new Date(candidate.startAt), endAt: new Date(candidate.endAt),
+          });
+        } catch (e) { occupancyBlocked = e instanceof ScheduleConflictError; }
+        check(occupancyBlocked, 'Canonical booking engine protects the alternate barber slot');
+        const assignedHandoff = await upsertEmployeeHandoff({
+          bookingId, empId, tenantId,
+          services: [{ proId: service.serviceId, qty: beforeCount + 2, source: 'booked' }],
+        });
+        check(assignedHandoff.ok, 'Approved extra service is eligible for cashier handoff');
+        if (assignedHandoff.ok) {
+          try {
+            const cart = await claimHandoffForPos({
+              handoffId: assignedHandoff.handoffId, branchId, tenantId,
+              userId: actor.actorUserId,
+            });
+            check(cart.ok && cart.lines.some(line =>
+              line.ProID === service.serviceId && line.EmpID === altEmpId && line.Qty === 1),
+              'POS separates original and alternate barber commissions');
+          } finally {
+            await pool.request().input('id', sql.Int, assignedHandoff.handoffId)
+              .query('DELETE FROM dbo.TblBookingCashierHandoff WHERE HandoffID=@id');
+          }
+        }
+        console.log('SALON_ADDON_CASHIER_TRANSFER_STAGING_PASS');
+      } finally {
+        if (transferRequestId) {
+          await pool.request().input('id', sql.Int, transferRequestId)
+            .query(
+              "IF OBJECT_ID(N'dbo.TblBookingAddonTransferRequest',N'U') IS NOT NULL " +
+              "DELETE FROM dbo.TblBookingAddonTransferRequest WHERE RequestID=@id"
+            );
+        }
+      }
+    } finally {
+      await pool.request().input('bid', sql.Int, blockerId)
+        .query('DELETE FROM dbo.BookingServices WHERE BookingID=@bid; DELETE FROM dbo.Bookings WHERE BookingID=@bid');
+    }
+    console.log('SALON_STAFF_ADDON_E2E_STAGING_PASS');
+
     // Public cancellation releases the previously moved appointment and leaves a
     // single cancelled booking with no outbound customer or team notification.
     const cancelled = await cancelPublicBooking({
@@ -256,6 +502,13 @@ async function main() {
     });
     check(cancelReplay.body.cancellation.alreadyCancelled === true, 'Repeat cancellation does not mutate again');
     console.log('SALON_BOOKING_LIFECYCLE_E2E_STAGING_PASS');
+    const { runHandoffRecoveryStaging } =
+      await import('./salon-handoff-recovery-staging');
+    await runHandoffRecoveryStaging({
+      pool, tenantId, branchId, empId, originalBookingId: bookingId,
+      actorUserId: actor.actorUserId,
+      serviceId: service.serviceId, servicePrice: service.price,
+    });
     console.log('SALON_BOOKING_E2E_STAGING_PASS');
   } finally {
     if (tenantCode) {

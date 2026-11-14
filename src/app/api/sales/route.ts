@@ -317,6 +317,14 @@ export async function POST(req: NextRequest) {
       `[pos-api]   Payment: headerMethodId=${headerPaymentMethodId}, isSplit=${isSplitPayment}, allocations=${activeAllocations.length}`,
     );
 
+    // Persist the handoff reference with the same paid invoice write so an
+    // interrupted post-commit link can be reconciled without another charge.
+    const sourceHandoffId = Number(body.handoffId);
+    const handoffNoteMarker =
+      Number.isSafeInteger(sourceHandoffId) && sourceHandoffId > 0
+        ? '\nCUT_HANDOFF:' + sourceHandoffId + '|'
+        : '';
+
     const saleInput = {
       tenantId: String(sessionUser.TenantId),
       idempotency,
@@ -334,7 +342,7 @@ export async function POST(req: NextRequest) {
       })),
       clientId: body.clientId,
       notes: body.notes,
-      notes2: body.notes2,
+      notes2: String(body.notes2 ?? '').slice(0, 3800) + handoffNoteMarker,
       payCash,
       payVisa,
       paymentAllocations: body.paymentAllocations,
@@ -356,17 +364,20 @@ export async function POST(req: NextRequest) {
       : await createSaleLegacyFromRoute(saleInput);
 
     const handoffId = Number(body.handoffId);
+    let handoffSync: 'not_applicable' | 'linked' | 'needs_reconciliation' = 'not_applicable';
     if (!result.replayed && Number.isInteger(handoffId) && handoffId > 0) {
       try {
         const { markHandoffCharged } = await import('@/lib/booking/cashierHandoff');
-        await markHandoffCharged({
+        const linked = await markHandoffCharged({
           handoffId,
           branchId,
           tenantId: String(sessionUser.TenantId),
           invId: result.invID,
           invType: result.invType,
         });
+        handoffSync = linked ? 'linked' : 'needs_reconciliation';
       } catch (handoffErr) {
+        handoffSync = 'needs_reconciliation';
         // Sale already succeeded — never fail the cashier path on handoff bookkeeping.
         console.error(
           '[pos-api] handoff charge link failed after sale',
@@ -376,7 +387,7 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json({
-      invID: result.invID, invType: result.invType, replayed: result.replayed === true,
+      invID: result.invID, invType: result.invType, replayed: result.replayed === true, handoffSync,
     }, { status: result.replayed ? 200 : 201 });
   } catch (err: unknown) {
     if (err instanceof SaleIdempotencyError) {

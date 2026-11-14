@@ -167,6 +167,23 @@ jobs:
       - name: Local print client and receipt interaction regressions
         run: npx vitest run src/lib/__tests__/localPrintClient.test.ts src/components/expenses/__tests__/ExpenseReceiptPopup.print.test.tsx src/components/printing/__tests__/LocalPrintConnectionHelp.test.tsx
 
+      - name: CUT STAFF extra-service scheduling behavior and contracts
+        run: >-
+          npx vitest run
+          src/lib/__tests__/staffAddonSchedulingBehavior.test.ts
+          src/lib/__tests__/staffAddonSchedulingGuard.test.ts
+          src/lib/__tests__/employeePortalBookingPrivacy.test.ts
+          --reporter=default
+
+      - name: CUT STAFF lifecycle state machine
+        run: npx vitest run src/lib/__tests__/staffBookingLifecycle.test.ts src/lib/__tests__/employeePortalBookingPrivacy.test.ts
+
+      - name: Cashier-assisted addon transfer safety contracts
+        run: npx vitest run src/lib/__tests__/cashierAssistedAddonContracts.test.ts src/lib/__tests__/staffAddonSchedulingBehavior.test.ts
+
+      - name: Paid booking handoff reconciliation safety contracts
+        run: npx vitest run src/lib/__tests__/handoffChargeReconciliationContracts.test.ts src/lib/__tests__/handoffPaidLinePolicy.test.ts
+
       - name: Production build
         run: npm run build
 

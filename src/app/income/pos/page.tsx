@@ -31,6 +31,7 @@ import CloseDayModal from '@/components/session/CloseDayModal';
 import { useShiftOperationalGate } from '@/components/session/ShiftOperationalGateProvider';
 import TeamAttendanceWidget from '@/components/pos/TeamAttendanceWidget';
 import BarberHandoffInbox from '@/components/pos/BarberHandoffInbox';
+import AddonTransferInbox from '@/components/pos/AddonTransferInbox';
 import { useTeamAttendance } from '@/hooks/useTeamAttendance';
 import { useSaleState } from '@/hooks/useSaleState';
 import { useSession } from '@/hooks/useSession';
@@ -148,6 +149,8 @@ export default function PosPage() {
 
   // Optional barber→cashier handoff (never required for manual POS)
   const [activeHandoffId, setActiveHandoffId] = useState<number | null>(null);
+  const [handoffRepair, setHandoffRepair] = useState<{ handoffId: number; invId: number } | null>(null);
+  const [handoffRepairing, setHandoffRepairing] = useState(false);
   const [handoffBanner, setHandoffBanner] = useState<string | null>(null);
   const [claimingHandoffId, setClaimingHandoffId] = useState<number | null>(null);
 
@@ -301,6 +304,57 @@ export default function PosPage() {
       setCustomer,
     ],
   );
+
+  const repairPaidHandoff = useCallback(async () => {
+    if (!handoffRepair || handoffRepairing) return;
+    setHandoffRepairing(true);
+    try {
+      const response = await fetch(
+        '/api/pos/barber-handoffs/' + handoffRepair.handoffId + '/reconcile',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ invId: handoffRepair.invId, invType: 'مبيعات' }),
+        },
+      );
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'تعذر الإصلاح');
+      setHandoffRepair(null);
+      addToast('success', 'تم ربط الحجز بالفاتورة المدفوعة بدون تكرار التحصيل');
+    } catch (error) {
+      addToast('error', error instanceof Error ? error.message : 'تعذر إصلاح ربط الحجز');
+    } finally {
+      setHandoffRepairing(false);
+    }
+  }, [handoffRepair, handoffRepairing, addToast]);
+
+  // The persisted invoice contains the payment and its handoff marker;
+  // recovering the existing link must never issue another sale.
+  useEffect(() => {
+    if (!shift?.ID) return;
+    let mounted = true;
+    const load = async () => {
+      try {
+        const res = await fetch('/api/pos/barber-handoffs/recovery', { cache: 'no-store' });
+        if (!res.ok) return;
+        const data = await res.json() as {
+          items?: Array<{ handoffId: number; invId: number }>;
+        };
+        const first = data.items?.[0];
+        if (mounted && first) {
+          setHandoffRepair(current => current ?? {
+            handoffId: first.handoffId,
+            invId: first.invId,
+          });
+        }
+      } catch {
+        // Read-only recovery query outage must not interrupt checkout.
+      }
+    };
+    void load();
+    const timer = window.setInterval(() => void load(), 60_000);
+    return () => { mounted = false; window.clearInterval(timer); };
+  }, [shift?.ID]);
 
   // ───────────────── Auto-open completion modal for incomplete customers ─────────────────
   const handleCloseCompleteModal = useCallback(() => {
@@ -653,6 +707,10 @@ export default function PosPage() {
       const result = await res.json();
       const savedInvID: number = result.invID;
       setPrintInvID(savedInvID);
+      if (result.handoffSync === 'needs_reconciliation' && activeHandoffId) {
+        setHandoffRepair({ handoffId: activeHandoffId, invId: savedInvID });
+        addToast('error', 'الفاتورة اتحفظت فعلًا، لكن ربط الحجز محتاج مراجعة — ما تحفظش فاتورة تانية');
+      }
 
       // Only a confirmed newly created/replayed invoice releases this request ID.
       saleRequestIdRef.current = null;
@@ -1086,6 +1144,23 @@ export default function PosPage() {
         onRefresh={refreshAttendance}
       />
 
+      {handoffRepair ? (
+        <div role="alert" className="mx-3 my-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-500/50 bg-amber-500/10 p-3 text-sm" dir="rtl">
+          <span>
+            الفاتورة #{handoffRepair.invId} محفوظة ومدفوعة، لكن ربطها بالحجز لسه غير مؤكد.
+            <strong className="ms-1">ممنوع تعمل فاتورة تانية لنفس الطلب.</strong>
+          </span>
+          <button
+            type="button"
+            disabled={handoffRepairing}
+            onClick={() => void repairPaidHandoff()}
+            className="min-h-10 rounded-lg bg-amber-400 px-3 font-bold text-zinc-950 disabled:opacity-50"
+          >
+            {handoffRepairing ? 'جاري التحقق…' : 'إصلاح الربط بالفاتورة الموجودة'}
+          </button>
+        </div>
+      ) : null}
+
       {/* ═══════ MOBILE LAYOUT (< md) ═══════ */}
       <div className="pos-mobile-workspace flex h-full min-h-0 flex-col md:hidden">
         <MobilePosHeader
@@ -1097,7 +1172,8 @@ export default function PosPage() {
         />
 
         <div className="sticky top-0 z-30 shrink-0 border-b border-border bg-background/95 px-3 py-2 backdrop-blur-sm">
-          <div className="mb-2 flex justify-end">
+          <div className="mb-2 flex flex-wrap justify-end gap-2">
+            <AddonTransferInbox enabled={Boolean(shift?.ID)} />
             <BarberHandoffInbox
               enabled={Boolean(shift?.ID)}
               onClaim={handleClaimHandoff}
@@ -1163,7 +1239,8 @@ export default function PosPage() {
       <div className="relative hidden h-full flex-1 flex-col overflow-hidden md:flex lg:flex-row">
         {/* ═══════ RIGHT PANEL: Customer + History ═══════ */}
         <aside className="order-1 flex w-full shrink-0 flex-col gap-3 overflow-y-auto border-l border-border p-3 scrollbar-luxury-v lg:order-1 lg:w-80 lg:gap-4 lg:p-4">
-          <div className="flex justify-end">
+          <div className="flex flex-wrap justify-end gap-2">
+            <AddonTransferInbox enabled={Boolean(shift?.ID)} />
             <BarberHandoffInbox
               enabled={Boolean(shift?.ID)}
               onClaim={handleClaimHandoff}

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getEmployeePortalIdentity } from '@/lib/employee-portal/auth';
+import { getStaffBookingPhase } from '@/lib/employee-portal/bookingLifecycle';
 import {
   normalizeHandoffServices,
   upsertEmployeeHandoff,
@@ -53,6 +54,10 @@ export async function POST(req: Request, { params }: Ctx) {
   }
 
   try {
+    const phase = await getStaffBookingPhase({ bookingId, empId: identity.empId, tenantId: identity.tenantId });
+    if (phase !== 'finished') {
+      return NextResponse.json({ error: 'أكد وصول العميل وبدء وإنهاء الخدمة قبل الإرسال للكاشير' }, { status: 409 });
+    }
     const result = await upsertEmployeeHandoff({
       bookingId,
       empId: identity.empId,
@@ -67,6 +72,8 @@ export async function POST(req: Request, { params }: Ctx) {
         not_sendable: { status: 409, message: 'لا يمكن ارسال هذا الحجز' },
         already_charged: { status: 409, message: 'تم التحصيل مسبقا' },
         empty_services: { status: 400, message: 'اختر خدمة واحدة على الاقل' },
+        services_not_reserved: { status: 409, message: 'فيه خدمات إضافية لم يتم حجز وقتها — أعد فتح الحجز أو توجه للكاشير' },
+        pending_transfer: { status: 409, message: 'فيه طلب إضافة خدمة مستني موافقة الكاشير — أكّده الأول قبل إرسال الفاتورة' },
       };
       const mapped = map[result.error];
       return NextResponse.json({ error: mapped.message }, { status: mapped.status });
