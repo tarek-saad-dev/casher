@@ -2,7 +2,7 @@
   "action": "PLAN",
   "requested_by": "tarek-saad-dev",
   "pr_number": 248,
-  "target_sha": "b429905945ea9c35889962483fdc87d16f27b138",
+  "target_sha": "71b9f4fa7e6aaebff040cf6d8b2ce80174e23af0",
   "manifest_digest": "",
   "migrations": [
     "referral-discounts",
