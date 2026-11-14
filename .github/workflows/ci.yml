@@ -148,6 +148,9 @@ jobs:
           src/lib/__tests__/employeePortalBookingPrivacy.test.ts
           --reporter=default
 
+      - name: CUT STAFF lifecycle state machine
+        run: npx vitest run src/lib/__tests__/staffBookingLifecycle.test.ts src/lib/__tests__/employeePortalBookingPrivacy.test.ts
+
       - name: Production build
         run: npm run build
 
