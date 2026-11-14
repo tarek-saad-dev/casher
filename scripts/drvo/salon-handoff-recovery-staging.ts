@@ -48,6 +48,8 @@ export async function runHandoffRecoveryStaging(a: Args): Promise<void> {
   let bookingId: number | null = null;
   let handoffId: number | null = null;
   let invoiceId: number | null = null;
+  let createdBusinessDayId: number | null = null;
+  let shiftMoveId: number | null = null;
   try {
     const inserted = await a.pool.request()
       .input('id', sql.Int, a.originalBookingId)
@@ -103,6 +105,42 @@ export async function runHandoffRecoveryStaging(a: Args): Promise<void> {
     const total = Math.round(price * qty * 100) / 100;
     check(Number.isFinite(total) && total > 0, 'Synthetic invoice has a positive total');
     const today = new Date().toISOString().slice(0, 10);
+    // POS invoice foreign keys require a branch-owned business day and a
+    // shift session. Create both ONLY under this disposable staging tenant.
+    const dayLookup = await a.pool.request()
+      .input('branch', sql.Int, a.branchId)
+      .query("SELECT TOP 1 ID FROM dbo.TblNewDay WHERE BranchID=@branch ORDER BY ID DESC");
+    let businessDayId = Number(dayLookup.recordset[0]?.ID);
+    if (!businessDayId) {
+      const createdDay = await a.pool.request()
+        .input('branch', sql.Int, a.branchId)
+        .input('today', sql.Date, today)
+        .query(
+          "INSERT INTO dbo.TblNewDay (BranchID,NewDay,Status) " +
+          "OUTPUT INSERTED.ID VALUES (@branch,@today,1)"
+        );
+      createdBusinessDayId = Number(createdDay.recordset[0]?.ID);
+      businessDayId = createdBusinessDayId;
+    }
+    check(businessDayId > 0, 'A branch-owned staging business day exists');
+    const availableShift = await a.pool.request()
+      .query("SELECT TOP 1 ShiftID FROM dbo.TblShift ORDER BY ShiftID");
+    const shiftId = Number(availableShift.recordset[0]?.ShiftID);
+    check(shiftId > 0, 'Staging has a configured shift type');
+    const insertedShift = await a.pool.request()
+      .input('branch', sql.Int, a.branchId)
+      .input('day', sql.Int, businessDayId)
+      .input('today', sql.Date, today)
+      .input('user', sql.Int, a.actorUserId)
+      .input('shift', sql.Int, shiftId)
+      .query(
+        "INSERT INTO dbo.TblShiftMove " +
+        "(BranchID,BusinessDayID,NewDay,UserID,ShiftID,StartDate,StartTime,EndDate,EndTime,Status) " +
+        "OUTPUT INSERTED.ID VALUES (@branch,@day,@today,@user,@shift,@today,N'12:00'," +
+        "@today,N'12:01',0)"
+      );
+    shiftMoveId = Number(insertedShift.recordset[0]?.ID);
+    check(shiftMoveId > 0, 'Disposable closed shift exists for invoice foreign keys');
     const invType = 'مبيعات';
     const tx = new sql.Transaction(a.pool);
     await tx.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
@@ -119,6 +157,8 @@ export async function runHandoffRecoveryStaging(a: Args): Promise<void> {
         .input('total', sql.Decimal(10,2), total)
         .input('method', sql.Int, methodId)
         .input('branch', sql.Int, a.branchId)
+        .input('businessDayId', sql.Int, businessDayId)
+        .input('shiftMoveId', sql.Int, shiftMoveId)
         .input('notes2', sql.NVarChar(sql.MAX), marker)
         .query(
           "INSERT INTO dbo.TblinvServHead (" +
@@ -127,8 +167,8 @@ export async function runHandoffRecoveryStaging(a: Args): Promise<void> {
           "ReservDate,ReservTime,Notes,PayCash,PayVisa,isActive,Notes2," +
           "Payment,PayDue,PaymentMethodID,BranchID,BusinessDayID) " +
           "VALUES (@id,@type,@date,N'12:00',@client,@user,@qty,@total," +
-          "0,0,0,0,@total,N'STAGING ONLY',0,NULL,NULL,NULL,N'STAGING ONLY'," +
-          "@total,0,N'no',@notes2,@total,0,@method,@branch,NULL)"
+          "0,0,0,0,@total,N'STAGING ONLY',0,@shiftMoveId,NULL,NULL,N'STAGING ONLY'," +
+          "@total,0,N'no',@notes2,@total,0,@method,@branch,@businessDayId)"
         );
       for (const r of rows) {
         await new sql.Request(tx)
@@ -177,10 +217,11 @@ export async function runHandoffRecoveryStaging(a: Args): Promise<void> {
       .input('date', sql.Date, today)
       .input('total', sql.Decimal(10,2), total)
       .input('method', sql.Int, methodId)
+      .input('shift', sql.Int, shiftMoveId)
       .query(
         "INSERT INTO dbo.TblinvServPayment " +
         "(invID,invType,PayDate,PayTime,PayValue,Notes,PaymentMethodID,ShiftMoveID) " +
-        "VALUES (@id,@type,@date,N'12:00',@total,N'STAGING ONLY',@method,NULL)"
+        "VALUES (@id,@type,@date,N'12:00',@total,N'STAGING ONLY',@method,@shift)"
       );
     check(payment.rowsAffected[0] === 1, 'Synthetic invoice has one paid allocation');
     const linked = await markHandoffCharged({
@@ -229,6 +270,14 @@ export async function runHandoffRecoveryStaging(a: Args): Promise<void> {
           "DELETE FROM dbo.TblinvServDetail WHERE invID=@id AND invType=@type; " +
           "DELETE FROM dbo.TblinvServHead WHERE invID=@id AND invType=@type;"
         );
+    }
+    if (shiftMoveId != null) {
+      await a.pool.request().input('id',sql.Int,shiftMoveId)
+        .query("DELETE FROM dbo.TblShiftMove WHERE ID=@id");
+    }
+    if (createdBusinessDayId != null) {
+      await a.pool.request().input('id',sql.Int,createdBusinessDayId)
+        .query("DELETE FROM dbo.TblNewDay WHERE ID=@id");
     }
     if (bookingId != null) {
       await a.pool.request().input('bid',sql.Int,bookingId)
