@@ -70,6 +70,10 @@ async function main() {
   let createdInvId: number | null = null;
   let createdBranchId: number | null = null;
   let smokeClientId: number | null = null;
+  let smokeUserId: number | null = null;
+  let smokeTenantId: string | null = null;
+  let createdWriter: 'extracted' | 'legacy' | null = null;
+  let cleanupFailed = false;
   try {
     const guard = await pool.request().query(`SELECT DB_NAME() AS db, SUSER_SNAME() AS login`);
     const db = String(guard.recordset[0]?.db ?? '');
@@ -188,6 +192,8 @@ async function main() {
       fail('open staging shift has no tenant-owned Location');
     }
     const userId = Number(open.userId);
+    smokeUserId = userId;
+    smokeTenantId = tenantId;
     const shiftMoveId = Number(open.shiftMoveId);
     const businessDayId = Number(open.businessDayId);
     const businessDate = String(open.businessDate);
@@ -301,6 +307,7 @@ async function main() {
       branchName,
     });
     createdInvId = created.invID;
+    createdWriter = 'extracted';
     console.log('PASS: extracted createSale', created);
 
     const snapTx = new sql.Transaction(pool);
@@ -438,6 +445,7 @@ async function main() {
       fail(`delete left rows ${JSON.stringify(left)}`);
     }
     createdInvId = null;
+    createdWriter = null;
     await new Promise((resolve) => setTimeout(resolve, 1500));
     await pool.request().input('invID', sql.Int, created.invID).query(`
       DELETE FROM dbo.TblLoyaltyPointLedger WHERE SourceInvID = @invID
@@ -477,6 +485,7 @@ async function main() {
       branchName,
     });
     createdInvId = legacyCreated.invID;
+    createdWriter = 'legacy';
     console.log('PASS: legacy createSaleLegacyFromRoute', legacyCreated);
 
     const legacyUpdateTx = new sql.Transaction(pool);
@@ -560,6 +569,7 @@ async function main() {
     }
     const legacyInvId = legacyCreated.invID;
     createdInvId = null;
+    createdWriter = null;
     await new Promise((resolve) => setTimeout(resolve, 1500));
     await pool.request().input('invID', sql.Int, legacyInvId).query(`
       DELETE FROM dbo.TblLoyaltyPointLedger WHERE SourceInvID = @invID
@@ -628,40 +638,144 @@ async function main() {
     }
 
     console.log('DRVO-008 POS staging smoke complete');
+  } catch (error) {
+    // Log the original SQL/test exception before any cleanup can mask it.
+    console.error('DRVO-008 PRIMARY FAILURE (before cleanup):', error);
+    throw error;
   } finally {
-    if (createdInvId != null && createdBranchId != null) {
+    if (createdInvId != null) {
+      let cleanupTx: InstanceType<typeof sql.Transaction> | null = null;
       try {
-        const cleanup = new sql.Transaction(pool);
-        await cleanup.begin();
-        await deleteSale(cleanup, createdInvId, createdBranchId, userId);
-        await cleanup.commit();
-        console.log('CLEANUP: deleted smoke invoice', createdInvId);
+        if (createdBranchId == null || smokeUserId == null ||
+            smokeClientId == null || smokeTenantId == null ||
+            createdWriter == null) {
+          fail('cleanup refused: missing staging invoice provenance');
+        }
+        const expectedMarker = createdWriter === 'legacy'
+          ? 'drvo-008-legacy-staging-smoke'
+          : 'drvo-008-pos-staging-smoke';
+        // Only delete the one invoice belonging to THIS synthetic client.
+        // Never delete a real or unowned invoice, even if IDs collide.
+        const owned = await pool.request()
+          .input('invID', sql.Int, createdInvId)
+          .input('branchId', sql.Int, createdBranchId)
+          .input('clientId', sql.Int, smokeClientId)
+          .input('tenantId', sql.UniqueIdentifier, smokeTenantId)
+          .input('marker', sql.NVarChar(100), expectedMarker)
+          .query(`
+            SELECT h.invID FROM dbo.TblinvServHead h
+            JOIN dbo.Location l ON l.LegacyBranchId=h.BranchID AND l.TenantId=@tenantId
+            JOIN dbo.TblClient c ON c.ClientID=h.ClientID AND c.TenantId=@tenantId
+            WHERE h.invID=@invID AND h.invType=N'مبيعات'
+              AND h.BranchID=@branchId AND h.ClientID=@clientId
+              AND c.Name=N'DRVO008-SMOKE' AND c.Notes=N'DRVO008-SMOKE'
+              AND h.Notes2=@marker;
+          `);
+        if (owned.recordset.length !== 1) {
+          fail('cleanup refused: invoice is not an exclusively owned staging fixture');
+        }
+        cleanupTx = new sql.Transaction(pool);
+        await cleanupTx.begin();
+        if (createdWriter === 'legacy') {
+          await legacyInvoice.deleteInvoice(cleanupTx, createdInvId, createdBranchId);
+        } else {
+          await deleteSale(cleanupTx, createdInvId, createdBranchId, smokeUserId);
+        }
+        await cleanupTx.commit();
+        cleanupTx = null;
+        const remain = await pool.request().input('invID', sql.Int, createdInvId).query(`
+          SELECT (SELECT COUNT(*) FROM dbo.TblinvServHead
+                   WHERE invID=@invID AND invType=N'مبيعات') AS Heads,
+                 (SELECT COUNT(*) FROM dbo.TblinvServDetail
+                   WHERE invID=@invID AND invType=N'مبيعات') AS Details,
+                 (SELECT COUNT(*) FROM dbo.TblCashMove
+                   WHERE invID=@invID AND invType=N'مبيعات') AS Cash;
+        `);
+        const rest = remain.recordset[0];
+        if (Number(rest.Heads) !== 0 || Number(rest.Details) !== 0 ||
+            Number(rest.Cash) !== 0) {
+          fail('cleanup financial residual proof failed: ' + JSON.stringify(rest));
+        }
+        console.log('CLEANUP: deleted owned ' + createdWriter + ' staging invoice', createdInvId);
+        createdInvId = null;
+        createdWriter = null;
       } catch (cleanupErr) {
-        console.error('CLEANUP failed', cleanupErr);
+        cleanupFailed = true;
+        if (cleanupTx) {
+          try { await cleanupTx.rollback(); } catch { /* already rolled back */ }
+        }
+        console.error('DRVO-008 CLEANUP FAILURE (manual staging review):', cleanupErr);
       }
     }
     if (smokeClientId != null) {
       try {
-        const leftover = await pool.request().input('id', sql.Int, smokeClientId).query(`
-          SELECT COUNT(*) AS cnt FROM dbo.TblinvServHead WHERE ClientID = @id
-        `);
-        if (Number(leftover.recordset[0]?.cnt ?? 0) === 0) {
-          await pool.request().input('id', sql.Int, smokeClientId).query(`
-            DELETE FROM dbo.TblClientLoyalty WHERE ClientID = @id;
-            DELETE FROM dbo.TblLoyaltyPointLedger WHERE ClientID = @id;
-            DELETE FROM dbo.TblClient WHERE ClientID = @id AND Name = N'DRVO008-SMOKE';
+        if (smokeTenantId == null) fail('cleanup refused: missing tenant identity');
+        const identity = await pool.request()
+          .input('id', sql.Int, smokeClientId)
+          .input('tenant', sql.UniqueIdentifier, smokeTenantId)
+          .query(`
+            SELECT COUNT(*) AS cnt FROM dbo.TblClient
+            WHERE ClientID=@id AND TenantId=@tenant
+              AND Name=N'DRVO008-SMOKE' AND Notes=N'DRVO008-SMOKE';
           `);
-          console.log('CLEANUP: removed smoke client', smokeClientId);
+        if (Number(identity.recordset[0]?.cnt) !== 1) {
+          fail('cleanup refused: synthetic client ownership mismatch');
         }
+        const leftover = await pool.request()
+          .input('id', sql.Int, smokeClientId)
+          .query('SELECT COUNT(*) AS cnt FROM dbo.TblinvServHead WHERE ClientID=@id;');
+        if (Number(leftover.recordset[0]?.cnt) !== 0) {
+          fail('cleanup refused: synthetic client still has a paid invoice');
+        }
+        await pool.request()
+          .input('id', sql.Int, smokeClientId)
+          .input('tenant', sql.UniqueIdentifier, smokeTenantId)
+          .query(`
+            DELETE FROM dbo.TblClientLoyalty WHERE ClientID=@id;
+            DELETE FROM dbo.TblLoyaltyPointLedger WHERE ClientID=@id;
+            DELETE FROM dbo.TblClient
+            WHERE ClientID=@id AND TenantId=@tenant
+              AND Name=N'DRVO008-SMOKE' AND Notes=N'DRVO008-SMOKE';
+          `);
+        const remaining = await pool.request()
+          .input('id', sql.Int, smokeClientId)
+          .query('SELECT COUNT(*) AS cnt FROM dbo.TblClient WHERE ClientID=@id;');
+        if (Number(remaining.recordset[0]?.cnt) !== 0) {
+          fail('synthetic client cleanup left a row');
+        }
+        console.log('CLEANUP: removed synthetic staging client', smokeClientId);
       } catch (cleanupErr) {
-        console.error('CLEANUP client failed', cleanupErr);
+        cleanupFailed = true;
+        console.error('DRVO-008 CLIENT CLEANUP FAILURE:', cleanupErr);
       }
     }
-    await closePool();
+    // Avoid a background pages-sync pool close masking a real smoke exception.
+    let closeTimer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        closePool(),
+        new Promise<never>((_, reject) => {
+          closeTimer = setTimeout(() => reject(new Error('staging SQL pool close timed out')), 15000);
+          closeTimer.unref();
+        }),
+      ]);
+    } catch (closeErr) {
+      cleanupFailed = true;
+      console.error('DRVO-008 POOL CLOSE FAILURE:', closeErr);
+    } finally {
+      if (closeTimer) clearTimeout(closeTimer);
+    }
+    if (cleanupFailed) {
+      process.exitCode = 1;
+      console.error('DRVO-008 NO-GO: staging fixture not fully reconciled');
+    }
   }
 }
 
-main().catch((err) => {
-  console.error(err);
+main().then(() => {
+  console.log('DRVO-008 POS STAGING SCRIPT DONE');
+  process.exit(process.exitCode ?? 0);
+}).catch((err) => {
+  console.error('DRVO-008 POS STAGING SCRIPT FAILED:', err);
   process.exit(1);
 });
