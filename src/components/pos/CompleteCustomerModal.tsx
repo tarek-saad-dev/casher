@@ -11,6 +11,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import CustomerSourceFields from '@/components/pos/CustomerSourceFields';
+import CustomerProfileFields from '@/components/pos/CustomerProfileFields';
+import { validateCustomerProfile, type CustomerProfileDraft } from '@/lib/customerProfile';
 import {
   isCustomerSourceMissing,
   isKnownCustomerSource,
@@ -48,6 +50,16 @@ export default function CompleteCustomerModal({
   const [referralCode, setReferralCode] = useState(customer.ReferralCode ?? '');
   const [sourceErrors, setSourceErrors] = useState<Record<string, string>>({});
   const [sourceChanged, setSourceChanged] = useState(false);
+  const [profile, setProfile] = useState<CustomerProfileDraft>({
+    customerCategory: customer.CustomerCategory === 'student' || customer.CustomerCategory === 'adult'
+      ? customer.CustomerCategory : null,
+    educationLevel: customer.EducationLevel === 'school' || customer.EducationLevel === 'college'
+      ? customer.EducationLevel : null,
+    institutionName: customer.InstitutionName ?? '',
+    occupation: customer.Occupation ?? '',
+  });
+  const [profileErrors, setProfileErrors] = useState<Record<string, string>>({});
+  const [profileChanged, setProfileChanged] = useState(false);
   const [saving,    setSaving]    = useState(false);
   const [error,     setError]     = useState('');
 
@@ -94,6 +106,20 @@ export default function CompleteCustomerModal({
         payload.cameFrom = sourceValidation.cameFrom;
         payload.cameFromDetails = sourceValidation.cameFromDetails;
         payload.referralCode = sourceValidation.referralCode;
+      }
+
+      if (profileChanged) {
+        const validatedProfile = validateCustomerProfile(
+          profile.customerCategory, profile.educationLevel, profile.institutionName, profile.occupation
+        );
+        if (Object.keys(validatedProfile.errors).length) {
+          setProfileErrors(validatedProfile.errors);
+          return;
+        }
+        payload.customerCategory = validatedProfile.customerCategory;
+        payload.educationLevel = validatedProfile.educationLevel;
+        payload.institutionName = validatedProfile.institutionName;
+        payload.occupation = validatedProfile.occupation;
       }
 
       if (Object.keys(payload).length === 0) {
@@ -230,6 +256,16 @@ export default function CompleteCustomerModal({
               </div>
             )}
           </div>
+
+          <CustomerProfileFields
+            value={profile}
+            errors={profileErrors}
+            onChange={(next) => {
+              setProfile(next);
+              setProfileChanged(true);
+              setProfileErrors({});
+            }}
+          />
 
           {/* Source selection */}
           {(isEditMode || missingSource) && (

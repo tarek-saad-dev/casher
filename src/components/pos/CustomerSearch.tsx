@@ -10,6 +10,7 @@ import {
   isCustomerIncomplete,
 } from '@/lib/customerSource';
 import type { Customer } from '@/lib/types';
+import { formatCustomerProfileDisplay } from '@/lib/customerProfile';
 import { cn } from '@/lib/utils';
 
 interface CustomerSearchProps {
@@ -122,6 +123,13 @@ export default function CustomerSearch({
               <p className="text-xs text-muted-foreground flex items-center gap-1">
                 <FileText className="w-3 h-3" />
                 <span className="truncate max-w-[200px]">{effectiveSelected.Notes}</span>
+              </p>
+            )}
+            {effectiveSelected.CustomerCategory && (
+              <p className="text-xs text-muted-foreground">
+                {formatCustomerProfileDisplay(effectiveSelected.CustomerCategory,
+                  effectiveSelected.EducationLevel, effectiveSelected.InstitutionName,
+                  effectiveSelected.Occupation)}
               </p>
             )}
             {effectiveSelected.CameFrom && (
