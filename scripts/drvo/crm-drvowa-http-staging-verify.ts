@@ -123,7 +123,7 @@ async function run(): Promise<void> {
           throw new Error(`Unexpected staging manifest HTTP ${res.status}`);
         }
       } catch (error) {
-        if (error instanceof Error && error.message.startsWith('Unexpected')) throw error;
+        if (error instanceof Error && (error.message.startsWith('Unexpected') || error.message.startsWith('Staging manifest bearer rejected'))) throw error;
       }
       await new Promise(resolve => setTimeout(resolve, 1500));
     }
