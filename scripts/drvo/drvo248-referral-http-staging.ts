@@ -335,6 +335,17 @@ async function main(): Promise<void> {
     check(preview.eligible===true && Number(preview.discountPercent)===50,
       '50% offer eligibility sourced from SQL');
 
+    const foreignMethod = salePayload(referred,'first',code);
+    foreignMethod.paymentMethodId = 2147483640;
+    foreignMethod.paymentAllocations = [{
+      paymentMethodId: 2147483640, amount: foreignMethod.grandTotal,
+    }];
+    const rejectedMethod = await requireStatus(
+      await http('/api/sales',asJson('POST',foreignMethod,cookie)),404,
+      'referral must reject unowned payment method');
+    check(rejectedMethod.code==='REFERRAL_PAYMENT_METHOD_NOT_OWNED',
+      'staff tenant must own payment method on referral checkout');
+
     const first=salePayload(referred,'first',code);
     const firstInvoice=await postSale(first,'50% referred first visit');
     const claim=await pool.request()
