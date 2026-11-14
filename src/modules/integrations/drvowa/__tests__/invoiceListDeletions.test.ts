@@ -36,6 +36,9 @@ vi.mock('@/lib/db', () => ({
 import { executeInvoiceListDeletions } from '../tools/invoiceListDeletions';
 import { getDrvowaCrmSyncToolDefinitions, listImplementedDrvowaCrmTools } from '../index';
 
+const ownerTenantId = '01234567-89ab-4cde-8fab-0123456789ab';
+const context = { tenantId: ownerTenantId };
+
 beforeEach(() => {
   state.params = [];
   state.sql = [];
@@ -55,7 +58,7 @@ describe('DRVOWA audited hard-deleted sale invoice cursor', () => {
 
   it('returns only cancellation identities from successful committed sale DELETE audits', async () => {
     state.rows = [{ auditId: 71, invId: 5101 }, { auditId: 74, invId: 5124 }];
-    const result = await executeInvoiceListDeletions({ sinceAuditId: 70, limit: 2 });
+    const result = await executeInvoiceListDeletions({ sinceAuditId: 70, limit: 2 }, context);
     expect(result).toEqual({
       ok: true,
       tool: 'invoice.list_deletions',
@@ -74,7 +77,7 @@ describe('DRVOWA audited hard-deleted sale invoice cursor', () => {
       },
     });
     expect(state.params).toEqual([{
-      sinceAuditId: 70, limit: 2, actionType: 'delete_invoice',
+      sinceAuditId: 70, limit: 2, tenantId: ownerTenantId, actionType: 'delete_invoice',
       status: 'success', method: 'DELETE',
     }]);
     expect(state.sql[0]).toContain('FROM dbo.TblSensitiveActionAuditLog a WITH (READCOMMITTEDLOCK)');
@@ -84,11 +87,29 @@ describe('DRVOWA audited hard-deleted sale invoice cursor', () => {
     expect(state.sql[0]).toContain('TRY_CONVERT(int, a.EntityID) > 0');
     expect(state.sql[0]).toContain('ORDER BY a.AuditID ASC');
     expect(state.sql[0]).not.toMatch(/SELECT\s+\*/i);
-    expect(state.sql[0]).not.toMatch(/OldData|NewData|IPAddress|UserAgent|Reason/);
+    // Only the immutable branch scalar is extracted FROM OldData within SQL.
+    // No audit snapshot, sensitive fields or JSON payloads are selected.
+    expect(state.sql[0]).toContain("l.TenantId = @tenantId");
+    expect(state.sql[0]).toContain("l.LegacyBranchId = TRY_CONVERT(int, JSON_VALUE(");
+    expect(state.sql[0]).toContain("'$.header.BranchID'");
+    expect(state.sql[0]).not.toMatch(/SELECT\s+(?:TOP\s+\(.*?\)\s+)?[^;]*\ba\.OldData\s+AS\s+/i);
+    expect(state.sql[0]).not.toMatch(/a\.NewData|a\.IPAddress|a\.UserAgent|a\.Reason/);
+  });
+
+  it('never queries shared audit history without authenticated tenant context', async () => {
+    const result = await executeInvoiceListDeletions(
+      { sinceAuditId: 0 },
+      { tenantId: '' },
+    );
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: 'INVALID_TENANT_CONTEXT' },
+    });
+    expect(state.sql).toHaveLength(0);
   });
 
   it('empty page preserves cursor and never rewinds to invoice ID', async () => {
-    const result = await executeInvoiceListDeletions({ sinceAuditId: 95 });
+    const result = await executeInvoiceListDeletions({ sinceAuditId: 95 }, context);
     expect(result.data).toMatchObject({
       deletions: [],
       nextCursor: { sinceAuditId: 95 },
@@ -99,7 +120,7 @@ describe('DRVOWA audited hard-deleted sale invoice cursor', () => {
 
   it('rejects negative, fractional and excessively large cursor inputs without SQL', async () => {
     for (const sinceAuditId of [-1, 1.5, '1; DROP TABLE x']) {
-      const result = await executeInvoiceListDeletions({ sinceAuditId });
+      const result = await executeInvoiceListDeletions({ sinceAuditId }, context);
       expect(result.ok).toBe(false);
     }
     expect(state.sql).toHaveLength(0);
@@ -109,7 +130,7 @@ describe('DRVOWA audited hard-deleted sale invoice cursor', () => {
     state.fail = true;
     const log = vi.spyOn(console, 'error').mockImplementation(() => {});
     try {
-      const res = await executeInvoiceListDeletions({ sinceAuditId: 1 });
+      const res = await executeInvoiceListDeletions({ sinceAuditId: 1 }, context);
       expect(res).toEqual({
         ok: false, tool: 'invoice.list_deletions',
         error: { code: 'INVOICE_DELETIONS_FAILED', message: 'Failed to list invoice deletions' },
