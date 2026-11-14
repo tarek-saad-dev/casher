@@ -251,6 +251,24 @@ describe('persistent POST /api/sales request token across both POS writers (#246
     expect(server).toContain('confirmedInvoice(');
     expect(server).not.toContain('DB_PASSWORD');
   });
+  it('committed-user membership verifier never uses dirty or split NOLOCK membership scans', () => {
+    const code = get('scripts/drvo/platformBootstrap.ts');
+    const start=code.indexOf('const userMembershipRows = await pool.request().query(');
+    const finish=code.indexOf('const { getBootstrapSalonManifest }', start);
+    expect(start).toBeGreaterThan(0);
+    expect(finish).toBeGreaterThan(start);
+    const verifier=code.slice(start,finish);
+    expect(verifier).toContain('FROM dbo.TblUser u WITH (READCOMMITTEDLOCK)');
+    expect(verifier).toContain('LEFT JOIN dbo.TenantMembership m WITH (READCOMMITTEDLOCK)');
+    expect(verifier).not.toContain('NOLOCK');
+    expect(verifier).toContain('if (allTenantIds.length === 0)');
+    expect(verifier).toContain('Missing TenantMembership for UserID');
+    expect(verifier).toContain('if (bootstrapMatches.length > 1)');
+    expect(verifier).toContain('Duplicate CASHER_BOOT TenantMembership');
+    expect(verifier).not.toContain('WHERE LegacyUserId = @legacyUserId');
+    expect(code).toContain('SELECT MembershipId, LegacyUserId FROM dbo.TenantMembership WITH (READCOMMITTEDLOCK)');
+  });
+
   it('staging HTTP acceptance runs simultaneous identical UUIDs and audits money/stock snapshots', () => {
     const file=get('scripts/drvo/drvo248-referral-http-staging.ts');
     expect(file).toContain("const racing=await Promise.all([");
@@ -262,7 +280,7 @@ describe('persistent POST /api/sales request token across both POS writers (#246
     expect(file).toContain("JSON.stringify(afterReplay)===JSON.stringify(beforeReplay)");
     for (const table of [
       'dbo.TblinvServHead','dbo.TblinvServDetail','dbo.TblinvServPayment',
-      'dbo.TblCashMove','dbo.TblProMove','dbo.TblPosSaleRequest',
+      'dbo.TblCashMove','dbo.TblInventoryMovement','dbo.TblPosSaleRequest',
     ]) {
       expect(file).toContain(table);
     }
