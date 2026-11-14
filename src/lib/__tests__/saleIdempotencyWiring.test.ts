@@ -195,6 +195,20 @@ describe('persistent POST /api/sales request token across both POS writers (#246
     expect(code).toContain('production env refused');
   });
 
+  it('staging HTTP cashier is actually assigned on the cutoff-aware operational day', () => {
+    const script = get('scripts/drvo/drvo248-referral-http-staging.ts');
+    expect(script).toContain('onboarding created exactly one active tenant-owned barber branch assignment');
+    expect(script).toContain('l.LegacyBranchId=ea.BranchID AND l.TenantId=@tenant');
+    expect(script).toContain('if (assignmentFrom > day.newDay)');
+    expect(script).toContain('UPDATE ea SET EffectiveFrom=@date');
+    expect(script).toContain('ea.EffectiveFrom>@date');
+    expect(script).toContain('isEmployeeEligibleForBranchBookings({');
+    expect(script).toContain('operationalDate: day.newDay');
+    expect(script).toContain('actual POS barber assignment guard approves synthetic branch and business date');
+    expect(script.indexOf('actual POS barber assignment guard approves synthetic branch and business date'))
+      .toBeLessThan(script.indexOf("postSale(ownerSale,'referrer first visit')"));
+  });
+
   it('idempotency remains independent from referral issue flags and is OFF until SQL migration approval', () => {
     const server = get('src/lib/sales/saleRequestIdempotency.service.ts');
     expect(server).toContain("process.env.POS_SALE_IDEMPOTENCY_ENABLED === 'true'");
