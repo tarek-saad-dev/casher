@@ -156,6 +156,13 @@ function classifyFetchError(err: unknown): PrintErrorCode {
 }
 
 function classifyServiceCode(code?: string, message?: string): PrintErrorCode {
+  const msg = (message || '').toLowerCase();
+  // V1/V2 installed on Windows may mislabel a missing Puppeteer Chrome as
+  // PRINTER_NOT_FOUND or PRINT_COMMAND_FAILED. Trust the *specific* renderer
+  // error string before the generic legacy service code.
+  if (msg.includes('could not find chrome') || msg.includes('chrome-headless-shell')) {
+    return 'BROWSER_MISSING';
+  }
   const c = (code || '').toUpperCase();
   const known: PrintErrorCode[] = [
     'SERVICE_UNAVAILABLE',
@@ -175,8 +182,6 @@ function classifyServiceCode(code?: string, message?: string): PrintErrorCode {
   ];
   if (known.includes(c as PrintErrorCode)) return c as PrintErrorCode;
 
-  const msg = (message || '').toLowerCase();
-  if (msg.includes('could not find chrome') || msg.includes('chrome-headless-shell')) return 'BROWSER_MISSING';
   if (msg.includes('not found') || msg.includes('cannot find')) return 'PRINTER_NOT_FOUND';
   if (msg.includes('offline')) return 'PRINTER_OFFLINE';
   if (msg.includes('spool')) return 'SPOOLER_ERROR';

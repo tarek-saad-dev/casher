@@ -217,7 +217,8 @@ export default function PrinterControlPage() {
         </p>
       </section>
 
-      <PrintAgentInstallerDownload />
+      {/* Once V2 is connected, offer specific diagnosis/actions instead of a generic reinstall. */}
+      {(!connected || settings?.version !== REQUIRED_AGENT_VERSION) && <PrintAgentInstallerDownload />}
 
       {permission === 'denied' && !connected && (
         <div role="alert" className="rounded-xl border border-amber-500/35 bg-amber-500/5 p-4 text-sm">
