@@ -23,6 +23,11 @@ function makeCustomer(overrides: Partial<Customer> = {}): Customer {
     CameFrom: 'instagram',
     CameFromDetails: null,
     ReferralCode: null,
+    // A complete baseline now includes the new customer profile.
+    CustomerCategory: 'adult',
+    EducationLevel: null,
+    InstitutionName: null,
+    Occupation: 'موظف',
     ...overrides,
   };
 }
@@ -111,6 +116,13 @@ describe('isCustomerIncomplete', () => {
 
   it('detects missing address as incomplete', () => {
     expect(isCustomerIncomplete(makeCustomer({ Address: null }))).toBe(true);
+  });
+
+  it('detects missing study/job classification even with all legacy data present', () => {
+    expect(isCustomerIncomplete(makeCustomer({ CustomerCategory: null, Occupation: null }))).toBe(true);
+    expect(isCustomerIncomplete(makeCustomer({
+      CustomerCategory: 'student', EducationLevel: 'school', InstitutionName: '',
+    }))).toBe(true);
   });
 
   it('returns false when all fields are present', () => {
