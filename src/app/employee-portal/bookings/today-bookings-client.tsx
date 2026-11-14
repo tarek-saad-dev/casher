@@ -9,6 +9,13 @@ type Props = {
   statusLabels: Record<string, string>;
 };
 
+function staffPhaseLabel(phase: MaskedPortalBooking['staffPhase']): string {
+  if (phase === 'arrived') return 'العميل وصل';
+  if (phase === 'in_service') return 'جارٍ تنفيذ الخدمة';
+  if (phase === 'finished') return 'انتهت الخدمة';
+  return 'لم يبدأ';
+}
+
 function handoffBadge(status: MaskedPortalBooking['handoffStatus']): string | null {
   if (status === 'pending') return 'جاهز للكاشير';
   if (status === 'charged') return 'اتحاسب';
@@ -86,6 +93,7 @@ export default function TodayBookingsClient({ initialBookings, statusLabels }: P
                       {b.serviceNames.length ? b.serviceNames.join(' · ') : 'خدمة'}
                       {b.branchName ? ` · ${b.branchName}` : ''}
                     </p>
+                    <p className="mt-2 text-xs text-amber-300/90">{staffPhaseLabel(b.staffPhase)}</p>
                     {badge ? (
                       <p
                         className={`mt-2 inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold ${
