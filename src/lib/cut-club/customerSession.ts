@@ -37,9 +37,11 @@ const object = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value);
 
 /**
- * Verify a future trusted OTP-issued token. Caller must read it from a
- * secure customer-only cookie and MUST resolve tenant from trusted context,
- * not from query parameters or a form field.
+ * Verify a future trusted OTP-issued customer assertion, potentially for
+ * server-to-server BFF -> Casher delegation once its contract is approved.
+ * Browser login cookies should remain opaque/revocable independently.
+ * NEVER read this token from a clientId query or arbitrary form field.
+ * The caller MUST resolve tenant from authoritative server-side context.
  */
 export function verifyCutClubCustomerSession(
   token: unknown,
