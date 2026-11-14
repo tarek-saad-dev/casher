@@ -207,8 +207,9 @@ async function main(): Promise<void> {
       'real service catalog price and bonus valid');
     const splitCfg = await resolveSplitPaymentConfig(pool);
     const methodR = await pool.request()
+      .input('tenant', mssql.UniqueIdentifier, testTenantId)
       .input('clearing', mssql.Int, splitCfg.clearingMethodId)
-      .query('SELECT TOP 1 PaymentID FROM dbo.TblPaymentMethods WHERE PaymentID<>@clearing ORDER BY PaymentID');
+      .query('SELECT TOP 1 PaymentID FROM dbo.TblPaymentMethods WHERE TenantId=@tenant AND PaymentID<>@clearing ORDER BY PaymentID');
     check(methodR.recordset.length === 1, 'payment method available');
     const method = Number(methodR.recordset[0].PaymentID);
 
