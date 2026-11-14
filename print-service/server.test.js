@@ -72,6 +72,7 @@ describe('print-service', () => {
     assert.equal(diagnostics.status, 200);
     assert.equal(diagnostics.body.agentVersion, '2.0.0');
     assert.equal(diagnostics.body.physicalPrinterStatus, 'unknown');
+    assert.equal(typeof diagnostics.body.browserFound, 'boolean');
     const denied = await request(server, { method: 'GET', path: '/diagnostics', headers: { Origin: 'https://untrusted.invalid' } });
     assert.equal(denied.status, 403);
   });

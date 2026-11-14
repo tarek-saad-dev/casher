@@ -10,6 +10,7 @@ const { printPdf, getAdapterMode } = require('./printerAdapter');
 const { buildEscPosFromPng } = require('./escpos');
 const { printRawEscPos } = require('./rawPrinterAdapter');
 const { diagnoseWindowsPrinter } = require('./printerDiagnostics');
+const { getBrowserRuntimeStatus, isBrowserMissingError } = require('./browserRuntime');
 const AGENT_VERSION = require('./package.json').version;
 const { createSettingsStore, assertAllowed, TYPES } = require('./printSettings');
 const printSettings = createSettingsStore();
@@ -274,7 +275,8 @@ async function printHtmlDocument(html, {
     }
     if (!error.code) {
       const msg = String(error.message || '').toLowerCase();
-      if (msg.includes('not found') || msg.includes('cannot find')) error.code = 'PRINTER_NOT_FOUND';
+      if (isBrowserMissingError(msg)) { error.code = 'BROWSER_MISSING'; error.stage = 'rendering'; }
+      else if (msg.includes('not found') || msg.includes('cannot find')) error.code = 'PRINTER_NOT_FOUND';
       else if (msg.includes('offline')) error.code = 'PRINTER_OFFLINE';
       else if (msg.includes('spool')) error.code = 'SPOOLER_ERROR';
       else error.code = 'PRINT_COMMAND_FAILED';
@@ -302,7 +304,7 @@ app.get('/health', (req, res) => {
 // Read-only spooler diagnostics; Windows queue acceptance is not proof of paper.
 app.get('/diagnostics', async (_req, res) => {
   const result = await diagnoseWindowsPrinter(PRINTER_NAME);
-  return res.json({ ok: true, agentVersion: AGENT_VERSION, ...result });
+  return res.json({ ok: true, agentVersion: AGENT_VERSION, ...result, ...getBrowserRuntimeStatus() });
 });
 
 // This page controls the LOCAL Windows PC, not other branches or the VPS.

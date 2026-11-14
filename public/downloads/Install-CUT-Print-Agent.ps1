@@ -27,6 +27,33 @@ function Get-AgentHealth {
   try { return Invoke-RestMethod -Uri $healthUrl -Method Get -TimeoutSec 3 -ErrorAction Stop }
   catch { return $null }
 }
+function Test-PuppeteerChrome([string]$ServicePath, [string]$NodePath) {
+  Push-Location $ServicePath
+  try {
+    & $NodePath -e 'const fs = require("node:fs"); const p = require("puppeteer"); process.exit(fs.existsSync(p.executablePath()) ? 0 : 2)'
+    return ($LASTEXITCODE -eq 0)
+  } finally { Pop-Location }
+}
+
+function Ensure-PuppeteerChrome([string]$ServicePath, [string]$NodePath) {
+  if (Test-PuppeteerChrome $ServicePath $NodePath) {
+    Step 'Puppeteer Chrome for Testing is present.'
+    return
+  }
+  Step 'Puppeteer Chrome is missing. Installing compatible Chrome for Testing (no invoices printed).'
+  $npx = Get-Command npx.cmd -ErrorAction Stop
+  Push-Location $ServicePath
+  try {
+    # Explicit CLI install is required when npm blocks Puppeteer's postinstall script.
+    & $npx.Source --no-install puppeteer browsers install chrome
+    if ($LASTEXITCODE -ne 0) { throw 'Chrome for Testing download failed. Check internet connectivity, proxy, and disk space.' }
+  } finally { Pop-Location }
+  if (-not (Test-PuppeteerChrome $ServicePath $NodePath)) {
+    throw 'Chrome download completed, but Puppeteer still cannot locate its required executable. Check the Windows account and Puppeteer cache.'
+  }
+  Step 'Puppeteer Chrome is installed and ready for a manual test receipt.'
+}
+
 function Choose-Printer([string]$requested) {
   $all = @(Get-Printer -ErrorAction Stop)
   if ($requested) {
@@ -86,7 +113,9 @@ try {
   }
   if ($agent -and [string]$agent.version -eq $expectedVersion -and $managedTask -and
       [string]$agent.printer -eq $selectedPrinter) {
-    Step 'V2 is already healthy and supervised; no reinstall needed.'
+    Step 'V2 is already healthy. Checking the receipt rendering browser.'
+    Ensure-PuppeteerChrome $serviceDir $node.Source
+    Step 'V2 and Chrome renderer are ready. No reinstall needed.'
     exit 0
   }
   Step 'Agent is outdated, incorrectly configured, or not supervised. Preparing repair.'
@@ -114,6 +143,8 @@ try {
     & $npm.Source ci --no-audit --no-fund
     if ($LASTEXITCODE -ne 0) { throw 'npm ci failed; existing Agent was not changed.' }
   } finally { Pop-Location }
+  # Stage and verify Chromium before touching the existing Windows Agent.
+  Ensure-PuppeteerChrome $stage $node.Source
 
   if ($task) {
     $oldTaskXml = Export-ScheduledTask -TaskName $taskName
