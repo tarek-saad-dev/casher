@@ -41,3 +41,20 @@ On the cashier Windows PC (never from the VPS):
 - If Agent crashes: inspect log before repair; Task Scheduler status alone does not prove its Node child survived.
 
 Never publish TCP/7788 or SMB/445 to the internet. Remote branch printing belongs to a separately authenticated outbound queue design.
+
+
+## Five levels of recovery (operator UX, never implicit reprint)
+
+| Level | Evidence | Safe first action | Escalation |
+| --- | --- | --- | --- |
+| 1 Browser | Permission denied or first check | User-clicked Loopback check / scoped Chrome Site Settings | Do not disable global browser protection |
+| 2 Agent | Reachable old version, missing service, settings endpoint failure | On-machine Check-CUT-Print-Agent.ps1 can start only a *stopped current-user* task; V2 installer can stage/update/rollback after release | No browser remote process execution; do not kill hung Node while jobs may be in flight |
+| 3 Windows | Printing paused, spooler stopped, diagnostic probe failed | Toggle policy deliberately; inspect Windows Services | Never automatically reset spooler or delete queued jobs |
+| 4 Physical/queue | Missing USB printer, printer offline, nonempty queue | Check cable, paper, Windows printer name and queue | Do not send same sale twice on uncertain submission |
+| 5 Verification | All probes healthy | User explicitly sends one test slip and confirms it physically | Health/queue acknowledgement is NOT physical print confirmation |
+
+- The new Printer Center chooses a single next step via `buildPrintRecoveryPlan()`; it does not automatically retry, start a print job, reset Windows services, or copy any customer data.
+- The optional `Check-CUT-Print-Agent.ps1` script is standalone and local. It checks /health and Windows task state; if the **same current-user** task is stopped, it requests one start, then confirms /health. It never prints or invokes the updater.
+- The site provides a clipboard support snapshot with only a limited set of diagnostic fields (no invoice HTML, receipt contents or personal data).
+- For invoices with an ambiguous timeout or a nonempty Windows queue, the operator must check paper before manually reprinting from Casher.
+- Tests: `printRecoveryPlan.test.ts`, `PrintRecoveryCenter.test.tsx`, printer service tests, PowerShell script parser in PR CI.

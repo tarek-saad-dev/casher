@@ -27,6 +27,7 @@ describe('layered CUT print recovery plan', () => {
   });
   it('distinguishes old Agent version from unreachable Agent', () => {
     expect(kind({ connected: false, healthVersion: '1.1.0' })).toBe('upgrade');
+    expect(kind({ connected: false, healthVersion: '2.0.0' })).toBe('settings');
     expect(kind({ connected: false, healthVersion: null })).toBe('agent');
   });
   it('does not offer a print test when print policy is paused', () => {

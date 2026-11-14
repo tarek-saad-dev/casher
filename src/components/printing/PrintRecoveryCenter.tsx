@@ -1,6 +1,7 @@
 'use client';
 
-import { AlertCircle, CheckCircle2, Download, ExternalLink, RefreshCcw, ShieldAlert } from 'lucide-react';
+import { useState } from 'react';
+import { AlertCircle, CheckCircle2, ClipboardCopy, Download, ExternalLink, RefreshCcw, ShieldAlert } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { buildPrintRecoveryPlan, type RecoveryContext } from '@/lib/printRecoveryPlan';
 import { PRINT_SERVICE_URL } from '@/lib/localPrintClient';
@@ -23,6 +24,28 @@ const REPAIR = '/downloads/Install-CUT-Print-Agent.ps1';
 export default function PrintRecoveryCenter(props: Props) {
   const step = buildPrintRecoveryPlan(props)[0];
   const ok = step.kind === 'ready';
+  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
+  async function copyReport() {
+    // Support snapshot only: no HTML, invoice details, customer data, IP or raw logs.
+    const report = {
+      issue: step.kind, level: step.level,
+      chromeLoopbackPermission: props.permission,
+      agentReachable: props.connected,
+      agentVersion: props.healthVersion || 'unknown',
+      printPolicyEnabled: props.settings?.enabled ?? null,
+      engine: props.settings?.engine ?? null,
+      diagnosticsAvailable: props.diagnostics?.probe || null,
+      printerFound: props.diagnostics?.printerFound ?? null,
+      printerStatus: props.diagnostics?.printerStatus || null,
+      spoolerStatus: props.diagnostics?.spoolerStatus || null,
+      queuedJobs: props.diagnostics?.queuedJobs ?? null,
+      paperConfirmed: false,
+    };
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(report, null, 2));
+      setCopyState('copied');
+    } catch { setCopyState('failed'); }
+  }
   return (
     <section dir="rtl" data-testid="print-recovery-center" className="rounded-2xl border border-border bg-surface p-5 sm:p-6">
       <div className="flex items-center gap-2">

@@ -1,4 +1,4 @@
-import type { LoopbackPermissionState, LocalPrinterSettings, PrinterDiagnostics } from './localPrintClient';
+import { REQUIRED_AGENT_VERSION, type LoopbackPermissionState, type LocalPrinterSettings, type PrinterDiagnostics } from './localPrintClient';
 
 /** Pure UI decision logic. No retries, mutation, network calls, or print jobs. */
 export type RecoveryKind =
@@ -35,10 +35,15 @@ export function buildPrintRecoveryPlan(c: RecoveryContext): RecoveryStep[] {
     detail: 'افتح إعدادات موقع ops.cutsaloon.com واسمح بصلاحية Loopback network ثم افحص الاتصال. لا تغيّر إعدادات أمان الجهاز العامة.',
     action: 'permissions',
   }];
-  if (!c.connected && c.healthVersion) return [{
+  if (!c.connected && c.healthVersion && c.healthVersion !== REQUIRED_AGENT_VERSION) return [{
     kind: 'upgrade', level: 2, title: 'برنامج الطباعة يحتاج تحديث أو إصلاح',
     detail: 'البرنامج المحلي بيرد لكنه غير متوافق مع صفحة الطباعة. استخدم أداة Repair V2 على جهاز الكاشير فقط، بعد اعتماد الإصدار.',
     action: 'upgrade',
+  }];
+  if (!c.connected && c.healthVersion === REQUIRED_AGENT_VERSION) return [{
+    kind: 'settings', level: 2, title: 'الـ Agent شغال لكن صفحة التحكم مش بتستجيب',
+    detail: 'راجع /settings والنسخة المثبتة، وبعدها جرّب أداة الفحص المحلي. ما نعيدش تشغيل الطابعة أو نطبع تلقائيًا.',
+    action: 'local-check',
   }];
   if (!c.connected) return [{
     kind: 'agent', level: 2, title: 'خدمة الطباعة مش مستجيبة',

@@ -41,7 +41,8 @@ try {
   }
   $principal = [string]$task.Principal.UserId
   $currentAccount = "$env:USERDOMAIN\$env:USERNAME"
-  if ($principal -and $principal -ne $currentAccount -and $principal -ne $env:USERNAME) {
+  $currentSid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+  if ($principal -and $principal -ne $currentAccount -and $principal -ne $env:USERNAME -and $principal -ne $currentSid) {
     Explain 'Task belongs to another Windows user. Sign into that cashier account. No action taken.'
     exit 4
   }
