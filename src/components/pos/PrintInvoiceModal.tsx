@@ -521,6 +521,7 @@ export default function PrintInvoiceModal({ open, invID, onClose }: PrintInvoice
     setLoading(true);
     setPrinting(false);
     setPrintError(null);
+    setPrintErrorCode(null);
     setPolicyBlocked(false);
     setPrintSuccess(false);
     fetch(`/api/sales/${invID}`)
@@ -813,7 +814,10 @@ export default function PrintInvoiceModal({ open, invID, onClose }: PrintInvoice
 
   const handleBrowserFallback = useCallback(() => {
     const result = openBrowserPrintFallback(buildReceiptHTML(), createPrintRequestId('invoice-browser'));
-    if (result.ok === false) setPrintError(result.userMessage);
+    if (result.ok === false) {
+      setPrintError(result.userMessage);
+      setPrintErrorCode(result.code);
+    }
   }, [buildReceiptHTML]);
 
   // Cleanup on unmount
@@ -1060,7 +1064,7 @@ export default function PrintInvoiceModal({ open, invID, onClose }: PrintInvoice
               <p role="alert" className="text-sm text-destructive mt-2">{printError}</p>
             )}
             {/* Error-based recovery: never show Chrome download for other failures. */}
-            <MissingChromeRepairPrompt errorCode={printErrorCode} />
+            <MissingChromeRepairPrompt errorCode={printError ? printErrorCode : null} />
             {isLocalAgentConnectionError(printErrorCode) && (
               <div className="mt-3">
                 <LocalPrintConnectionHelp errorCode={printErrorCode} compact />
