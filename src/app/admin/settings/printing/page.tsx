@@ -12,7 +12,8 @@ import LocalPrintConnectionHelp from '@/components/printing/LocalPrintConnection
 import { Switch } from '@/components/ui/switch';
 import {
   getLocalPrinterSettings, patchLocalPrinterSettings, printLocalTestReceipt,
-  type LocalPrinterSettings, type ReceiptType,
+  getLocalAgentHealth, getLocalPrinterDiagnostics, getLoopbackPermissionState, REQUIRED_AGENT_VERSION,
+  type LocalPrinterSettings, type ReceiptType, type PrinterDiagnostics, type LoopbackPermissionState,
 } from '@/lib/localPrintClient';
 
 const RECEIPTS: Array<{ key: ReceiptType; title: string; subtitle: string }> = [
@@ -44,6 +45,9 @@ function SettingRow({
 export default function PrinterControlPage() {
   const [settings, setSettings] = useState<LocalPrinterSettings | null>(null);
   const [connected, setConnected] = useState(false);
+  const [permission, setPermission] = useState<LoopbackPermissionState>('unsupported');
+  const [attempted, setAttempted] = useState(false);
+  const [diagnostics, setDiagnostics] = useState<PrinterDiagnostics | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -53,26 +57,50 @@ export default function PrinterControlPage() {
 
   const refresh = useCallback(async (quiet = false) => {
     if (busyRef.current) return;
-    if (!quiet) setLoading(true);
+    if (!quiet) { setLoading(true); setAttempted(true); }
     try {
       const data = await getLocalPrinterSettings();
+      if (data.version !== REQUIRED_AGENT_VERSION) {
+        throw new Error('Agent version does not support V2');
+      }
       setSettings(data);
       setConnected(true);
       if (!quiet) setError(null);
+      try { setDiagnostics(await getLocalPrinterDiagnostics()); }
+      catch { setDiagnostics(null); }
     } catch {
       setConnected(false);
       setSettings(null);
-      if (!quiet) setError('تعذر الاتصال بخدمة الطباعة على الكمبيوتر الحالي. تأكد أن CUT Salon Print Agent يعمل.');
-    } finally {
-      setLoading(false);
-    }
+      setDiagnostics(null);
+      if (!quiet) {
+        let message = 'تعذر الاتصال بالـ Agent؛ افتح رابط /health لمعرفة إذا كانت الخدمة متوقفة أو Chrome منع الاتصال.';
+        try {
+          const health = await getLocalAgentHealth();
+          message = health.version !== REQUIRED_AGENT_VERSION
+            ? `نسخة الطباعة قديمة (${health.version || 'غير معروفة'}). شغّل أداة Repair V2 على جهاز الكاشير.`
+            : 'الـ Agent شغال لكن إعداداته غير متاحة. شغّل أداة Repair V2 لإصلاح التثبيت.';
+        } catch { /* Browser errors cannot reliably distinguish offline, CORS, and LNA. */ }
+        setError(message);
+      }
+    } finally { setLoading(false); }
   }, []);
 
   useEffect(() => {
-    void refresh();
+    let active = true;
+    void getLoopbackPermissionState().then(state => {
+      if (!active) return;
+      setPermission(state);
+      if (state === 'granted') void refresh();
+      else setLoading(false); // Initial permission prompt only after explicit user click.
+    });
+    return () => { active = false; };
+  }, [refresh]);
+
+  useEffect(() => {
+    if (!connected) return;
     const timer = setInterval(() => void refresh(true), 10000);
     return () => clearInterval(timer);
-  }, [refresh]);
+  }, [connected, refresh]);
 
   const change = async (patch: { enabled?: boolean; autoCut?: boolean; types?: Partial<LocalPrinterSettings['types']> }) => {
     if (busyRef.current || !settings) return;
@@ -114,7 +142,8 @@ export default function PrinterControlPage() {
 
   const inactive = !connected || loading || saving || testing;
   const running = connected && settings?.enabled;
-  const statusLabel = !connected ? 'الخدمة غير متصلة' : running ? 'الطباعة مفعّلة' : 'الطباعة متوقفة';
+  const statusLabel = !attempted && !connected ? 'بانتظار إذن الاتصال'
+    : !connected ? 'الخدمة غير متصلة' : running ? 'الطباعة مفعّلة' : 'الطباعة متوقفة';
 
   return (
     <div dir="rtl" className="mx-auto w-full max-w-5xl space-y-6 px-2 pb-12 pt-2 sm:px-6">
@@ -141,6 +170,9 @@ export default function PrinterControlPage() {
           >
             معاينة الفاتورة المختصرة
           </Link>
+          <Button onClick={() => void refresh()} disabled={loading || saving || testing}>
+            <Printer className="h-4 w-4" /> الاتصال / فحص الطابعة
+          </Button>
           <Button variant="outline" onClick={() => void refresh()} disabled={loading || saving || testing}>
           <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
             تحديث الحالة
@@ -174,6 +206,13 @@ export default function PrinterControlPage() {
         </p>
       </section>
 
+      {permission === 'denied' && !connected && (
+        <div role="alert" className="rounded-xl border border-amber-500/35 bg-amber-500/5 p-4 text-sm">
+          Chrome منع صلاحية Loopback. من إعدادات موقع ops.cutsaloon.com افتح Site settings
+          ثم غيّر Loopback network إلى Allow، وبعدها اضغط «الاتصال / فحص الطابعة».
+        </div>
+      )}
+      {error && !connected && <div role="alert" className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm">{error}</div>}
       {!connected && !loading && (
         <LocalPrintConnectionHelp onReconnect={() => refresh()} />
       )}
@@ -245,6 +284,14 @@ export default function PrinterControlPage() {
             <p className="mt-2 font-semibold text-foreground">{settings?.lastAcceptedAt ? new Date(settings.lastAcceptedAt).toLocaleString('ar-EG') : 'غير متوفر'}</p>
           </div>
         </div>
+        {diagnostics && (
+          <div className="mt-4 rounded-xl border border-border p-3 text-sm">
+            <strong>تشخيص Windows:</strong>{' '}
+            {diagnostics.probe !== 'ok' ? 'فحص Windows غير متوفر على الجهاز الحالي'
+              : !diagnostics.printerFound ? 'الطابعة المحددة غير موجودة في Windows'
+              : `الطابعة: ${diagnostics.printerName} · الحالة: ${diagnostics.printerStatus || 'unknown'} · Spooler: ${diagnostics.spoolerStatus} · انتظار: ${diagnostics.queuedJobs ?? 'غير معروف'}`}
+          </div>
+        )}
         <p className="mt-3 flex items-start gap-2 text-xs leading-relaxed text-muted-foreground">
           <ShieldCheck className="h-4 w-4 shrink-0" />
           الاتصال بالخدمة لا يضمن أن الورق خرج فعليًا. حالة الطابعة الميكانيكية وقائمة مهام Windows تحتاج فحص من الجهاز.
