@@ -85,6 +85,7 @@ export async function getTenantReferralPreview(input: {
         CASE WHEN EXISTS (
           SELECT 1 FROM dbo.TblinvServHead h
           INNER JOIN dbo.TblClient c ON c.ClientID = h.ClientID AND c.TenantId = @tenantId
+          INNER JOIN dbo.Location l ON l.LegacyBranchId = h.BranchID AND l.TenantId = @tenantId
           WHERE h.ClientID = @referrerId AND h.invType = N'مبيعات'
             AND h.GrandTotal > 0 AND h.Payment >= h.GrandTotal
             AND ISNULL(h.PayDue, 0) <= 0 AND ISNULL(h.isActive, N'no') = N'no'
@@ -92,6 +93,7 @@ export async function getTenantReferralPreview(input: {
         CASE WHEN EXISTS (
           SELECT 1 FROM dbo.TblinvServHead h
           INNER JOIN dbo.TblClient c ON c.ClientID = h.ClientID AND c.TenantId = @tenantId
+          INNER JOIN dbo.Location l ON l.LegacyBranchId = h.BranchID AND l.TenantId = @tenantId
           WHERE h.ClientID = @referredId AND h.invType = N'مبيعات'
             AND h.GrandTotal > 0 AND h.Payment >= h.GrandTotal
             AND ISNULL(h.PayDue, 0) <= 0 AND ISNULL(h.isActive, N'no') = N'no'
