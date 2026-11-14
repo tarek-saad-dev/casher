@@ -11,7 +11,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import {
-  COMPACT_CUT_RECEIPT_V1, DEFAULT_RECEIPT_FIELDS, RECEIPT_FIELDS_BY_KIND, validateReceiptTemplateV1,
+  COMPACT_CUT_RECEIPT_V1, CUT_CLASSIC_ORIGINAL_V1, newCutClassicEditableCopy,
+  DEFAULT_RECEIPT_FIELDS, RECEIPT_FIELDS_BY_KIND, validateReceiptTemplateV1,
   type ReceiptField, type ReceiptBlockV1, type ReceiptBlockKind, type ReceiptTemplateV1,
 } from '@/lib/receipt-studio/template';
 import {
@@ -42,6 +43,10 @@ const FIELD_TITLES: Record<ReceiptField, string> = {
   brandName: 'اسم البراند',
   brandTagline: 'الوصف تحت الشعار',
   receiptLabel: 'عنوان الفاتورة',
+  invoiceNumberLabel: 'عنوان رقم الفاتورة',
+  dateLabel: 'عنوان التاريخ',
+  timeLabel: 'عنوان الوقت',
+  customerPhoneLabel: 'عنوان هاتف العميل',
   customerLabel: 'عنوان العميل',
   numberHeader: 'عنوان رقم الخدمة',
   serviceHeader: 'عنوان عمود الخدمات',
@@ -71,7 +76,8 @@ function sampleAsInvoice(scenario: SampleScenario): StudioInvoiceModel {
   const fixture = getSampleReceipt(scenario);
   return {
     invoiceNo: fixture.invoiceNo.replace('#',''), date: fixture.date, time: fixture.time,
-    branch: fixture.branch, brand: 'CUT SALON', customer: fixture.customer,
+    branch: fixture.branch, brand: 'CUT SALON', brandWordmark: 'CUT', customer: fixture.customer,
+    customerPhone: '01000000000', phone: '01012126899',
     items: fixture.items.map((item) => ({ name: item.name, price: item.price * item.qty })),
     subtotal: fixture.subtotal,
     discounts: fixture.discount ? [{ label: 'Discount', amount: fixture.discount }] : [],
@@ -113,7 +119,8 @@ export default function ReceiptStudioEditor() {
 
   const template = history.current;
   const selected = selectedId ? findReceiptNode(template.blocks, selectedId) : null;
-  const modified = JSON.stringify(template) !== JSON.stringify(COMPACT_CUT_RECEIPT_V1);
+  const originalPreset = template.layoutVariant === 'classic' ? CUT_CLASSIC_ORIGINAL_V1 : COMPACT_CUT_RECEIPT_V1;
+  const modified = JSON.stringify(template) !== JSON.stringify(originalPreset);
   const proofHtml = useMemo(() => renderStudioReceiptHtml(template, sampleAsInvoice(scenario), assets), [template, scenario, assets]);
 
   const loadStudio = useCallback(async (selectedScope: Scope) => {
@@ -420,8 +427,20 @@ export default function ReceiptStudioEditor() {
   }
 
   function reset() {
-    commit(freshTemplate(), 'أنت بالفعل على التصميم الافتراضي.');
-    setSelectedId('brand');
+    const preserved = template.layoutVariant === 'classic' ? newCutClassicEditableCopy() : freshTemplate();
+    if (dirty && !window.confirm('هتستبدل التعديلات الحالية بنسخة التصميم الأصلية. نكمل؟')) return;
+    commit(preserved, 'التصميم مطابق بالفعل للنسخة الأصلية.');
+    const firstId = preserved.blocks[0]?.id ?? null;
+    setSelectedId(firstId);
+    setSelectedIds(firstId ? [firstId] : []);
+  }
+
+  function loadClassicPreset() {
+    if (dirty && !window.confirm('فيه تغييرات في المسودة لسه ما اتحفظتش. نبدأ نسخة قابلة للتعديل من CUT Classic؟')) return;
+    const preset = newCutClassicEditableCopy();
+    commit(preset, 'أنت بالفعل على نسخة CUT Classic الأصلية.');
+    setSelectedId('classic_brand');
+    setSelectedIds(['classic_brand']);
   }
 
   const miniButton = 'inline-flex h-8 items-center justify-center rounded-lg border border-border bg-background px-2.5 text-xs font-medium transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40';
@@ -450,12 +469,21 @@ export default function ReceiptStudioEditor() {
           <Button variant="outline" size="sm" onClick={redo} disabled={!history.future.length} title="إعادة">
             <Redo2 className="size-4"/> إعادة
           </Button>
-          <Button variant="outline" size="sm" onClick={reset} disabled={!modified}><RotateCcw className="size-4"/> استعادة</Button>
+          <Button variant="outline" size="sm" onClick={reset} disabled={!modified}><RotateCcw className="size-4"/> استعادة الأصل</Button>
+          <Button variant="outline" size="sm" onClick={loadClassicPreset} disabled={busy}>
+            <LayoutTemplate className="size-4"/> نسخة قابلة للتعديل من CUT Classic
+          </Button>
           <Link href="/admin/settings/printing" className="inline-flex h-8 items-center gap-2 rounded-lg border border-border px-3 text-xs font-medium hover:bg-muted">
             <ArrowLeft className="size-4"/> إدارة الطباعة
           </Link>
         </div>
       </header>
+
+      <section className="rounded-xl border border-border bg-muted/20 px-4 py-3 text-xs leading-relaxed">
+        <strong>CUT Classic — التصميم الأصلي محفوظ:</strong> البوردر المزدوج، الشعار الدائري، بيانات العميل،
+        جدول الخدمات، صندوق الإجمالي، الهدية ورسالة الشكر. زر «نسخة قابلة للتعديل» يبدأ من الشكل الأصلي
+        من غير تغيير الفاتورة الحالية. الحفظ بيخزن مسودة، والنشر محتاج اختبار ورقة وتأكيد منفصل.
+      </section>
 
       <section className="space-y-3 rounded-xl border border-border bg-muted/30 px-4 py-4 text-sm">
         <div className="flex flex-wrap items-center justify-between gap-3">

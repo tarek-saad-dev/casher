@@ -16,6 +16,7 @@ export type ReceiptAlign = 'left' | 'center' | 'right';
 export type ReceiptField =
   | 'brandName' | 'brandTagline' | 'receiptLabel' | 'customerLabel'
   | 'numberHeader' | 'serviceHeader' | 'priceHeader'
+  | 'invoiceNumberLabel' | 'dateLabel' | 'timeLabel' | 'customerPhoneLabel'
   | 'subtotalLabel' | 'discountLabel' | 'totalLabel'
   | 'paymentLabel' | 'thanksText' | 'footerTagline';
 
@@ -46,6 +47,8 @@ export interface ReceiptBlockV1 {
 export interface ReceiptTemplateV1 {
   schemaVersion: 1;
   receiptType: 'invoice';
+  /** Classic reproduces the legacy CUT printed layout; compact is the prior Studio layout. */
+  layoutVariant?: 'classic' | 'compact';
   paper: {
     rollWidthMm: 80;
     printableWidthMm: 72;
@@ -60,6 +63,10 @@ export const DEFAULT_RECEIPT_FIELDS: Record<ReceiptField, string> = {
   brandTagline: "MEN'S GROOMING",
   receiptLabel: 'RECEIPT',
   customerLabel: 'Customer',
+  invoiceNumberLabel: 'رقم الفاتورة:',
+  dateLabel: 'التاريخ:',
+  timeLabel: 'الوقت:',
+  customerPhoneLabel: 'الهاتف:',
   numberHeader: 'NO.',
   serviceHeader: 'SERVICE',
   priceHeader: 'PRICE',
@@ -73,13 +80,44 @@ export const DEFAULT_RECEIPT_FIELDS: Record<ReceiptField, string> = {
 
 export const RECEIPT_FIELDS_BY_KIND: Record<ReceiptBlockKind, ReceiptField[]> = {
   brand: ['brandName', 'brandTagline'],
-  'invoice-meta': ['receiptLabel', 'customerLabel'],
+  'invoice-meta': ['receiptLabel', 'customerLabel', 'invoiceNumberLabel', 'dateLabel', 'timeLabel', 'customerPhoneLabel', 'paymentLabel'],
   items: ['numberHeader', 'serviceHeader', 'priceHeader'],
   totals: ['subtotalLabel', 'discountLabel', 'totalLabel'],
   payment: ['paymentLabel'],
   footer: ['thanksText', 'footerTagline'],
   divider: [], text: [], image: [], group: [],
 };
+
+/** Immutable master design reference: only create edited clones in the Studio. */
+export const CUT_CLASSIC_ORIGINAL_V1: ReceiptTemplateV1 = {
+  schemaVersion: 1,
+  receiptType: 'invoice',
+  layoutVariant: 'classic',
+  paper: { rollWidthMm: 80, printableWidthMm: 72, heightMode: 'auto' },
+  blocks: [
+    { id: 'classic_brand', kind: 'brand', name: 'شعار CUT والإطار الدائري', enabled: true,
+      fields: { brandName: 'CUT SALON', brandTagline: 'صالون كت للرجال' },
+      style: { align: 'center' } },
+    { id: 'classic_divider_top', kind: 'divider', name: 'فاصل زخرفي علوي', enabled: true },
+    { id: 'classic_meta', kind: 'invoice-meta', name: 'بيانات الفاتورة', enabled: true,
+      fields: { receiptLabel: '✦ فاتورة مبيعات ✦', invoiceNumberLabel: 'رقم الفاتورة:',
+        dateLabel: 'التاريخ:', timeLabel: 'الوقت:', customerLabel: 'العميل:',
+        customerPhoneLabel: 'الهاتف:', paymentLabel: 'طريقة الدفع:' } },
+    { id: 'classic_divider_services', kind: 'divider', name: 'فاصل الخدمات', enabled: true },
+    { id: 'classic_items', kind: 'items', name: 'جدول الخدمات والحلاقين', enabled: true,
+      fields: { numberHeader: '#', serviceHeader: 'الخدمة / الحلاق', priceHeader: 'السعر' } },
+    { id: 'classic_totals', kind: 'totals', name: 'المجموع والإجمالي', enabled: true,
+      fields: { subtotalLabel: 'المجموع الفرعي:', discountLabel: 'الخصومات:', totalLabel: 'الإجمالي:' } },
+    { id: 'classic_gift', kind: 'text', name: 'صندوق اسأل على هديتك', enabled: true,
+      text: 'اسأل على هديتك' },
+    { id: 'classic_footer', kind: 'footer', name: 'الشكر ونهاية الفاتورة', enabled: true,
+      fields: { thanksText: 'شكراً لزيارتكم', footerTagline: 'نسعد بخدمتكم دائماً' } },
+  ],
+};
+
+export function newCutClassicEditableCopy(): ReceiptTemplateV1 {
+  return structuredClone(CUT_CLASSIC_ORIGINAL_V1);
+}
 
 export const COMPACT_CUT_RECEIPT_V1: ReceiptTemplateV1 = {
   schemaVersion: 1,
@@ -95,7 +133,7 @@ export const COMPACT_CUT_RECEIPT_V1: ReceiptTemplateV1 = {
   ],
 };
 
-const ROOT_KEYS = new Set(['schemaVersion', 'receiptType', 'paper', 'blocks']);
+const ROOT_KEYS = new Set(['schemaVersion', 'receiptType', 'layoutVariant', 'paper', 'blocks']);
 const PAPER_KEYS = new Set(['rollWidthMm', 'printableWidthMm', 'heightMode', 'minHeightMm']);
 const BLOCK_KEYS = new Set(['id', 'kind', 'enabled', 'name', 'locked', 'style', 'text', 'assetId', 'fields', 'children']);
 const STYLE_KEYS = new Set(['fontSizePx', 'fontWeight', 'align', 'gapAfterMm', 'letterSpacingPx', 'imageWidthMm', 'paddingMm', 'groupGapMm']);
@@ -143,6 +181,7 @@ export function validateReceiptTemplateV1(input: unknown): ReceiptTemplateValida
   keyCheck(input, ROOT_KEYS, 'template', errors);
   if (input.schemaVersion !== 1) errors.push('schemaVersion: expected 1');
   if (input.receiptType !== 'invoice') errors.push('receiptType: only invoice supported');
+  if (input.layoutVariant !== undefined && input.layoutVariant !== 'compact' && input.layoutVariant !== 'classic') errors.push('layoutVariant: unsupported variant');
 
   const paper = input.paper;
   if (!record(paper)) errors.push('paper: expected object');

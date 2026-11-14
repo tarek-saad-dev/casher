@@ -1,3 +1,4 @@
+import { renderCutClassicReceipt } from './classicRender';
 import {
   DEFAULT_RECEIPT_FIELDS, validateReceiptTemplateV1,
   type ReceiptTemplateV1, type ReceiptBlockV1, type ReceiptField,
@@ -13,6 +14,8 @@ export type StudioInvoiceModel = {
   invoiceNo: string; date: string; time: string;
   branch: string; brand: string; customer: string;
   phone?: string;
+  customerPhone?: string;
+  brandWordmark?: string;
   items: StudioInvoiceLine[];
   subtotal: number; discounts: Array<{ label: string; amount: number }>;
   grandTotal: number; payments: Array<{ label: string; amount?: number }>;
@@ -43,6 +46,9 @@ export function renderStudioReceiptHtml(
 ): string {
   const validated = validateReceiptTemplateV1(template);
   if (!validated.ok) throw new Error('Unsafe receipt template: ' + validated.errors[0]);
+  if (validated.template.layoutVariant === 'classic') {
+    return renderCutClassicReceipt(validated.template, model, assets);
+  }
   const safe = escapeReceiptHtml;
   const render = (blocks: ReceiptBlockV1[]): string => blocks.filter((b) => b.enabled).map((b) => {
     const style = cssStyle(b);
