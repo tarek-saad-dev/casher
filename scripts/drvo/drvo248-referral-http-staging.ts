@@ -119,6 +119,8 @@ async function main(): Promise<void> {
     const { openShift } = await import('../../src/lib/branch/shiftSession');
     const { computeInvoiceItemsTotals } =
       await import('../../src/lib/sales/service-line-totals');
+    const { resolveSplitPaymentConfig } =
+      await import('../../src/lib/clearingMethod');
 
     const publicInput = parsePublicSignupInput({
       industry: 'salon', needs: ['booking'],
@@ -203,8 +205,10 @@ async function main(): Promise<void> {
     const bonus = Number(serviceR.recordset[0].Bonus);
     check(price > 0 && Number.isFinite(price) && Number.isFinite(bonus),
       'real service catalog price and bonus valid');
-    const methodR = await pool.request().query(
-      'SELECT TOP 1 PaymentID FROM dbo.TblPaymentMethods ORDER BY PaymentID');
+    const splitCfg = await resolveSplitPaymentConfig(pool);
+    const methodR = await pool.request()
+      .input('clearing', mssql.Int, splitCfg.clearingMethodId)
+      .query('SELECT TOP 1 PaymentID FROM dbo.TblPaymentMethods WHERE PaymentID<>@clearing ORDER BY PaymentID');
     check(methodR.recordset.length === 1, 'payment method available');
     const method = Number(methodR.recordset[0].PaymentID);
 
