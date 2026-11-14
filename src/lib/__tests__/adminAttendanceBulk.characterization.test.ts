@@ -17,6 +17,13 @@ import { EmpBranchWorkDayCloseError } from '@/lib/hr/empBranchWorkDayClose.types
 
 vi.mock('server-only', () => ({}));
 
+// HR financial clock fixture; booking schedule is not the wage clock.
+vi.mock('@/lib/hr/late-deduction/financialWorkSchedule', () => ({
+  resolveEmployeeFinancialWorkSchedule: vi.fn(async () => ({
+    isScheduledWorkingDay: true, scheduledStart: '10:00', scheduledEnd: '18:00',
+  })),
+}));
+
 const SESSION_BRANCH_ID = 10;
 const OTHER_BRANCH_ID = 20;
 const EMP_A = 42;

@@ -6,7 +6,7 @@ const m = vi.hoisted(() => ({
   enqueue: vi.fn(),
   schedule: vi.fn(),
   voidExcluded: vi.fn(),
-  loadSchedule: vi.fn(),
+  financial: vi.fn(),
   getDb: vi.fn(),
   attendance: {
     CheckInTime: '12:30:00',
@@ -30,10 +30,8 @@ vi.mock('../finalizeOnCheckIn', () => ({
 vi.mock('../voidExcludedAttendance', () => ({
   voidLateDeductionForExcludedAttendance: m.voidExcluded,
 }));
-vi.mock('@/modules/attendance/infra/AttendanceRepository', () => ({
-  getAttendanceDb: m.getDb,
-  loadEmployeeScheduleForAdminPut: m.loadSchedule,
-}));
+vi.mock('@/modules/attendance/infra/AttendanceRepository', () => ({ getAttendanceDb: m.getDb }));
+vi.mock('../financialWorkSchedule', () => ({ resolveEmployeeFinancialWorkSchedule: m.financial }));
 
 import { enqueueLegacyEmployeeCheckInLateDeduction } from '../legacyCheckIn';
 
@@ -46,6 +44,7 @@ describe('legacy bridge voids lowercase absent/off with saved check-in', () => {
     m.eligible.mockReturnValue(true);
     m.voidExcluded.mockResolvedValue({ handled: true, voided: true });
     m.enqueue.mockResolvedValue({ enqueued: true });
+    m.financial.mockResolvedValue({ isScheduledWorkingDay: true, scheduledStart: '12:00', scheduledEnd: '22:00' });
     m.getDb.mockResolvedValue({
       request: () => ({
         input() {
@@ -97,15 +96,7 @@ describe('legacy bridge voids lowercase absent/off with saved check-in', () => {
       ScheduledStartTime: null,
       ScheduledEndTime: null,
     };
-    m.loadSchedule.mockResolvedValue({
-      EmploymentType: 'full_time',
-      ScheduleDayOfWeek: 2,
-      IsWorkingDay: true,
-      ScheduleStartTime: '12:00',
-      ScheduleEndTime: '22:00',
-      DefaultCheckInTime: '12:00',
-      DefaultCheckOutTime: '22:00',
-    });
+
     m.getDb.mockResolvedValue({
       request: () => ({
         input() {

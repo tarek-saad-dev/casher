@@ -12,6 +12,13 @@ import { resolveAdminPutAttendanceStatus } from '@/modules/attendance/domain/adm
 
 vi.mock('server-only', () => ({}));
 
+// HR financial clock fixture; booking schedule is not the wage clock.
+vi.mock('@/lib/hr/late-deduction/financialWorkSchedule', () => ({
+  resolveEmployeeFinancialWorkSchedule: vi.fn(async () => ({
+    isScheduledWorkingDay: true, scheduledStart: '10:00', scheduledEnd: '18:00',
+  })),
+}));
+
 const assertEmpBranchWorkDayMutable = vi.fn(async () => undefined);
 const assertEmployeeEligibleForBranchAttendance = vi.fn(async () => undefined);
 const unlockScheduleForWorkOnDayOff = vi.fn(async () => ({
