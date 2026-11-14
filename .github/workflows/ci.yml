@@ -21,6 +21,7 @@ jobs:
           $scripts = @(
             'print-service/windows/run-agent.ps1',
             'print-service/windows/install-autostart.ps1',
+            'print-service/windows/diagnose-printer.ps1',
             'print-service/windows/uninstall-autostart.ps1',
             'public/downloads/Install-CUT-Print-Agent.ps1'
           )
@@ -138,7 +139,7 @@ jobs:
         run: npx vitest run src/lib/receipt-studio/__tests__/template.test.ts src/lib/receipt-studio/__tests__/editor.test.ts src/lib/receipt-studio/__tests__/render.test.ts src/lib/receipt-studio/__tests__/layers.test.ts
 
       - name: Local print client and receipt interaction regressions
-        run: npx vitest run src/lib/__tests__/localPrintClient.test.ts src/components/expenses/__tests__/ExpenseReceiptPopup.print.test.tsx src/components/printing/__tests__/LocalPrintConnectionHelp.test.tsx
+        run: npx vitest run src/lib/__tests__/localPrintClient.test.ts src/lib/__tests__/localPrintAgentV2.test.ts src/components/expenses/__tests__/ExpenseReceiptPopup.print.test.tsx src/components/printing/__tests__/LocalPrintConnectionHelp.test.tsx
 
       - name: CUT STAFF extra-service scheduling behavior and contracts
         run: >-
