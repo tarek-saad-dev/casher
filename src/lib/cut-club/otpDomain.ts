@@ -60,6 +60,38 @@ export type OpaqueSessionMaterial = Readonly<{
   record: OpaqueSessionRecord;
 }>;
 
+/**
+ * Contract only. The future implementation MUST enforce the quotas and
+ * replacement in a database transaction. Do not implement this with
+ * process-local maps because multiple workers can accept the same code.
+ */
+export interface OtpDurableRepository {
+  reserveChallenge(input: Readonly<{
+    challenge: OtpChallenge;
+    /** Derived from a trusted server proxy / socket, never user-provided. */
+    ipDigest: string;
+    nowSeconds: number;
+  }>): Promise<"stored" | "rate_limited" | "unavailable">;
+  /**
+   * Compare-and-swap on tenantId, id, revision and prior pending status.
+   * Return true only if exactly one row committed; replay must return false.
+   */
+  commitAttempt(input: Readonly<{ before: OtpChallenge; after: OtpChallenge }>): Promise<boolean>;
+  createSession(record: OpaqueSessionRecord): Promise<boolean>;
+  getSession(input: Readonly<{ tenantId: string; tokenDigest: string }>): Promise<OpaqueSessionRecord | null>;
+  revokeSession(input: Readonly<{ tenantId: string; tokenDigest: string; nowSeconds: number }>): Promise<boolean>;
+}
+
+/** Injectable transport is intentionally an interface; NO provider is wired. */
+export interface OtpDeliveryProvider {
+  sendCode(input: Readonly<{
+    tenantId: string;
+    phoneE164: string;
+    codeForDelivery: string;
+    challengeId: string;
+  }>): Promise<"sent" | "failed">;
+}
+
 const validInt = (x: unknown): x is number =>
   typeof x === "number" && Number.isSafeInteger(x) && x > 0;
 
@@ -144,6 +176,11 @@ export function checkOtpAttempt(
   if (record.expiresAt <= input.nowSeconds ||
       record.expiresAt - record.createdAt > OTP_VALID_FOR_SECONDS) {
     return { ok: false, reason: "expired", updated: { ...record, status: "expired", revision: record.revision + 1 } };
+  }
+
+  if (!validInt(record.createdAt) || !validInt(record.expiresAt) ||
+      record.createdAt > input.nowSeconds || record.expiresAt <= record.createdAt) {
+    return unchanged;
   }
 
   if (!Number.isSafeInteger(record.attempts) || record.attempts < 0 ||
@@ -249,7 +286,12 @@ export function verifyOpaqueSession(
 ): boolean {
   if (!record || !validTenant(input.tenantId) || !validInt(input.nowSeconds) ||
       record.tenantId !== input.tenantId || !validInt(record.customerId) ||
-      record.revokedAt !== null || record.expiresAt <= input.nowSeconds ||
+      record.revokedAt !== null || !validInt(record.createdAt) ||
+      !validInt(record.verifiedAt) || !validInt(record.expiresAt) ||
+      record.createdAt > input.nowSeconds ||
+      record.verifiedAt > record.createdAt ||
+      record.createdAt - record.verifiedAt > OTP_VALID_FOR_SECONDS ||
+      record.expiresAt <= input.nowSeconds ||
       record.expiresAt <= record.createdAt ||
       record.expiresAt - record.createdAt > SESSION_VALID_FOR_SECONDS ||
       typeof token !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(token)) return false;
