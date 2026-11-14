@@ -1,0 +1,206 @@
+name: CRM DRVOWA Staging Gate
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      pr_head_sha:
+        description: Exact PR head SHA to checkout (required for workflow_dispatch)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: crm-drvowa-staging-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  crm-drvowa-staging:
+    if: >
+      (github.event_name == 'workflow_dispatch') ||
+      (
+        github.event.pull_request.head.repo.full_name == github.repository &&
+        github.event.pull_request.head.ref == 'feature/crm-drvowa-connector-tools'
+      )
+    runs-on: ubuntu-latest
+    environment: drvo-staging
+    timeout-minutes: 20
+    env:
+      # Host may reuse VPS_HOST as network destination only (AGENTS.md).
+      # SSH key and DB password MUST be dedicated staging secrets — never VPS_SSH_KEY / prod DB.
+      DRVO_STAGING_SSH_HOST: ${{ secrets.DRVO_STAGING_SSH_HOST || secrets.VPS_HOST }}
+      DRVO_STAGING_SSH_KEY: ${{ secrets.DRVO_STAGING_SSH_KEY }}
+      DRVO_STAGING_DB_PASSWORD: ${{ secrets.DRVO_STAGING_DB_PASSWORD }}
+      DRVO_STAGING_CONNECTOR_TOKEN: ${{ secrets.DRVO_STAGING_CONNECTOR_TOKEN }}
+      DB_SERVER: 127.0.0.1
+      DB_PORT: '14330'
+      DB_DATABASE: last132_agent
+      DB_USER: drvo_agent
+      DB_PASSWORD: ${{ secrets.DRVO_STAGING_DB_PASSWORD }}
+      DB_ENCRYPT: 'false'
+      DB_TRUST_SERVER_CERTIFICATE: 'true'
+      BOOKING_V2_FORCE_LOCAL_DB: '1'
+      HAWAI_DB_CLASS: local
+      CLOUD_DB_SERVER: 127.0.0.1
+      CLOUD_DB_PORT: '14330'
+      CLOUD_DB_NAME: last132_agent
+      CLOUD_DB_USER: drvo_agent
+      CLOUD_DB_PASSWORD: ${{ secrets.DRVO_STAGING_DB_PASSWORD }}
+      CLOUD_DB_ENCRYPT: 'false'
+      CLOUD_DB_TRUST_CERT: 'true'
+      DEPLOY_COMMIT_SHA: ${{ github.event.pull_request.head.sha || inputs.pr_head_sha || github.sha }}
+
+    steps:
+      - name: Resolve exact checkout SHA
+        id: sha
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "ref=${{ github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
+          else
+            sha="${{ inputs.pr_head_sha }}"
+            [[ -n "$sha" ]] || { echo "workflow_dispatch requires pr_head_sha" >&2; exit 10; }
+            echo "ref=$sha" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout exact PR head SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.sha.outputs.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Refuse local and production env files
+        shell: bash
+        run: |
+          set -euo pipefail
+          for f in .env .env.local .env.production .env.production.local; do
+            if [[ -f "$f" ]]; then
+              echo "Refusing staging gate: checkout contains $f" >&2
+              exit 10
+            fi
+          done
+
+      - name: Require dedicated staging credentials only
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=0
+          for key in DRVO_STAGING_SSH_HOST DRVO_STAGING_SSH_KEY DRVO_STAGING_DB_PASSWORD; do
+            if [[ -z "${!key:-}" ]]; then
+              echo "Missing required staging secret: $key" >&2
+              missing=1
+            fi
+          done
+          [[ "$missing" -eq 0 ]] || exit 11
+          # Never allow production deploy key substitution.
+          if [[ -n "${{ secrets.VPS_SSH_KEY }}" ]]; then
+            if [[ "$DRVO_STAGING_SSH_KEY" == "${{ secrets.VPS_SSH_KEY }}" ]]; then
+              echo "Refusing: DRVO_STAGING_SSH_KEY must not equal VPS_SSH_KEY" >&2
+              exit 13
+            fi
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Unit — CRM staging safety contract
+        run: npx vitest run scripts/drvo/__tests__/crmDrvowaStagingSafety.test.ts src/modules/integrations/drvowa/__tests__/drvowaValidate.test.ts
+
+      - name: Configure staging SSH key
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$DRVO_STAGING_SSH_KEY" > ~/.ssh/drvo_staging
+          chmod 600 ~/.ssh/drvo_staging
+          ssh-keyscan -H "$DRVO_STAGING_SSH_HOST" >> ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Open staging SQL tunnel (last132_agent only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh \
+            -i ~/.ssh/drvo_staging \
+            -o BatchMode=yes \
+            -o ExitOnForwardFailure=yes \
+            -o ServerAliveInterval=30 \
+            -L 14330:127.0.0.1:1433 \
+            "drvo-tunnel@$DRVO_STAGING_SSH_HOST" \
+            -N &
+          echo $! > /tmp/crm-drvowa-staging-tunnel.pid
+          for i in {1..30}; do
+            if nc -z 127.0.0.1 14330; then
+              echo "Staging SQL tunnel ready."
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Staging SQL tunnel did not become ready." >&2
+          exit 12
+
+      - name: Prove staging identity then verify CRM tools (read-only)
+        id: verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx tsx scripts/drvo/staging-gate-preflight.ts identity
+          npx tsx scripts/drvo/crm-drvowa-staging-verify.ts | tee /tmp/crm-drvowa-staging-evidence.jsonl
+
+      - name: Exercise actual Cashier staging Next.js CRM HTTP routes
+        shell: bash
+        env:
+          CI: 'true'
+        run: |
+          set -euo pipefail
+          npx tsx scripts/drvo/crm-drvowa-http-staging-verify.ts | tee /tmp/crm-drvowa-staging-http-evidence.jsonl
+
+      - name: Publish evidence summary
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "## CRM DRVOWA staging gate"
+            echo
+            echo "- Checkout SHA: \`${{ steps.sha.outputs.ref }}\`"
+            echo "- Database: \`last132_agent\`"
+            echo "- Login: \`drvo_agent\`"
+            echo "- Mode: read-only tool + source SQL compare"
+            echo "- Mutated operational tables: no"
+            if [[ -f /tmp/crm-drvowa-staging-evidence.jsonl ]]; then
+              echo
+              echo '```'
+              tail -n 80 /tmp/crm-drvowa-staging-evidence.jsonl
+              echo '```'
+            fi
+            if [[ -f /tmp/crm-drvowa-staging-http-evidence.jsonl ]]; then
+              echo
+              echo "### Live Cashier Next HTTP"
+              echo '```'
+              tail -n 25 /tmp/crm-drvowa-staging-http-evidence.jsonl
+              echo '```'
+            else
+              echo "- Live Cashier HTTP: NOT_EXECUTED"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Close SSH tunnel
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f /tmp/crm-drvowa-staging-tunnel.pid ]]; then
+            kill "$(cat /tmp/crm-drvowa-staging-tunnel.pid)" || true
+          fi
