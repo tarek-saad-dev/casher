@@ -116,6 +116,17 @@ describe('persistent POST /api/sales request token across both POS writers (#246
     expect(code).toContain('not an E2E proof');
   });
 
+  it('runs actual both-writer POS paid-sale staging smoke after DRVO verification', () => {
+    const gate = get('.github/workflows/drvo-staging-gate.yml');
+    const post = gate.indexOf('name: CUT POS both-writer real sale staging smoke');
+    const verify = gate.indexOf('name: Final DRVO verify');
+    expect(post).toBeGreaterThan(verify);
+    const excerpt = gate.slice(post, gate.indexOf('name: Report PASS'));
+    expect(excerpt).toContain('scripts/drvo-008-pos-staging-smoke.ts');
+    expect(excerpt).toContain("github.event.pull_request.head.ref == 'feat/pos-sale-idempotency-246'");
+    expect(excerpt).toContain("WHATSAPP_SALE_ENABLED: 'false'");
+  });
+
   it('idempotency remains independent from referral issue flags and is OFF until SQL migration approval', () => {
     const server = get('src/lib/sales/saleRequestIdempotency.service.ts');
     expect(server).toContain("process.env.POS_SALE_IDEMPOTENCY_ENABLED === 'true'");
