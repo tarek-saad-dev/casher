@@ -43,6 +43,9 @@ describe('layered CUT print recovery plan', () => {
   });
   it('distinguishes unavailable Windows diagnostics from ready-but-unverified hardware', () => {
     expect(kind({ diagnostics: null })).toBe('verify');
+    expect(kind({ diagnostics: { ...context.diagnostics!, spoolerStatus: 'unknown' } })).toBe('verify');
+    expect(kind({ diagnostics: { ...context.diagnostics!, printerFound: null } })).toBe('verify');
+    expect(kind({ diagnostics: { ...context.diagnostics!, printerStatus: 'unknown' } })).toBe('verify');
     const stage = buildPrintRecoveryPlan(context)[0];
     expect(stage.kind).toBe('ready');
     expect(stage.detail).toContain('لا يثبت خروج الورقة');

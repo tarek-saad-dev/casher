@@ -66,9 +66,19 @@ export function buildPrintRecoveryPlan(c: RecoveryContext): RecoveryStep[] {
     detail: 'اتأكد من طابعة Windows وافحص ورقة واحدة عند وجودك بالمحل. الحالة الفعلية للورق غير معروفة.',
     action: 'open-printers',
   }];
+  if (!d.spoolerStatus || d.spoolerStatus.toLowerCase() === 'unknown') return [{
+    kind: 'verify', level: 3, title: 'حالة Windows Spooler غير مؤكدة',
+    detail: 'فحص Windows لم يرجّع حالة واضحة. راجع Windows Services ولا ترسل إعادة طباعة تلقائية.',
+    action: 'open-printers',
+  }];
   if (d.spoolerStatus.toLowerCase() === 'stopped') return [{
     kind: 'spooler', level: 3, title: 'خدمة الطباعة في Windows متوقفة',
     detail: 'من Windows Services افحص Print Spooler. مش هنشغله أو نمسح مهام الطباعة عن بُعد من المتصفح.',
+    action: 'open-printers',
+  }];
+  if (d.printerFound === null) return [{
+    kind: 'verify', level: 4, title: 'Windows لم يؤكد وجود الطابعة',
+    detail: 'فحص Windows مش حاسم. راجع تعريف الطابعة والاتصال قبل إرسال ورق.',
     action: 'open-printers',
   }];
   if (d.printerFound === false) return [{
@@ -77,6 +87,11 @@ export function buildPrintRecoveryPlan(c: RecoveryContext): RecoveryStep[] {
     action: 'open-printers',
   }];
   const status = (d.printerStatus || '').toLowerCase();
+  if (!status || status === 'unknown') return [{
+    kind: 'verify', level: 4, title: 'حالة الطابعة غير معروفة',
+    detail: 'راجع طابعة Windows أو اطبع اختبارًا يدويًا بعد التحقق من الورق، من غير تكرار فواتير العملاء.',
+    action: 'open-printers',
+  }];
   if (/offline|error|paperout|notavailable|paused|not ready|unavailable/i.test(status)) return [{
     kind: 'printer', level: 4, title: 'Windows بيبلغ إن الطابعة مش جاهزة',
     detail: 'اتأكد من الكهرباء والورق وكابل USB، وافتح قائمة طباعة Windows؛ لا نكرر أي فاتورة تلقائيًا.',

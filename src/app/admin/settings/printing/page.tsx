@@ -178,13 +178,10 @@ export default function PrinterControlPage() {
           >
             معاينة الفاتورة المختصرة
           </Link>
-          <Button onClick={checkAgain} disabled={loading || saving || testing}>
-            <Printer className="h-4 w-4" /> الاتصال / فحص الطابعة
-          </Button>
-          <Button variant="outline" onClick={checkAgain} disabled={loading || saving || testing}>
-          <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+          {connected && <Button variant="outline" onClick={checkAgain} disabled={loading || saving || testing}>
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
             تحديث الحالة
-          </Button>
+          </Button>}
         </div>
       </div>
 
