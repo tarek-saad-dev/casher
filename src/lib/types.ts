@@ -11,6 +11,10 @@ export interface Customer {
   CameFrom: string | null;
   CameFromDetails: string | null;
   ReferralCode: string | null;
+  CustomerCategory?: 'student' | 'adult' | null;
+  EducationLevel?: 'school' | 'college' | null;
+  InstitutionName?: string | null;
+  Occupation?: string | null;
 }
 
 export interface Barber {
