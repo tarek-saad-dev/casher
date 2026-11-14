@@ -22,7 +22,7 @@ describe('Paid invoice to barber handoff recovery contract', () => {
     expect(handoff).toContain('dbo.TblinvServHead');
     expect(handoff).toContain('dbo.TblinvServPayment');
     expect(handoff).toContain('l.TenantId=TRY_CONVERT(UNIQUEIDENTIFIER,@tenantId)');
-    expect(handoff).toContain('row.ClientID != null && paid.ClientID !== row.ClientID');
+    expect(handoff).toContain('row.ClientID == null || paid.ClientID == null || paid.ClientID !== row.ClientID');
     expect(handoff).toContain('Number(paid.Paid) + 0.01 < Number(paid.GrandTotal)');
     expect(handoff).toContain("'CUT_HANDOFF:' + input.handoffId + '|'");
     expect(handoff).toContain('paid.Notes2 ??');
