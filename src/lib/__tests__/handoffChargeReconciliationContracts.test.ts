@@ -52,7 +52,8 @@ describe('Paid invoice to barber handoff recovery contract', () => {
     expect(inbox).toContain("N'CUT_HANDOFF:'");
     expect(inbox).toContain('ISNULL(payment.Paid,0)+0.01>=inv.GrandTotal');
     expect(inbox).not.toContain('INSERT INTO');
-    expect(sale).toContain("'CUT_HANDOFF:' + sourceHandoffId");
+    expect(sale).toContain("CUT_HANDOFF:");
+    expect(sale).toContain("sourceHandoffId + '|'");
     expect(ui).toContain("'/api/pos/barber-handoffs/recovery'");
   });
 
