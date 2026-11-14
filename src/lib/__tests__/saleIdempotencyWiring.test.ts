@@ -162,6 +162,20 @@ describe('persistent POST /api/sales request token across both POS writers (#246
     expect(flag).toContain("spec.rollout");
   });
 
+  it('DRVO-008 staging smoke never mixes another tenant\'s shift, barber, catalog, customer or payment', () => {
+    const script = get('scripts/drvo-008-pos-staging-smoke.ts');
+    expect(script).toContain('JOIN dbo.Location l ON l.LegacyBranchId = sm.BranchID');
+    expect(script).toContain('l.TenantId AS tenantId');
+    expect(script).toContain('JOIN dbo.TblEmpBranchAssignment ea ON ea.BranchID = @branchId');
+    expect(script).toContain('e.TenantId = @tenantId');
+    expect(script).toContain('WHERE p.TenantId = @tenantId');
+    expect(script).toContain('WHERE TenantId = @tenantId AND PaymentID <> @clearing');
+    expect(script).toContain("VALUES (@tenantId, N'DRVO008-SMOKE'");
+    expect(script).toContain('const created = await createSale({\n      tenantId,');
+    expect(script).toContain('const legacyCreated = await createSaleLegacyFromRoute({\n      tenantId,');
+    expect(script).not.toContain("Code = N'CASHER_BOOT'");
+  });
+
   it('runs actual both-writer POS paid-sale staging smoke after DRVO verification', () => {
     const gate = get('.github/workflows/drvo-staging-gate.yml');
     const post = gate.indexOf('name: CUT POS both-writer real sale staging smoke');
