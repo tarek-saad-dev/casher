@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { buildGroomPackageMetadataNote, parseGroomPackageMetadataNote } from '@/lib/booking/groomPackageMetadata';
 const read = (file: string) => fs.readFileSync(path.join(process.cwd(), file), 'utf8');
 
 describe('Paid invoice to barber handoff recovery contract', () => {
@@ -55,6 +56,21 @@ describe('Paid invoice to barber handoff recovery contract', () => {
     expect(sale).toContain("CUT_HANDOFF:");
     expect(sale).toContain("sourceHandoffId + '|'");
     expect(ui).toContain("'/api/pos/barber-handoffs/recovery'");
+  });
+
+  it('preserves Groom package metadata after appending durable handoff reference', () => {
+    const groomNote = buildGroomPackageMetadataNote({
+      packageId: 3, packagePrice: 1300, addonProIds: [9, 16],
+      requiredServiceIds: [9, 16, 43], totalPrice: 1550,
+    });
+    const savedNotes = groomNote + '\nCUT_HANDOFF:246|';
+    expect(parseGroomPackageMetadataNote(savedNotes)).toEqual(
+      parseGroomPackageMetadataNote(groomNote),
+    );
+    // The sale route must emit a real newline escape, NOT a literal slash+n:
+    // the parser reads the total until the next newline.
+    expect(sale).toContain(String.raw`? '\nCUT_HANDOFF:'`);
+    expect(sale).not.toContain(String.raw`? '\\nCUT_HANDOFF:'`);
   });
 
   it('keeps sale successful while clearly signaling recovery, and prevents user from retrying the payment', () => {
