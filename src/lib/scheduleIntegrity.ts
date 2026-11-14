@@ -322,6 +322,45 @@ export async function getEmployeeBusyIntervals(args: {
 
   timer.finish('[busy-intervals perf]', { empId: args.empId, date: args.operationalDate });
 
+  // Cashier-assisted addon reservations occupy the alternate employee's
+  // schedule even though they belong to the original customer's booking.
+  // They must be visible in the SAME canonical engine used by operations,
+  // public booking, queue, and the final write guard.
+  const rangeStart = new Date(
+    salonDateTimeToMs(args.operationalDate, '00:00', timezone) - 24 * 60 * 60_000,
+  );
+  const rangeEnd = new Date(
+    args.rangeEndMs ??
+    salonDateTimeToMs(nextDate(args.operationalDate), '04:00', timezone),
+  );
+  const assignmentDb = args.transaction
+    ? new sql.Request(args.transaction)
+    : (await getPool()).request();
+  const addonRows = await assignmentDb
+    .input('empId', sql.Int, args.empId)
+    .input('rangeStart', sql.DateTime2, rangeStart)
+    .input('rangeEnd', sql.DateTime2, rangeEnd)
+    .query(
+      "IF OBJECT_ID(N'dbo.TblBookingAddonTransferRequest',N'U') IS NOT NULL " +
+      "SELECT r.RequestID,r.StartAtUtc,r.EndAtUtc FROM dbo.TblBookingAddonTransferRequest r " +
+      "INNER JOIN dbo.Bookings b ON b.BookingID=r.BookingID " +
+      "WHERE r.AssignedEmpID=@empId AND r.Status=N'assigned' " +
+      "AND b.Status NOT IN (N'cancelled',N'no_show') " +
+      "AND r.StartAtUtc<@rangeEnd AND r.EndAtUtc>@rangeStart " +
+      "ELSE SELECT CAST(NULL AS INT) AS RequestID, " +
+      "CAST(NULL AS DATETIME2) AS StartAtUtc, " +
+      "CAST(NULL AS DATETIME2) AS EndAtUtc WHERE 1=0"
+    );
+  const addonIntervals: ScheduleInterval[] = addonRows.recordset.map(
+    (row: { RequestID: number; StartAtUtc: Date; EndAtUtc: Date }) => ({
+      id: -(200_000 + Number(row.RequestID)),
+      source: 'booking' as const,
+      start: new Date(row.StartAtUtc),
+      end: new Date(row.EndAtUtc),
+      label: 'RESERVED_EXTRA_SERVICE',
+    }),
+  );
+
   let holdIvs: ScheduleInterval[] = [];
   try {
     const { listActiveBookingHoldsForEmployee } = await import('@/lib/booking/bookingHold');
@@ -375,6 +414,7 @@ export async function getEmployeeBusyIntervals(args: {
       ticketCode: iv.ticketCode,
     })),
     ...blockIvs,
+    ...addonIntervals,
     ...holdIvs,
   ];
 }

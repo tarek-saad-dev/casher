@@ -73,6 +73,7 @@ export async function POST(req: Request, { params }: Ctx) {
         already_charged: { status: 409, message: 'تم التحصيل مسبقا' },
         empty_services: { status: 400, message: 'اختر خدمة واحدة على الاقل' },
         services_not_reserved: { status: 409, message: 'فيه خدمات إضافية لم يتم حجز وقتها — أعد فتح الحجز أو توجه للكاشير' },
+        pending_transfer: { status: 409, message: 'فيه طلب إضافة خدمة مستني موافقة الكاشير — أكّده الأول قبل إرسال الفاتورة' },
       };
       const mapped = map[result.error];
       return NextResponse.json({ error: mapped.message }, { status: mapped.status });

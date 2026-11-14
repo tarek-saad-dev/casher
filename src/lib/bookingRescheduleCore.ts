@@ -723,6 +723,25 @@ export async function rescheduleBookingMove(args: {
       throw new Error('حجز غير موجود');
     }
 
+    // A cashier-assigned extra service has its own employee reservation.
+    // Moving the original booking without moving that reservation would
+    // silently invalidate the promised extra service. Require cashier review.
+    const transferred = await transaction.request()
+      .input('bookingId', sql.Int, bookingId)
+      .query(
+        "IF OBJECT_ID(N'dbo.TblBookingAddonTransferRequest',N'U') IS NOT NULL " +
+        "SELECT TOP 1 RequestID FROM dbo.TblBookingAddonTransferRequest " +
+        "WHERE BookingID=@bookingId AND Status=N'assigned'"
+      );
+    if (transferred.recordset?.length) {
+      await transaction.rollback();
+      throw new ScheduleConflictError(
+        'الحجز عليه خدمة إضافية محجوزة مع موظف آخر — راجع الكاشير قبل تغيير الموعد',
+        { type: 'booking', id: bookingId,
+          startAt: booking.startAt.toISOString(), endAt: booking.endAt.toISOString() },
+      );
+    }
+
     if (!isBookingReschedulable(booking.status)) {
       await transaction.rollback();
       throw new ScheduleConflictError('لا يمكن نقل هذا الموعد في حالته الحالية', {

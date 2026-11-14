@@ -151,6 +151,9 @@ jobs:
       - name: CUT STAFF lifecycle state machine
         run: npx vitest run src/lib/__tests__/staffBookingLifecycle.test.ts src/lib/__tests__/employeePortalBookingPrivacy.test.ts
 
+      - name: Cashier-assisted addon transfer safety contracts
+        run: npx vitest run src/lib/__tests__/cashierAssistedAddonContracts.test.ts src/lib/__tests__/staffAddonSchedulingBehavior.test.ts
+
       - name: Production build
         run: npm run build
 

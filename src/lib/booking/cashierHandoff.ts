@@ -69,7 +69,7 @@ export async function ensureBookingCashierHandoffTable(): Promise<void> {
 
 export type UpsertHandoffResult =
   | { ok: true; handoffId: number; updated: boolean }
-  | { ok: false; error: 'not_found' | 'forbidden' | 'not_sendable' | 'already_charged' | 'empty_services' | 'services_not_reserved' };
+  | { ok: false; error: 'not_found' | 'forbidden' | 'not_sendable' | 'already_charged' | 'empty_services' | 'services_not_reserved' | 'pending_transfer' };
 
 export async function upsertEmployeeHandoff(input: {
   bookingId: number;
@@ -127,6 +127,19 @@ export async function upsertEmployeeHandoff(input: {
     if (charged.recordset[0] || booking.ConvertedInvID != null) {
       return { ok: false, error: 'already_charged' };
     }
+  }
+
+  // Do not send an incomplete service package to POS while cashier is
+  // deciding who will perform a requested extra service.
+  const pendingTransfer = await pool.request()
+    .input('bookingId', sql.Int, input.bookingId)
+    .query(
+      "IF OBJECT_ID(N'dbo.TblBookingAddonTransferRequest',N'U') IS NOT NULL " +
+      "SELECT TOP 1 RequestID FROM dbo.TblBookingAddonTransferRequest " +
+      "WHERE BookingID=@bookingId AND Status=N'pending'"
+    );
+  if (pendingTransfer.recordset?.length) {
+    return { ok: false, error: 'pending_transfer' };
   }
 
   // A cashier handoff may only contain services already reserved by booking.
@@ -438,19 +451,50 @@ export async function claimHandoffForPos(input: {
     });
   }
 
+  // The assigned service may be performed by another barber. Preserve the
+  // actual employee on each booked row; one ProID may have multiple barbers.
+  const reserved = await pool.request()
+    .input('bookingId', sql.Int, row.BookingID)
+    .input('tenantId', sql.NVarChar(100), input.tenantId)
+    .query(
+      "SELECT bs.BookingServiceID,bs.ProID,ISNULL(bs.EmpID,b.AssignedEmpID) AS EmpID, " +
+      "bs.Qty,e.EmpName " +
+      "FROM dbo.BookingServices bs " +
+      "INNER JOIN dbo.Bookings b ON b.BookingID=bs.BookingID " +
+      "INNER JOIN dbo.TblEmp e ON e.EmpID=ISNULL(bs.EmpID,b.AssignedEmpID) " +
+      "AND e.TenantId=@tenantId " +
+      "WHERE bs.BookingID=@bookingId ORDER BY bs.BookingServiceID"
+    );
+  const bookedRows = reserved.recordset as Array<{
+    BookingServiceID: number; ProID: number; EmpID: number; EmpName: string; Qty: number;
+  }>;
   const empName = String(row.EmpName ?? 'حلاق');
-  const lines = payload.services.map((s) => {
-    const cat = byPro.get(s.proId);
-    return {
-      ProID: s.proId,
-      ProName: cat?.ProName ?? `خدمة #${s.proId}`,
-      EmpID: row.EmpID,
-      EmpName: empName,
-      SPrice: cat?.SPrice ?? 0,
-      Bonus: cat?.Bonus ?? 0,
-      Qty: s.qty,
-    };
-  });
+  const lines: Array<{
+    ProID: number; ProName: string; EmpID: number; EmpName: string;
+    SPrice: number; Bonus: number; Qty: number;
+  }> = [];
+  for (const chosen of payload.services) {
+    let remaining = chosen.qty;
+    for (const booked of bookedRows.filter(item => item.ProID === chosen.proId)) {
+      if (remaining <= 0) break;
+      const count = Math.min(remaining, Math.max(0, Number(booked.Qty) || 0));
+      if (!count) continue;
+      const cat = byPro.get(chosen.proId);
+      lines.push({
+        ProID: chosen.proId,
+        ProName: cat?.ProName ?? ('خدمة #' + chosen.proId),
+        EmpID: booked.EmpID,
+        EmpName: String(booked.EmpName || empName),
+        SPrice: cat?.SPrice ?? 0,
+        Bonus: cat?.Bonus ?? 0,
+        Qty: count,
+      });
+      remaining -= count;
+    }
+    if (remaining > 0) {
+      return { ok: false, error: 'not_found' };
+    }
+  }
 
   return {
     ok: true,

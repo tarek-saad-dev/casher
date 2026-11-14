@@ -47,7 +47,7 @@ describe('CUT STAFF safe extra-service workflow', () => {
     expect(guard).toContain('alternatives(');
     expect(guard).toContain("assertEmployeeIntervalAvailable({");
     expect(modal).toContain('اقتراح غير محجوز');
-    expect(modal).toContain('وجّه العميل للكاشير');
+    expect(modal).toContain('إرسال طلب تحويل الخدمة للكاشير');
   });
 
   it('does not allow POS handoff of service quantities without booked time', () => {

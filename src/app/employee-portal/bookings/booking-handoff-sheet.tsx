@@ -48,6 +48,7 @@ export default function BookingHandoffSheet({ booking, open, onClose, onSent }: 
   const [addonPreview, setAddonPreview] = useState<AddonPreview | null>(null);
   const [addonChecking, setAddonChecking] = useState(false);
   const [addonCommitting, setAddonCommitting] = useState(false);
+  const [transferSending, setTransferSending] = useState(false);
   const [lines, setLines] = useState<DetailService[]>([]);
   const [readOnly, setReadOnly] = useState(false);
   const [canSend, setCanSend] = useState(true);
@@ -212,6 +213,32 @@ export default function BookingHandoffSheet({ booking, open, onClose, onSent }: 
       setError(err instanceof Error ? err.message : 'الوقت لم يعد متاحًا — أعد فحص الخدمة');
     } finally {
       setAddonCommitting(false);
+    }
+  }
+
+  async function requestCashierTransfer() {
+    if (!addonCandidate || !addonPreview || addonPreview.available || transferSending) return;
+    setError('');
+    setTransferSending(true);
+    try {
+      const res = await fetch(
+        '/api/employee-portal/bookings/' + booking.bookingId + '/addon/transfer-request',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ proId: addonCandidate.proId }),
+        },
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'تعذر طلب مساعدة الكاشير');
+      setAddonCandidate(null);
+      setAddonPreview(null);
+      setCatalogOpen(false);
+      setToast('اتبعث طلب الخدمة الإضافية للكاشير — الخدمة لم تُحجز لسه');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'تعذر إرسال الطلب');
+    } finally {
+      setTransferSending(false);
     }
   }
 
@@ -462,8 +489,16 @@ export default function BookingHandoffSheet({ booking, open, onClose, onSent }: 
                         </div>
                       ) : <p className="text-xs text-zinc-400">مفيش بديل مؤكد في المواعيد القريبة.</p>}
                       <p className="rounded-xl bg-amber-500/10 p-3 text-xs font-bold text-amber-200">
-                        وجّه العميل للكاشير لتأكيد نقله لموظف متاح. الخدمة لم تُضف ولم يُحجز وقتها.
+                        أولوية للحجوزات التالية. الطلب للكاشير لا يحجز الخدمة إلا بعد اعتماده.
                       </p>
+                      <button
+                        type="button"
+                        disabled={transferSending}
+                        onClick={() => void requestCashierTransfer()}
+                        className="w-full rounded-xl bg-amber-400 px-3 py-3 text-sm font-bold text-zinc-950 disabled:opacity-50"
+                      >
+                        {transferSending ? 'جاري إرسال طلب المساعدة…' : 'إرسال طلب تحويل الخدمة للكاشير'}
+                      </button>
                     </div>
                   ) : null}
                 </div>
