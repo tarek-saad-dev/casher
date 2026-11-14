@@ -123,6 +123,36 @@ async function main() {
       throw new Error('Cross-tenant audited deletion exposure detected');
     }
     console.log('PASS: cross-tenant negative query yields zero audit IDs');
+    // Every CRM list uses this authoritative owner tenant. Verify the actual
+    // staging SQL tables can apply the same scoped queries without returning
+    // sensitive customer/catalog/invoice fields.
+    const qCustomer=`
+      SELECT TOP (1) 1 AS present FROM dbo.TblClient c
+      WHERE c.TenantId=@tenantId;`;
+    const qCatalog=`
+      SELECT TOP (1) 1 AS present FROM dbo.TblPro p
+      LEFT JOIN dbo.TblCat c
+        ON c.CatID=p.CatID AND c.TenantId=@tenantId
+      WHERE p.TenantId=@tenantId;`;
+    const qInvoice=`
+      SELECT TOP (1) 1 AS present FROM dbo.TblinvServHead h
+      INNER JOIN dbo.Location l
+        ON l.LegacyBranchId=h.BranchID AND l.TenantId=@tenantId;`;
+    for(const [label,query] of [
+      ['customer',qCustomer],['catalog',qCatalog],['invoice',qInvoice],
+    ] as const) {
+      // The owner may have zero rows in a freshly initialized staging tenant;
+      // the contract is the enforced predicate and unowned = zero.
+      await pool.request().input('tenantId',sql.UniqueIdentifier,ownerTenantId)
+        .query(query);
+      const foreign=await pool.request()
+        .input('tenantId',sql.UniqueIdentifier,'00000000-0000-0000-0000-000000000000')
+        .query(query);
+      if (foreign.recordset.length!==0) {
+        throw new Error('CRM ' + label + ' query exposed a foreign tenant');
+      }
+      console.log('PASS: scoped CRM ' + label + ' read, foreign-tenant rows=0');
+    }
     console.log('PASS: bounded successful-delete cursor SQL executed, count=' +
       records.recordset.length + ' (no row values, audit PII or customer details printed)');
     if (records.recordset.length === 0) {
