@@ -85,6 +85,21 @@ describe('persistent POST /api/sales request token across both POS writers (#246
     expect(smoke).toContain('await second.rollback()');
   });
 
+  it('repairs missing DRVO-012 staging subscriptions before the integration smoke', () => {
+    const gate = get('.github/workflows/drvo-staging-gate.yml');
+    const fix = gate.indexOf('name: Reconcile missing DRVO-012 subscriptions on staging integration only');
+    const smoke = gate.indexOf('name: DRVO-012 staging smoke');
+    expect(fix).toBeGreaterThan(0);
+    expect(smoke).toBeGreaterThan(fix);
+    const guarded = gate.slice(fix, smoke);
+    expect(guarded).toContain("github.event.pull_request.head.ref == 'feat/pos-sale-idempotency-246'");
+    expect(guarded).toContain('--expected-database=last132_agent');
+    expect(guarded).not.toContain('--allow-production');
+    const script = get('scripts/drvo/drvo-012-reconcile-subscriptions.ts');
+    expect(script).toContain('assertDatabaseAllowed(');
+    expect(script).toContain('reconcileGrandfatheredSubscriptions(pool)');
+  });
+
   it('idempotency remains independent from referral issue flags and is OFF until SQL migration approval', () => {
     const server = get('src/lib/sales/saleRequestIdempotency.service.ts');
     expect(server).toContain("process.env.POS_SALE_IDEMPOTENCY_ENABLED === 'true'");
