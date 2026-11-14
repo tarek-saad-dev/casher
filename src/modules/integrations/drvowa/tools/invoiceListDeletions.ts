@@ -21,14 +21,21 @@ const SALE_TYPE = 'مبيعات';
  */
 export async function executeInvoiceListDeletions(
   input: Record<string, unknown>,
+  context: { tenantId: string },
 ): Promise<DrvowaToolResult> {
   try {
+    // The authenticated route supplies this context; NEVER accept TenantId
+    // from a CRM request body. Audit history is shared across all tenants.
+    if (!context?.tenantId || !/^[a-f0-9-]{36}$/i.test(context.tenantId)) {
+      throw new DrvowaValidationError('INVALID_TENANT_CONTEXT', 'Tenant context required');
+    }
     const sinceAuditId = parseOptionalNonNegativeInt(input.sinceAuditId, 'sinceAuditId');
     const limit = clampPageLimit(input.limit);
     const db = await getPool();
     const result = await db.request()
       .input('sinceAuditId', sql.Int, sinceAuditId)
       .input('limit', sql.Int, limit)
+      .input('tenantId', sql.UniqueIdentifier, context.tenantId)
       .input('actionType', sql.NVarChar(100), 'delete_invoice')
       .input('status', sql.NVarChar(30), 'success')
       .input('method', sql.NVarChar(20), 'DELETE')
@@ -43,6 +50,19 @@ export async function executeInvoiceListDeletions(
           AND a.ActionMethod = @method
           AND a.EndpointPath LIKE N'/api/sales/%'
           AND TRY_CONVERT(int, a.EntityID) > 0
+          -- The original paid invoice no longer exists. Its sanitized audit
+          -- snapshot retains the immutable BranchID in $.header.BranchID.
+          -- Extract ONLY that scalar inside SQL and require the authenticated
+          -- DRVOWA-owned Tenant's Location. Never export OldData.
+          AND EXISTS (
+            SELECT 1 FROM dbo.Location l
+            WHERE l.TenantId = @tenantId
+              AND l.LegacyBranchId = TRY_CONVERT(int, JSON_VALUE(
+                CASE WHEN ISJSON(a.OldData) = 1
+                  THEN a.OldData ELSE N'{}' END,
+                '$.header.BranchID'
+              ))
+          )
         ORDER BY a.AuditID ASC;
       `);
 
