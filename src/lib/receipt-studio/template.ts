@@ -80,7 +80,7 @@ export const DEFAULT_RECEIPT_FIELDS: Record<ReceiptField, string> = {
 
 export const RECEIPT_FIELDS_BY_KIND: Record<ReceiptBlockKind, ReceiptField[]> = {
   brand: ['brandName', 'brandTagline'],
-  'invoice-meta': ['receiptLabel', 'customerLabel', 'invoiceNumberLabel', 'dateLabel', 'timeLabel', 'customerPhoneLabel'],
+  'invoice-meta': ['receiptLabel', 'customerLabel', 'invoiceNumberLabel', 'dateLabel', 'timeLabel', 'customerPhoneLabel', 'paymentLabel'],
   items: ['numberHeader', 'serviceHeader', 'priceHeader'],
   totals: ['subtotalLabel', 'discountLabel', 'totalLabel'],
   payment: ['paymentLabel'],
@@ -97,14 +97,12 @@ export const CUT_CLASSIC_ORIGINAL_V1: ReceiptTemplateV1 = {
   blocks: [
     { id: 'classic_brand', kind: 'brand', name: 'شعار CUT والإطار الدائري', enabled: true,
       fields: { brandName: 'CUT SALON', brandTagline: 'صالون كت للرجال' },
-      style: { align: 'center', gapAfterMm: 2 } },
+      style: { align: 'center' } },
     { id: 'classic_divider_top', kind: 'divider', name: 'فاصل زخرفي علوي', enabled: true },
     { id: 'classic_meta', kind: 'invoice-meta', name: 'بيانات الفاتورة', enabled: true,
       fields: { receiptLabel: '✦ فاتورة مبيعات ✦', invoiceNumberLabel: 'رقم الفاتورة:',
         dateLabel: 'التاريخ:', timeLabel: 'الوقت:', customerLabel: 'العميل:',
-        customerPhoneLabel: 'الهاتف:' } },
-    { id: 'classic_payment', kind: 'payment', name: 'طريقة الدفع', enabled: true,
-      fields: { paymentLabel: 'طريقة الدفع:' } },
+        customerPhoneLabel: 'الهاتف:', paymentLabel: 'طريقة الدفع:' } },
     { id: 'classic_divider_services', kind: 'divider', name: 'فاصل الخدمات', enabled: true },
     { id: 'classic_items', kind: 'items', name: 'جدول الخدمات والحلاقين', enabled: true,
       fields: { numberHeader: '#', serviceHeader: 'الخدمة / الحلاق', priceHeader: 'السعر' } },

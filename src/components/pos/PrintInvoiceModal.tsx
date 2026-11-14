@@ -424,6 +424,8 @@ export default function PrintInvoiceModal({ open, invID, onClose }: PrintInvoice
               brand: brand.title || 'CUT SALON',
               customer: data.customerName || 'Walk-in Customer',
               phone: brand.phone || undefined,
+              customerPhone: data.customerPhone || undefined,
+              brandWordmark: brand.wordmark || undefined,
               items: lines.filter((line) => !line.hide).map((line) => ({
                 name: line.label || '',
                 sublabel: line.sublabel,

@@ -22,7 +22,8 @@ function invoiceFixture(scenario: SampleScenario): StudioInvoiceModel {
   return {
     invoiceNo: d.invoiceNo.replace('#', ''),
     date: d.date, time: d.time, branch: d.branch,
-    brand: 'CUT SALON', customer: d.customer,
+    brand: 'CUT SALON', brandWordmark: 'CUT', customer: d.customer,
+    customerPhone: '01000000000', phone: '01012126899',
     items: d.items.map((item) => ({ name: item.name, price: item.price * item.qty })),
     subtotal: d.subtotal,
     discounts: d.discount > 0 ? [{ label: 'Discount', amount: d.discount }] : [],

@@ -54,7 +54,8 @@ export function renderCutClassicReceipt(
     if (b.kind === 'group') {
       const padding = b.style?.paddingMm ?? 0;
       const gap = b.style?.groupGapMm ?? 0;
-      return `<section class="classic-edit-group" ${mark}${inline} style="padding:${padding}mm;row-gap:${gap}mm">${render(b.children ?? [])}</section>`;
+      const groupStyle = [style(b), `padding:${padding}mm`, `row-gap:${gap}mm`].filter(Boolean).join(';');
+      return `<section class="classic-edit-group" ${mark} style="${groupStyle}">${render(b.children ?? [])}</section>`;
     }
     if (b.kind === 'brand') {
       const title = b.fields?.brandName ?? model.brand;
