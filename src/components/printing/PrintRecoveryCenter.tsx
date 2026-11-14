@@ -16,6 +16,7 @@ type Props = RecoveryContext & {
 
 const CHECKER = '/downloads/Check-CUT-Print-Agent.ps1';
 const REPAIR = '/downloads/Install-CUT-Print-Agent.ps1';
+const BROWSER_REPAIR = '/downloads/Repair-CUT-Print-Chrome.cmd';
 
 /**
  * Guided recovery only: network checks are read-only.
@@ -36,6 +37,7 @@ export default function PrintRecoveryCenter(props: Props) {
       engine: props.settings?.engine ?? null,
       diagnosticsAvailable: props.diagnostics?.probe || null,
       printerFound: props.diagnostics?.printerFound ?? null,
+      chromeRendererFound: props.diagnostics?.browserFound ?? null,
       printerStatus: props.diagnostics?.printerStatus || null,
       spoolerStatus: props.diagnostics?.spoolerStatus || null,
       queuedJobs: props.diagnostics?.queuedJobs ?? null,
@@ -74,6 +76,13 @@ export default function PrintRecoveryCenter(props: Props) {
           {step.action === 'test' && props.settings?.types.other !== false && (
             <Button onClick={props.onTest} disabled={props.busy}>إرسال ورقة اختبار واحدة</Button>
           )}
+          {step.action === 'repair-browser' && (
+            <a href={BROWSER_REPAIR} download="Repair-CUT-Print-Chrome.cmd"
+              data-testid="repair-puppeteer-chrome"
+              className="inline-flex min-h-9 items-center gap-2 rounded-lg bg-foreground px-3 text-xs font-semibold text-background">
+              <Download className="h-4 w-4" /> تنزيل إصلاح Chrome للطباعة (Windows)
+            </a>
+          )}
           {step.action === 'local-check' && (
             <a href={CHECKER} download="Check-CUT-Print-Agent.ps1"
               className="inline-flex min-h-9 items-center gap-2 rounded-lg bg-foreground px-3 text-xs font-semibold text-background">
@@ -91,9 +100,9 @@ export default function PrintRecoveryCenter(props: Props) {
               على الكمبيوتر: Settings → Bluetooth & devices → Printers & scanners
             </span>
           )}
-          {(step.action === 'local-check' || step.action === 'upgrade') && (
+          {(step.action === 'local-check' || step.action === 'upgrade' || step.action === 'repair-browser') && (
             <p className="w-full text-xs text-muted-foreground">
-              الملف بيتشغّل محليًا على كمبيوتر الكاشير بـ Run with PowerShell. المتصفح ما يقدرش يشغّله بنفسه.
+              {step.action === 'repair-browser' ? 'شغّل ملف CMD بدبل كليك على نفس جهاز Windows المستخدم للطباعة. لازم اتصال بالإنترنت لتنزيل Chrome.' : 'الملف بيتشغّل محليًا على كمبيوتر الكاشير بـ Run with PowerShell. المتصفح ما يقدرش يشغّله بنفسه.'}
             </p>
           )}
           {(step.kind === 'agent' || step.kind === 'settings') && (

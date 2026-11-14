@@ -9,7 +9,8 @@ describe('CUT Print Agent V2 Windows installer download', () => {
     const cmd = readFileSync(join(process.cwd(), 'public', PRINT_AGENT_V2_SETUP_FILE.slice(1)), 'utf8');
     expect(cmd).toContain('@echo off');
     expect(cmd).toContain('Install-CUT-Print-Agent.ps1');
-    expect(cmd).toContain('19e77fc4041fca67434bc57bd5886a6873e0a753');
+    expect(cmd).toContain('tarek-saad-dev/casher/main/public/downloads/Install-CUT-Print-Agent.ps1');
+    expect(cmd).toContain('Ensure-PuppeteerChrome');
     expect(cmd).toContain('-ExecutionPolicy Bypass');
     expect(cmd).toContain('http://127.0.0.1:7788/health');
     expect(cmd).toContain('2.0.0');
