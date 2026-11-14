@@ -197,6 +197,19 @@ jobs:
       - name: Final DRVO verify
         run: npm run drvo:verify
 
+      # Exercise actual paid invoice creation/edits/deletes through BOTH existing
+      # POS writers after all DRVO commercial and tenant gates pass. The test
+      # has staging identity guard and synthetic smoke-client cleanup.
+      # Not a substitute for the remaining dedicated 50/20 financial E2E.
+      - name: CUT POS both-writer real sale staging smoke (legacy and extracted)
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'feat/pos-sale-idempotency-246'
+        timeout-minutes: 9
+        env:
+          WHATSAPP_INTEGRATION_ENABLED: 'false'
+          WHATSAPP_SALE_ENABLED: 'false'
+          WHATSAPP_EMPLOYEE_SALE_ENABLED: 'false'
+        run: npx tsx scripts/drvo-008-pos-staging-smoke.ts
+
       - name: Report PASS
         run: |
           {
