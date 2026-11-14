@@ -142,6 +142,26 @@ describe('persistent POST /api/sales request token across both POS writers (#246
     expect(code).toContain('not an E2E proof');
   });
 
+  it('DRVO-008 paid-sale smoke expects current extracted rollout and verifies legacy rollback', () => {
+    const script = get('scripts/drvo-008-pos-staging-smoke.ts');
+    const manifest = get('src/platform/drvo/moduleManifest.ts');
+    const flag = get('src/platform/drvo/featureFlags.ts');
+    const pos = manifest.slice(manifest.indexOf("module: 'pos',"), manifest.indexOf("module: 'pos-sale-treasury',"));
+    expect(pos).toContain("rollout: 'extracted'");
+    expect(pos).toContain("rollbackRollout: 'legacy'");
+    expect(script).toContain("if (posSpec.rollout !== 'extracted')");
+    expect(script).toContain("if (posSpec.rollbackRollout !== 'legacy')");
+    expect(script).toContain("if (!isPosPortEnabled()) fail('manifest extracted must enable default POS path')");
+    expect(script).toContain("process.env.POS_SCHEDULING_PORT = 'false'");
+    expect(script).toContain("process.env.DRVO_FORCE_POS_PATH = 'legacy'");
+    expect(script).toContain("if (isPosPortEnabled()) fail('emergency force legacy must beat compat true')");
+    expect(script).toContain("delete process.env.DRVO_FORCE_POS_PATH;");
+    expect(script).toContain("delete process.env.POS_SCHEDULING_PORT;");
+    expect(script).not.toContain('expected POS rollout legacy for DRVO-008');
+    expect(flag).toContain("forceRaw === 'legacy' || forceRaw === 'extracted'");
+    expect(flag).toContain("spec.rollout");
+  });
+
   it('runs actual both-writer POS paid-sale staging smoke after DRVO verification', () => {
     const gate = get('.github/workflows/drvo-staging-gate.yml');
     const post = gate.indexOf('name: CUT POS both-writer real sale staging smoke');
