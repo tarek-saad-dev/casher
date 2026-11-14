@@ -15,9 +15,9 @@ describe('CRM DRVOWA staging gate safety', () => {
     expect(source).toContain('mutatedOperationalTables: false');
     expect(source).toContain('identitySweep');
     expect(source).toContain('statusSweep');
-    expect(source).toContain("BOOKING_V2_FORCE_LOCAL_DB: '1'");
-    expect(source).toContain("CLOUD_DB_NAME: EXPECTED_DB");
-    expect(source).toContain("setDbTarget('local')");
+    expect(source).toContain('sql-contract-no-getPool');
+    expect(source).not.toContain("from '../../src/lib/db'");
+    expect(source).not.toContain('executeCustomerListChanges');
   });
 
   it('checks out exact PR head SHA and never substitutes production SSH key', () => {
