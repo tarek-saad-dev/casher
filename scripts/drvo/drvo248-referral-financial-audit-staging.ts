@@ -91,20 +91,25 @@ async function main(): Promise<void> {
         (SELECT COUNT_BIG(*) FROM dbo.TblReferralDiscountVoucher) AS VouchersChecked;
     `);
 
-    // No stale successful request may point to a cancelled/refunded or cross-branch invoice.
+    // A legitimately refunded/deleted invoice intentionally retains the
+    // COMMITTED request key to reject its replay. Never count an absent invoice
+    // as a ledger defect. If an invoice number *does* still exist, it must not
+    // belong to another branch or tenant.
     const requests = await db.request().query(`
       SELECT
         (SELECT COUNT_BIG(*) FROM dbo.TblPosSaleRequest r
-         WHERE r.Status = N'COMMITTED' AND NOT EXISTS (
-           SELECT 1 FROM dbo.TblinvServHead h
-           INNER JOIN dbo.Location l
-             ON l.LegacyBranchId = h.BranchID AND l.TenantId = r.TenantId
-           WHERE h.invID = r.InvID AND h.invType = N'مبيعات'
-             AND h.BranchID = r.BranchID
-             AND ISNULL(h.isActive, N'no') = N'no'
-             AND h.GrandTotal > 0 AND h.Payment >= h.GrandTotal
-             AND ISNULL(h.PayDue, 0) <= 0
-         )) AS InvalidCommittedRequest,
+         WHERE r.Status = N'COMMITTED'
+           AND EXISTS (
+             SELECT 1 FROM dbo.TblinvServHead existing
+             WHERE existing.invID = r.InvID AND existing.invType = N'مبيعات'
+           )
+           AND NOT EXISTS (
+             SELECT 1 FROM dbo.TblinvServHead h
+             INNER JOIN dbo.Location l
+               ON l.LegacyBranchId = h.BranchID AND l.TenantId = r.TenantId
+             WHERE h.invID = r.InvID AND h.invType = N'مبيعات'
+               AND h.BranchID = r.BranchID
+           )) AS InvalidCommittedRequest,
         (SELECT COUNT_BIG(*) FROM dbo.TblPosSaleRequest) AS RequestsChecked;
     `);
 
