@@ -77,7 +77,7 @@ describe('DRVOWA audited hard-deleted sale invoice cursor', () => {
       sinceAuditId: 70, limit: 2, actionType: 'delete_invoice',
       status: 'success', method: 'DELETE',
     }]);
-    expect(state.sql[0]).toContain('FROM dbo.TblSensitiveActionAuditLog');
+    expect(state.sql[0]).toContain('FROM dbo.TblSensitiveActionAuditLog a WITH (READCOMMITTEDLOCK)');
     expect(state.sql[0]).toContain('a.AuditID > @sinceAuditId');
     expect(state.sql[0]).toContain('a.ExecutionStatus = @status');
     expect(state.sql[0]).toContain('a.EndpointPath LIKE N\'/api/sales/%\'');
