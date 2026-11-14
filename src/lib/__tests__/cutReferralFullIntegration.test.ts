@@ -57,6 +57,15 @@ describe('CUT referral FULL integration (#244): buyer -> cashier -> tenant ledge
     expect(policy).toContain('REFERRAL_DISCOUNT_CONFLICT');
   });
 
+  it('requires a referral checkout payment account owned by its authenticated tenant', () => {
+    const route = source('src/app/api/sales/route.ts');
+    expect(route).toContain("allowed.input(key, sql.Int, Number(allocation.paymentMethodId))");
+    expect(route).toContain('WHERE TenantId = @tenantId AND PaymentID IN (');
+    expect(route).toContain('REFERRAL_PAYMENT_METHOD_NOT_OWNED');
+    expect(route).toContain("String(sessionUser.TenantId)");
+    expect(route).not.toContain("SELECT PaymentID FROM dbo.TblPaymentMethods WHERE PaymentID = @method");
+  });
+
   it('cashier discount UI sends code OR voucherId while preserving the backend CreateSalePayload', () => {
     const page = source('src/app/income/pos/page.tsx');
     const state = source('src/hooks/useSaleState.ts');
