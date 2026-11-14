@@ -51,6 +51,8 @@ export async function activateCustomerReferralCodeInSale(
       WHERE c.TenantId = @tenantId AND c.ClientID = @clientId
         AND EXISTS (
           SELECT 1 FROM dbo.TblinvServHead h
+          INNER JOIN dbo.Location l
+            ON l.LegacyBranchId = h.BranchID AND l.TenantId = @tenantId
           WHERE h.ClientID = c.ClientID AND h.invID = @invId AND h.invType = @invType
             AND h.GrandTotal > 0 AND h.Payment >= h.GrandTotal
             AND ISNULL(h.PayDue, 0) <= 0 AND ISNULL(h.isActive, N'no') = N'no'
