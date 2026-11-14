@@ -10,7 +10,9 @@ import {
   SESSION_VALID_FOR_SECONDS,
   stopOtpChallenge,
   verifyOpaqueSession,
+  verifyOtpAfterAtomicCommit,
   type OtpChallenge,
+  type OtpDurableRepository,
 } from "@/lib/cut-club/otpDomain";
 
 const now = 1_900_000_000;
@@ -162,5 +164,98 @@ describe("CUT CLUB opaque session material, verification and revocation", () => 
       .toThrow("CUT_CLUB_SESSION_UNAVAILABLE");
     expect(() => prepareOpaqueSession({ tenantId, customerId: 0, verifiedAtSeconds: now - 1, nowSeconds: now }))
       .toThrow("CUT_CLUB_SESSION_UNAVAILABLE");
+  });
+});
+
+
+describe("CUT CLUB atomic verification adapter contract (no database)", () => {
+  /**
+   * Fake implementation of a database CAS transaction:
+   * only a pending, unmodified version under the same tenant can transition.
+   * The real SQL Server adapter is NOT implemented or proved by these tests.
+   */
+  function fakeRepository(first: OtpChallenge) {
+    let stored = first;
+    const repository: Pick<OtpDurableRepository, "loadChallenge" | "commitAttempt"> = {
+      async loadChallenge({ tenantId, challengeId }) {
+        return stored.tenantId === tenantId && stored.id === challengeId ? stored : null;
+      },
+      async commitAttempt({ before, after }) {
+        await Promise.resolve();
+        if (
+          before.id !== stored.id || before.tenantId !== stored.tenantId ||
+          stored.status !== "pending" || stored.revision !== before.revision ||
+          after.revision !== before.revision + 1 || after.tenantId !== before.tenantId ||
+          after.id !== before.id
+        ) return false;
+        stored = after;
+        return true;
+      },
+    };
+    return { repository, getStored: () => stored };
+  }
+
+  it("accepts exactly one of two simultaneous correct OTP attempts", async () => {
+    const { challenge, codeForDelivery } = prepare();
+    const store = fakeRepository(challenge);
+    const args = {
+      tenantId, challengeId: challenge.id, code: codeForDelivery,
+      secret: pepper, nowSeconds: now + 1, repository: store.repository,
+    };
+    const results = await Promise.all([
+      verifyOtpAfterAtomicCommit(args),
+      verifyOtpAfterAtomicCommit(args),
+    ]);
+    expect(results.filter(Boolean)).toHaveLength(1);
+    expect(store.getStored().status).toBe("consumed");
+    expect(store.getStored().revision).toBe(1);
+    expect(await verifyOtpAfterAtomicCommit(args)).toBe(false);
+  });
+
+  it("does not turn successful code comparison into authentication if CAS fails", async () => {
+    const { challenge, codeForDelivery } = prepare();
+    const repository: Pick<OtpDurableRepository, "loadChallenge" | "commitAttempt"> = {
+      async loadChallenge() { return challenge; },
+      async commitAttempt() { return false; },
+    };
+    expect(await verifyOtpAfterAtomicCommit({
+      tenantId, challengeId: challenge.id, code: codeForDelivery,
+      secret: pepper, nowSeconds: now + 1, repository,
+    })).toBe(false);
+  });
+
+  it("fails closed when repository throws, cross-tenant challenge leaks or secret is absent", async () => {
+    const { challenge, codeForDelivery } = prepare();
+    const a = fakeRepository(challenge);
+    const kwargs = {
+      tenantId, challengeId: challenge.id, code: codeForDelivery,
+      secret: pepper, nowSeconds: now + 1,
+    };
+    expect(await verifyOtpAfterAtomicCommit({
+      ...kwargs, tenantId: "different-tenant", repository: a.repository,
+    })).toBe(false);
+    expect(await verifyOtpAfterAtomicCommit({
+      ...kwargs, secret: undefined, repository: a.repository,
+    })).toBe(false);
+    const brokenRepository: Pick<OtpDurableRepository, "loadChallenge" | "commitAttempt"> = {
+      async loadChallenge() { throw new Error("database unavailable"); },
+      async commitAttempt() { return true; },
+    };
+    expect(await verifyOtpAfterAtomicCommit({
+      ...kwargs, repository: brokenRepository,
+    })).toBe(false);
+    expect(a.getStored().status).toBe("pending");
+  });
+
+  it("wrong OTP updates attempt state without granting a session", async () => {
+    const { challenge } = prepare();
+    const store = fakeRepository(challenge);
+    const ok = await verifyOtpAfterAtomicCommit({
+      tenantId, challengeId: challenge.id, code: "not-a-code",
+      secret: pepper, nowSeconds: now + 1, repository: store.repository,
+    });
+    expect(ok).toBe(false);
+    expect(store.getStored().attempts).toBe(1);
+    expect(store.getStored().status).toBe("pending");
   });
 });
