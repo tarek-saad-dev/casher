@@ -167,6 +167,15 @@ jobs:
         timeout-minutes: 10
         run: npx tsx scripts/drvo/drvo248-referral-transaction-e2e-staging.ts
 
+      # Isolated synthetic salon + actual authenticated Next.js POST/DELETE:
+      # verifies full 50/20 paid lifecycle, UUID replay/409, wallet and audited
+      # refunds. Purges the disposable tenant and asserts zero synthetic rows.
+      # Run before slow platform readiness checks to surface independent evidence.
+      - name: CUT referral 248 authenticated HTTP checkout and audited refund E2E
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'feat/pos-sale-idempotency-246'
+        timeout-minutes: 16
+        run: npx tsx scripts/drvo/drvo248-referral-http-staging.ts
+
       - name: Verify migration 9 ledger
         run: |
           set -euo pipefail
