@@ -255,7 +255,7 @@ export async function POST(req: NextRequest) {
     const sourceHandoffId = Number(body.handoffId);
     const handoffNoteMarker =
       Number.isSafeInteger(sourceHandoffId) && sourceHandoffId > 0
-        ? '\\nCUT_HANDOFF:' + sourceHandoffId + '|'
+        ? '\nCUT_HANDOFF:' + sourceHandoffId + '|'
         : '';
 
     const saleInput = {
