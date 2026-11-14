@@ -134,16 +134,24 @@ async function main() {
         sm.BranchID AS branchId,
         sm.BusinessDayID AS businessDayId,
         CONVERT(varchar(10), nd.NewDay, 23) AS businessDate,
-        b.BranchName AS branchName
+        b.BranchName AS branchName,
+        l.TenantId AS tenantId
       FROM dbo.TblShiftMove sm
       JOIN dbo.TblNewDay nd ON nd.ID = sm.BusinessDayID
-      JOIN dbo.TblBranch b ON b.BranchID = sm.BranchID
+        AND nd.BranchID = sm.BranchID AND nd.Status = 1
+      JOIN dbo.TblBranch b ON b.BranchID = sm.BranchID AND b.IsActive = 1
+      JOIN dbo.Location l ON l.LegacyBranchId = sm.BranchID
+      JOIN dbo.Tenant t ON t.TenantId = l.TenantId AND t.Status = N'active'
       WHERE sm.Status = 1
       ORDER BY sm.ID DESC
     `);
     const open = shift.recordset[0];
     if (!open) fail('no open shift on staging');
     const branchId = Number(open.branchId);
+    const tenantId = String(open.tenantId);
+    if (!/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(tenantId)) {
+      fail('open staging shift has no tenant-owned Location');
+    }
     const userId = Number(open.userId);
     const shiftMoveId = Number(open.shiftMoveId);
     const businessDayId = Number(open.businessDayId);
@@ -151,15 +159,27 @@ async function main() {
     const branchName = String(open.branchName ?? 'staging');
     createdBranchId = branchId;
 
-    const service = await pool.request().input('branchId', sql.Int, branchId).query(`
+    // Real paid staging invoice must use one tenant-owned service and
+    // a barber actually assigned to this open shift's branch/business day.
+    // Otherwise a smoke may pass despite cross-tenant POS financial leakage.
+    const service = await pool.request()
+      .input('tenantId', sql.UniqueIdentifier, tenantId)
+      .input('branchId', sql.Int, branchId)
+      .input('day', sql.Date, businessDate)
+      .query(`
       SELECT TOP 1
         p.ProID AS proId,
         CAST(ISNULL(p.SPrice1, 0) AS decimal(10, 2)) AS price,
         e.EmpID AS empId
       FROM dbo.TblPro p
       LEFT JOIN dbo.TblCat c ON c.CatID = p.CatID
-      JOIN dbo.TblEmp e ON e.isActive = 1
-      WHERE ISNULL(p.isDeleted, 0) = 0
+      JOIN dbo.TblEmpBranchAssignment ea ON ea.BranchID = @branchId
+        AND ea.IsActive = 1 AND ea.EffectiveFrom <= @day
+        AND (ea.EffectiveTo IS NULL OR ea.EffectiveTo >= @day)
+      JOIN dbo.TblEmp e ON e.EmpID = ea.EmpID
+        AND e.TenantId = @tenantId AND ISNULL(e.isActive, 1) = 1
+      WHERE p.TenantId = @tenantId
+        AND ISNULL(p.isDeleted, 0) = 0
         AND CAST(ISNULL(p.SPrice1, 0) AS decimal(10, 2)) > 0
         AND LOWER(LTRIM(RTRIM(ISNULL(c.CatType, N'')))) <> N'pro'
         AND LOWER(LTRIM(RTRIM(ISNULL(p.ProType, N'')))) NOT IN (N'pro', N'product')
@@ -175,19 +195,22 @@ async function main() {
     const payMethod = await pool
       .request()
       .input('clearing', sql.Int, splitCfg.clearingMethodId)
+      .input('tenantId', sql.UniqueIdentifier, tenantId)
       .query(`
         SELECT TOP 1 PaymentID AS paymentMethodId
         FROM dbo.TblPaymentMethods
-        WHERE PaymentID <> @clearing
+        WHERE TenantId = @tenantId AND PaymentID <> @clearing
         ORDER BY PaymentID
       `);
     const paymentMethodId = Number(payMethod.recordset[0]?.paymentMethodId ?? 0);
     if (!paymentMethodId) fail('no payment method');
 
-    const client = await pool.request().query(`
+    const client = await pool.request()
+      .input('tenantId', sql.UniqueIdentifier, tenantId)
+      .query(`
       INSERT INTO dbo.TblClient (TenantId, Name, Notes, RegisterDate)
       OUTPUT INSERTED.ClientID AS clientId
-      VALUES ((SELECT TenantId FROM dbo.Tenant WHERE Code = N'CASHER_BOOT'), N'DRVO008-SMOKE', N'DRVO008-SMOKE', CAST(GETDATE() AS date))
+      VALUES (@tenantId, N'DRVO008-SMOKE', N'DRVO008-SMOKE', CAST(GETDATE() AS date))
     `);
     const clientId = Number(client.recordset[0]?.clientId ?? 0);
     if (!clientId) fail('could not create smoke client');
@@ -211,6 +234,7 @@ async function main() {
     );
 
     const created = await createSale({
+      tenantId,
       items: [
         {
           proId,
@@ -386,6 +410,7 @@ async function main() {
     console.log('PASS: extracted deleteSale cleaned header, detail, and CashMove');
 
     const legacyCreated = await createSaleLegacyFromRoute({
+      tenantId,
       items: [
         {
           proId,
@@ -515,12 +540,12 @@ async function main() {
         {
           actorType: 'staff',
           actorId: 'drvo-008-smoke',
-          tenantId: 'smoke',
+          tenantId,
           membershipId: null,
           viewLocationId: null,
         },
         {
-          tenantId: 'smoke',
+          tenantId,
           locationId: branchId,
           bookingId: 0,
           clientId,
