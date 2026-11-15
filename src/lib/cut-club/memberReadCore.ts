@@ -67,6 +67,9 @@ type SnapshotOutcome = Readonly<{ ok: true; data: ClubMemberSnapshot }> |
 const fail = (): SnapshotOutcome => ({ ok: false, error: "unavailable" });
 const positive = (x: unknown): x is number => typeof x === "number" && Number.isSafeInteger(x) && x > 0;
 const nonnegative = (x: unknown): x is number => typeof x === "number" && Number.isFinite(x) && x >= 0;
+/** Legacy SQL Coins may be DECIMAL(10,2). Never round or truncate balances. */
+const validCoins = (x: unknown): x is number =>
+  nonnegative(x) && x <= Number.MAX_SAFE_INTEGER / 100 && Number(x.toFixed(2)) === x;
 const safeDate = (d: unknown) => d === null ? null :
   d instanceof Date && Number.isFinite(d.getTime()) ? d.toISOString() : undefined;
 const voucherStatuses = new Set(["ACTIVE", "USED", "EXPIRED", "CANCELLED"]);
@@ -108,8 +111,8 @@ export async function readCutClubMemberSnapshot(input: Readonly<{
     const r = rows[0];
     if (r.ClientID !== key.customerId || typeof r.ClientName !== "string" ||
         r.ClientName.trim().length === 0 || r.ClientName.length > 160 ||
-        !nonnegative(r.PointsBalance ?? 0) ||
-        !nonnegative(r.LifetimeEarnedPoints ?? 0) ||
+        !validCoins(r.PointsBalance ?? 0) ||
+        !validCoins(r.LifetimeEarnedPoints ?? 0) ||
         !nonnegative(r.TotalVisits ?? 0) ||
         !Number.isSafeInteger(r.TotalVisits ?? 0) ||
         (r.ClientLoyaltyID !== null && !positive(r.ClientLoyaltyID)) ||
