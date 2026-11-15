@@ -37,6 +37,7 @@ export type ClubMemberSnapshot = Readonly<{
   mode: "verified";
   member: Readonly<{
     displayName: string;
+    memberId: string | null;
     tierCode: string;
     tierNameAr: string;
     visits: number;
@@ -141,6 +142,7 @@ export async function readCutClubMemberSnapshot(input: Readonly<{
       mode: "verified" as const,
       member: Object.freeze({
         displayName: r.ClientName.trim(),
+        memberId: r.ClientLoyaltyID === null ? null : `CC-${String(r.ClientLoyaltyID).padStart(6, "0")}`,
         tierCode: (r.TierCode || "BRONZE").slice(0, 30),
         tierNameAr: (r.TierNameAr || "عضو CUT CLUB").slice(0, 100),
         visits: r.TotalVisits ?? 0,
