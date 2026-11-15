@@ -9,7 +9,7 @@
 import sql from "mssql";
 import type { CutClubSqlTransaction, CutClubStagingSqlPort, SqlField, SqlFieldKind } from "./sqlOtpRepository";
 
-function kind(type: SqlFieldKind): sql.ISqlType {
+function kind(type: SqlFieldKind) {
   switch (type) {
     case "uuid": return sql.UniqueIdentifier;
     case "bytes32": return sql.Binary(32);
