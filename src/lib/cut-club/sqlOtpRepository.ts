@@ -11,7 +11,7 @@
 import { createHash } from "node:crypto";
 import type { OpaqueSessionRecord, OtpChallenge, OtpDurableRepository, OtpStatus } from "./otpDomain";
 
-export type SqlFieldKind = "uuid" | "bytes32" | "varchar32" | "nvarchar20" | "nvarchar8" | "int" | "bigint";
+export type SqlFieldKind = "uuid" | "bytes32" | "varchar32" | "varchar64" | "nvarchar20" | "nvarchar8" | "int" | "bigint";
 export type SqlField = Readonly<{ name: string; kind: SqlFieldKind; value: string | number | Buffer }>;
 export type SqlResult = Readonly<{ rows: readonly Record<string, unknown>[]; affected: number }>;
 
@@ -187,7 +187,7 @@ export function createStagingCutClubOtpRepository(
           // Tenant-level application lock serializes every rate limit scope
           // and same-phone replacement across workers, not just this process.
           const lock = await tx.execute(LOCK_TENANT_RESERVE, [
-            p("resource", "varchar32", "CUTCLUB:" + challenge.tenantId.slice(0, 20)),
+            p("resource", "varchar64", "CUTCLUB:OTP:" + challenge.tenantId),
           ]);
           if (!lock.rows.length || Number(lock.rows[0].LockResult) < 0) return "unavailable";
 
