@@ -83,6 +83,14 @@ jobs:
           src/lib/__tests__/cutClubLegacyPhoneLookupQuarantine.test.ts
           --reporter=default
 
+      - name: CUT CLUB V2 member wallet, growth and production metadata safety
+        run: >-
+          npx vitest run
+          src/lib/__tests__/cutClubMemberReadCore.test.ts
+          src/lib/__tests__/cutClubGrowthEligibility.test.ts
+          src/lib/__tests__/cutClubProductionSchemaSafety.test.ts
+          --reporter=default
+
       - name: CUT CLUB B2 verified OTP-to-customer session orchestration
         run: npx vitest run src/lib/__tests__/cutClubCustomerAuthFlow.test.ts --reporter=default
 
