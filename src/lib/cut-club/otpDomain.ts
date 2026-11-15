@@ -111,6 +111,21 @@ function keyedDigest(secret: string, purpose: string, parts: readonly string[]):
   return createHmac("sha256", secret).update(JSON.stringify([purpose, ...parts])).digest("hex");
 }
 
+/**
+ * Use only after server-side tenant resolution and E.164 normalization.
+ * The phone digest must be compared to the original persisted challenge
+ * BEFORE consuming an OTP or resolving a customer account.
+ */
+export function digestVerifiedPhoneForOtp(input: Readonly<{
+  tenantId: string;
+  phoneE164: string;
+  secret: string | undefined;
+}>): string | null {
+  if (!validTenant(input.tenantId) || !validPhone(input.phoneE164) ||
+      !validPepper(input.secret)) return null;
+  return keyedDigest(input.secret, "phone", [input.tenantId, input.phoneE164]);
+}
+
 function opaqueDigest(token: string): string {
   return createHash("sha256").update("cut-club-opaque-session-v1:").update(token).digest("hex");
 }
