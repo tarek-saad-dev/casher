@@ -138,7 +138,7 @@ export default function QuickCustomerModal({ open, onClose, onCreated, initialQu
               <Input
                 placeholder="01xxxxxxxxx"
                 value={mobile}
-                onChange={(e) => setMobile(e.target.value)}
+                onChange={(e) => { setMobile(e.target.value); setConfirmedWhatsAppOffers(false); }}
                 dir="ltr"
                 className="text-left"
                 onKeyDown={(e) => { if (e.key === 'Enter') handleSave(); }}
