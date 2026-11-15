@@ -83,6 +83,9 @@ jobs:
           src/lib/__tests__/cutClubLegacyPhoneLookupQuarantine.test.ts
           --reporter=default
 
+      - name: CUT CLUB B2 durable SQL OTP and revocable-session negative tests
+        run: npx vitest run src/lib/__tests__/cutClubSqlOtpRepository.test.ts --reporter=default
+
       - name: CUT CLUB 2.0 staging metadata-only offline guard fixtures
         run: node --test scripts/cut-club/customer-auth-schema-preflight.test.mjs
 
