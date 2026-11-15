@@ -83,6 +83,9 @@ jobs:
           src/lib/__tests__/cutClubLegacyPhoneLookupQuarantine.test.ts
           --reporter=default
 
+      - name: CUT CLUB V2 atomic reward settlement and idempotency
+        run: npx vitest run src/lib/__tests__/cutClubRewardSettlement.test.ts --reporter=default
+
       - name: CUT CLUB V2 member wallet, growth and production metadata safety
         run: >-
           npx vitest run
