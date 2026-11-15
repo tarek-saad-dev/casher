@@ -83,6 +83,9 @@ jobs:
           src/lib/__tests__/cutClubLegacyPhoneLookupQuarantine.test.ts
           --reporter=default
 
+      - name: CUT CLUB B2 verified OTP-to-customer session orchestration
+        run: npx vitest run src/lib/__tests__/cutClubCustomerAuthFlow.test.ts --reporter=default
+
       - name: CUT CLUB B2 durable SQL OTP and revocable-session negative tests
         run: npx vitest run src/lib/__tests__/cutClubSqlOtpRepository.test.ts --reporter=default
 
