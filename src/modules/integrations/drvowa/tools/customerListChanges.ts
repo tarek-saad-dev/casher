@@ -12,6 +12,25 @@ import {
 const TOOL = 'customer.list_changes';
 
 let tblClientHasEmailColumn: boolean | null = null;
+let tblClientHasOffersConsentColumns: boolean | null = null;
+
+async function hasOffersConsentColumns(
+  db: Awaited<ReturnType<typeof getPool>>,
+): Promise<boolean> {
+  if (tblClientHasOffersConsentColumns !== null) return tblClientHasOffersConsentColumns;
+  const result = await db.request().query(`
+    SELECT
+      COL_LENGTH(N'dbo.TblClient', N'OffersConsentPhone') AS phoneLen,
+      COL_LENGTH(N'dbo.TblClient', N'OffersConsentedAtUtc') AS timeLen,
+      COL_LENGTH(N'dbo.TblClient', N'OffersConsentEvidence') AS evidenceLen
+  `);
+  const row = result.recordset[0];
+  // Zero/default for old Cashier versions. No historical permissions inferred.
+  tblClientHasOffersConsentColumns = row?.phoneLen != null
+    && row?.timeLen != null && row?.evidenceLen != null;
+  return tblClientHasOffersConsentColumns;
+}
+
 
 async function hasEmailColumn(
   db: Awaited<ReturnType<typeof getPool>>,
@@ -43,6 +62,14 @@ function mapCustomers(rows: ClientRow[]) {
     phone: row.phone != null ? String(row.phone) : null,
     email: row.email != null ? String(row.email) : null,
     registerDate: asIsoDate(row.registerDate),
+    whatsAppOffersConsentPhone: row.whatsAppOffersConsentPhone != null
+      ? String(row.whatsAppOffersConsentPhone) : null,
+    whatsAppOffersConsentedAtUtc: row.whatsAppOffersConsentedAtUtc instanceof Date
+      ? row.whatsAppOffersConsentedAtUtc.toISOString()
+      : row.whatsAppOffersConsentedAtUtc != null
+        ? String(row.whatsAppOffersConsentedAtUtc) : null,
+    whatsAppOffersConsentEvidence: row.whatsAppOffersConsentEvidence != null
+      ? String(row.whatsAppOffersConsentEvidence) : null,
     cameFrom: row.cameFrom != null ? String(row.cameFrom) : null,
     state: row.state != null ? String(row.state) : null,
   }));
@@ -74,6 +101,14 @@ export async function executeCustomerListChanges(
     const emailSelect = includeEmail
       ? 'c.Email AS email'
       : 'CAST(NULL AS NVARCHAR(200)) AS email';
+    const includeOffersConsent = await hasOffersConsentColumns(db);
+    const offersConsentSelect = includeOffersConsent
+      ? `c.OffersConsentPhone AS whatsAppOffersConsentPhone,
+         c.OffersConsentedAtUtc AS whatsAppOffersConsentedAtUtc,
+         c.OffersConsentEvidence AS whatsAppOffersConsentEvidence`
+      : `CAST(NULL AS NVARCHAR(30)) AS whatsAppOffersConsentPhone,
+         CAST(NULL AS DATETIME2) AS whatsAppOffersConsentedAtUtc,
+         CAST(NULL AS NVARCHAR(120)) AS whatsAppOffersConsentEvidence`;
 
     const selectSql = `
       SELECT TOP (@limit)
@@ -82,6 +117,7 @@ export async function executeCustomerListChanges(
         c.Mobile AS mobile,
         c.Phone AS phone,
         ${emailSelect},
+        ${offersConsentSelect},
         c.RegisterDate AS registerDate,
         c.CameFrom AS cameFrom,
         c.State AS state
