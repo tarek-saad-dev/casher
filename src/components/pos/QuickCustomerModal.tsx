@@ -37,6 +37,7 @@ export default function QuickCustomerModal({ open, onClose, onCreated, initialQu
   const [sourceErrors, setSourceErrors] = useState<Record<string, string>>({});
   const [saving,    setSaving]    = useState(false);
   const [error,     setError]     = useState('');
+  const [confirmedWhatsAppOffers, setConfirmedWhatsAppOffers] = useState(false);
 
   // Pre-fill when modal opens — detect phone vs name
   useEffect(() => {
@@ -52,6 +53,7 @@ export default function QuickCustomerModal({ open, onClose, onCreated, initialQu
     setCameFromDetails('');
     setReferralCode('');
     setSourceErrors({});
+    setConfirmedWhatsAppOffers(false);
     setError('');
   }, [open, initialQuery]);
 
@@ -84,6 +86,7 @@ export default function QuickCustomerModal({ open, onClose, onCreated, initialQu
           cameFrom: sourceValidation.cameFrom,
           cameFromDetails: sourceValidation.cameFromDetails,
           referralCode: sourceValidation.referralCode,
+          whatsappOffersConsentConfirmed: confirmedWhatsAppOffers,
         }),
       });
       if (!res.ok) {
@@ -101,6 +104,7 @@ export default function QuickCustomerModal({ open, onClose, onCreated, initialQu
       setCameFrom(null);
       setCameFromDetails('');
       setReferralCode('');
+      setConfirmedWhatsAppOffers(false);
     } catch {
       setError('خطأ في الاتصال');
     } finally {
@@ -162,6 +166,20 @@ export default function QuickCustomerModal({ open, onClose, onCreated, initialQu
               onChange={(e) => setAddress(e.target.value)}
             />
           </div>
+          <label className="flex items-start gap-3 rounded-xl border border-border p-3 text-sm leading-6">
+            <input
+              type="checkbox"
+              className="mt-1 h-4 w-4 shrink-0"
+              checked={confirmedWhatsAppOffers}
+              disabled={!mobile.trim()}
+              onChange={(e) => setConfirmedWhatsAppOffers(e.target.checked)}
+              aria-label="تأكيد موافقة العميل على استقبال عروض Cut Salon على واتساب"
+            />
+            <span>
+              أؤكد إن العميل وافق صراحةً وقت التسجيل إنه يستقبل عروض Cut Salon على واتساب
+              على الرقم المكتوب. ممكن يوقف العروض في أي وقت. عدم التأكيد لا يمنع تسجيل العميل.
+            </span>
+          </label>
           <CustomerSourceFields
             cameFrom={cameFrom}
             cameFromDetails={cameFromDetails}
