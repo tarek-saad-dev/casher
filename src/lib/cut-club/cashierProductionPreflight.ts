@@ -10,7 +10,15 @@ import "server-only";
 import sql from "mssql";
 
 export const CUT_CLUB_REQUIRED_COLUMNS = Object.freeze({
-  TblClient: ["ClientID", "TenantId", "Name"],
+  TblClient: ["ClientID", "TenantId", "Name", "Mobile"],
+  TblClientLoyalty: [
+    "ClientLoyaltyID", "ClientID", "IsActive", "PointsBalance",
+    "LifetimeEarnedPoints", "TotalVisits", "TierID", "LastVisitDate",
+  ],
+  TblLoyaltyTier: ["TierID", "TierCode", "TierNameAr", "SortOrder"],
+  TblLoyaltyPointLedger: [
+    "LedgerID", "ClientLoyaltyID", "MovementType", "PointsDelta", "CreatedAt",
+  ],
   TblClientInventory: [
     "InventoryID", "ClientID", "ItemID", "VoucherCode",
     "Status", "ExpiresAt", "UsedAt", "UsedInvID",
@@ -106,8 +114,10 @@ export async function readOperatorCashierMetadata(input: Readonly<{
         INNER JOIN sys.columns AS c ON c.object_id=t.object_id
         WHERE s.name=N'dbo'
           AND t.name IN (
-            N'TblClient',N'TblClientInventory',N'TblLoyaltyStoreItem',
-            N'TblinvServHead',N'TblinvServDetail',N'TblInventoryUsageLog'
+            N'TblClient',N'TblClientLoyalty',N'TblLoyaltyTier',
+            N'TblLoyaltyPointLedger',N'TblClientInventory',
+            N'TblLoyaltyStoreItem',N'TblinvServHead',
+            N'TblinvServDetail',N'TblInventoryUsageLog'
           );
       `);
     return evaluateCashierSchema(records.recordset);
