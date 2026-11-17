@@ -10,6 +10,7 @@ import {
 const scope = {
   tenantId: "c9413a3e-dc87-4a70-bc6e-d00d76f9066b",
   activeBranchId: 7,
+  legacySalonId: 15,
   staffUserId: 11,
 };
 function source(path: string) {
@@ -23,6 +24,7 @@ describe("CUT CLUB 2.0 cashier voucher and invoice privacy gates", () => {
       { ...scope, tenantId: "cut-salon" },
       { ...scope, staffUserId: 0 },
       { ...scope, activeBranchId: 0 },
+      { ...scope, legacySalonId: 0 },
       { ...scope, activeBranchId: 1.5 },
       { ...scope, activeBranchId: -2 },
     ]) expect(validCashierScope(invalid)).toBe(false);
@@ -57,7 +59,7 @@ describe("CUT CLUB 2.0 cashier voucher and invoice privacy gates", () => {
     expect(route).toContain("branch.canOperate");
     expect(route).toContain("no-store");
     expect(engine).toContain("c.TenantId=@tenantId");
-    expect(engine).toContain("si.SalonID=@branchId");
+    expect(engine).toContain("si.SalonID=@legacySalonId");
     expect(engine).toContain("WHERE ci.VoucherCode=@code");
     expect(engine).not.toContain("Access-Control-Allow-Origin");
     expect(route).not.toContain("Access-Control-Allow-Origin");
@@ -102,7 +104,7 @@ describe("CUT CLUB 2.0 cashier voucher and invoice privacy gates", () => {
     const legacy = source("src/app/api/pos/voucher/route.ts");
     const lookupPhone = source("src/app/api/pos/client-inventory-by-phone/route.ts");
     expect(legacy).toContain("c.TenantId = @tenantId");
-    expect(legacy).toContain("si.SalonID = @branchId");
+    expect(legacy).toContain("si.SalonID = @legacySalonId");
     expect(legacy).not.toContain('"Access-Control-Allow-Origin": "*"');
     expect(lookupPhone).toContain("SELECT TOP (2) ClientID, Name");
     expect(lookupPhone).toContain("clientResult.recordset.length !== 1");
