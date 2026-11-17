@@ -83,6 +83,9 @@ jobs:
           src/lib/__tests__/cutClubLegacyPhoneLookupQuarantine.test.ts
           --reporter=default
 
+      - name: CUT CLUB SQL verified-phone owner binding tests (fake DB only)
+        run: npx vitest run src/lib/__tests__/cutClubSqlCustomerAuthority.test.ts --reporter=default
+
       - name: CUT CLUB WhatsApp OTP transport sandbox tests (no message sent)
         run: npx vitest run src/lib/__tests__/cutClubWhatsAppOtpProvider.test.ts --reporter=default
 
