@@ -14,7 +14,7 @@ describe("CUT CLUB metadata-only Production compatibility gate", () => {
   it("fails closed on missing tables and fields, even if some tables match", () => {
     const none = evaluateCashierSchema([]);
     expect(none.schemaCompatible).toBe(false);
-    expect(none.checks).toHaveLength(6);
+    expect(none.checks).toHaveLength(9);
     expect(none.checks.every(x => !x.found)).toBe(true);
     const missing = evaluateCashierSchema(allRows.filter(x =>
       !(x.TableName === "TblInventoryUsageLog" && x.ColumnName === "BookingID")));
