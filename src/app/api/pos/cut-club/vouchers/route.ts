@@ -4,6 +4,7 @@ import { validateUserBranchAccess } from "@/lib/branch";
 import { getPool } from "@/lib/db";
 import { inspectCashierVoucher } from "@/lib/cut-club/cashierVoucher";
 import { resolveTrustedLegacySalonId } from "@/lib/cut-club/cashierSalonMap";
+import { isCutClubCashierBranchApproved } from "@/lib/cut-club/cashierProductionBranchPolicy";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,9 +18,10 @@ export async function GET(request: NextRequest) {
   if (!isAuthResult(staff)) return staff;
   try {
     const branch = await validateUserBranchAccess(staff.userId, staff.activeBranchId);
-    if (!branch.canOperate) return NextResponse.json({ ok: false, error: "غير مصرح" }, { status: 403, headers });
+    if (!branch.canOperate || !isCutClubCashierBranchApproved({ trustedTenantId: staff.tenantId, trustedBranchId: staff.activeBranchId })) return NextResponse.json({ ok: false, error: "غير مصرح" }, { status: 403, headers });
     const legacySalonId = resolveTrustedLegacySalonId({ trustedTenantId: staff.tenantId, trustedBranchId: staff.activeBranchId });
-    if (legacySalonId === null) return NextResponse.json({ ok: false, error: "ربط الصالون بالفرع غير معتمد" }, { status: 503, headers });
+    // A missing legacy SalonID mapping permits global (NULL) rewards ONLY.
+    // A separately approved server-side tenant:branch allowlist is still mandatory.
     const code = request.nextUrl.searchParams.get("code")?.trim().toUpperCase() ?? "";
     if (!/^[A-Z0-9-]{6,100}$/.test(code)) {
       return NextResponse.json({ ok: false, error: "كود القسيمة غير صحيح" }, { status: 400, headers });
