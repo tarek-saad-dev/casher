@@ -63,6 +63,7 @@ type VoucherRow = {
   InventoryID: number; ClientID: number; ClientName: string | null;
   NameAr: string; Status: string; ExpiresAt: Date | null;
   ItemType: string; ServiceID: number | null; UsedInvID: number | null;
+  Quantity: number;
 };
 const acceptedStatus = new Set(["ACTIVE", "USED", "EXPIRED", "CANCELLED"]);
 
@@ -70,7 +71,7 @@ const lookupQuery = `
 SELECT TOP (2)
   ci.InventoryID, ci.ClientID, c.Name AS ClientName,
   si.NameAr, ci.Status, ci.ExpiresAt,
-  si.ItemType, si.ServiceID, ci.UsedInvID
+  si.ItemType, si.ServiceID, ci.UsedInvID, ci.Quantity
 FROM dbo.TblClientInventory ci
 JOIN dbo.TblClient c ON c.ClientID=ci.ClientID
 JOIN dbo.TblLoyaltyStoreItem si ON si.ItemID=ci.ItemID
@@ -96,8 +97,8 @@ function rowToSafeVoucher(row: VoucherRow): CashierVoucher | null {
     serviceId: row.ServiceID,
     status: row.Status as CashierVoucher["status"],
     expiresAt,
-    usable: row.Status === "ACTIVE" && !expiredNow,
-    consumptionSupported: row.ItemType === "FREE_SERVICE" && validId(row.ServiceID),
+    usable: row.Status === "ACTIVE" && !expiredNow && row.Quantity === 1,
+    consumptionSupported: row.ItemType === "FREE_SERVICE" && validId(row.ServiceID) && row.Quantity === 1,
   };
 }
 
@@ -146,7 +147,8 @@ export async function consumeCashierVoucher(input: Readonly<{
     if (lookup.recordset.length !== 1) throw Error("CUT_CLUB_VOUCHER_NOT_OWNED");
     const v = lookup.recordset[0];
     if (!validId(v.InventoryID) || !validId(v.ClientID) ||
-        v.ItemType !== "FREE_SERVICE" || !validId(v.ServiceID)) throw Error("CUT_CLUB_UNSUPPORTED");
+        v.ItemType !== "FREE_SERVICE" || !validId(v.ServiceID) ||
+        v.Quantity !== 1) throw Error("CUT_CLUB_UNSUPPORTED");
 
     // Voucher and invoice must be for the SAME customer and active branch.
     const invoice = await new sql.Request(tx)
@@ -191,7 +193,7 @@ export async function consumeCashierVoucher(input: Readonly<{
         UPDATE dbo.TblClientInventory
         SET Status=N'USED', UsedAt=GETDATE(), UsedInvID=@invoiceId
         WHERE InventoryID=@inventoryId AND ClientID=@clientId
-          AND Status=N'ACTIVE'
+          AND Status=N'ACTIVE' AND Quantity=1
           AND (ExpiresAt IS NULL OR ExpiresAt>GETDATE());
       `);
     if (used.rowsAffected?.[0] !== 1) throw Error("CUT_CLUB_CONCURRENT_REDEEM");
@@ -202,8 +204,8 @@ export async function consumeCashierVoucher(input: Readonly<{
       .input("invoiceId", sql.Int, input.invoiceId)
       .query(`
         INSERT INTO dbo.TblInventoryUsageLog
-          (InventoryID, ClientID, InvID, ActionType, UsedAt, Notes)
-        VALUES (@inventoryId, @clientId, @invoiceId, N'USED',
+          (InventoryID, ClientID, InvID, BookingID, ActionType, UsedAt, Notes)
+        VALUES (@inventoryId, @clientId, @invoiceId, NULL, N'USED',
                 GETDATE(), N'CUT CLUB V2 verified cashier invoice redemption');
       `);
     if (logged.rowsAffected?.[0] !== 1) throw Error("CUT_CLUB_LOG_FAILED");
