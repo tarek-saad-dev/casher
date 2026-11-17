@@ -25,3 +25,20 @@ This builds on [Casher Draft #309](https://github.com/tarek-saad-dev/casher/pull
 7. Production rollback and explicit exact-head owner go/no-go.
 
 **NO-GO: code-readiness only. No SQL query or mutation on Production DB, WhatsApp message, HTTP customer login, merge or deployment occurred.**
+
+## VPS read-only evidence — 2026-11-17
+
+A human operator executed a read-only metadata query on server `srv1921542` at `/home/casher/app` (deployed `main` commit `bc9c03ff`). Output reported:
+
+- Runtime: Node 22.23.2, npm 10.9.8. `casher`, `nginx`, `mssql-server`, `messaging-worker`, `messaging-inbox-worker` reported active. Local port 1433 reported listening.
+- `https://ops.cutsaloon.com/login` and `https://cutsaloon.com/`: HTTP 200; `https://cutsaloon.com/club`: HTTP 404 (private member site not deployed).
+- Operator script selected **local** DB mode and connected to database **`last132`** (not the staging-only `last132_agent` name assumed in reviewed SQL draft scripts).
+- The nine core legacy table checks reported `OK` for the selected required column subsets: `TblClient`, `TblClientLoyalty`, `TblLoyaltyTier`, `TblLoyaltyPointLedger`, `TblClientInventory`, `TblLoyaltyStoreItem`, `TblinvServHead`, `TblinvServDetail`, `TblInventoryUsageLog`.
+- `Tenant` columns: TenantId, Code, Name, Status, DefaultTimezone, CreatedAt, UpdatedAt.
+- `Location` columns: LocationId, TenantId, LegacyBranchId, BranchCode, Timezone, Status, CreatedAt.
+- `LegacyIdMap` columns: TenantId, EntityName, LegacyKey, DrvoId, CreatedAt.
+
+**Evidence limit:** This demonstrates schema presence on the inspected `last132` SQL connection, not customer/branch ownership semantics, proof that the running service uses that database for every route, or actual transaction behavior. No raw customer rows, secrets, wallet balances or voucher data were supplied. Actual tenant/location/legacy `SalonID` relationships and safe authentication/ledger transactional tests are still necessary. The candidate migration scripts **MUST NOT** be run against `last132` without an independently approved production-safe migration and rollback plan. All CUT CLUB flags remain OFF, and no merge/deploy occurred.
+
+### Next operator read-only inspection
+Inspect the non-personal `Tenant.Code/Status`, `Location.BranchCode/LegacyBranchId/Status`, the distinct legacy reward `SalonID` values, and the `LegacyIdMap.EntityName` categories. Do not query client phone/name or Wallet records in a chat-pasted output. Compare these IDs with existing POS branch/SalonID contract before configuring a trusted mapping.
