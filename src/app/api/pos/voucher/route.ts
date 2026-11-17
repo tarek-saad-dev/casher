@@ -9,6 +9,7 @@ import { getPool, sql } from "@/lib/db";
 import { requireTenantSession } from '@/lib/api-auth';
 import { validateUserBranchAccess } from '@/lib/branch';
 import { resolveTrustedLegacySalonId } from '@/lib/cut-club/cashierSalonMap';
+import { isCutClubCashierBranchApproved } from '@/lib/cut-club/cashierProductionBranchPolicy';
 
 export const runtime = "nodejs";
 
@@ -55,7 +56,7 @@ export async function GET(
   if (tenantSession instanceof NextResponse) return tenantSession as NextResponse<StoreErrorResponse>;
   try {
     const branch = await validateUserBranchAccess(tenantSession.UserID, tenantSession.ActiveBranchID);
-    if (!branch.canOperate) return NextResponse.json({ ok: false, error: "غير مصرح" },
+    if (!branch.canOperate || !isCutClubCashierBranchApproved({ trustedTenantId: tenantSession.TenantId, trustedBranchId: tenantSession.ActiveBranchID })) return NextResponse.json({ ok: false, error: "غير مصرح" },
       { status: 403, headers: corsHeaders });
     const { searchParams } = new URL(req.url);
     const code = searchParams.get("code")?.trim().toUpperCase();
@@ -71,7 +72,7 @@ export async function GET(
       trustedTenantId: tenantSession.TenantId,
       trustedBranchId: tenantSession.ActiveBranchID,
     });
-    if (legacySalonId === null) return NextResponse.json({ ok: false, error: "ربط الصالون بالفرع غير معتمد" }, { status: 503, headers: corsHeaders });
+    // Null map: no scoped reward item access; only NULL SalonID permitted.
     const db = await getPool();
 
     const result = await db
@@ -99,7 +100,7 @@ export async function GET(
         INNER JOIN [dbo].[TblClient]         c  ON c.ClientID  = ci.ClientID
         INNER JOIN [dbo].[TblLoyaltyStoreItem] si ON si.ItemID = ci.ItemID
         WHERE ci.VoucherCode = @code AND c.TenantId = @tenantId
-          AND (si.SalonID IS NULL OR si.SalonID = @legacySalonId)
+          AND (si.SalonID IS NULL OR (@legacySalonId IS NOT NULL AND si.SalonID = @legacySalonId))
       `);
 
     if (result.recordset.length === 0) {
