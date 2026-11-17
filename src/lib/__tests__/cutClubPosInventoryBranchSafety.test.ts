@@ -28,8 +28,8 @@ describe("CUT CLUB cashier branch/tenant voucher compatibility", () => {
 
   it("POS inventory source enforces the real branch-to-SalonID scope in SQL, not client filtering", () => {
     const src = source("src/lib/store/inventory.service.ts");
-    expect(src).toContain("legacySalonId?: number");
-    expect(src).toContain("(si.SalonID IS NULL OR si.SalonID = @legacySalonId)");
+    expect(src).toContain("legacySalonId?: number | null");
+    expect(src).toContain("(si.SalonID IS NULL OR (@legacySalonId IS NOT NULL AND si.SalonID = @legacySalonId))");
     expect(src).toContain('request.input("legacySalonId", sql.Int, legacySalonId)');
     expect(src).not.toContain("localStorage");
   });
@@ -42,6 +42,7 @@ describe("CUT CLUB cashier branch/tenant voucher compatibility", () => {
       expect(src).toContain("validateUserBranchAccess");
       expect(src).toContain("access.canOperate");
       expect(src).toContain("resolveTrustedLegacySalonId");
+      expect(src).toContain("isCutClubCashierBranchApproved");
       expect(src).toContain("getClientInventory(clientId, \"ACTIVE\", legacySalonId)");
       expect(src).toContain("TenantId = @tenantId");
       expect(src).not.toContain('"Access-Control-Allow-Origin": "*"');
