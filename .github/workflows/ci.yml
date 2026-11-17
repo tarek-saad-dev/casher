@@ -105,6 +105,9 @@ jobs:
       - name: CUT CLUB last132 actual branch and global SalonID gates
         run: npx vitest run src/lib/__tests__/cutClubProductionBranchPolicy.test.ts --reporter=default
 
+      - name: CUT CLUB approved reward-service mapping and invoice-claim financial guard
+        run: npx vitest run src/lib/__tests__/cutClubReviewedServiceEntitlements.test.ts --reporter=default
+
       - name: CUT CLUB V2 cashier voucher and invoice safety gates
         run: npx vitest run src/lib/__tests__/cutClubCashierVoucherV2.test.ts src/lib/__tests__/cutClubCashierSalonMapping.test.ts --reporter=default
 
