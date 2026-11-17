@@ -66,6 +66,7 @@ export function createSqlRewardPurchasePort(pool: sql.ConnectionPool): RewardPur
               .input("salonId", sql.Int, owner.salonId)
               .query(`
                 SELECT TOP (1) si.ItemID, si.PriceCoins, si.IsActive,
+                       si.ItemType, si.ServiceID,
                        si.UnlimitedStock, si.ExpiresAfterDays,
                        COALESCE(requiredTier.SortOrder, 1) AS RequiredTierRank
                 FROM dbo.TblLoyaltyStoreItem AS si WITH (UPDLOCK, HOLDLOCK)
@@ -79,6 +80,8 @@ export function createSqlRewardPurchasePort(pool: sql.ConnectionPool): RewardPur
               itemId: row.ItemID,
               priceCoins: row.PriceCoins,
               isActive: row.IsActive === true,
+              itemType: row.ItemType,
+              serviceId: row.ServiceID,
               requiresTierRank: row.RequiredTierRank,
               unlimitedStock: row.UnlimitedStock === true,
               expiresAfterDays: row.ExpiresAfterDays,
