@@ -83,6 +83,13 @@ jobs:
           src/lib/__tests__/cutClubLegacyPhoneLookupQuarantine.test.ts
           --reporter=default
 
+      - name: CUT CLUB V2 production metadata and POS branch ownership
+        run: >-
+          npx vitest run
+          src/lib/__tests__/cutClubCashierMetadataReadiness.test.ts
+          src/lib/__tests__/cutClubPosInventoryBranchSafety.test.ts
+          --reporter=default
+
       - name: CUT CLUB V2 cashier UI interaction and invoice confirmation
         run: npx vitest run src/lib/__tests__/cutClubCashierScreen.test.tsx --reporter=default
 
