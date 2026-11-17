@@ -27,3 +27,21 @@ The draft reward purchase settlement previously required only price/stock/tier/I
 - Exclude PH1GTEST, DRVO_DEMO and unreviewed branch/item global policies.
 
 **Status: NO-GO for financial launch; source-level fail-closed hardening only.**
+
+## Further owner-operated read-only evidence: 14 active / 60 used breakdown
+
+All existing reward items have `Value=NULL`, `ServiceID=NULL`. Their registered labels (not verified service IDs):
+| ItemID | NameAr | NameEn | Coins | ACTIVE | USED |
+|---|---|---|---:|---:|---:|
+| 15 | ماسك وجه | Face Mask | 30 | 4 | 17 |
+| 16 | حمام زيت | Hair Oil Treatment | 50 | 4 | 14 |
+| 17 | Basic SkinCare | Basic SkinCare | 90 | 4 | 23 |
+| 18 | Hair Cut | Hair Cut | 220 | 2 | 6 |
+
+Owner's read-only `TblClientInventory` aggregates showed `UsedInvID IS NULL` for ALL 60 historical `USED` records, plus all 14 `ACTIVE` (expected). `TblInventoryUsageLog` contains exactly 60 `ActionType='USED'` records across this tenant. The **separate** `TblInventoryUsageLog.InvID` and `BookingID` columns were not checked yet and may contain linkage evidence; do not claim there is no invoice/booking linkage until the next aggregate query.
+
+### Operator next: discover actual service IDs and log linkage, READ ONLY
+- Verify `dbo.TblPro` columns `ProID`, `TenantId`, `ProName`, `ProNameAr`, `SPrice1`, `isDeleted` from Casher service catalog. Fetch only matching service candidate IDs/names/prices under the CASHER_BOOT tenant. These are **candidate matches only**; the owner must approve exact entitlements and single service mapping per reward.
+- Group legacy usage log `InvID` and `BookingID` presence by `ci.ItemID`; count duplicate usage logs per `InventoryID`. Aggregate only, no phones/customer names/voucher codes.
+- Inspect invoice-header metadata for cancellation/reversal and date/settlement columns before enabling same-invoice verification. An old invoice or cancelled invoice is NOT valid redemption proof.
+- No repair/updates to the 74 customer entitlements, no settlement, no publication until staging 2-branch test and acceptance.
