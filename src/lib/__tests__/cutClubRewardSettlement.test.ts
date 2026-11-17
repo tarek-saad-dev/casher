@@ -35,6 +35,8 @@ class FakeAtomicStore implements RewardPurchasePort {
   state: MemoryState = initial();
   attempts = 0;
   failLedger = false;
+  rewardItemType = "FREE_SERVICE";
+  rewardServiceId: number | null = 9;
   private tail: Promise<unknown> = Promise.resolve();
   async serializable<T>(work: (tx: RewardPurchaseTransaction) => Promise<T>): Promise<T> {
     const run = async (): Promise<T> => {
@@ -50,6 +52,7 @@ class FakeAtomicStore implements RewardPurchasePort {
         async findPublishedItem(owner, id) {
           if (!ownerMatches(owner) || id !== 11) return null;
           return { itemId: 11, priceCoins: 200, isActive: true,
+            itemType: thisFake.rewardItemType, serviceId: thisFake.rewardServiceId,
             requiresTierRank: 1, unlimitedStock: false, expiresAfterDays: 30 };
         },
         async lockMemberBalance(owner) {
@@ -116,6 +119,25 @@ describe("CUT CLUB V2 atomic idempotent reward purchase contract (#300)", () => 
       cookieToken: "clientId=42",
     }))).toEqual({ ok: false, reason: "unavailable" });
     expect(fake.attempts).toBe(0);
+  });
+
+  it("refuses active production-like free-service rewards without an actual ServiceID before any Coins spend", async () => {
+    for (const missing of [null, 0, -1, 1.5]) {
+      const fake = new FakeAtomicStore();
+      fake.rewardServiceId = missing;
+      const result = await purchaseRewardWithVerifiedSession(request(fake));
+      expect(result.ok).toBe(false);
+      expect(fake.state.coins).toBe(1000);
+      expect(fake.state.stock).toBe(1);
+      expect(fake.state.ledger).toHaveLength(0);
+      expect(fake.state.vouchers).toHaveLength(0);
+      expect(fake.state.commands.size).toBe(0);
+    }
+    const unsupported = new FakeAtomicStore();
+    unsupported.rewardItemType = "DISCOUNT_AMOUNT";
+    expect((await purchaseRewardWithVerifiedSession(request(unsupported))).ok).toBe(false);
+    expect(unsupported.state.coins).toBe(1000);
+    expect(unsupported.state.ledger).toHaveLength(0);
   });
 
   it("atomically spends Coins, decrements stock and issues one owned voucher", async () => {
