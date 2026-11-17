@@ -68,6 +68,60 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # CUT CLUB 2.0 combined candidate: run ALL security drafts together.
+      # These tests use synthetic fixture data only (no customer DB or OTP sends).
+      - name: CUT CLUB 2.0 all customer auth and legacy privacy negative tests
+        run: >-
+          npx vitest run
+          src/lib/__tests__/cutClubCustomerSession.test.ts
+          src/lib/__tests__/cutClubOtpDomain.test.ts
+          src/lib/__tests__/cutClubLegacyFinancialQuarantine.test.ts
+          src/lib/__tests__/cutClubLegacyRedeemQuarantine.test.ts
+          src/lib/__tests__/cutClubLegacyProfilePatchQuarantine.test.ts
+          src/lib/__tests__/cutClubLegacyPrivateReadsQuarantine.test.ts
+          src/lib/__tests__/cutClubPublicRewardCatalog.test.ts
+          src/lib/__tests__/cutClubLegacyPhoneLookupQuarantine.test.ts
+          --reporter=default
+
+      - name: CUT CLUB WhatsApp OTP transport sandbox tests (no message sent)
+        run: npx vitest run src/lib/__tests__/cutClubWhatsAppOtpProvider.test.ts --reporter=default
+
+      - name: CUT CLUB V2 production metadata and POS branch ownership
+        run: >-
+          npx vitest run
+          src/lib/__tests__/cutClubCashierMetadataReadiness.test.ts
+          src/lib/__tests__/cutClubPosInventoryBranchSafety.test.ts
+          --reporter=default
+
+      - name: CUT CLUB V2 cashier UI interaction and invoice confirmation
+        run: npx vitest run src/lib/__tests__/cutClubCashierScreen.test.tsx --reporter=default
+
+      - name: CUT CLUB V2 verified client voucher code ownership gates
+        run: npx vitest run src/lib/__tests__/cutClubClientVoucherHandoff.test.ts --reporter=default
+
+      - name: CUT CLUB V2 cashier voucher and invoice safety gates
+        run: npx vitest run src/lib/__tests__/cutClubCashierVoucherV2.test.ts src/lib/__tests__/cutClubCashierSalonMapping.test.ts --reporter=default
+
+      - name: CUT CLUB V2 atomic reward settlement and idempotency
+        run: npx vitest run src/lib/__tests__/cutClubRewardSettlement.test.ts src/lib/__tests__/cutClubGrowthSchemaSafety.test.ts --reporter=default
+
+      - name: CUT CLUB V2 member wallet, growth and production metadata safety
+        run: >-
+          npx vitest run
+          src/lib/__tests__/cutClubMemberReadCore.test.ts
+          src/lib/__tests__/cutClubGrowthEligibility.test.ts
+          src/lib/__tests__/cutClubProductionSchemaSafety.test.ts
+          --reporter=default
+
+      - name: CUT CLUB B2 verified OTP-to-customer session orchestration
+        run: npx vitest run src/lib/__tests__/cutClubCustomerAuthFlow.test.ts --reporter=default
+
+      - name: CUT CLUB B2 durable SQL OTP and revocable-session negative tests
+        run: npx vitest run src/lib/__tests__/cutClubSqlOtpRepository.test.ts --reporter=default
+
+      - name: CUT CLUB 2.0 staging metadata-only offline guard fixtures
+        run: node --test scripts/cut-club/customer-auth-schema-preflight.test.mjs
+
       - name: DRVO migration + rollout + runner tests
         run: >
           npx vitest run

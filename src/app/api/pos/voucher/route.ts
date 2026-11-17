@@ -7,17 +7,18 @@ import { NextRequest, NextResponse } from "next/server";
 import type { StoreErrorResponse } from "@/lib/store/store.types";
 import { getPool, sql } from "@/lib/db";
 import { requireTenantSession } from '@/lib/api-auth';
+import { validateUserBranchAccess } from '@/lib/branch';
+import { resolveTrustedLegacySalonId } from '@/lib/cut-club/cashierSalonMap';
 
 export const runtime = "nodejs";
 
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  "Cache-Control": "private, no-store, max-age=0",
+  "X-Robots-Tag": "noindex",
 };
 
 export async function OPTIONS(): Promise<NextResponse> {
-  return new NextResponse(null, { status: 204, headers: corsHeaders });
+  return NextResponse.json({ ok: false }, { status: 405, headers: corsHeaders });
 }
 
 interface VoucherLookupResponse {
@@ -53,21 +54,31 @@ export async function GET(
   const tenantSession = await requireTenantSession();
   if (tenantSession instanceof NextResponse) return tenantSession as NextResponse<StoreErrorResponse>;
   try {
+    const branch = await validateUserBranchAccess(tenantSession.UserID, tenantSession.ActiveBranchID);
+    if (!branch.canOperate) return NextResponse.json({ ok: false, error: "غير مصرح" },
+      { status: 403, headers: corsHeaders });
     const { searchParams } = new URL(req.url);
     const code = searchParams.get("code")?.trim().toUpperCase();
 
-    if (!code) {
+    if (!code || !/^[A-Z0-9-]{6,100}$/.test(code)) {
       return NextResponse.json(
         { ok: false, error: "code is required" },
         { status: 400, headers: corsHeaders },
       );
     }
 
+    const legacySalonId = resolveTrustedLegacySalonId({
+      trustedTenantId: tenantSession.TenantId,
+      trustedBranchId: tenantSession.ActiveBranchID,
+    });
+    if (legacySalonId === null) return NextResponse.json({ ok: false, error: "ربط الصالون بالفرع غير معتمد" }, { status: 503, headers: corsHeaders });
     const db = await getPool();
 
     const result = await db
       .request()
       .input("code", sql.NVarChar(100), code)
+      .input("tenantId", sql.UniqueIdentifier, tenantSession.TenantId)
+      .input("legacySalonId", sql.Int, legacySalonId)
       .query(`
         SELECT
           ci.InventoryID,
@@ -87,7 +98,8 @@ export async function GET(
         FROM [dbo].[TblClientInventory] ci
         INNER JOIN [dbo].[TblClient]         c  ON c.ClientID  = ci.ClientID
         INNER JOIN [dbo].[TblLoyaltyStoreItem] si ON si.ItemID = ci.ItemID
-        WHERE ci.VoucherCode = @code
+        WHERE ci.VoucherCode = @code AND c.TenantId = @tenantId
+          AND (si.SalonID IS NULL OR si.SalonID = @legacySalonId)
       `);
 
     if (result.recordset.length === 0) {

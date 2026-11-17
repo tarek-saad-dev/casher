@@ -11,17 +11,17 @@ import type {
 import { getClientInventory } from "@/lib/store/inventory.service";
 import { getPool, sql } from "@/lib/db";
 import { authenticate, isAuthResult } from "@/lib/api-auth";
+import { validateUserBranchAccess } from "@/lib/branch";
+import { resolveTrustedLegacySalonId } from "@/lib/cut-club/cashierSalonMap";
 
 export const runtime = "nodejs";
 
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  "Cache-Control": "private, no-store, max-age=0",
 };
 
 export async function OPTIONS(): Promise<NextResponse> {
-  return new NextResponse(null, { status: 204, headers: corsHeaders });
+  return NextResponse.json({ ok: false }, { status: 405, headers: corsHeaders });
 }
 
 function normalizePhone(phone: string): string {
@@ -46,6 +46,15 @@ export async function GET(
   if (!isAuthResult(auth)) return auth as NextResponse<StoreErrorResponse>;
 
   try {
+    const access = await validateUserBranchAccess(auth.userId, auth.activeBranchId);
+    if (!access.canOperate) return NextResponse.json({ ok: false, error: "غير مصرح" },
+      { status: 403, headers: corsHeaders });
+    const legacySalonId = resolveTrustedLegacySalonId({
+      trustedTenantId: auth.tenantId, trustedBranchId: auth.activeBranchId,
+    });
+    if (legacySalonId === null) return NextResponse.json({
+      ok: false, error: "يجب مراجعة ربط الصالون بالفرع أولًا",
+    }, { status: 503, headers: corsHeaders });
     const { searchParams } = new URL(req.url);
     const phoneParam = searchParams.get("phone");
 
@@ -57,7 +66,7 @@ export async function GET(
     }
 
     const phone = normalizePhone(phoneParam);
-    if (phone.length < 10) {
+    if (!/^01[0-9]{9}$/.test(phone)) {
       return NextResponse.json(
         { ok: false, error: "رقم الهاتف غير صحيح" },
         { status: 400, headers: corsHeaders },
@@ -72,12 +81,14 @@ export async function GET(
       .input("phone", sql.NVarChar(20), phone)
       .input("tenantId", sql.UniqueIdentifier, auth.tenantId)
       .query(`
-        SELECT ClientID, Name
+        SELECT TOP (2) ClientID, Name
         FROM [dbo].[TblClient]
         WHERE TenantId = @tenantId AND Mobile = @phone
       `);
 
-    if (clientResult.recordset.length === 0) {
+    // Two customers sharing one phone must never be silently conflated.
+    // Do not leak which accounts are duplicated; manager resolves this.
+    if (clientResult.recordset.length !== 1) {
       return NextResponse.json(
         { ok: false, error: "لم يتم العثور على عميل بهذا الرقم" },
         { status: 404, headers: corsHeaders },
@@ -89,7 +100,7 @@ export async function GET(
     const clientName: string = clientRow.Name || "";
 
     // Get only ACTIVE inventory items (purchased with points, not yet used)
-    const activeItems = await getClientInventory(clientId, "ACTIVE");
+    const activeItems = await getClientInventory(clientId, "ACTIVE", legacySalonId);
 
     const response: POSClientInventoryResponse = {
       ok: true,
