@@ -15,6 +15,7 @@ import sql from "mssql";
 export type CashierScope = Readonly<{
   tenantId: string;
   activeBranchId: number;
+  legacySalonId: number;
   staffUserId: number;
 }>;
 export type CashierVoucher = Readonly<{
@@ -44,7 +45,7 @@ const validUuid = (x: unknown): x is string =>
 const validCode = (x: unknown): x is string =>
   typeof x === "string" && /^[A-Z0-9-]{6,100}$/.test(x);
 export const validCashierScope = (x: CashierScope): boolean =>
-  validUuid(x.tenantId) && validId(x.activeBranchId) && validId(x.staffUserId);
+  validUuid(x.tenantId) && validId(x.activeBranchId) && validId(x.legacySalonId) && validId(x.staffUserId);
 export const CASHIER_REDEEM_FLAG = "CUT_CLUB_CASHIER_V2_REDEEM_ENABLED";
 
 export function allowCashierConsume(input: Readonly<{
@@ -74,7 +75,7 @@ FROM dbo.TblClientInventory ci
 JOIN dbo.TblClient c ON c.ClientID=ci.ClientID
 JOIN dbo.TblLoyaltyStoreItem si ON si.ItemID=ci.ItemID
 WHERE ci.VoucherCode=@code AND c.TenantId=@tenantId
-  AND (si.SalonID IS NULL OR si.SalonID=@branchId)
+  AND (si.SalonID IS NULL OR si.SalonID=@legacySalonId)
 `;
 const lookupForUpdate = lookupQuery.replace(
   "dbo.TblClientInventory ci",
@@ -111,7 +112,7 @@ export async function inspectCashierVoucher(input: Readonly<{
     const found = await input.pool.request()
       .input("code", sql.NVarChar(100), input.code)
       .input("tenantId", sql.UniqueIdentifier, input.scope.tenantId)
-      .input("branchId", sql.Int, input.scope.activeBranchId)
+      .input("legacySalonId", sql.Int, input.scope.legacySalonId)
       .query<VoucherRow>(lookupQuery);
     return found.recordset.length === 1 ? rowToSafeVoucher(found.recordset[0]) : null;
   } catch {
@@ -140,7 +141,7 @@ export async function consumeCashierVoucher(input: Readonly<{
     const lookup = await new sql.Request(tx)
       .input("code", sql.NVarChar(100), input.code)
       .input("tenantId", sql.UniqueIdentifier, input.scope.tenantId)
-      .input("branchId", sql.Int, input.scope.activeBranchId)
+      .input("legacySalonId", sql.Int, input.scope.legacySalonId)
       .query<VoucherRow>(lookupForUpdate);
     if (lookup.recordset.length !== 1) throw Error("CUT_CLUB_VOUCHER_NOT_OWNED");
     const v = lookup.recordset[0];
