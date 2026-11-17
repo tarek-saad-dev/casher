@@ -3,6 +3,7 @@ import { authenticate, isAuthResult } from "@/lib/api-auth";
 import { validateUserBranchAccess } from "@/lib/branch";
 import { getPool } from "@/lib/db";
 import { inspectCashierVoucher } from "@/lib/cut-club/cashierVoucher";
+import { resolveTrustedLegacySalonId } from "@/lib/cut-club/cashierSalonMap";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,13 +18,15 @@ export async function GET(request: NextRequest) {
   try {
     const branch = await validateUserBranchAccess(staff.userId, staff.activeBranchId);
     if (!branch.canOperate) return NextResponse.json({ ok: false, error: "غير مصرح" }, { status: 403, headers });
+    const legacySalonId = resolveTrustedLegacySalonId({ trustedTenantId: staff.tenantId, trustedBranchId: staff.activeBranchId });
+    if (legacySalonId === null) return NextResponse.json({ ok: false, error: "ربط الصالون بالفرع غير معتمد" }, { status: 503, headers });
     const code = request.nextUrl.searchParams.get("code")?.trim().toUpperCase() ?? "";
     if (!/^[A-Z0-9-]{6,100}$/.test(code)) {
       return NextResponse.json({ ok: false, error: "كود القسيمة غير صحيح" }, { status: 400, headers });
     }
     const voucher = await inspectCashierVoucher({
       pool: await getPool(),
-      scope: { tenantId: staff.tenantId, activeBranchId: staff.activeBranchId, staffUserId: staff.userId },
+      scope: { tenantId: staff.tenantId, activeBranchId: staff.activeBranchId, legacySalonId, staffUserId: staff.userId },
       code,
     });
     if (!voucher) return NextResponse.json({ ok: false, error: "القسيمة غير موجودة لهذا الفرع" },
