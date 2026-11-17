@@ -40,6 +40,20 @@ export type DrvoVerifyReport = {
   failures: string[];
 };
 
+// One verification snapshot per full-system run. Standalone module checks retain
+// their own fresh database reads. Reusing the same committed bootstrap result
+// prevents repeated expensive cross-tenant user/membership scans from racing
+// one another inside a single release gate. Failed checks remain failed.
+type FullSystemReadinessSnapshot = {
+  appliedKeys: Set<string>;
+  structure: Awaited<ReturnType<typeof verifyPlatformCoreStructure>>;
+  bootstrap: Awaited<ReturnType<typeof verifyPlatformBootstrap>>;
+  treasury: Awaited<ReturnType<typeof verifyTreasuryMovementSchema>>;
+  saleTriggerGuard: Awaited<ReturnType<typeof verifyInsCashMoveSalesGuard>>;
+  commercial: Awaited<ReturnType<typeof verifyCommercialSubscriptionSchema>> | null;
+  masterData: Awaited<ReturnType<typeof verifyMasterDataTenancySchema>> | null;
+};
+
 function migrationKeysApplied(
   appliedKeys: Set<string>,
   required: string[],
@@ -99,6 +113,7 @@ export function assertDrvoDeployManifestConsistent(): void {
 export async function verifyDrvoReadiness(
   pool: ConnectionPool,
   module: string,
+  snapshot?: FullSystemReadinessSnapshot,
 ): Promise<DrvoModuleReadinessReport> {
   assertDrvoDeployManifestConsistent();
   const requiredMap = getDrvoModuleRequiredMigrations();
@@ -110,11 +125,12 @@ export async function verifyDrvoReadiness(
   const spec: DrvoModuleRolloutSpec | null =
     module === 'platform-core' ? null : getDrvoModuleRolloutSpec(module);
 
-  const applied = await listAppliedDrvoMigrations(pool);
-  const appliedKeys = new Set(applied.map((r) => r.MigrationKey));
+  const appliedKeys = snapshot?.appliedKeys ?? new Set(
+    (await listAppliedDrvoMigrations(pool)).map((r) => r.MigrationKey),
+  );
   const checks: DrvoReadinessCheck[] = migrationKeysApplied(appliedKeys, required);
 
-  const structure = await verifyPlatformCoreStructure(pool);
+  const structure = snapshot?.structure ?? await verifyPlatformCoreStructure(pool);
   checks.push({
     id: 'platform.core.structure',
     ok: structure.ok,
@@ -133,7 +149,7 @@ export async function verifyDrvoReadiness(
     module === 'platform-master-data' ||
     module === 'platform-core'
   ) {
-    const bootstrap = await verifyPlatformBootstrap(pool);
+    const bootstrap = snapshot?.bootstrap ?? await verifyPlatformBootstrap(pool);
     checks.push({
       id: 'platform.bootstrap',
       ok: bootstrap.ok,
@@ -146,7 +162,7 @@ export async function verifyDrvoReadiness(
     module === 'pos-sale-treasury' ||
     module === 'pos-sale-treasury-mutation'
   ) {
-    const treasury = await verifyTreasuryMovementSchema(pool);
+    const treasury = snapshot?.treasury ?? await verifyTreasuryMovementSchema(pool);
     checks.push({
       id: 'treasury.schema',
       ok: treasury.ok,
@@ -155,7 +171,7 @@ export async function verifyDrvoReadiness(
   }
 
   if (module === 'pos-sale-treasury' || module === 'pos-sale-treasury-mutation') {
-    const guard = await verifyInsCashMoveSalesGuard(pool);
+    const guard = snapshot?.saleTriggerGuard ?? await verifyInsCashMoveSalesGuard(pool);
     checks.push({
       id: 'treasury.sale-trigger-guard',
       ok: guard.ok,
@@ -165,7 +181,7 @@ export async function verifyDrvoReadiness(
 
   if (module === 'platform-commercial') {
     const commercial = appliedKeys.has(COMMERCIAL_MIGRATION_KEY)
-      ? await verifyCommercialSubscriptionSchema(pool)
+      ? snapshot?.commercial ?? await verifyCommercialSubscriptionSchema(pool)
       : { ok: false, failures: [`Migration ${COMMERCIAL_MIGRATION_KEY} not applied`] };
     checks.push({
       id: 'platform.commercial',
@@ -178,7 +194,7 @@ export async function verifyDrvoReadiness(
 
   if (module === 'platform-master-data') {
     const masterData = appliedKeys.has(MASTER_DATA_MIGRATION_KEY)
-      ? await verifyMasterDataTenancySchema(pool)
+      ? snapshot?.masterData ?? await verifyMasterDataTenancySchema(pool)
       : { ok: false, failures: [`Migration ${MASTER_DATA_MIGRATION_KEY} not applied`] };
     checks.push({
       id: 'platform.master-data',
@@ -234,11 +250,26 @@ export async function verifyDrvoSystem(pool: ConnectionPool): Promise<DrvoVerify
   }
 
   const pending = DRVO_MIGRATIONS.map((m) => m.migrationKey).filter((k) => !appliedKeys.has(k));
+  // A single full-system verification must evaluate one coherent readiness
+  // snapshot, rather than running the same bootstrap/structure/treasury SQL
+  // checks once for each module. This keeps their failure semantics and
+  // activation requirements unchanged while avoiding repeated heavy reads.
   const platformCore = await verifyPlatformBootstrap(pool);
+  const snapshot: FullSystemReadinessSnapshot = {
+    appliedKeys,
+    bootstrap: platformCore,
+    structure: await verifyPlatformCoreStructure(pool),
+    treasury: await verifyTreasuryMovementSchema(pool),
+    saleTriggerGuard: await verifyInsCashMoveSalesGuard(pool),
+    commercial: appliedKeys.has(COMMERCIAL_MIGRATION_KEY)
+      ? await verifyCommercialSubscriptionSchema(pool) : null,
+    masterData: appliedKeys.has(MASTER_DATA_MIGRATION_KEY)
+      ? await verifyMasterDataTenancySchema(pool) : null,
+  };
 
   const modules: DrvoModuleReadinessReport[] = [];
   for (const spec of DRVO_MODULE_ROLLOUT) {
-    modules.push(await verifyDrvoReadiness(pool, spec.module));
+    modules.push(await verifyDrvoReadiness(pool, spec.module, snapshot));
   }
 
   const failures: string[] = [];

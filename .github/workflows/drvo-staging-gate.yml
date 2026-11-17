@@ -21,7 +21,10 @@ jobs:
         github.event.pull_request.head.repo.full_name == github.repository &&
         (
           github.event.pull_request.head.ref == 'drvo-012-commercial-plans-tenant-apps' ||
-          github.event.pull_request.head.ref == 'feat/automatic-employee-late-deductions'
+          github.event.pull_request.head.ref == 'feat/automatic-employee-late-deductions' ||
+          github.event.pull_request.head.ref == 'feat/referrals-tenant-schema-223' ||
+          github.event.pull_request.head.ref == 'feat/cut-referrals-integration-244' ||
+          github.event.pull_request.head.ref == 'feat/pos-sale-idempotency-246'
         )
       )
     runs-on: ubuntu-latest
@@ -140,18 +143,65 @@ jobs:
         timeout-minutes: 6
         run: npx tsx scripts/drvo/drvo020-late-deduction-staging-smoke.ts
 
+      - name: DRVO-023 tenant referral SQL / concurrency smoke (rollback only)
+        if: github.event_name == 'pull_request' && (github.event.pull_request.head.ref == 'feat/referrals-tenant-schema-223' || github.event.pull_request.head.ref == 'feat/cut-referrals-integration-244' || github.event.pull_request.head.ref == 'feat/pos-sale-idempotency-246')
+        timeout-minutes: 8
+        run: npx tsx scripts/drvo/drvo023-referral-staging-smoke.ts
+
+      - name: DRVO-024 POS sale idempotency SQL smoke (staging rollback only)
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'feat/pos-sale-idempotency-246'
+        timeout-minutes: 6
+        run: npx tsx scripts/drvo/drvo024-sale-idempotency-staging-smoke.ts
+
+      - name: CUT referral 248 financial ledger audit (staging read-only)
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'feat/pos-sale-idempotency-246'
+        timeout-minutes: 5
+        run: npx tsx scripts/drvo/drvo248-referral-financial-audit-staging.ts
+
+      # Runs actual extracted/legacy SQL sale executors in one SERIALIZABLE
+      # transaction. All synthetic customer, invoice, reward, stock and cash
+      # writes are rolled back, and residual absence is asserted afterwards.
+      # Not a browser HTTP or independently audited production acceptance.
+      - name: CUT referral 248 SQL 50-20 both-writer transaction E2E (ROLLBACK)
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'feat/pos-sale-idempotency-246'
+        timeout-minutes: 10
+        run: npx tsx scripts/drvo/drvo248-referral-transaction-e2e-staging.ts
+
+      # Isolated synthetic salon + actual authenticated Next.js POST/DELETE:
+      # verifies full 50/20 paid lifecycle, UUID replay/409, wallet and audited
+      # refunds. Purges the disposable tenant and asserts zero synthetic rows.
+      # Run before slow platform readiness checks to surface independent evidence.
+      - name: CUT referral 248 authenticated HTTP checkout and audited refund E2E
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'feat/pos-sale-idempotency-246'
+        timeout-minutes: 16
+        run: npx tsx scripts/drvo/drvo248-referral-http-staging.ts
+
       - name: Verify migration 9 ledger
         run: |
           set -euo pipefail
           npx tsx scripts/drvo/staging-gate-preflight.ts migration9
 
+      # #248 integration is deterministic: repair missing historical commercial
+      # subscriptions BEFORE full readiness validation, then fail closed on
+      # every other check. Never mask bootstrap/ownership failures by repeating
+      # an unrelated subscription repair.
+      - name: Reconcile missing DRVO-012 subscriptions on staging integration only
+        if: >-
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.ref == 'feat/pos-sale-idempotency-246'
+        run: npm run drvo-012:reconcile-subscriptions -- --expected-database=last132_agent
+
       - name: Verify DRVO after migration
         id: verify_after_migration
-        continue-on-error: true
+        continue-on-error: ${{ github.event.pull_request.head.ref != 'feat/pos-sale-idempotency-246' }}
         run: npm run drvo:verify
 
+      # Legacy DRVO branches keep their pre-existing recovery behavior.
+      # For #248 this step MUST NEVER be a fallback for a noncommercial error.
       - name: Reconcile grandfathered subscriptions if required
-        if: steps.verify_after_migration.outcome == 'failure'
+        if: >-
+          steps.verify_after_migration.outcome == 'failure' &&
+          github.event.pull_request.head.ref != 'feat/pos-sale-idempotency-246'
         run: |
           set -euo pipefail
           npm run drvo-012:reconcile-subscriptions -- --expected-database=last132_agent
@@ -170,6 +220,32 @@ jobs:
 
       - name: Final DRVO verify
         run: npm run drvo:verify
+
+      # A failed prior DRVO-008 run can leave a *synthetic* paid invoice.
+      # Reconcile only strongly verified DRVO008-SMOKE customers and marked
+      # invoices on last132_agent/drvo_agent. Refuse any unmarked or live data.
+      - name: DRVO-008 reconcile prior synthetic staging fixtures (guarded)
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'feat/pos-sale-idempotency-246'
+        timeout-minutes: 5
+        run: npx tsx scripts/drvo/drvo008-staging-fixture-reconcile.ts --apply-staging-fixture-recovery
+
+      # Exercise actual paid invoice creation/edits/deletes through BOTH existing
+      # POS writers after all DRVO commercial and tenant gates pass. The test
+      # has staging identity guard and synthetic smoke-client cleanup.
+      # Not a substitute for the remaining dedicated 50/20 financial E2E.
+      - name: CUT POS both-writer real sale staging smoke (legacy and extracted)
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'feat/pos-sale-idempotency-246'
+        timeout-minutes: 9
+        env:
+          WHATSAPP_INTEGRATION_ENABLED: 'false'
+          WHATSAPP_SALE_ENABLED: 'false'
+          WHATSAPP_EMPLOYEE_SALE_ENABLED: 'false'
+        run: npx tsx scripts/drvo-008-pos-staging-smoke.ts
+
+      - name: DRVO-008 assert no synthetic staging invoice/client residues
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'feat/pos-sale-idempotency-246'
+        timeout-minutes: 3
+        run: npx tsx scripts/drvo/drvo008-staging-fixture-reconcile.ts
 
       - name: Report PASS
         run: |

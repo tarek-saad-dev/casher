@@ -1,0 +1,97 @@
+name: CUT Referral 227 - Read-only Staging Contract
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: referral-227-staging-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  referral-staging-sql:
+    # No fork access to secrets and no production workflow or arbitrary dispatch.
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'feat/referral-atomic-checkout-227'
+    runs-on: ubuntu-latest
+    environment: drvo-staging
+    timeout-minutes: 15
+    env:
+      DRVO_STAGING_SSH_HOST: ${{ secrets.DRVO_STAGING_SSH_HOST || secrets.STAGING_HOST || secrets.VPS_HOST }}
+      DRVO_STAGING_SSH_KEY: ${{ secrets.DRVO_STAGING_SSH_KEY }}
+      DRVO_STAGING_DB_PASSWORD: ${{ secrets.DRVO_STAGING_DB_PASSWORD }}
+      DB_SERVER: 127.0.0.1
+      DB_PORT: '14330'
+      DB_DATABASE: last132_agent
+      DB_USER: drvo_agent
+      DB_PASSWORD: ${{ secrets.DRVO_STAGING_DB_PASSWORD }}
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Refuse repository env files
+        run: |
+          set -euo pipefail
+          for f in .env .env.local .env.production .env.production.local; do
+            if [[ -e "$f" ]]; then
+              echo "Refusing referral staging check: env file $f" >&2
+              exit 10
+            fi
+          done
+      - name: Require dedicated staging-only credentials
+        run: |
+          set -euo pipefail
+          for k in DRVO_STAGING_SSH_HOST DRVO_STAGING_SSH_KEY DRVO_STAGING_DB_PASSWORD; do
+            if [[ -z "${!k:-}" ]]; then
+              echo "Missing protected staging secret $k" >&2
+              exit 11
+            fi
+          done
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Open dedicated staging SQL tunnel
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$DRVO_STAGING_SSH_KEY" > ~/.ssh/drvo_staging
+          chmod 600 ~/.ssh/drvo_staging
+          ssh-keyscan -H "$DRVO_STAGING_SSH_HOST" >> ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          ssh -i ~/.ssh/drvo_staging -o BatchMode=yes \
+            -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 \
+            -L 14330:127.0.0.1:1433 \
+            "drvo-tunnel@$DRVO_STAGING_SSH_HOST" -N &
+          for i in {1..30}; do
+            if nc -z 127.0.0.1 14330; then
+              echo "Staging tunnel ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Staging tunnel failed" >&2
+          exit 12
+      - name: Prove staging database and login identity
+        run: npx tsx scripts/drvo/staging-gate-preflight.ts identity
+      - name: Check referral 227 financial SQL contract (READ-ONLY)
+        run: npx tsx scripts/drvo/drvo227-referral-readonly-staging-smoke.ts
+      - name: Summary
+        run: |
+          {
+            echo "## CUT Referral #227 - READ-ONLY Staging Contract"
+            echo "- Identity: last132_agent / drvo_agent"
+            echo "- SQL schema and tenant finance joins: PASS"
+            echo "- No migration, invoices, clients, rewards or ledger mutated"
+            echo "- Full checkout with real invoice / concurrency / refund NOT tested here"
+          } >> "$GITHUB_STEP_SUMMARY"
