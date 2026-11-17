@@ -11,6 +11,7 @@
  * This has NOT been exercised on production SQL.
  */
 import sql from "mssql";
+import { verifyApprovedCutClubService } from "./reviewedServiceEntitlements";
 
 export type CashierScope = Readonly<{
   tenantId: string;
@@ -61,7 +62,7 @@ export function allowCashierConsume(input: Readonly<{
 }
 
 type VoucherRow = {
-  InventoryID: number; ClientID: number; ClientName: string | null;
+  InventoryID: number; ItemID: number; ClientID: number; ClientName: string | null;
   NameAr: string; Status: string; ExpiresAt: Date | null;
   ItemType: string; ServiceID: number | null; UsedInvID: number | null;
   Quantity: number;
@@ -70,7 +71,7 @@ const acceptedStatus = new Set(["ACTIVE", "USED", "EXPIRED", "CANCELLED"]);
 
 const lookupQuery = `
 SELECT TOP (2)
-  ci.InventoryID, ci.ClientID, c.Name AS ClientName,
+  ci.InventoryID, ci.ItemID, ci.ClientID, c.Name AS ClientName,
   si.NameAr, ci.Status, ci.ExpiresAt,
   si.ItemType, si.ServiceID, ci.UsedInvID, ci.Quantity
 FROM dbo.TblClientInventory ci
@@ -84,7 +85,32 @@ const lookupForUpdate = lookupQuery.replace(
   "dbo.TblClientInventory ci WITH (UPDLOCK, HOLDLOCK)"
 );
 
-function rowToSafeVoucher(row: VoucherRow): CashierVoucher | null {
+async function verifiedServiceId(
+  row: VoucherRow,
+  scope: CashierScope,
+  makeRequest: () => sql.Request,
+): Promise<number | null> {
+  if (!validId(row.ItemID) || row.ItemType !== "FREE_SERVICE") return null;
+  return verifyApprovedCutClubService({
+    trustedTenantId: scope.tenantId,
+    rewardItemId: row.ItemID,
+    dbServiceId: row.ServiceID,
+    isActiveTenantService: async (tenantId, serviceId) => {
+      const service = await makeRequest()
+        .input("tenantId", sql.UniqueIdentifier, tenantId)
+        .input("serviceId", sql.Int, serviceId)
+        .query<{ ProID: number }>(`
+          SELECT TOP (2) p.ProID
+          FROM dbo.TblPro p
+          WHERE p.TenantId=@tenantId AND p.ProID=@serviceId
+            AND p.isDeleted=0
+        `);
+      return service.recordset.length === 1 && service.recordset[0].ProID === serviceId;
+    },
+  });
+}
+
+function rowToSafeVoucher(row: VoucherRow, approvedServiceId: number | null): CashierVoucher | null {
   if (!validId(row.InventoryID) || typeof row.ClientName !== "string" ||
       typeof row.NameAr !== "string" || !acceptedStatus.has(row.Status)) return null;
   const expiresAt = row.ExpiresAt instanceof Date && !Number.isNaN(row.ExpiresAt.getTime())
@@ -95,11 +121,11 @@ function rowToSafeVoucher(row: VoucherRow): CashierVoucher | null {
     customerName: row.ClientName,
     itemName: row.NameAr,
     itemType: row.ItemType,
-    serviceId: row.ServiceID,
+    serviceId: approvedServiceId,
     status: row.Status as CashierVoucher["status"],
     expiresAt,
     usable: row.Status === "ACTIVE" && !expiredNow && row.Quantity === 1,
-    consumptionSupported: row.ItemType === "FREE_SERVICE" && validId(row.ServiceID) && row.Quantity === 1,
+    consumptionSupported: row.ItemType === "FREE_SERVICE" && validId(approvedServiceId) && row.Quantity === 1,
   };
 }
 
@@ -116,7 +142,11 @@ export async function inspectCashierVoucher(input: Readonly<{
       .input("tenantId", sql.UniqueIdentifier, input.scope.tenantId)
       .input("legacySalonId", sql.Int, input.scope.legacySalonId)
       .query<VoucherRow>(lookupQuery);
-    return found.recordset.length === 1 ? rowToSafeVoucher(found.recordset[0]) : null;
+    if (found.recordset.length !== 1) return null;
+    const serviceId = await verifiedServiceId(
+      found.recordset[0], input.scope, () => input.pool.request(),
+    );
+    return rowToSafeVoucher(found.recordset[0], serviceId);
   } catch {
     return null;
   }
@@ -147,9 +177,13 @@ export async function consumeCashierVoucher(input: Readonly<{
       .query<VoucherRow>(lookupForUpdate);
     if (lookup.recordset.length !== 1) throw Error("CUT_CLUB_VOUCHER_NOT_OWNED");
     const v = lookup.recordset[0];
-    if (!validId(v.InventoryID) || !validId(v.ClientID) ||
-        v.ItemType !== "FREE_SERVICE" || !validId(v.ServiceID) ||
-        v.Quantity !== 1) throw Error("CUT_CLUB_UNSUPPORTED");
+    if (!validId(v.InventoryID) || !validId(v.ItemID) || !validId(v.ClientID) ||
+        v.ItemType !== "FREE_SERVICE" || v.Quantity !== 1)
+      throw Error("CUT_CLUB_UNSUPPORTED");
+    const serviceId = await verifiedServiceId(
+      v, input.scope, () => new sql.Request(tx),
+    );
+    if (!validId(serviceId)) throw Error("CUT_CLUB_SERVICE_NOT_APPROVED");
 
     // Voucher and invoice must be for the SAME customer and active branch.
     const invoice = await new sql.Request(tx)
@@ -177,7 +211,7 @@ export async function consumeCashierVoucher(input: Readonly<{
     // verifiable evidence model and are intentionally not accepted here.
     const benefit = await new sql.Request(tx)
       .input("invoiceId", sql.Int, input.invoiceId)
-      .input("serviceId", sql.Int, v.ServiceID)
+      .input("serviceId", sql.Int, serviceId)
       .query(`
         SELECT TOP (1) d.ProID
         FROM dbo.TblinvServDetail d WITH (HOLDLOCK)
