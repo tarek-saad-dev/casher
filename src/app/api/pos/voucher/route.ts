@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from "next/server";
 import type { StoreErrorResponse } from "@/lib/store/store.types";
 import { getPool, sql } from "@/lib/db";
 import { requireTenantSession } from '@/lib/api-auth';
+import { resolveTrustedLegacySalonId } from '@/lib/cut-club/cashierSalonMap';
 
 export const runtime = "nodejs";
 
@@ -62,13 +63,18 @@ export async function GET(
       );
     }
 
+    const legacySalonId = resolveTrustedLegacySalonId({
+      trustedTenantId: tenantSession.TenantId,
+      trustedBranchId: tenantSession.ActiveBranchID,
+    });
+    if (legacySalonId === null) return NextResponse.json({ ok: false, error: "ربط الصالون بالفرع غير معتمد" }, { status: 503, headers: corsHeaders });
     const db = await getPool();
 
     const result = await db
       .request()
       .input("code", sql.NVarChar(100), code)
       .input("tenantId", sql.UniqueIdentifier, tenantSession.TenantId)
-      .input("branchId", sql.Int, tenantSession.ActiveBranchID)
+      .input("legacySalonId", sql.Int, legacySalonId)
       .query(`
         SELECT
           ci.InventoryID,
@@ -89,7 +95,7 @@ export async function GET(
         INNER JOIN [dbo].[TblClient]         c  ON c.ClientID  = ci.ClientID
         INNER JOIN [dbo].[TblLoyaltyStoreItem] si ON si.ItemID = ci.ItemID
         WHERE ci.VoucherCode = @code AND c.TenantId = @tenantId
-          AND (si.SalonID IS NULL OR si.SalonID = @branchId)
+          AND (si.SalonID IS NULL OR si.SalonID = @legacySalonId)
       `);
 
     if (result.recordset.length === 0) {
