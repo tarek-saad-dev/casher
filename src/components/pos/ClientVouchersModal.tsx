@@ -80,13 +80,10 @@ export default function ClientVouchersModal({
 }: ClientVouchersModalProps) {
   const [vouchers, setVouchers] = useState<VoucherItem[]>([]);
   const [loading, setLoading] = useState(false);
-  const [usingId, setUsingId] = useState<number | null>(null);
-  const [usedIds, setUsedIds] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     if (!open || !clientId) return;
     setLoading(true);
-    setUsedIds(new Set());
 
     fetch(`/api/pos/client-inventory?clientId=${clientId}`)
       .then(r => r.json())
@@ -104,29 +101,8 @@ export default function ClientVouchersModal({
       .finally(() => setLoading(false));
   }, [open, clientId]);
 
-  const handleUse = async (v: VoucherItem) => {
-    setUsingId(v.inventoryId);
-    try {
-      const res = await fetch('/api/pos/client-inventory/use', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ inventoryId: v.inventoryId }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.ok) {
-        console.error('[ClientVouchersModal] use failed:', data.error);
-        return;
-      }
-      // Mark as used locally — removes it from active list
-      setUsedIds(prev => new Set(prev).add(v.inventoryId));
-      // Notify parent to apply discount / effect on invoice
-      if (onUseVoucher) {
-        onUseVoucher(v.inventoryId, v.item.itemType, v.item.value, v.item.nameAr);
-      }
-    } finally {
-      setUsingId(null);
-    }
-  };
+  // CUT CLUB V2: do not mark a voucher USED before the invoice is saved.
+  // Staff can verify it through the new guarded cashier workflow instead.
 
   if (!open) return null;
 
@@ -159,6 +135,9 @@ export default function ClientVouchersModal({
 
         {/* Content */}
         <div className="p-4 max-h-[70vh] overflow-y-auto space-y-2.5">
+          <p className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs leading-6 text-foreground">
+            للحفاظ على حق العميل، عرض القسيمة هنا لا يستهلكها. لازم الفاتورة تتحفظ أولًا وبعدها تتأكد من الاستخدام في CUT CLUB للكاشير.
+          </p>
           {loading ? (
             <div className="flex flex-col gap-2.5">
               {[1, 2, 3].map(i => (
@@ -172,7 +151,7 @@ export default function ClientVouchersModal({
             </div>
           ) : (
             vouchers.map(v => {
-              const used = usedIds.has(v.inventoryId);
+              const used = false; // No optimistic voucher consumption before invoice settlement.
               return (
                 <div
                   key={v.inventoryId}
@@ -216,13 +195,12 @@ export default function ClientVouchersModal({
                         <span>تم</span>
                       </div>
                     ) : onUseVoucher ? (
-                      <button
-                        onClick={() => handleUse(v)}
-                        disabled={usingId === v.inventoryId}
-                        className="shrink-0 mt-1 px-3 py-1.5 rounded-lg bg-primary hover:bg-primary-hover text-primary-foreground text-xs font-bold transition-colors disabled:opacity-50"
+                      <a
+                        href="/cashier/cut-club"
+                        className="shrink-0 mt-1 rounded-lg border border-primary/30 bg-primary/10 px-3 py-1.5 text-xs font-bold text-primary hover:bg-primary/20"
                       >
-                        تطبيق
-                      </button>
+                        فحص آمن
+                      </a>
                     ) : null}
                   </div>
 
@@ -243,7 +221,7 @@ export default function ClientVouchersModal({
         {vouchers.length > 0 && (
           <div className="px-5 py-3 border-t border-border flex items-center justify-between">
             <p className="text-xs text-muted-foreground">
-              {vouchers.filter(v => !usedIds.has(v.inventoryId)).length} مكافأة متاحة
+              {vouchers.length} مكافأة للعرض — لا يتم الاستخدام قبل حفظ الفاتورة
             </p>
             <button onClick={onClose} className="text-xs text-muted-foreground hover:text-foreground transition-colors">
               إغلاق
