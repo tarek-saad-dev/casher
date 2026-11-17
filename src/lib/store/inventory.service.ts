@@ -23,9 +23,15 @@ import { isValidClientId, isValidInventoryId } from "./store.validators";
 export async function getClientInventory(
   clientId: number,
   status: string = "ACTIVE",
+  /** null explicitly filters to globally scoped items; undefined retains old internal behavior. */
+  legacySalonId?: number | null,
 ): Promise<InventoryItemWithDetails[]> {
   if (!isValidClientId(clientId)) {
     throw new Error("Invalid client ID");
+  }
+  if (legacySalonId !== undefined && legacySalonId !== null &&
+      (!Number.isSafeInteger(legacySalonId) || legacySalonId <= 0)) {
+    throw new Error("Invalid trusted legacy SalonID");
   }
 
   const db = await getPool();
@@ -33,6 +39,11 @@ export async function getClientInventory(
   let whereClause = "ci.ClientID = @clientId";
   if (status !== "ALL") {
     whereClause += " AND ci.Status = @status";
+  }
+  // Staff POS uses an independently verified BranchID -> SalonID map. Always
+  // restrict in SQL, before returning voucher code or customer PII.
+  if (legacySalonId !== undefined) {
+    whereClause += " AND (si.SalonID IS NULL OR (@legacySalonId IS NOT NULL AND si.SalonID = @legacySalonId))";
   }
 
   const query = `
@@ -86,6 +97,9 @@ export async function getClientInventory(
 
   if (status !== "ALL") {
     request.input("status", sql.NVarChar(30), status);
+  }
+  if (legacySalonId !== undefined) {
+    request.input("legacySalonId", sql.Int, legacySalonId);
   }
 
   const result = await request.query(query);
