@@ -82,10 +82,13 @@ export function createSqlCutClubCustomerAuthority(pool: sql.ConnectionPool): Cut
           `);
         // Never return phone/name/loyalty balance; only tenant-owned IDs and
         // active flag. Two matches => caller bindVerifiedCustomer DENIES.
-        return r.recordset.filter(row => positive(row.ClientID) &&
-          typeof row.TenantId === "string" &&
-          row.TenantId.toLowerCase() === trustedTenantId.toLowerCase()
-        ).map(row => Object.freeze({
+        // A mixed/corrupt dataset must never silently discard foreign rows
+        // and incorrectly turn an ambiguous phone into one authorized match.
+        if (r.recordset.some(row => !positive(row.ClientID) ||
+            typeof row.TenantId !== "string" ||
+            row.TenantId.toLowerCase() !== trustedTenantId.toLowerCase()))
+          return [];
+        return r.recordset.map(row => Object.freeze({
           customerId: row.ClientID,
           tenantId: trustedTenantId,
           active: row.Active === true || row.Active === 1,
