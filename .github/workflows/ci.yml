@@ -83,6 +83,9 @@ jobs:
           src/lib/__tests__/cutClubLegacyPhoneLookupQuarantine.test.ts
           --reporter=default
 
+      - name: CUT CLUB WhatsApp OTP transport sandbox tests (no message sent)
+        run: npx vitest run src/lib/__tests__/cutClubWhatsAppOtpProvider.test.ts --reporter=default
+
       - name: CUT CLUB V2 production metadata and POS branch ownership
         run: >-
           npx vitest run
