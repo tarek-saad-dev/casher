@@ -13,6 +13,7 @@ import { getPool, sql } from "@/lib/db";
 import { authenticate, isAuthResult } from "@/lib/api-auth";
 import { validateUserBranchAccess } from "@/lib/branch";
 import { resolveTrustedLegacySalonId } from "@/lib/cut-club/cashierSalonMap";
+import { isCutClubCashierBranchApproved } from "@/lib/cut-club/cashierProductionBranchPolicy";
 
 export const runtime = "nodejs";
 
@@ -43,14 +44,12 @@ export async function GET(
 
   try {
     const access = await validateUserBranchAccess(auth.userId, auth.activeBranchId);
-    if (!access.canOperate) return NextResponse.json({ ok: false, error: "غير مصرح" },
+    if (!access.canOperate || !isCutClubCashierBranchApproved({ trustedTenantId: auth.tenantId, trustedBranchId: auth.activeBranchId })) return NextResponse.json({ ok: false, error: "غير مصرح" },
       { status: 403, headers: corsHeaders });
     const legacySalonId = resolveTrustedLegacySalonId({
       trustedTenantId: auth.tenantId, trustedBranchId: auth.activeBranchId,
     });
-    if (legacySalonId === null) return NextResponse.json({
-      ok: false, error: "يجب مراجعة ربط الصالون بالفرع أولًا",
-    }, { status: 503, headers: corsHeaders });
+    // Null map is scoped to global rewards ONLY by getClientInventory().
     const { searchParams } = new URL(req.url);
     const clientIdParam = searchParams.get("clientId");
 
