@@ -15,9 +15,7 @@ import { authenticate, isAuthResult } from "@/lib/api-auth";
 export const runtime = "nodejs";
 
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  "Cache-Control": "private, no-store, max-age=0",
 };
 
 export async function OPTIONS(): Promise<NextResponse> {
@@ -72,12 +70,14 @@ export async function GET(
       .input("phone", sql.NVarChar(20), phone)
       .input("tenantId", sql.UniqueIdentifier, auth.tenantId)
       .query(`
-        SELECT ClientID, Name
+        SELECT TOP (2) ClientID, Name
         FROM [dbo].[TblClient]
         WHERE TenantId = @tenantId AND Mobile = @phone
       `);
 
-    if (clientResult.recordset.length === 0) {
+    // Two customers sharing one phone must never be silently conflated.
+    // Do not leak which accounts are duplicated; manager resolves this.
+    if (clientResult.recordset.length !== 1) {
       return NextResponse.json(
         { ok: false, error: "لم يتم العثور على عميل بهذا الرقم" },
         { status: 404, headers: corsHeaders },
