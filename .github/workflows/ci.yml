@@ -83,6 +83,9 @@ jobs:
           src/lib/__tests__/cutClubLegacyPhoneLookupQuarantine.test.ts
           --reporter=default
 
+      - name: CUT CLUB V2 cashier UI interaction and invoice confirmation
+        run: npx vitest run src/lib/__tests__/cutClubCashierScreen.test.tsx --reporter=default
+
       - name: CUT CLUB V2 verified client voucher code ownership gates
         run: npx vitest run src/lib/__tests__/cutClubClientVoucherHandoff.test.ts --reporter=default
 
