@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from "next/server";
 import type { StoreErrorResponse } from "@/lib/store/store.types";
 import { getPool, sql } from "@/lib/db";
 import { requireTenantSession } from '@/lib/api-auth';
+import { validateUserBranchAccess } from '@/lib/branch';
 import { resolveTrustedLegacySalonId } from '@/lib/cut-club/cashierSalonMap';
 
 export const runtime = "nodejs";
@@ -53,6 +54,9 @@ export async function GET(
   const tenantSession = await requireTenantSession();
   if (tenantSession instanceof NextResponse) return tenantSession as NextResponse<StoreErrorResponse>;
   try {
+    const branch = await validateUserBranchAccess(tenantSession.UserID, tenantSession.ActiveBranchID);
+    if (!branch.canOperate) return NextResponse.json({ ok: false, error: "غير مصرح" },
+      { status: 403, headers: corsHeaders });
     const { searchParams } = new URL(req.url);
     const code = searchParams.get("code")?.trim().toUpperCase();
 
