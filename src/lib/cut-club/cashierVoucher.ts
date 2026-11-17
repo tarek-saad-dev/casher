@@ -15,7 +15,8 @@ import sql from "mssql";
 export type CashierScope = Readonly<{
   tenantId: string;
   activeBranchId: number;
-  legacySalonId: number;
+  /** null means ONLY rewards explicitly marked global (si.SalonID IS NULL). */
+  legacySalonId: number | null;
   staffUserId: number;
 }>;
 export type CashierVoucher = Readonly<{
@@ -45,7 +46,7 @@ const validUuid = (x: unknown): x is string =>
 const validCode = (x: unknown): x is string =>
   typeof x === "string" && /^[A-Z0-9-]{6,100}$/.test(x);
 export const validCashierScope = (x: CashierScope): boolean =>
-  validUuid(x.tenantId) && validId(x.activeBranchId) && validId(x.legacySalonId) && validId(x.staffUserId);
+  validUuid(x.tenantId) && validId(x.activeBranchId) && (x.legacySalonId === null || validId(x.legacySalonId)) && validId(x.staffUserId);
 export const CASHIER_REDEEM_FLAG = "CUT_CLUB_CASHIER_V2_REDEEM_ENABLED";
 
 export function allowCashierConsume(input: Readonly<{
@@ -76,7 +77,7 @@ FROM dbo.TblClientInventory ci
 JOIN dbo.TblClient c ON c.ClientID=ci.ClientID
 JOIN dbo.TblLoyaltyStoreItem si ON si.ItemID=ci.ItemID
 WHERE ci.VoucherCode=@code AND c.TenantId=@tenantId
-  AND (si.SalonID IS NULL OR si.SalonID=@legacySalonId)
+  AND (si.SalonID IS NULL OR (@legacySalonId IS NOT NULL AND si.SalonID=@legacySalonId))
 `;
 const lookupForUpdate = lookupQuery.replace(
   "dbo.TblClientInventory ci",
