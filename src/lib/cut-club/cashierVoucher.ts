@@ -198,6 +198,28 @@ export async function consumeCashierVoucher(input: Readonly<{
       `);
     if (invoice.recordset.length !== 1) throw Error("CUT_CLUB_INVOICE_NOT_OWNED");
 
+    // A zero-priced service can be a manager comp, not a voucher redemption.
+    // An exact voucher-specific invoice claim must be saved atomically WITH
+    // the POS sale. Without the independently installed staging-only claim
+    // table and reviewed invoice hook this query fails closed; do NOT enable
+    // the live redemption flag to work around this requirement.
+    const claim = await new sql.Request(tx)
+      .input("inventoryId", sql.Int, v.InventoryID)
+      .input("tenantId", sql.UniqueIdentifier, input.scope.tenantId)
+      .input("clientId", sql.Int, v.ClientID)
+      .input("branchId", sql.Int, input.scope.activeBranchId)
+      .input("invoiceId", sql.Int, input.invoiceId)
+      .input("serviceId", sql.Int, serviceId)
+      .query<{ ClaimID: number }>(`
+        SELECT TOP (2) cl.ClaimID
+        FROM dbo.CutClubVoucherInvoiceClaim cl WITH (UPDLOCK, HOLDLOCK)
+        WHERE cl.TenantId=@tenantId AND cl.InventoryID=@inventoryId
+          AND cl.ClientID=@clientId AND cl.BranchID=@branchId
+          AND cl.InvID=@invoiceId AND cl.ServiceID=@serviceId
+          AND cl.Status=N'APPLIED'
+      `);
+    if (claim.recordset.length !== 1) throw Error("CUT_CLUB_INVOICE_CLAIM_REQUIRED");
+
     if (v.Status === "USED") {
       if (v.UsedInvID !== input.invoiceId) throw Error("CUT_CLUB_ALREADY_USED");
       await tx.commit();
