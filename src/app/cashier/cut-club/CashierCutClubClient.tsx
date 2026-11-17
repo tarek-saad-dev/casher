@@ -36,7 +36,7 @@ export default function CashierCutClubClient({ branchName, readEnabled, redempti
   async function lookup(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!readEnabled || !validCode(normalizeCode(code))) return;
-    setBusy(true); setVoucher(null); setMsg(""); setApplied(false);
+    setBusy(true); setVoucher(null); setInvoiceId(""); setMsg(""); setApplied(false);
     try {
       const r = await fetch("/api/pos/cut-club/vouchers?code=" + encodeURIComponent(normalizeCode(code)), {
         credentials: "same-origin", cache: "no-store",
@@ -95,7 +95,7 @@ export default function CashierCutClubClient({ branchName, readEnabled, redempti
         <form onSubmit={lookup} className="flex flex-col gap-3 sm:flex-row">
           <label htmlFor="cut-voucher-code" className="sr-only">كود القسيمة</label>
           <input id="cut-voucher-code" autoComplete="off" value={code}
-            onChange={e => { setCode(e.target.value); setVoucher(null); setMsg(""); setApplied(false); }}
+            onChange={e => { setCode(e.target.value); setVoucher(null); setInvoiceId(""); setMsg(""); setApplied(false); }}
             placeholder="اكتب أو امسح كود القسيمة" maxLength={100}
             className="min-w-0 flex-1 rounded-xl border border-border bg-background p-3" />
           <button type="submit" disabled={!readEnabled || busy || !validCode(normalizeCode(code))}
