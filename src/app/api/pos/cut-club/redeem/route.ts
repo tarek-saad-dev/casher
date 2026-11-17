@@ -4,6 +4,7 @@ import { validateUserBranchAccess } from "@/lib/branch";
 import { getPool } from "@/lib/db";
 import { allowCashierConsume, consumeCashierVoucher, CASHIER_REDEEM_FLAG } from "@/lib/cut-club/cashierVoucher";
 import { resolveTrustedLegacySalonId } from "@/lib/cut-club/cashierSalonMap";
+import { isCutClubCashierBranchApproved } from "@/lib/cut-club/cashierProductionBranchPolicy";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,10 +30,10 @@ export async function POST(req: NextRequest) {
   if (!isAuthResult(staff)) return staff;
   try {
     const branch = await validateUserBranchAccess(staff.userId, staff.activeBranchId);
-    if (!branch.canOperate) return NextResponse.json({ ok: false, error: "غير مصرح" },
+    if (!branch.canOperate || !isCutClubCashierBranchApproved({ trustedTenantId: staff.tenantId, trustedBranchId: staff.activeBranchId })) return NextResponse.json({ ok: false, error: "غير مصرح" },
       { status: 403, headers });
     const legacySalonId = resolveTrustedLegacySalonId({ trustedTenantId: staff.tenantId, trustedBranchId: staff.activeBranchId });
-    if (legacySalonId === null) return NextResponse.json({ ok: false, error: "ربط الصالون بالفرع غير معتمد" }, { status: 503, headers });
+    // Null legacy mapping restricts SQL to globally scoped rewards; never infer SalonID from BranchID.
     const body: unknown = await req.json();
     if (body === null || typeof body !== "object" || Array.isArray(body)) {
       return NextResponse.json({ ok: false, error: "بيانات غير صحيحة" }, { status: 400, headers });
