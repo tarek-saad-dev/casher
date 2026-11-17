@@ -90,7 +90,7 @@ jobs:
         run: npx vitest run src/lib/__tests__/cutClubClientVoucherHandoff.test.ts --reporter=default
 
       - name: CUT CLUB V2 cashier voucher and invoice safety gates
-        run: npx vitest run src/lib/__tests__/cutClubCashierVoucherV2.test.ts --reporter=default
+        run: npx vitest run src/lib/__tests__/cutClubCashierVoucherV2.test.ts src/lib/__tests__/cutClubCashierSalonMapping.test.ts --reporter=default
 
       - name: CUT CLUB V2 atomic reward settlement and idempotency
         run: npx vitest run src/lib/__tests__/cutClubRewardSettlement.test.ts src/lib/__tests__/cutClubGrowthSchemaSafety.test.ts --reporter=default
