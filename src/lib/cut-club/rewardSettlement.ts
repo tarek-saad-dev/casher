@@ -18,6 +18,9 @@ export type RewardItemForPurchase = Readonly<{
   itemId: number;
   priceCoins: number;
   isActive: boolean;
+  /** Entitlement must have a verifiable POS benefit BEFORE any Coins debit. */
+  itemType: string;
+  serviceId: number | null;
   requiresTierRank: number;
   unlimitedStock: boolean;
   expiresAfterDays: number | null;
@@ -123,7 +126,11 @@ export async function purchaseRewardWithVerifiedSession(input: Readonly<{
       }
       const item = await tx.findPublishedItem(owner, input.itemId);
       const member = await tx.lockMemberBalance(owner);
+      // Live last132 has 4 ACTIVE FREE_SERVICE rewards with ServiceID=NULL.
+      // Until service mapping and invoice settlement are approved, no customer
+      // should pay Coins for a voucher the cashier cannot honor.
       if (!item || !member || !item.isActive || item.itemId !== input.itemId ||
+          item.itemType !== "FREE_SERVICE" || !positive(item.serviceId) ||
           !positive(member.clientLoyaltyId) || !positive(member.tierRank) ||
           !positive(item.requiresTierRank) ||
           !coin(item.priceCoins) || item.priceCoins <= 0 ||
