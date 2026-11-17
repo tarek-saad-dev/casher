@@ -11,13 +11,12 @@ import { requireTenantSession } from '@/lib/api-auth';
 export const runtime = "nodejs";
 
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  "Cache-Control": "private, no-store, max-age=0",
+  "X-Robots-Tag": "noindex",
 };
 
 export async function OPTIONS(): Promise<NextResponse> {
-  return new NextResponse(null, { status: 204, headers: corsHeaders });
+  return NextResponse.json({ ok: false }, { status: 405, headers: corsHeaders });
 }
 
 interface VoucherLookupResponse {
@@ -56,7 +55,7 @@ export async function GET(
     const { searchParams } = new URL(req.url);
     const code = searchParams.get("code")?.trim().toUpperCase();
 
-    if (!code) {
+    if (!code || !/^[A-Z0-9-]{6,100}$/.test(code)) {
       return NextResponse.json(
         { ok: false, error: "code is required" },
         { status: 400, headers: corsHeaders },
@@ -68,6 +67,8 @@ export async function GET(
     const result = await db
       .request()
       .input("code", sql.NVarChar(100), code)
+      .input("tenantId", sql.UniqueIdentifier, tenantSession.TenantId)
+      .input("branchId", sql.Int, tenantSession.ActiveBranchID)
       .query(`
         SELECT
           ci.InventoryID,
@@ -87,7 +88,8 @@ export async function GET(
         FROM [dbo].[TblClientInventory] ci
         INNER JOIN [dbo].[TblClient]         c  ON c.ClientID  = ci.ClientID
         INNER JOIN [dbo].[TblLoyaltyStoreItem] si ON si.ItemID = ci.ItemID
-        WHERE ci.VoucherCode = @code
+        WHERE ci.VoucherCode = @code AND c.TenantId = @tenantId
+          AND (si.SalonID IS NULL OR si.SalonID = @branchId)
       `);
 
     if (result.recordset.length === 0) {
