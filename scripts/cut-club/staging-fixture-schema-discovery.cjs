@@ -48,6 +48,19 @@ if (e.LOCAL_DB_NAME !== "last132_agent" || e.LOCAL_DB_USER !== "drvo_agent" ||
       WHERE pt.name IN (N'TblPro',N'TblClient',N'TblClientInventory',
                         N'TblLoyaltyStoreItem',N'TblInventoryUsageLog')
       ORDER BY pt.name,pc.name;
+      SELECT ProID,
+        CASE WHEN TenantId='413d433e-f36b-1410-8820-009ec495c7e1'
+          THEN 'APPROVED_TENANT' ELSE 'OTHER_TENANT' END AS TenantScope,
+        isDeleted
+      FROM dbo.TblPro WHERE ProID IN (9,11,22,39)
+      ORDER BY ProID;
+      SELECT ItemID, ItemType, SalonID, IsActive, ServiceID, CategoryID,
+        PriceCoins
+      FROM dbo.TblLoyaltyStoreItem WHERE ItemID IN (15,16,17,18)
+      ORDER BY ItemID;
+      SELECT COUNT_BIG(*) AS TenantClientCount
+      FROM dbo.TblClient
+      WHERE TenantId='413d433e-f36b-1410-8820-009ec495c7e1';
     `);
     console.log("=== CUT CLUB STAGING SYNTHETIC-FIXTURE SCHEMA (metadata ONLY) ===");
     for (const row of result.recordsets[0]) {
@@ -55,7 +68,13 @@ if (e.LOCAL_DB_NAME !== "last132_agent" || e.LOCAL_DB_USER !== "drvo_agent" ||
     }
     console.log("=== FK RELATIONSHIPS ===");
     for (const row of result.recordsets[1]) console.log(JSON.stringify(row));
-    console.log("STAGING_FIXTURE_DISCOVERY: complete (NO customer data queried)");
+    console.log("=== APPROVED SERVICE ID COLLISIONS (no customer data) ===");
+    for (const row of result.recordsets[2]) console.log(JSON.stringify(row));
+    console.log("=== APPROVED REWARD ITEM METADATA ===");
+    for (const row of result.recordsets[3]) console.log(JSON.stringify(row));
+    console.log("=== STAGING TENANT CLIENT COUNT ===");
+    console.log(JSON.stringify(result.recordsets[4][0]));
+    console.log("STAGING_FIXTURE_DISCOVERY: complete (NO customer rows queried)");
   } finally { await pool.close(); }
 })().catch(err => {
   console.error("STAGING_FIXTURE_DISCOVERY_FAILED:",err.code || "CONNECTION_OR_SCHEMA_ERROR");
