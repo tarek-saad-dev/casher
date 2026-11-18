@@ -22,7 +22,7 @@ jobs:
     environment: drvo-staging
     timeout-minutes: 12
     env:
-      STAGING_HOST: ${{ secrets.DRVO_STAGING_SSH_HOST }}
+      STAGING_HOST: ${{ secrets.STAGING_HOST || secrets.DRVO_STAGING_SSH_HOST }}
       STAGING_SSH_KEY: ${{ secrets.DRVO_STAGING_SSH_KEY }}
       STAGING_KNOWN_HOSTS: ${{ secrets.STAGING_KNOWN_HOSTS }}
       LOCAL_DB_SERVER: '127.0.0.1'
