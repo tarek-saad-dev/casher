@@ -45,7 +45,7 @@ describe("CUT CLUB owner-approved live reward-service mappings (STAGING ONLY)", 
     expect(src).toContain("si.SalonID IS NULL");
     expect(src).toContain("c.TenantId=@tenantId");
     expect(src).toContain("ci.ClientID=@clientId");
-    expect(src).toContain("p.isDeleted=0");
+    expect(src).toContain("AND isDeleted=0");
   });
   it("both POS and legacy route save claim BEFORE commit; unauthenticated caller cannot supply scope", () => {
     const api=source("src/app/api/sales/route.ts");
