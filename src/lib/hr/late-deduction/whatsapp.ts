@@ -5,9 +5,6 @@ import { sendMessage } from '@/modules/messaging';
 import { resolveEmployeeWhatsAppPhone } from '@/lib/integrations/whatsapp/payload-builders';
 import { runWithMessagingTenantForBranch } from '@/modules/messaging/tenancy/branchTenantScope';
 
-let lateDeductionWhatsAppChain: Promise<void> = Promise.resolve();
-const QUEUE_GAP_MS = 2000;
-
 async function fetchEmployeePhone(
   empId: number,
   branchId?: number,
@@ -76,6 +73,11 @@ export async function sendLateDeductionWhatsApp(params: {
   text: string;
   metadata?: Record<string, unknown>;
 }): Promise<{ sent: boolean; skipped?: boolean; reason?: string }> {
+  // Block old pre-arrival alerts at the last messaging boundary too.
+  if (params.metadata?.event !== 'final_deduction' &&
+      params.metadata?.event !== 'manager_decision') {
+    return { sent: false, skipped: true, reason: 'non_penalty_event' };
+  }
   try {
     // Messaging transport requires an explicit tenant scope (DRVO-018).
     // Attendance/cron callers often have none — bind by operating branch.
@@ -96,22 +98,3 @@ export async function sendLateDeductionWhatsApp(params: {
   }
 }
 
-/** Non-blocking queue — attendance/payroll must continue if WhatsApp fails. */
-export function scheduleLateDeductionWhatsApp(params: {
-  empId: number;
-  branchId?: number;
-  text: string;
-  metadata?: Record<string, unknown>;
-}): void {
-  lateDeductionWhatsAppChain = lateDeductionWhatsAppChain
-    .then(async () => {
-      await sendLateDeductionWhatsApp(params);
-      await new Promise((r) => setTimeout(r, QUEUE_GAP_MS));
-    })
-    .catch((err) => {
-      console.warn(
-        '[late-deduction-whatsapp] queue error:',
-        err instanceof Error ? err.message : String(err),
-      );
-    });
-}

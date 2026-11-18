@@ -1,93 +1,36 @@
 import { describe, expect, it } from 'vitest';
 import {
-  buildExemptCheckInLateMessage,
   buildFinalDeductionMessage,
-  buildLateAlertMessage,
+  buildManagerDecisionEmployeeMessage,
+  buildLateDeductionLedgerNote,
 } from '../messages';
 
-describe('late deduction WhatsApp message builders', () => {
-  it('minute-1 alert includes quarter-day warning and amount', () => {
-    const msg = buildLateAlertMessage({
-      threshold: 1,
-      scheduledStart: '12:00',
-      lateMinutes: 1,
-      quarterAmount: 75,
-      halfAmount: 150,
-      exempt: false,
-    });
-    expect(msg).toContain('Late Attendance Alert');
-    expect(msg).toContain('quarter-day deduction bracket');
-    expect(msg).toContain('75.00 EGP');
-  });
-
-  it('minute-61 alert mentions half-day increase', () => {
-    const msg = buildLateAlertMessage({
-      threshold: 61,
-      scheduledStart: '12:00',
-      lateMinutes: 61,
-      quarterAmount: 75,
-      halfAmount: 150,
-      exempt: false,
-    });
-    expect(msg).toContain('half-day deduction');
-    expect(msg).toContain('150.00 EGP');
-  });
-
-  it('minute-121 alert escalates to management without claiming an amount', () => {
-    const msg = buildLateAlertMessage({
-      threshold: 121,
-      scheduledStart: '12:00',
-      lateMinutes: 121,
-      quarterAmount: 75,
-      halfAmount: 150,
-      exempt: false,
-    });
-    expect(msg).toContain('referred to management');
-    expect(msg).not.toContain('Potential deduction');
-  });
-
-  it('exempt employees do not receive financial penalty warnings', () => {
-    const msg = buildLateAlertMessage({
-      threshold: 1,
-      scheduledStart: '12:00',
-      lateMinutes: 1,
-      quarterAmount: 75,
-      halfAmount: 150,
-      exempt: true,
-    });
-    expect(msg).toContain('Attendance Reminder');
-    expect(msg).not.toContain('deduction');
-    expect(msg).not.toContain('EGP');
-  });
-
-  it('final confirmation includes amount and type', () => {
+describe('late deduction employee notifications — Arabic financial debit only', () => {
+  it.each([
+    ['quarter', 'ربع يوم', 75],
+    ['half', 'نصف يوم', 150],
+  ] as const)('final %s deduction is Arabic only and states minutes/amount', (bracket, type, amount) => {
     const msg = buildFinalDeductionMessage({
-      checkInTime: '12:20',
-      lateMinutes: 20,
-      amount: 75,
-      bracket: 'quarter',
+      checkInTime: '12:20', lateMinutes: 20, amount, bracket,
     });
-    expect(msg).toContain('تم تسجيل الحضور');
-    expect(msg).toContain('Attendance Recorded');
-    expect(msg).toContain('75.00');
-    expect(msg).toContain('ربع يوم');
+    expect(msg).toContain('مدة التأخير: *20 دقيقة*');
+    expect(msg).toContain('قيمة الخصم:');
+    expect(msg).toContain(type);
+    expect(msg).toContain(amount.toFixed(2));
+    expect(msg).not.toMatch(/Attendance|Check-in|Late duration|EGP|Escalation|Potential/i);
   });
 
-  it('exempt check-in message does not claim a deduction', () => {
-    const msg = buildExemptCheckInLateMessage({
-      checkInTime: '12:20',
-      lateMinutes: 20,
-    });
-    expect(msg).toContain('No automatic late deduction was applied');
+  it('manager-approved positive deduction is Arabic only', () => {
+    const msg = buildManagerDecisionEmployeeMessage({ lateMinutes: 135, amount: 200 });
+    expect(msg).toContain('مدة التأخير: *135 دقيقة*');
+    expect(msg).toContain('قرار إداري');
+    expect(msg).toContain('200.00');
+    expect(msg).not.toMatch(/Attendance|Check-in|Escalation|EGP|Potential/i);
   });
 
-  it('manager-review employee ack does not ask the employee to enter a penalty', async () => {
-    const { buildManagerReviewEmployeeAckMessage } = await import('../messages');
-    const msg = buildManagerReviewEmployeeAckMessage({
-      checkInTime: '14:10',
-      lateMinutes: 130,
-    });
-    expect(msg).toContain('referred to management');
-    expect(msg).not.toContain('Please enter the final penalty');
+  it('ledger retains work date and actual lateness', () => {
+    expect(buildLateDeductionLedgerNote({
+      workDate: '2026-11-18', lateMinutes: 15, kind: 'quarter',
+    })).toContain('15 دقيقة');
   });
 });

@@ -14,11 +14,7 @@ import {
   upsertLateDeductionLedgerEntry,
   voidLateDeductionLedgerEntry,
 } from './ledger';
-import {
-  buildExemptCheckInLateMessage,
-  buildFinalDeductionMessage,
-  buildManagerReviewEmployeeAckMessage,
-} from './messages';
+import { buildFinalDeductionMessage } from './messages';
 import {
   claimFinalNotified,
   findLateDeductionCase,
@@ -52,10 +48,10 @@ async function sendFinalConfirmationOnce(params: {
   nextLateMinutes?: number | null;
   alreadyNotifiedAt?: string | null;
 }): Promise<void> {
-  const amountChanged =
-    params.previousAmount != null &&
-    params.nextAmount != null &&
-    Number(params.previousAmount) !== Number(params.nextAmount);
+  // A prior warning/ack may have claimed this slot before a real debit.
+  const amountChanged = params.nextAmount != null && Number(params.nextAmount) > 0 &&
+    (params.previousAmount == null ||
+     Number(params.previousAmount) !== Number(params.nextAmount));
   const lateChanged =
     params.previousLateMinutes != null &&
     params.nextLateMinutes != null &&
@@ -254,12 +250,12 @@ export async function finalizeLateDeductionOnCheckIn(
   const exempt = await isEmployeeLateDeductionExempt(db, input.empId);
   const bracket = resolveLateDeductionBracket(lateMinutes);
 
-  if (lateMinutes <= 0) {
+  if (bracket === 'none') {
     if (existing?.ledgerEntryId || existing?.attendanceId) {
       await voidLateDeductionLedgerEntry(db, {
         attendanceId: input.attendanceId,
         branchId: input.branchId,
-        voidReason: 'إلغاء خصم التأخير — لم يعد متأخراً بعد تصحيح الحضور',
+        voidReason: 'إلغاء خصم التأخير — التأخير أقل من 15 دقيقة',
       });
     }
     const row = await upsertLateDeductionCase(db, {
@@ -269,7 +265,7 @@ export async function finalizeLateDeductionOnCheckIn(
       attendanceId: input.attendanceId,
       scheduledStart,
       scheduledEnd,
-      lateMinutes: 0,
+      lateMinutes,
       deductionKind: 'none',
       status: 'skipped',
       dailyBasePay: existing?.dailyBasePay ?? null,
@@ -278,12 +274,12 @@ export async function finalizeLateDeductionOnCheckIn(
     });
     return {
       handled: true,
-      reason: 'on_time',
+      reason: lateMinutes === 0 ? 'on_time' : 'within_grace_period',
       caseId: row.caseId,
       status: 'skipped',
       bracket: 'none',
       amount: null,
-      lateMinutes: 0,
+      lateMinutes,
     };
   }
 
@@ -309,24 +305,6 @@ export async function finalizeLateDeductionOnCheckIn(
       amount: null,
       ledgerEntryId: null,
     });
-    if (!input.suppressWhatsApp) {
-      await sendFinalConfirmationOnce({
-        db,
-        caseId: row.caseId,
-        empId: input.empId,
-        branchId: input.branchId,
-        text: buildExemptCheckInLateMessage({
-          checkInTime,
-          lateMinutes,
-        }),
-        event: 'exempt_checkin',
-        previousAmount: existing?.amount,
-        previousLateMinutes: existing?.lateMinutes,
-        nextAmount: null,
-        nextLateMinutes: lateMinutes,
-        alreadyNotifiedAt: existing?.notifiedFinalAt,
-      });
-    }
     return {
       handled: true,
       caseId: row.caseId,
@@ -367,24 +345,6 @@ export async function finalizeLateDeductionOnCheckIn(
       amount: null,
       ledgerEntryId: null,
     });
-    if (!input.suppressWhatsApp) {
-      await sendFinalConfirmationOnce({
-        db,
-        caseId: row.caseId,
-        empId: input.empId,
-        branchId: input.branchId,
-        text: buildManagerReviewEmployeeAckMessage({
-          checkInTime,
-          lateMinutes,
-        }),
-        event: 'missing_pay_data',
-        previousAmount: existing?.amount,
-        previousLateMinutes: existing?.lateMinutes,
-        nextAmount: null,
-        nextLateMinutes: lateMinutes,
-        alreadyNotifiedAt: existing?.notifiedFinalAt,
-      });
-    }
     return {
       handled: true,
       reason: pay.reason ?? 'missing_pay_data',
@@ -418,24 +378,6 @@ export async function finalizeLateDeductionOnCheckIn(
       amount: null,
       ledgerEntryId: null,
     });
-    if (!input.suppressWhatsApp) {
-      await sendFinalConfirmationOnce({
-        db,
-        caseId: row.caseId,
-        empId: input.empId,
-        branchId: input.branchId,
-        text: buildManagerReviewEmployeeAckMessage({
-          checkInTime,
-          lateMinutes,
-        }),
-        event: 'manager_review',
-        previousAmount: existing?.amount,
-        previousLateMinutes: existing?.lateMinutes,
-        nextAmount: null,
-        nextLateMinutes: lateMinutes,
-        alreadyNotifiedAt: existing?.notifiedFinalAt,
-      });
-    }
     return {
       handled: true,
       caseId: row.caseId,

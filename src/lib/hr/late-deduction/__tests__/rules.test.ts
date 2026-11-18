@@ -4,16 +4,20 @@ import {
   dailyBasePayFromHourly,
   dailyBasePayFromMonthlySalary,
   resolveLateDeductionBracket,
-  thresholdsDueForLateMinutes,
-  alertThresholdReached,
 } from '../rules';
 
 describe('resolveLateDeductionBracket boundaries', () => {
   it('0 minutes → none', () => {
     expect(resolveLateDeductionBracket(0)).toBe('none');
   });
-  it('1 minute → quarter', () => {
-    expect(resolveLateDeductionBracket(1)).toBe('quarter');
+  it.each([1, 5, 14])('%i minutes → grace, no deduction', (minutes) => {
+    expect(resolveLateDeductionBracket(minutes)).toBe('none');
+    expect(calculateLateDeductionAmount({ lateMinutes: minutes, dailyBasePay: 300 })).toEqual({
+      bracket: 'none', amount: null, fraction: null,
+    });
+  });
+  it('15 minutes → quarter', () => {
+    expect(resolveLateDeductionBracket(15)).toBe('quarter');
   });
   it('60 minutes → quarter', () => {
     expect(resolveLateDeductionBracket(60)).toBe('quarter');
@@ -96,21 +100,3 @@ describe('hourly scheduled daily base', () => {
   });
 });
 
-describe('progressive alert thresholds', () => {
-  it('minute 1 due', () => {
-    expect(alertThresholdReached(1)).toBe(1);
-    expect(thresholdsDueForLateMinutes(1)).toEqual([1]);
-  });
-  it('minute 61 due includes 1 and 61', () => {
-    expect(alertThresholdReached(61)).toBe(61);
-    expect(thresholdsDueForLateMinutes(61)).toEqual([1, 61]);
-  });
-  it('minute 121 due includes all three', () => {
-    expect(alertThresholdReached(121)).toBe(121);
-    expect(thresholdsDueForLateMinutes(121)).toEqual([1, 61, 121]);
-  });
-  it('on time → no thresholds', () => {
-    expect(alertThresholdReached(0)).toBeNull();
-    expect(thresholdsDueForLateMinutes(0)).toEqual([]);
-  });
-});

@@ -43,6 +43,17 @@ describe('sendLateDeductionWhatsApp tenant scope', () => {
     });
   });
 
+  it('rejects obsolete attendance warnings and escalation even with a recipient', async () => {
+    const { sendLateDeductionWhatsApp } = await import('../whatsapp');
+    for (const event of ['alert_1', 'alert_61', 'alert_121', 'manager_review', 'exempt_checkin']) {
+      expect(await sendLateDeductionWhatsApp({
+        empId: 42, branchId: 10, text: 'رسالة ممنوعة', metadata: { event },
+      })).toMatchObject({ sent: false, skipped: true, reason: 'non_penalty_event' });
+    }
+    expect(m.runWithBranch).not.toHaveBeenCalled();
+    expect(m.sendMessage).not.toHaveBeenCalled();
+  });
+
   it('binds messaging tenant from branch before sendMessage', async () => {
     const { sendLateDeductionWhatsApp } = await import('../whatsapp');
     await expect(

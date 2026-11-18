@@ -1,30 +1,13 @@
 import 'server-only';
 
 import { getPool, sql } from '@/lib/db';
-import { getCairoBusinessDate, getCairoTimeStr } from '@/lib/businessDate';
-import { calcLateMinutes } from '@/lib/timeUtils';
-import { financialScheduleDayOfWeek, resolveFinancialWorkScheduleRow } from './financialWorkSchedule';
-import { isLateDeductionExcludedAttendanceStatus } from './attendanceStatus';
+import { getCairoBusinessDate } from '@/lib/businessDate';
 import {
   getLateDeductionConfig,
   isWorkDateEligibleForLateDeduction,
 } from './config';
-import { resolveLateDeductionDailyBasePay } from './dailyBasePay';
-import { buildLateAlertMessage } from './messages';
-import {
-  findLateDeductionCase,
-  markThresholdNotified,
-  releaseThresholdNotified,
-  upsertLateDeductionCase,
-} from './repository';
-import {
-  calculateLateDeductionAmount,
-  thresholdsDueForLateMinutes,
-  type LateAlertThreshold,
-} from './rules';
 import { recoverPendingLateDeductionFinalizations } from './recoverFinalizations';
 import { isLateDeductionSchemaReady } from './schema';
-import { scheduleLateDeductionWhatsApp, sendLateDeductionWhatsApp } from './whatsapp';
 
 const SCAN_LOCK_RESOURCE = 'late_deduction_alert_scan';
 
@@ -75,29 +58,12 @@ async function withScanLock<T>(
   }
 }
 
-function alreadyNotified(
-  row: {
-    notifiedAt1: string | null;
-    notifiedAt61: string | null;
-    notifiedAt121: string | null;
-  } | null,
-  threshold: LateAlertThreshold,
-): boolean {
-  if (!row) return false;
-  if (threshold === 1) return !!row.notifiedAt1;
-  if (threshold === 61) return !!row.notifiedAt61;
-  return !!row.notifiedAt121;
-}
-
-/**
- * Scan scheduled employees who have not checked in and send progressive alerts.
- * Does NOT create financial deductions.
- */
+/** The old alert scanner is now recovery only; never sends pre-arrival messages. */
 export async function runLateDeductionAlertScan(params?: {
   businessDate?: string;
   branchId?: number;
   now?: Date;
-  /** When true, send immediately (cron); otherwise schedule. */
+  /** Deprecated: retained for cron callers; no pre-check-in sends. */
   sendInline?: boolean;
 }): Promise<LateAlertScanResult> {
   const locked = await withScanLock(async () => {
@@ -131,258 +97,9 @@ export async function runLateDeductionAlertScan(params?: {
       branchId: params?.branchId,
     });
 
-    const nowHhmm = getCairoTimeStr(now).slice(0, 5);
-    // Match the *business* workday, including 00:00–03:59 Cairo next calendar day.
-    const dayOfWeek = financialScheduleDayOfWeek(workDate);
-    if (dayOfWeek === null) {
-      return {
-        candidates: 0, notified: 0, errors: 1, workDate, reason: 'invalid_work_date',
-      } satisfies LateAlertScanResult;
-    }
-
-    const req = db
-      .request()
-      .input('workDate', sql.Date, workDate)
-      .input('dow', sql.Int, dayOfWeek)
-      .input('branchId', sql.Int, params?.branchId ?? null);
-
-    const employees = await req.query(`
-      SELECT
-        e.EmpID,
-        e.EmpName,
-        e.EmploymentType,
-        CONVERT(VARCHAR(5), e.DefaultCheckInTime, 108) AS DefaultCheckInTime,
-        CONVERT(VARCHAR(5), e.DefaultCheckOutTime, 108) AS DefaultCheckOutTime,
-        CASE
-          WHEN COL_LENGTH(N'dbo.TblEmp', N'LateDeductionExempt') IS NULL THEN CAST(0 AS bit)
-          ELSE ISNULL(e.LateDeductionExempt, 0)
-        END AS LateDeductionExempt,
-        a.BranchID AS HomeBranchID,
-        s.BranchID AS ScheduleBranchID,
-        fin.DayOfWeek AS ScheduleDayOfWeek,
-        fin.IsWorkingDay,
-        CONVERT(VARCHAR(5), fin.StartTime, 108) AS ScheduleStartTime,
-        CONVERT(VARCHAR(5), fin.EndTime, 108) AS ScheduleEndTime,
-        att.AttendanceID,
-        CONVERT(VARCHAR(8), att.CheckInTime, 108) AS CheckInTime,
-        att.Status AS AttendanceStatus
-      FROM dbo.TblEmp e
-      LEFT JOIN dbo.TblEmpWorkSchedule fin
-        ON fin.EmpID=e.EmpID AND fin.DayOfWeek=@dow
-      OUTER APPLY (
-        SELECT TOP 1 ea.BranchID
-        FROM dbo.TblEmpBranchAssignment ea
-        WHERE ea.EmpID = e.EmpID
-          AND ea.IsActive = 1
-          AND ISNULL(ea.IsHomeBranch, 0) = 1
-          AND (ea.EffectiveTo IS NULL OR ea.EffectiveTo >= @workDate)
-        ORDER BY ea.BranchID
-      ) a
-      OUTER APPLY (
-        SELECT TOP 1
-          bs.BranchID, bs.IsWorking, bs.StartTime, bs.EndTime
-        FROM dbo.TblEmpBranchWorkSchedule bs
-        WHERE bs.EmpID = e.EmpID
-          AND bs.DayOfWeek = @dow
-          AND bs.IsActive = 1
-          AND bs.EffectiveFrom <= @workDate
-          AND (bs.EffectiveTo IS NULL OR bs.EffectiveTo >= @workDate)
-          AND (@branchId IS NULL OR bs.BranchID = @branchId)
-        ORDER BY
-          CASE WHEN a.BranchID IS NOT NULL AND bs.BranchID = a.BranchID THEN 0 ELSE 1 END,
-          bs.EffectiveFrom DESC
-      ) s
-      OUTER APPLY (
-        SELECT TOP 1
-          x.ID AS AttendanceID, x.CheckInTime, x.Status, x.BranchID
-        FROM dbo.TblEmpAttendance x
-        WHERE x.EmpID = e.EmpID
-          AND x.WorkDate = @workDate
-          AND (@branchId IS NULL OR x.BranchID = @branchId)
-        ORDER BY x.ID DESC
-      ) att
-      WHERE ISNULL(e.isActive, 1) = 1
-        AND @branchId IS NOT NULL
-        AND e.TenantId IN (SELECT l.TenantId FROM dbo.Location l
-          WHERE l.LegacyBranchId = @branchId AND l.Status = N'active')
-        AND (
-          @branchId IS NULL
-          OR s.BranchID = @branchId
-          OR a.BranchID = @branchId
-          OR att.BranchID = @branchId
-        )
-    `);
-
-    let candidates = 0;
-    let notified = 0;
-    let errors = 0;
-
-    for (const row of employees.recordset as Array<Record<string, unknown>>) {
-      try {
-        const empId = Number(row.EmpID);
-        const schedule = resolveFinancialWorkScheduleRow({
-          EmploymentType: String(row.EmploymentType ?? ''),
-          ScheduleDayOfWeek: row.ScheduleDayOfWeek as number | null,
-          IsWorkingDay: row.IsWorkingDay as number | boolean | null,
-          ScheduleStartTime: row.ScheduleStartTime as string | null,
-          ScheduleEndTime: row.ScheduleEndTime as string | null,
-          DefaultCheckInTime: row.DefaultCheckInTime as string | null,
-          DefaultCheckOutTime: row.DefaultCheckOutTime as string | null,
-        });
-
-        if (!schedule.isScheduledWorkingDay || !schedule.scheduledStart) continue;
-
-        // Employee AttendanceTab stores lowercase absent/off; admin uses PascalCase.
-        if (isLateDeductionExcludedAttendanceStatus(row.AttendanceStatus)) {
-          continue;
-        }
-
-        if (row.CheckInTime) continue; // stop alerts after check-in
-
-        const branchId =
-          Number(row.ScheduleBranchID) ||
-          Number(row.HomeBranchID) ||
-          (params?.branchId ?? 0);
-        if (!(branchId > 0)) continue;
-
-        const lateMinutes = calcLateMinutes(nowHhmm, schedule.scheduledStart);
-        if (lateMinutes < 1) continue;
-
-        candidates += 1;
-        const exempt = Boolean(row.LateDeductionExempt);
-        const due = thresholdsDueForLateMinutes(lateMinutes).slice(-1);
-        if (!due.length) continue;
-
-        let caseRow = await findLateDeductionCase(db, empId, branchId, workDate);
-        if (!caseRow) {
-          caseRow = await upsertLateDeductionCase(db, {
-            empId,
-            branchId,
-            workDate,
-            attendanceId: row.AttendanceID == null ? null : Number(row.AttendanceID),
-            scheduledStart: schedule.scheduledStart,
-            scheduledEnd: schedule.scheduledEnd,
-            lateMinutes,
-            deductionKind: exempt ? 'exempt' : 'none',
-            status: 'alerting',
-            dailyBasePay: null,
-            amount: null,
-          });
-        } else if (caseRow.status === 'cancelled' || caseRow.doNotAutoRecreate) {
-          continue;
-        } else if (
-          ['applied', 'manager_applied', 'pending_manager', 'exempt', 'skipped'].includes(
-            caseRow.status,
-          )
-        ) {
-          // Already finalized / excluded somehow — do not keep alerting
-          continue;
-        } else {
-          caseRow = await upsertLateDeductionCase(db, {
-            empId,
-            branchId,
-            workDate,
-            lateMinutes,
-            deductionKind: exempt ? 'exempt' : caseRow.deductionKind,
-            status: 'alerting',
-            scheduledStart: schedule.scheduledStart,
-            scheduledEnd: schedule.scheduledEnd,
-            dailyBasePay: caseRow.dailyBasePay,
-            amount: caseRow.amount,
-            attendanceId: caseRow.attendanceId,
-            ledgerEntryId: caseRow.ledgerEntryId,
-          });
-        }
-
-        const pay = exempt
-          ? null
-          : await resolveLateDeductionDailyBasePay({
-              empId,
-              branchId,
-              workDate,
-              scheduledStart: schedule.scheduledStart,
-              scheduledEnd: schedule.scheduledEnd,
-            });
-
-        const quarter =
-          pay?.dailyBasePay != null
-            ? calculateLateDeductionAmount({ lateMinutes: 1, dailyBasePay: pay.dailyBasePay }).amount
-            : null;
-        const half =
-          pay?.dailyBasePay != null
-            ? calculateLateDeductionAmount({ lateMinutes: 61, dailyBasePay: pay.dailyBasePay }).amount
-            : null;
-
-        for (const threshold of due) {
-          if (alreadyNotified(caseRow, threshold)) continue;
-
-          // Claim notification slot first (idempotent under restart) then send.
-          const claimed = await markThresholdNotified(db, caseRow.caseId, threshold);
-          if (!claimed) continue;
-
-          const text = buildLateAlertMessage({
-            threshold,
-            scheduledStart: schedule.scheduledStart,
-            lateMinutes: threshold,
-            quarterAmount: quarter,
-            halfAmount: half,
-            exempt,
-          });
-
-          if (params?.sendInline) {
-            // Check again before send: a parallel attendance writer may have checked in.
-            const arrival = await db.request()
-              .input('empId', sql.Int, empId)
-              .input('branchId', sql.Int, branchId)
-              .input('workDate', sql.Date, workDate)
-              .query(`SELECT TOP 1 CheckInTime FROM dbo.TblEmpAttendance
-                WHERE EmpID = @empId AND BranchID = @branchId AND WorkDate = @workDate
-                AND CheckInTime IS NOT NULL ORDER BY ID DESC`);
-            if (arrival.recordset.length) {
-              await releaseThresholdNotified(db, caseRow.caseId, threshold);
-              continue;
-            }
-            const sendResult = await sendLateDeductionWhatsApp({
-              empId,
-              branchId,
-              text,
-              metadata: {
-                lateCaseId: caseRow.caseId,
-                event: `alert_${threshold}`,
-                workDate,
-              },
-            });
-            if (sendResult.sent || sendResult.skipped) {
-              notified += 1;
-            } else {
-              errors += 1;
-              await releaseThresholdNotified(db, caseRow.caseId, threshold);
-            }
-          } else {
-            scheduleLateDeductionWhatsApp({
-              empId,
-              branchId,
-              text,
-              metadata: {
-                lateCaseId: caseRow.caseId,
-                event: `alert_${threshold}`,
-                workDate,
-              },
-            });
-            notified += 1;
-          }
-        }
-      } catch (err) {
-        errors += 1;
-        console.warn('[late-deduction-alertScan] row error:', err);
-      }
-    }
-
+    // No WhatsApp before check-in. Recovery may finalize actual ledger entries.
     return {
-      candidates,
-      notified,
-      errors,
-      workDate,
+      candidates: 0, notified: 0, errors: 0, workDate,
       recoveredFinalizations: recovery.recovered,
       recoveryErrors: recovery.errors,
     } satisfies LateAlertScanResult;
