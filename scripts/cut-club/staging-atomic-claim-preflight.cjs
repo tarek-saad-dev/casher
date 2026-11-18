@@ -70,7 +70,7 @@ if (dbName !== "last132_agent") {
         "UX_CutClubVoucherInvoiceClaim_SaleBenefitApplied",
       ];
       const missingIndexes = expectedIndexes.filter(name => !indexes.some(i =>
-        i.IndexName === name && i.IsUnique === true && i.HasFilter === true &&
+        i.IndexName === name && Number(i.IsUnique) === 1 && Number(i.HasFilter) === 1 &&
         /\\bStatus\\b/i.test(i.FilterDefinition || "") &&
         /APPLIED/i.test(i.FilterDefinition || "")
       ));
