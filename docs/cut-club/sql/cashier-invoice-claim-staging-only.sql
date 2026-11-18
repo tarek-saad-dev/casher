@@ -32,15 +32,19 @@ BEGIN TRANSACTION;
       CHECK (InventoryID > 0 AND ClientID > 0 AND BranchID > 0 AND
              InvID > 0 AND ServiceID > 0)
   );
-  -- One voucher can claim at most one invoice, including after a refund.
-  CREATE UNIQUE INDEX UX_CutClubVoucherInvoiceClaim_Inventory
-    ON dbo.CutClubVoucherInvoiceClaim(TenantId, InventoryID);
-  -- A single saved invoice service line cannot silently settle two vouchers.
+  -- At most one APPLIED claim per voucher; REVERSED rows are immutable history.
+  -- A cancelled invoice can restore a voucher to ACTIVE and allow later use.
+  CREATE UNIQUE INDEX UX_CutClubVoucherInvoiceClaim_InventoryApplied
+    ON dbo.CutClubVoucherInvoiceClaim(TenantId, InventoryID)
+    WHERE Status = N'APPLIED';
+  -- No two APPLIED vouchers may claim the same saved service benefit.
   -- Multiple identical service-line cases need a reviewed line-level key.
-  CREATE UNIQUE INDEX UX_CutClubVoucherInvoiceClaim_SaleBenefit
+  CREATE UNIQUE INDEX UX_CutClubVoucherInvoiceClaim_SaleBenefitApplied
     ON dbo.CutClubVoucherInvoiceClaim(
       TenantId, BranchID, InvID, ServiceID
-    );
+    ) WHERE Status = N'APPLIED';
+  CREATE INDEX IX_CutClubVoucherInvoiceClaim_InvoiceActive
+    ON dbo.CutClubVoucherInvoiceClaim(InvID, Status);
 COMMIT TRANSACTION;
 
 -- No seed, no historical voucher updates, no balance/stock changes here.
