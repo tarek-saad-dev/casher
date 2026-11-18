@@ -56,6 +56,9 @@ if (dbName !== "last132_agent") {
           FROM dbo.TblPro
           WHERE TenantId=@tenant AND isDeleted=0 AND ProID IN (39,22,11,9)
           GROUP BY ProID ORDER BY ProID;
+          SELECT ProID FROM dbo.TblPro
+          WHERE ProID IN (9,11,22,39) AND TenantId<>@tenant
+          ORDER BY ProID;
         `);
       const ctx = r.recordsets[0][0];
       const cols = new Set(r.recordsets[1].map(x => x.ColumnName));
@@ -71,14 +74,15 @@ if (dbName !== "last132_agent") {
       ];
       const missingIndexes = expectedIndexes.filter(name => !indexes.some(i =>
         i.IndexName === name && Number(i.IsUnique) === 1 && Number(i.HasFilter) === 1 &&
-        /\\bStatus\\b/i.test(i.FilterDefinition || "") &&
+        /\bStatus\b/i.test(i.FilterDefinition || "") &&
         /APPLIED/i.test(i.FilterDefinition || "")
       ));
       const ids = r.recordsets[3].map(x => Number(x.ProID)).sort((a,b) => a-b);
       const expectedServices = [9,11,22,39];
       const missingServices = expectedServices.filter(id => !ids.includes(id));
       const duplicateServices = r.recordsets[3].filter(x => Number(x.ActiveMatchingServices) !== 1).map(x => Number(x.ProID));
-      const servicesOk = missingServices.length === 0 && duplicateServices.length === 0;
+      const foreignTenantCollisions = r.recordsets[4].map(x => Number(x.ProID));
+      const servicesOk = missingServices.length === 0 && duplicateServices.length === 0 && foreignTenantCollisions.length===0;
       const ready = ctx.LoginName==="drvo_agent" &&
         ctx.ClaimTableInstalled===1 && missing.length===0 &&
         missingIndexes.length===0 && servicesOk;
@@ -91,6 +95,7 @@ if (dbName !== "last132_agent") {
       console.log("Approved services 9,11,22,39 present and active:",servicesOk?"YES":"NO");
       console.log("Missing service IDs:",missingServices.length?missingServices.join(", "):"none");
       console.log("Duplicate active service IDs:",duplicateServices.length?duplicateServices.join(", "):"none");
+      console.log("CRITICAL cross-tenant ProID collisions (DO NOT REASSIGN):",foreignTenantCollisions.length?foreignTenantCollisions.join(", "):"none");
       console.log("Feature flag:",e.CUT_CLUB_STAGING_CLAIM_WRITE_ENABLED==="true"?"ON":"OFF");
       console.log("RESULT:",ready?"METADATA READY (NOT E2E)": "NO-GO");
       if (!ready) process.exitCode=1;
