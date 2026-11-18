@@ -9,7 +9,7 @@ const path = require("node:path");
 const dotenv = require("dotenv");
 for (const name of [".env", ".env.production", ".env.local"]) {
   const file = path.resolve(process.cwd(), name);
-  if (fs.existsSync(file)) dotenv.config({ path: file, override: true, quiet: true });
+  if (fs.existsSync(file)) dotenv.config({ path: file, override: false, quiet: true });
 }
 const sql = require("mssql");
 const e = process.env;
@@ -46,6 +46,12 @@ if (dbName !== "last132_agent") {
           FROM sys.tables AS t
           JOIN sys.columns c ON c.object_id=t.object_id
           WHERE t.name=N'CutClubVoucherInvoiceClaim';
+          SELECT i.name AS IndexName, i.is_unique AS IsUnique, i.has_filter AS HasFilter,
+            i.filter_definition AS FilterDefinition
+          FROM sys.indexes AS i
+          WHERE i.object_id=OBJECT_ID(N'dbo.CutClubVoucherInvoiceClaim')
+            AND i.name IN (N'UX_CutClubVoucherInvoiceClaim_InventoryApplied',
+                           N'UX_CutClubVoucherInvoiceClaim_SaleBenefitApplied');
           SELECT ProID, COUNT_BIG(*) AS ActiveMatchingServices
           FROM dbo.TblPro
           WHERE TenantId=@tenant AND isDeleted=0 AND ProID IN (39,22,11,9)
@@ -58,16 +64,33 @@ if (dbName !== "last132_agent") {
         "InvID", "ServiceID", "Status", "CreatedAt", "ReversedAt",
       ];
       const missing = wanted.filter(x => !cols.has(x));
-      const ids = r.recordsets[2].map(x => Number(x.ProID)).sort((a,b) => a-b);
-      const servicesOk = JSON.stringify(ids) === JSON.stringify([9,11,22,39]);
+      const indexes = r.recordsets[2];
+      const expectedIndexes = [
+        "UX_CutClubVoucherInvoiceClaim_InventoryApplied",
+        "UX_CutClubVoucherInvoiceClaim_SaleBenefitApplied",
+      ];
+      const missingIndexes = expectedIndexes.filter(name => !indexes.some(i =>
+        i.IndexName === name && i.IsUnique === true && i.HasFilter === true &&
+        /\\bStatus\\b/i.test(i.FilterDefinition || "") &&
+        /APPLIED/i.test(i.FilterDefinition || "")
+      ));
+      const ids = r.recordsets[3].map(x => Number(x.ProID)).sort((a,b) => a-b);
+      const expectedServices = [9,11,22,39];
+      const missingServices = expectedServices.filter(id => !ids.includes(id));
+      const duplicateServices = r.recordsets[3].filter(x => Number(x.ActiveMatchingServices) !== 1).map(x => Number(x.ProID));
+      const servicesOk = missingServices.length === 0 && duplicateServices.length === 0;
       const ready = ctx.LoginName==="drvo_agent" &&
-        ctx.ClaimTableInstalled===1 && missing.length===0 && servicesOk;
+        ctx.ClaimTableInstalled===1 && missing.length===0 &&
+        missingIndexes.length===0 && servicesOk;
       console.log("=== CUT CLUB READ ONLY STAGING READINESS ===");
       console.log("Staging DB:",ctx.DbName);
       console.log("Expected staging SQL login:",ctx.LoginName==="drvo_agent"?"OK":"MISMATCH");
       console.log("Claim table:",ctx.ClaimTableInstalled===1?"PRESENT":"MISSING");
       console.log("Missing claim columns:",missing.length?missing.join(", "):"none");
+      console.log("Missing required filtered unique indexes:",missingIndexes.length?missingIndexes.join(", "):"none");
       console.log("Approved services 9,11,22,39 present and active:",servicesOk?"YES":"NO");
+      console.log("Missing service IDs:",missingServices.length?missingServices.join(", "):"none");
+      console.log("Duplicate active service IDs:",duplicateServices.length?duplicateServices.join(", "):"none");
       console.log("Feature flag:",e.CUT_CLUB_STAGING_CLAIM_WRITE_ENABLED==="true"?"ON":"OFF");
       console.log("RESULT:",ready?"METADATA READY (NOT E2E)": "NO-GO");
       if (!ready) process.exitCode=1;
