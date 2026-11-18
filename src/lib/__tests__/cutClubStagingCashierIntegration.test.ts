@@ -25,7 +25,7 @@ describe("CUT CLUB staging-only POS real invoice entrypoint", () => {
     expect(pos).toContain('cutClubVoucherCode: cutClubStagingEnabled && !editingSaleId');
     expect(pos).toContain("setCutClubVoucherCode(\"\")");
     expect(pos).toContain("setCustomerBase(c)");
-    expect(pos).toContain("voucherCode");
+    expect(pos).toContain("cutClubVoucherCode");
     expect(pos).toContain("const url = isEditing ? `/api/sales/${editingSaleId}` : '/api/sales'");
   });
   it("normal POS sale is unchanged; malformed/off vouchers are rejected before opening transaction", () => {
