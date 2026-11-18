@@ -169,6 +169,17 @@ export default function PosPage() {
   const [splitPaymentActive, setSplitPaymentActive] = useState(false);
   const [editingSaleId, setEditingSaleId] = useState<number | null>(null);
   const [vouchersOpen, setVouchersOpen] = useState(false);
+  const [cutClubStagingEnabled, setCutClubStagingEnabled] = useState(false);
+  const [cutClubVoucherCode, setCutClubVoucherCode] = useState("");
+  useEffect(() => {
+    let alive = true;
+    void fetch("/api/pos/cut-club/staging-mode", {
+      credentials: "same-origin", cache: "no-store",
+    }).then(r => r.ok ? r.json() : null).then(data => {
+      if (alive) setCutClubStagingEnabled(data?.enabled === true);
+    }).catch(() => { if (alive) setCutClubStagingEnabled(false); });
+    return () => { alive = false; };
+  }, []);
   const [invoiceSheetOpen, setInvoiceSheetOpen] = useState(false);
   const [isPaymentTransferOpen, setIsPaymentTransferOpen] = useState(false);
   const [isQuickExpenseOpen, setIsQuickExpenseOpen] = useState(false);
@@ -189,6 +200,8 @@ export default function PosPage() {
   // ───────────────── Wrap setCustomer ─────────────────
   const setCustomer = useCallback((c: Customer | null) => {
     setCustomerBase(c);
+    // Never carry a previous customer's scanned code to another invoice.
+    setCutClubVoucherCode("");
     if (!c) setVouchersOpen(false);
   }, [setCustomerBase]);
 
@@ -665,6 +678,11 @@ export default function PosPage() {
         // Full [groomPackage] metadata (Notes is NVARCHAR(100) — too short)
         notes2: packageNotes,
         handoffId: activeHandoffId,
+        // Server checks staging DB/login, exact voucher owner, active service,
+        // same invoice benefit and writes claim+USE in one transaction.
+        cutClubVoucherCode: cutClubStagingEnabled && !editingSaleId
+          ? cutClubVoucherCode.trim().toUpperCase() || undefined
+          : undefined,
       };
 
       // Use PUT for editing, POST for new sale
@@ -694,6 +712,7 @@ export default function PosPage() {
 
       // Reset everything (customer, barber, items, discount, payment, edit mode)
       reset();
+      setCutClubVoucherCode("");
       setActiveHandoffId(null);
       setHandoffBanner(null);
       setEditingSaleId(null);
@@ -808,7 +827,7 @@ export default function PosPage() {
       setSaving(false);
       console.log('[POS SAVE] END', { requestId });
     }
-  }, [state, totals, reset, addToast, paymentMethods, editingSaleId, saveLockRef, ensureShiftWrite, loadRetailProducts]);
+  }, [state, totals, reset, addToast, paymentMethods, editingSaleId, saveLockRef, ensureShiftWrite, loadRetailProducts, cutClubStagingEnabled, cutClubVoucherCode]);
 
   // ───────────────── Keyboard shortcuts ─────────────────
   useEffect(() => {
@@ -1275,6 +1294,29 @@ export default function PosPage() {
         {/* ═══════ LEFT PANEL: Cart + Summary + Payment + Save ═══════ */}
         <aside className="order-2 flex w-full shrink-0 flex-col gap-3 overflow-y-auto border-r border-border p-3 scrollbar-luxury-v lg:order-3 lg:w-80 lg:gap-4 lg:p-4">
           <PosInvoicePanel {...invoicePanelProps} />
+          {cutClubStagingEnabled && state.customer && editingSaleId === null && (
+            <div className="rounded-lg border border-dashed border-amber-500/50 bg-amber-500/5 p-3 space-y-2">
+              <label htmlFor="pos-cut-club-staging-voucher" className="block text-sm font-semibold">
+                CUT CLUB — Staging فقط
+              </label>
+              <input
+                id="pos-cut-club-staging-voucher"
+                aria-label="كود قسيمة CUT CLUB للتجربة"
+                type="text"
+                autoComplete="off"
+                maxLength={100}
+                value={cutClubVoucherCode}
+                onChange={e => setCutClubVoucherCode(e.target.value.toUpperCase().trim())}
+                placeholder="امسح أو اكتب كود القسيمة"
+                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+              />
+              <p className="text-xs text-muted-foreground">
+                لازم تضيف الخدمة الصحيحة للفاتورة بسعرها الأصلي،
+                وتخلي السعر النهائي للخدمة صفر بخصم 100%.
+                القسيمة والفاتورة هيتحفظوا معًا أو يتراجعوا معًا.
+              </p>
+            </div>
+          )}
           <PosInvoiceSaveActions
             saving={saving}
             disabled={state.items.length === 0}
