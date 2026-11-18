@@ -6,6 +6,8 @@ import {
   stagingServiceApprovalJson,
   approvedProductionRewardToService,
   STAGING_VOUCHER_INVOICE_FLAG,
+  eligibleStagingVoucher,
+  eligibleStagingInvoiceBenefit,
 } from "@/lib/cut-club/stagingInvoiceClaim";
 import {
   approvedCutClubServiceId,
@@ -64,14 +66,39 @@ describe("CUT CLUB owner-approved live reward-service mappings (STAGING ONLY)", 
     expect(posCaller.indexOf("executeLegacySaleCreateTransaction")).toBeLessThan(posCaller.indexOf("await transaction.commit()"));
     expect(legacy.indexOf("await stageVoucherOnNewSale")).toBeLessThan(legacy.indexOf("await transaction.commit()"));
   });
+  it("rejects another customer's, used, multi-unit, foreign-salon, expired or corrupt vouchers", () => {
+    const current = new Date("2026-11-18T12:00:00Z").getTime();
+    const good = {
+      InventoryID:1, ItemID:17, ClientID:42, Quantity:1,
+      Status:"ACTIVE", UsedInvID:null, ExpiresAt:null,
+      ItemType:"FREE_SERVICE", ServiceID:null, SalonID:null,
+    };
+    expect(eligibleStagingVoucher(good,42,current)).toBe(true);
+    expect(eligibleStagingVoucher(good,43,current)).toBe(false);
+    expect(eligibleStagingVoucher({...good,Quantity:2},42,current)).toBe(false);
+    expect(eligibleStagingVoucher({...good,Status:"USED"},42,current)).toBe(false);
+    expect(eligibleStagingVoucher({...good,UsedInvID:55},42,current)).toBe(false);
+    expect(eligibleStagingVoucher({...good,SalonID:3},42,current)).toBe(false);
+    expect(eligibleStagingVoucher({...good,ItemType:"DISCOUNT_AMOUNT"},42,current)).toBe(false);
+    expect(eligibleStagingVoucher({...good,ExpiresAt:new Date(current-1000)},42,current)).toBe(false);
+    expect(eligibleStagingVoucher({...good,ExpiresAt:new Date("invalid")},42,current)).toBe(false);
+  });
+  it("staged invoice benefit must be a SINGLE full-value free service, never a manager-only 0-priced line", () => {
+    const good={ProID:11,SPrice:200,SPriceAfterDis:0,Qty:1};
+    expect(eligibleStagingInvoiceBenefit([good])).toBe(true);
+    expect(eligibleStagingInvoiceBenefit([])).toBe(false);
+    expect(eligibleStagingInvoiceBenefit([good,good])).toBe(false);
+    expect(eligibleStagingInvoiceBenefit([{...good,SPrice:0}])).toBe(false);
+    expect(eligibleStagingInvoiceBenefit([{...good,SPriceAfterDis:100}])).toBe(false);
+    expect(eligibleStagingInvoiceBenefit([{...good,Qty:2}])).toBe(false);
+    expect(eligibleStagingInvoiceBenefit([{...good,SPrice:Number.NaN}])).toBe(false);
+  });
+
   it("voucher use proves exactly one positive original-price line with zero final price", () => {
     const src=source("src/lib/cut-club/stagingInvoiceClaim.ts");
-    expect(src).toContain("Number(lines.recordset[0].Qty) !== 1");
-    expect(src).toContain("Number(lines.recordset[0].SPrice) > 0");
-    expect(src).toContain("Number(lines.recordset[0].SPriceAfterDis) !== 0");
-    expect(src).toContain("lines.recordset.length !== 1");
+    expect(src).toContain("eligibleStagingInvoiceBenefit(lines.recordset)");
+    expect(src).toContain("eligibleStagingVoucher(voucher, input.trustedClientId, Date.now())");
     expect(src).toContain("ci.Status, ci.UsedInvID");
-    expect(src).toContain("voucher.Status !== \"ACTIVE\"");
     expect(src).toContain("VoucherCode");
     expect(src).toContain("INSERT INTO dbo.CutClubVoucherInvoiceClaim");
     expect(src).toContain("AND UsedInvID IS NULL");
