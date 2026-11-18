@@ -88,11 +88,12 @@ export type StageInvoiceLine = Readonly<{
 export function eligibleStagingInvoiceBenefit(
   lines: readonly StageInvoiceLine[],
 ): boolean {
-  return lines.length === 1 && Number(lines[0].Qty) === 1 &&
-    Number.isFinite(Number(lines[0].SPrice)) &&
-    Number(lines[0].SPrice) > 0 &&
-    Number.isFinite(Number(lines[0].SPriceAfterDis)) &&
-    Number(lines[0].SPriceAfterDis) === 0;
+  const line = lines[0];
+  return lines.length === 1 && line !== undefined &&
+    Number(line.Qty) === 1 &&
+    Number.isFinite(Number(line.SPrice)) && Number(line.SPrice) > 0 &&
+    Number.isFinite(Number(line.SPriceAfterDis)) &&
+    Number(line.SPriceAfterDis) === 0;
 }
 
 /** Inside the sale transaction, before commit. Throws => whole invoice rolls back. */
