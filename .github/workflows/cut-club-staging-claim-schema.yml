@@ -1,0 +1,86 @@
+name: CUT CLUB Staging Claim Table Install (NO Production)
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cutclub-stage-claim-install
+  cancel-in-progress: false
+
+jobs:
+  staging-claim-table:
+    name: Install guarded claim table on last132_agent ONLY
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'feat/cut-club-staging-atomic-sale-318'
+    runs-on: ubuntu-latest
+    environment: drvo-staging
+    timeout-minutes: 12
+    env:
+      STAGING_HOST: ${{ secrets.STAGING_HOST || secrets.DRVO_STAGING_SSH_HOST }}
+      STAGING_SSH_KEY: ${{ secrets.DRVO_STAGING_SSH_KEY }}
+      STAGING_KNOWN_HOSTS: ${{ secrets.STAGING_KNOWN_HOSTS }}
+      LOCAL_DB_SERVER: '127.0.0.1'
+      LOCAL_DB_PORT: '14330'
+      LOCAL_DB_NAME: 'last132_agent'
+      LOCAL_DB_USER: 'drvo_agent'
+      LOCAL_DB_PASSWORD: ${{ secrets.DRVO_STAGING_DB_PASSWORD }}
+      CUT_CLUB_STAGING_SCHEMA_INSTALL: 'true'
+      CUT_CLUB_STAGING_CLAIM_WRITE_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Verify isolated staging-only credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          for key in STAGING_HOST STAGING_SSH_KEY STAGING_KNOWN_HOSTS LOCAL_DB_PASSWORD; do
+            [[ -n "${!key:-}" ]] || { echo "Missing staging-only credential: $key"; exit 11; }
+          done
+          for file in .env .env.local .env.production .env.production.local; do
+            [[ ! -e "$file" ]] || { echo "Unexpected env file in checkout"; exit 12; }
+          done
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install dependencies (no migration or lifecycle scripts)
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Open pinned-host stage-only SQL tunnel
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$STAGING_SSH_KEY" > ~/.ssh/cutclub_stage
+          chmod 600 ~/.ssh/cutclub_stage
+          printf '%s\n' "$STAGING_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          ssh -i ~/.ssh/cutclub_stage -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes -o ExitOnForwardFailure=yes \
+            -L 14330:127.0.0.1:1433 "drvo-tunnel@$STAGING_HOST" -N &
+          echo $! > /tmp/cutclub-tunnel.pid
+          for i in {1..25}; do
+            if (echo >/dev/tcp/127.0.0.1/14330) 2>/dev/null; then exit 0; fi
+            sleep 1
+          done
+          echo "Staging SQL tunnel unavailable"; exit 13
+      - name: Capture synthetic fixture SCHEMA metadata only
+        run: node scripts/cut-club/staging-fixture-schema-discovery.cjs
+      - name: Install additive guarded stage claim table (NO customer data)
+        run: node scripts/cut-club/staging-claim-schema-install.cjs
+      - name: Check remaining staging readiness (missing synthetic services expected)
+        continue-on-error: true
+        run: node scripts/cut-club/staging-atomic-claim-preflight.cjs
+      - name: Close local tunnel
+        if: always()
+        run: |
+          if [[ -f /tmp/cutclub-tunnel.pid ]]; then
+            kill "$(cat /tmp/cutclub-tunnel.pid)" 2>/dev/null || true
+          fi
