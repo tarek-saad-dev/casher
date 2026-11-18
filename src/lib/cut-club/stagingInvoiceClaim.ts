@@ -64,12 +64,36 @@ async function requireStagingWrites(tx: sql.Transaction): Promise<void> {
     throw Error("CUT_CLUB_STAGING_CONNECTION_OR_CLAIM_SCHEMA_UNVERIFIED");
 }
 
-type ClaimedVoucher = {
+export type ClaimedVoucher = Readonly<{
   InventoryID: number; ItemID: number; ClientID: number;
   Quantity: number; Status: string; UsedInvID: number | null;
   ExpiresAt: Date | null; ItemType: string; ServiceID: number | null;
   SalonID: number | null;
-};
+}>;
+
+export function eligibleStagingVoucher(
+  voucher: ClaimedVoucher, trustedClientId: number, nowMs: number,
+): boolean {
+  const expiry = voucher.ExpiresAt === null ? null : new Date(voucher.ExpiresAt).getTime();
+  return positive(voucher.InventoryID) && positive(voucher.ItemID) &&
+    voucher.ClientID === trustedClientId && voucher.Quantity === 1 &&
+    voucher.Status === "ACTIVE" && voucher.UsedInvID === null &&
+    voucher.ItemType === "FREE_SERVICE" && voucher.SalonID === null &&
+    (expiry === null || (Number.isFinite(expiry) && expiry > nowMs));
+}
+
+export type StageInvoiceLine = Readonly<{
+  ProID: number; SPrice: number; SPriceAfterDis: number; Qty: number;
+}>;
+export function eligibleStagingInvoiceBenefit(
+  lines: readonly StageInvoiceLine[],
+): boolean {
+  return lines.length === 1 && Number(lines[0].Qty) === 1 &&
+    Number.isFinite(Number(lines[0].SPrice)) &&
+    Number(lines[0].SPrice) > 0 &&
+    Number.isFinite(Number(lines[0].SPriceAfterDis)) &&
+    Number(lines[0].SPriceAfterDis) === 0;
+}
 
 /** Inside the sale transaction, before commit. Throws => whole invoice rolls back. */
 export async function stageVoucherOnNewSale(tx: sql.Transaction, input: Readonly<{
@@ -111,11 +135,7 @@ export async function stageVoucherOnNewSale(tx: sql.Transaction, input: Readonly
     `);
   if (found.recordset.length !== 1) throw Error("CUT_CLUB_CLAIM_NOT_OWNED");
   const voucher = found.recordset[0];
-  if (!positive(voucher.InventoryID) || !positive(voucher.ItemID) ||
-      voucher.ClientID !== input.trustedClientId || voucher.Quantity !== 1 ||
-      voucher.Status !== "ACTIVE" || voucher.UsedInvID !== null ||
-      voucher.ItemType !== "FREE_SERVICE" ||
-      (voucher.ExpiresAt !== null && new Date(voucher.ExpiresAt).getTime() <= Date.now()))
+  if (!eligibleStagingVoucher(voucher, input.trustedClientId, Date.now()))
     throw Error("CUT_CLUB_CLAIM_INELIGIBLE");
 
   const serviceId = await verifyApprovedCutClubService({
@@ -160,10 +180,7 @@ export async function stageVoucherOnNewSale(tx: sql.Transaction, input: Readonly
     `);
   // One explicit catalog-priced service is made free on THIS invoice,
   // not an unrelated manager comp or a silently doubled service line.
-  if (lines.recordset.length !== 1 ||
-      Number(lines.recordset[0].Qty) !== 1 ||
-      !(Number(lines.recordset[0].SPrice) > 0) ||
-      Number(lines.recordset[0].SPriceAfterDis) !== 0)
+  if (!eligibleStagingInvoiceBenefit(lines.recordset))
     throw Error("CUT_CLUB_CLAIM_INVOICE_BENEFIT_MISMATCH");
 
   const claim = await new sql.Request(tx)
