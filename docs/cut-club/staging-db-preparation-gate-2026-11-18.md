@@ -49,3 +49,24 @@ ORDER BY i.name;
 - Final check: feature flags OFF, production untouched, PR remains Draft/unmerged.
 
 **Go/no-go:** CI and read-only metadata checks do not prove a successful real SQL transaction. Do not merge/deploy pending independent security review and actual staging acceptance.
+
+
+## Live findings — 18 Nov 2026 (GitHub Actions verified)
+
+- GitHub Actions **#44396492151** installed `dbo.CutClubVoucherInvoiceClaim` on **last132_agent** using SQL login `drvo_agent`; both filtered APPLIED unique indexes passed immediate post-install verification. The installer wrote *no* client, invoice, voucher or Coins rows.
+- GitHub Actions **#44396759216** rechecked the table (idempotent no-op). The approved reward catalog ItemIDs **15,16,17,18** are present, active, globally scoped (`SalonID IS NULL`), FREE_SERVICE and `ServiceID=NULL`, consistent with the designed server-side approval mapping.
+- **CRITICAL:** Global TblPro ProIDs **9, 11, 22, 39 already exist under a DIFFERENT TenantId**. They are NOT missing from the SQL table globally; they are missing from the approved CASHER_BOOT tenant, and must **never** be updated/reassigned/deleted to make staging pass. `TblPro.ProID` is IDENTITY and existing primary catalog keys must remain untouched.
+- The approved CASHER_BOOT tenant currently has **zero TblClient records in this staging database**. Do not use real customer PII or existing tenant customers for testing.
+- The staging voucher claim feature remains **OFF**. The one-time migration Actions workflow was retired after installing the table (installer script retained). No merge/deploy/production mutation.
+
+### Correct fixture strategy and gate
+
+**Do not run the generic fixture seeding plan in this shared staging database.**
+The exact production-approved ProIDs cannot be reassigned to CASHER_BOOT here without corrupting another tenant's catalog.
+
+Preferred route: provision an **isolated SQL Server staging instance** (or isolated restored instance), whose database is named `last132_agent` and whose SQL login is `drvo_agent`, with a **sanitized, schema-compatible** CASHER_BOOT service catalog containing the authentic ProIDs **9/11/22/39**. Copy *only reviewed non-sensitive service metadata*; use fully synthetic customer, voucher and payment data. Verify distinct server/host identity and deploy a wholly separate staging app. Do not point `/home/casher/app` or production domain to this instance.
+
+An alternative stage-specific ID alias would validate transaction mechanics but NOT the exact approved service ID mapping and is **not approved for production release**.
+
+Once the separate stage is provisioned, run the guarded claim-table migration against that stage, verify all four tenant-scoped services, create a synthetic client+voucher, test happy/negative/concurrency/cancel/reissue cases, then explicitly review results. Until then **E2E/production financial release = NO-GO**.
+
