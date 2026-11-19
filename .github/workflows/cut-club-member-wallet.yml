@@ -13,6 +13,7 @@ on:
       - 'src/app/api/admin/cut-club/**'
       - 'src/lib/__tests__/cutClubMemberOtp.test.ts'
       - 'src/lib/__tests__/cutClubLegacyPublicQuarantine.test.ts'
+      - 'src/lib/__tests__/cutClubMemberFlowIsolated.test.ts'
       - 'scripts/cut-club/sql/member-wallet-staging-schema.sql'
       - '.github/workflows/cut-club-member-wallet.yml'
 
@@ -35,6 +36,7 @@ jobs:
           npx vitest run
           src/lib/__tests__/cutClubMemberOtp.test.ts
           src/lib/__tests__/cutClubLegacyPublicQuarantine.test.ts
+          src/lib/__tests__/cutClubMemberFlowIsolated.test.ts
       - name: Verify staging migration cannot be applied silently to production
         run: |
           node - <<'NODE'
