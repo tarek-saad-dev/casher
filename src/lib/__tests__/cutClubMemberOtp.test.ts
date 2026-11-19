@@ -62,7 +62,7 @@ describe('CUT CLUB production OTP foundations',()=>{
     const written:any[]=[];
     const fakeRequest:any={
       input:vi.fn(function(this:any,...args:any[]){written.push(args);return this;}),
-      query:vi.fn(async()=>({recordset:[],rowsAffected:[1]})),
+      query:vi.fn(async(q:string)=>({recordset:q.includes('AS Ready')?[{Ready:1}]:[],rowsAffected:[1]})),
     };
     mocks.getPool.mockResolvedValue({request:()=>fakeRequest});
     mocks.send.mockResolvedValue({
@@ -77,7 +77,7 @@ describe('CUT CLUB production OTP foundations',()=>{
     expect(response).not.toHaveProperty('code');
     expect(written.some(a=>a[0]==='digest'&&a[2]===digestToken(response.pendingToken))).toBe(true);
     expect(JSON.stringify(written)).not.toContain(response.pendingToken);
-    expect(fakeRequest.query).toHaveBeenCalledOnce();
+    expect(fakeRequest.query).toHaveBeenCalledTimes(2);
     expect(mocks.verify).not.toHaveBeenCalled();
   });
   it('rejects malformed code/token before any DB or provider call',async()=>{
