@@ -1,0 +1,68 @@
+name: CUT CLUB Isolated SQL Acceptance
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cutclub-ephemeral-sql-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  atomic-sql:
+    name: Atomic voucher claim on disposable SQL Server
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'feat/cut-club-staging-atomic-sale-318'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Refuse repository env files
+        shell: bash
+        run: |
+          set -euo pipefail
+          for file in .env .env.local .env.production .env.production.local; do
+            [[ ! -e "$file" ]] || { echo "Unexpected env file: $file"; exit 12; }
+          done
+      - name: Start disposable localhost SQL Server (generated credentials)
+        shell: bash
+        run: |
+          set -euo pipefail
+          SA_PASS="Aa1!$(openssl rand -hex 24)"
+          LOGIN_PASS="Bb2!$(openssl rand -hex 24)"
+          echo "::add-mask::$SA_PASS"
+          echo "::add-mask::$LOGIN_PASS"
+          echo "CUT_CLUB_SQL_SA_PASSWORD=$SA_PASS" >> "$GITHUB_ENV"
+          echo "CUT_CLUB_SQL_LOGIN_PASSWORD=$LOGIN_PASS" >> "$GITHUB_ENV"
+          docker run -d --name cutclub-ephemeral-mssql \
+            -e ACCEPT_EULA=Y -e MSSQL_PID=Developer \
+            -e "MSSQL_SA_PASSWORD=$SA_PASS" \
+            -p 127.0.0.1:1433:1433 \
+            mcr.microsoft.com/mssql/server:2022-latest
+          echo "Disposable SQL container started (bound to local runner only)"
+      - name: Install dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Real SQL atomic acceptance (synthetic fixtures ONLY)
+        env:
+          CUT_CLUB_EPHEMERAL_SQL_E2E: 'true'
+          LOCAL_DB_SERVER: '127.0.0.1'
+          LOCAL_DB_PORT: '1433'
+          LOCAL_DB_NAME: 'last132_agent'
+          LOCAL_DB_USER: 'drvo_agent'
+          CUT_CLUB_STAGING_CLAIM_WRITE_ENABLED: 'true'
+        run: npx vitest run src/lib/__tests__/cutClubEphemeralSqlAcceptance.test.ts --reporter=default
+      - name: Teardown disposable SQL
+        if: always()
+        run: docker rm -f cutclub-ephemeral-mssql 2>/dev/null || true

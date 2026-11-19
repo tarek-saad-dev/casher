@@ -11,13 +11,14 @@ import type {
 import { getClientInventory } from "@/lib/store/inventory.service";
 import { getPool, sql } from "@/lib/db";
 import { authenticate, isAuthResult } from "@/lib/api-auth";
+import { validateUserBranchAccess } from "@/lib/branch";
+import { resolveTrustedLegacySalonId } from "@/lib/cut-club/cashierSalonMap";
+import { isCutClubCashierBranchApproved } from "@/lib/cut-club/cashierProductionBranchPolicy";
 
 export const runtime = "nodejs";
 
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  "Cache-Control": "private, no-store, max-age=0",
 };
 
 export async function OPTIONS(): Promise<NextResponse> {
@@ -42,6 +43,13 @@ export async function GET(
   if (!isAuthResult(auth)) return auth as NextResponse<StoreErrorResponse>;
 
   try {
+    const access = await validateUserBranchAccess(auth.userId, auth.activeBranchId);
+    if (!access.canOperate || !isCutClubCashierBranchApproved({ trustedTenantId: auth.tenantId, trustedBranchId: auth.activeBranchId })) return NextResponse.json({ ok: false, error: "غير مصرح" },
+      { status: 403, headers: corsHeaders });
+    const legacySalonId = resolveTrustedLegacySalonId({
+      trustedTenantId: auth.tenantId, trustedBranchId: auth.activeBranchId,
+    });
+    // Null map is scoped to global rewards ONLY by getClientInventory().
     const { searchParams } = new URL(req.url);
     const clientIdParam = searchParams.get("clientId");
 
@@ -52,8 +60,9 @@ export async function GET(
       );
     }
 
-    const clientId = parseInt(clientIdParam, 10);
-    if (isNaN(clientId) || clientId <= 0) {
+    const clientId = Number(clientIdParam);
+    if (!/^[1-9][0-9]{0,9}$/.test(clientIdParam) ||
+        !Number.isSafeInteger(clientId) || clientId <= 0) {
       return NextResponse.json(
         { ok: false, error: "Invalid clientId" },
         { status: 400, headers: corsHeaders },
@@ -72,7 +81,7 @@ export async function GET(
         WHERE ClientID = @clientId AND TenantId = @tenantId
       `);
 
-    if (clientResult.recordset.length === 0) {
+    if (clientResult.recordset.length !== 1) {
       return NextResponse.json(
         { ok: false, error: "Client not found" },
         { status: 404, headers: corsHeaders },
@@ -82,7 +91,7 @@ export async function GET(
     const clientName = clientResult.recordset[0].Name || "";
 
     // Get active inventory items only
-    const activeItems = await getClientInventory(clientId, "ACTIVE");
+    const activeItems = await getClientInventory(clientId, "ACTIVE", legacySalonId);
 
     const response: POSClientInventoryResponse = {
       ok: true,

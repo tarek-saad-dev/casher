@@ -25,6 +25,10 @@ import {
   requireActiveBranchContext,
 } from '@/lib/branch';
 import { requireTenantSession } from '@/lib/api-auth';
+import {
+  denyEditOfStagingClaimedSale,
+  reverseStagingClaimBeforeSaleDeletion,
+} from '@/lib/cut-club/stagingInvoiceClaim';
 
 // GET /api/sales/[id] — Get sale by invID for printing
 export async function GET(
@@ -212,6 +216,9 @@ export async function PUT(
         return snapshot as unknown as Record<string, unknown> | null;
       },
       execute: async (transaction) => {
+        // A voucher-backed invoice cannot be edited in-place; cancel and
+        // reissue it so claim + Coins/benefit accounting stay coherent.
+        await denyEditOfStagingClaimedSale(transaction, invID);
         const updateInput = {
         clientId: body.clientId,
         subTotal: body.subTotal,
@@ -356,10 +363,18 @@ export async function DELETE(
           : await getInvoiceSnapshot(transaction, invID);
         return snapshot as unknown as Record<string, unknown> | null;
       },
-      execute: async (transaction) =>
-        isPosPortEnabled()
+      execute: async (transaction) => {
+        // Reversal and invoice deletion MUST either both commit or both roll back.
+        // This is a no-op outside approved SQL staging and for old unclaimed sales.
+        await reverseStagingClaimBeforeSaleDeletion(transaction, {
+          trustedTenantId: session.TenantId,
+          trustedBranchId: loaded.ownership.branchId,
+          invoiceId: invID,
+        });
+        return isPosPortEnabled()
           ? deleteSale(transaction, invID, loaded.ownership.branchId, session.UserID)
-          : deleteInvoice(transaction, invID, loaded.ownership.branchId),
+          : deleteInvoice(transaction, invID, loaded.ownership.branchId);
+      },
       loadNewData: async () => null,
       beforeCommit: async ({ transaction, oldData }) => {
         const { enqueueTargetRecalcFromInvoiceSnapshots } = await import(
