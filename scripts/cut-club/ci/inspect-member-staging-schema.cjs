@@ -91,8 +91,18 @@ async function main(){
   const tenantIdentity=await pool.request()
     .input('tenant',sql.UniqueIdentifier,tenant)
     .query(`SELECT COUNT_BIG(*) AS C FROM dbo.Tenant WHERE TenantId=@tenant`);
-  if(Number(tenantIdentity.recordset[0]?.C)!==1)
+  if(Number(tenantIdentity.recordset[0]?.C)!==1) {
+    // Show ONLY business-label candidates matching CUT Salon, no other-tenant
+    // names, customer phones or PII; never silently adopt an ID.
+    const matches=await pool.request().query(`
+      SELECT TenantId,Code,Name FROM dbo.Tenant
+      WHERE UPPER(Code) LIKE '%CUT%' OR UPPER(Name) LIKE '%CUT%'
+        OR UPPER(Code) LIKE '%SALON%' OR UPPER(Name) LIKE '%SALON%'
+    `);
+    console.error('CUT CLUB STAGING BUSINESS TENANT CANDIDATES (requires operator identity approval):',
+      JSON.stringify(matches.recordset));
     throw Error('CUT_CLUB_STAGE_CONFIGURED_TENANT_NOT_FOUND');
+  }
   console.log('CUT CLUB STAGING CONFIGURED TENANT EXISTS: true (identity label requires operator signoff)');
   const count=await pool.request().query(`
      SELECT COUNT_BIG(*) AS ClientRows,
