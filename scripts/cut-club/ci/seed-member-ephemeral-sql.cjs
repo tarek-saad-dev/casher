@@ -91,10 +91,16 @@ async function main(){
   }finally{await sa.close();}
   const agent=await connect(config('drvo_agent',agentPassword,'last132_agent'));
   try{
-    const migration=fs.readFileSync('scripts/cut-club/sql/member-wallet-staging-schema.sql','utf8');
+    const migration=fs.readFileSync('db/drvo-migrations/023-cut-club-member-wallet/schema.sql','utf8');
     const result=await agent.request().query(migration);
-    if(!JSON.stringify(result.recordset).includes('CUT_CLUB_OTP_STAGING_SCHEMA_READY'))
-      throw Error('CUT_CLUB_MEMBER_MIGRATION_DID_NOT_REPORT_SUCCESS');
+    const verified=await agent.request().query(`
+      SELECT CASE WHEN OBJECT_ID(N'dbo.CutClubMemberAccount',N'U') IS NOT NULL
+        AND OBJECT_ID(N'dbo.CutClubOtpPending',N'U') IS NOT NULL
+        AND OBJECT_ID(N'dbo.CutClubCustomerSession',N'U') IS NOT NULL
+        THEN 1 ELSE 0 END AS ok
+    `);
+    if(verified.recordset[0]?.ok!==1)
+      throw Error('CUT_CLUB_MEMBER_MIGRATION_DID_NOT_CREATE_TABLES');
     console.log('CUT CLUB isolated SQL fixture+STAGING-GUARDED member migration PASS');
   }finally{await agent.close();}
 }
