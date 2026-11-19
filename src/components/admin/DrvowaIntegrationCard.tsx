@@ -153,6 +153,18 @@ export function DrvowaIntegrationCard() {
         ) : null}
       </section>
 
+      {status?.connected ? (
+        <a
+          href="/admin/integrations/drvowa/otp-test"
+          className="block rounded-3xl border border-emerald-200 bg-emerald-50 px-5 py-4 transition hover:border-emerald-400"
+        >
+          <span className="text-sm font-black text-emerald-900">جرّب WhatsApp OTP API</span>
+          <p className="mt-1 text-xs leading-6 text-emerald-800">
+            ابعت كود تحقق من رقم Cut Salon واختبر التأكيد بنفسك — بدون استخراج أي API Key.
+          </p>
+        </a>
+      ) : null}
+
       {status?.integration ? (
         <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
           <h3 className="text-sm font-black text-slate-900">حالة الاتصال</h3>
