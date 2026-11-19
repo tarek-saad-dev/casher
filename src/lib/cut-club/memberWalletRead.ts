@@ -17,7 +17,7 @@ export type MemberWalletPayload = {
 
 function nonnegative(n: unknown): number | null {
   const x=Number(n);
-  return n !== null && n !== undefined && Number.isSafeInteger(x) && x >= 0 ? x:null;
+  return n !== null && n !== undefined && Number.isFinite(x) && x >= 0 && x <= Number.MAX_SAFE_INTEGER && Math.round(x * 100) / 100 === x ? x:null;
 }
 function moneyLabel(date: Date|null): string|null {
   return date instanceof Date && Number.isFinite(date.getTime()) ? date.toISOString().slice(0,10) : null;
@@ -87,7 +87,7 @@ export async function loadCutClubWallet(sessionToken: unknown): Promise<MemberWa
     id:String(i.LedgerID),title:movementLabels[i.MovementType]||'حركة نقاط',
     occurredAtLabel:moneyLabel(i.CreatedAt)||'',coinsDelta:Number(i.PointsDelta),
   }));
-  if(m.some(i=>!Number.isSafeInteger(i.coinsDelta))) return null;
+  if(m.some(i=>!Number.isFinite(i.coinsDelta) || Math.abs(i.coinsDelta)>Number.MAX_SAFE_INTEGER || Math.round(i.coinsDelta*100)/100 !== i.coinsDelta)) return null;
   return {
     displayName:String(row.ClientName||'عضو CUT CLUB').slice(0,100),
     memberCode:row.ClientLoyaltyID?'CC-'+String(row.ClientLoyaltyID).padStart(6,'0'):'عضو CUT CLUB',
