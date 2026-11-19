@@ -1,0 +1,84 @@
+name: CUT CLUB Shared Staging SQL Read-only Preflight
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'scripts/cut-club/ci/inspect-member-staging-schema.cjs'
+      - '.github/workflows/cut-club-member-staging-readonly.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'feat/cut-club-verified-wallet-read-20261119'
+    runs-on: ubuntu-latest
+    environment: drvo-staging
+    timeout-minutes: 15
+    env:
+      STAGING_SSH_HOST: ${{ secrets.DRVO_STAGING_SSH_HOST || secrets.STAGING_HOST }}
+      STAGING_SSH_KEY: ${{ secrets.DRVO_STAGING_SSH_KEY }}
+      CUT_CLUB_STAGING_PASSWORD: ${{ secrets.DRVO_STAGING_DB_PASSWORD }}
+      CUT_CLUB_STAGING_HOST: '127.0.0.1'
+      CUT_CLUB_STAGING_PORT: '14330'
+      CUT_CLUB_STAGING_USER: 'drvo_agent'
+      CUT_CLUB_STAGING_DATABASE: 'last132_agent'
+      CUT_CLUB_STAGING_READ_ONLY: '1'
+      CI: 'true'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Ensure DRVO dedicated staging connection only
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$STAGING_SSH_HOST"
+          test -n "$STAGING_SSH_KEY"
+          test -n "$CUT_CLUB_STAGING_PASSWORD"
+          test "$CUT_CLUB_STAGING_HOST" = '127.0.0.1'
+          test "$CUT_CLUB_STAGING_DATABASE" = 'last132_agent'
+          if [[ -n "${{ secrets.VPS_SSH_KEY }}" ]]; then
+            test "$STAGING_SSH_KEY" != "${{ secrets.VPS_SSH_KEY }}" || {
+              echo 'Refuse production SSH key in stage inspection'; exit 42; }
+          fi
+          for file in .env .env.local .env.production .env.production.local; do
+            test ! -f "$file" || { echo "Refusing checked-in $file"; exit 43; }
+          done
+      - name: Open read-only staging tunnel without production SSH permissions
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$STAGING_SSH_KEY" > ~/.ssh/drvo_staging
+          chmod 600 ~/.ssh/drvo_staging
+          ssh-keyscan -H "$STAGING_SSH_HOST" >> ~/.ssh/known_hosts
+          ssh -i ~/.ssh/drvo_staging -o BatchMode=yes -o ExitOnForwardFailure=yes \
+            -o ServerAliveInterval=30 -L 14330:127.0.0.1:1433 \
+            "drvo-tunnel@$STAGING_SSH_HOST" -N &
+          echo $! > /tmp/cut-club-stage-tunnel.pid
+          for attempt in {1..30}; do
+            if nc -z 127.0.0.1 14330; then exit 0; fi
+            sleep 1
+          done
+          echo 'No staging SQL tunnel'; exit 44
+      - name: Inspect actual staging SQL TABLE/COLUMN metadata and tenant aggregate (READ ONLY)
+        run: node scripts/cut-club/ci/inspect-member-staging-schema.cjs
+      - name: Close staging tunnel
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f /tmp/cut-club-stage-tunnel.pid ]]; then
+            kill "$(cat /tmp/cut-club-stage-tunnel.pid)" || true
+          fi
