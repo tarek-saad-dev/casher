@@ -41,6 +41,35 @@ Browser `cutsaloon.com` → same-origin Website BFF (only `/api/club/auth/*`) �
 
 Do not commit .env files, keys, customer phones, OTP codes, session tokens or database credentials.
 
+## Verified SQL evidence (19 Nov 2026)
+
+- **PASS isolated real SQL Server 2022:** fresh disposable `last132_agent` database,
+  real staging-guarded migration, verified member SQL, concurrent OTP consumption, expiry,
+  logout and tenant isolation. The DRVO delivery transport was mocked in this test;
+  the already-existing DRVO WhatsApp OTP endpoints were independently tested previously.
+- **PASS shared staging read-only metadata:** `dbo.Tenant`, `dbo.TblClient.TenantId`,
+  the loyalty balance, inventory and ledger columns exist. All three wallet SELECT
+  queries compile against the real shared staging SQL schema with `TOP(0)`.
+  No customer data or mutation was requested.
+- **BLOCKER shared staging business ownership:** The provisional test UUID
+  `413d433e-f36b-1410-8820-009ec495c7e1` is **not present** in staging
+  `dbo.Tenant`. The named CUT / salon matches are DRVO demo or CUT248 HTTP-test
+  tenants, not independently approved as the CUT Salon business tenant.
+  Do **NOT** pick a tenant automatically by matching a name, number of clients,
+  branding or sample queries. `CUT_CLUB_AUTH_TENANT_ID` and `CUT_CLUB_AUTH_TENANT_CODE`
+  must be verified against the authoritative CUT Salon tenant provisioned in the
+  intended deployment database, including its actual `dbo.Tenant.Code`.
+- **No production/staging writes performed** by these verifications; the member
+  schema is not yet applied to the shared staging or production database.
+  Keep `CUT_CLUB_MEMBER_WALLET_ENABLED=false` until the tenant is independently
+  confirmed, the migration is approved, and authenticated real customer E2E
+  tests are complete.
+
+SQL evidence:
+- Real disposable acceptance: https://github.com/tarek-saad-dev/casher/actions/runs/44594763852
+- Shared stage base metadata: https://github.com/tarek-saad-dev/casher/actions/runs/44595302251
+- Shared stage SQL compile plus tenant **NO-GO**: https://github.com/tarek-saad-dev/casher/actions/runs/44595668041
+
 ## Migration and release gates — NOT yet completed
 
 - [ ] Confirm actual staging SQL `dbo.TblClient.TenantId` and unique tenant-to-client mapping; no assumptions or guessed FK.
