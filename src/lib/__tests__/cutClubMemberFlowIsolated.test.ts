@@ -139,6 +139,15 @@ describe('CUT CLUB OTP → binding → owned wallet state with isolated SQL adap
     });
     expect(wallet).not.toHaveProperty('clientId');
   });
+  it('staff-approved identity works even if two old clients share the verified phone',async()=>{
+    fake.db.matches=[{ClientID:7},{ClientID:8}];
+    fake.db.accounts.push({AccountID:randomUUID(),TenantId:tenant,PhoneNormalized:phone,LegacyClientID:8,LinkStatus:'ACTIVE'});
+    const issued=await startCutClubOtp('01557994946','LOGIN');
+    const auth=await verifyCutClubOtp(issued.pendingToken,'123456');
+    expect(auth.status).toBe('ACTIVE');
+    const session=await getCutClubSession(auth.sessionToken);
+    expect(session?.legacyClientId).toBe(8);
+  });
   it('wrong OTP releases local lease for next attempt but mints NO member session',async()=>{
     const issued=await startCutClubOtp('01557994946','LOGIN');
     fake.providerVerify.mockRejectedValueOnce(Error('INVALID_OTP'));
