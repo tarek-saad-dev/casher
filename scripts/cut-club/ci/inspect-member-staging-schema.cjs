@@ -54,6 +54,46 @@ async function main(){
     console.error('CUT_CLUB_STAGE_SCHEMA_UNPROVEN: Missing '+missing.join(', '));
     process.exitCode=2;return;
   }
+  // Compile the exact wallet projections with zero real customer rows:
+  // SQL Server validates every selected column, join and client/tenant predicate.
+  const tenant='413d433e-f36b-1410-8820-009ec495c7e1';
+  const walletQueries=[
+    ['customer/loyalty/tier',`
+      SELECT TOP (0) c.ClientID,c.Name AS ClientName,
+        cl.ClientLoyaltyID,cl.PointsBalance,lt.TierNameAr,cl.TotalVisits
+      FROM dbo.TblClient c
+      LEFT JOIN dbo.TblClientLoyalty cl ON cl.ClientID=c.ClientID AND cl.IsActive=1
+      LEFT JOIN dbo.TblLoyaltyTier lt ON lt.TierID=cl.TierID
+      WHERE c.TenantId=@tenant AND c.ClientID=@clientId`],
+    ['inventory/voucher',`
+      SELECT TOP (0) i.InventoryID,s.NameAr,i.Status,i.ExpiresAt
+      FROM dbo.TblClientInventory i
+      JOIN dbo.TblClient c ON c.ClientID=i.ClientID AND c.TenantId=@tenant
+      JOIN dbo.TblLoyaltyStoreItem s ON s.ItemID=i.ItemID
+      WHERE i.ClientID=@clientId
+      ORDER BY i.PurchasedAt DESC,i.InventoryID DESC`],
+    ['ledger/movements',`
+      SELECT TOP (0) l.LedgerID,l.MovementType,l.PointsDelta,l.CreatedAt
+      FROM dbo.TblLoyaltyPointLedger l
+      JOIN dbo.TblClient c ON c.ClientID=l.ClientID AND c.TenantId=@tenant
+      WHERE l.ClientID=@clientId AND l.ClientLoyaltyID=@loyaltyId
+      ORDER BY l.CreatedAt DESC,l.LedgerID DESC`],
+  ];
+  for(const [label,query] of walletQueries){
+    const r=await pool.request()
+      .input('tenant',sql.UniqueIdentifier,tenant)
+      .input('clientId',sql.Int,0)
+      .input('loyaltyId',sql.Int,0)
+      .query(query);
+    if(r.recordset.length!==0)throw Error('STAGING_WALLET_ZERO_ROW_SMOKE_RETURNED_DATA');
+    console.log('CUT CLUB STAGING SQL WALLET COMPILE PASS:',label);
+  }
+  const tenantIdentity=await pool.request()
+    .input('tenant',sql.UniqueIdentifier,tenant)
+    .query(`SELECT COUNT_BIG(*) AS C FROM dbo.Tenant WHERE TenantId=@tenant`);
+  if(Number(tenantIdentity.recordset[0]?.C)!==1)
+    throw Error('CUT_CLUB_STAGE_CONFIGURED_TENANT_NOT_FOUND');
+  console.log('CUT CLUB STAGING CONFIGURED TENANT EXISTS: true (identity label requires operator signoff)');
   const count=await pool.request().query(`
      SELECT COUNT_BIG(*) AS ClientRows,
        COUNT(DISTINCT TenantId) AS DistinctTenantIDs
