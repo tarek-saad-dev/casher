@@ -103,6 +103,20 @@ describe.skipIf(!enabled)('CUT CLUB REAL disposable SQL acceptance (NO staging /
     expect((wallet?.coins??0)).not.toBe(9000);
     expect(await loadCutClubWallet('X'.repeat(43))).toBeNull();
   });
+  it('an incorrect tenant code cannot mint OTP or restore even a previously valid session',async()=>{
+    const issued=await startCutClubOtp(inactiveClient,'LOGIN');
+    const auth=await verifyCutClubOtp(issued.pendingToken,'123456');
+    expect(await getCutClubSession(auth.sessionToken)).not.toBeNull();
+    process.env.CUT_CLUB_AUTH_TENANT_CODE='FOREIGN_TEST';
+    try {
+      expect(await getCutClubSession(auth.sessionToken)).toBeNull();
+      await expect(startCutClubOtp(inactiveClient,'LOGIN'))
+        .rejects.toThrow('CUT_CLUB_SCHEMA_NOT_READY');
+      expect(provider.send).toHaveBeenCalledTimes(1);
+    } finally {
+      process.env.CUT_CLUB_AUTH_TENANT_CODE='CUT_SALON_TEST';
+    }
+  });
   it('one pending OTP can be consumed exactly once with two parallel verify requests',async()=>{
     const issued=await startCutClubOtp(inactiveClient,'LOGIN');
     const outcomes=await Promise.allSettled([
