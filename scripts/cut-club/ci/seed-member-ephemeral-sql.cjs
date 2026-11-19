@@ -41,7 +41,7 @@ async function main(){
     await sa.request().query(`
       CREATE USER [drvo_agent] FOR LOGIN [drvo_agent];
       ALTER ROLE db_owner ADD MEMBER [drvo_agent];
-      CREATE TABLE dbo.Tenant(TenantId UNIQUEIDENTIFIER NOT NULL PRIMARY KEY);
+      CREATE TABLE dbo.Tenant(TenantId UNIQUEIDENTIFIER NOT NULL PRIMARY KEY,Code NVARCHAR(64) NOT NULL UNIQUE,Status NVARCHAR(16) NOT NULL);
       CREATE TABLE dbo.TblClient(
         ClientID INT NOT NULL PRIMARY KEY, TenantId UNIQUEIDENTIFIER NOT NULL,
         Mobile NVARCHAR(30) NOT NULL, Name NVARCHAR(100) NULL
@@ -67,9 +67,9 @@ async function main(){
         ClientLoyaltyID INT NOT NULL, MovementType VARCHAR(50) NOT NULL,
         PointsDelta DECIMAL(18,2) NOT NULL, CreatedAt DATETIME2 NOT NULL
       );
-      INSERT dbo.Tenant(TenantId) VALUES
-        ('413d433e-f36b-1410-8820-009ec495c7e1'),
-        ('513d433e-f36b-1410-8820-009ec495c7e2');
+      INSERT dbo.Tenant(TenantId,Code,Status) VALUES
+        ('413d433e-f36b-1410-8820-009ec495c7e1','CUT_SALON_TEST','active'),
+        ('513d433e-f36b-1410-8820-009ec495c7e2','FOREIGN_TEST','active');
       INSERT dbo.TblClient(ClientID,TenantId,Mobile,Name) VALUES
         (7,'413d433e-f36b-1410-8820-009ec495c7e1','01557994946',N'عميل تجريبي'),
         (8,'413d433e-f36b-1410-8820-009ec495c7e1','01557994946',N'سجل ثانٍ'),
