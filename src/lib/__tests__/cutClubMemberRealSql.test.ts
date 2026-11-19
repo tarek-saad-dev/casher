@@ -12,8 +12,8 @@ vi.mock('@/lib/integrations/drvowaClient',()=>({
   sendDrvowaCutClubOtp:provider.send,verifyDrvowaCutClubOtp:provider.verify,
 }));
 let pool:mssql.ConnectionPool|null=null;
-vi.mock('@/lib/db',()=>({
-  sql:mssql,
+vi.mock('@/lib/db',async()=>({
+  sql:(await import('mssql')).default,
   getPool:async()=>{
     if(!pool)throw Error('CUT_CLUB_TEST_SQL_POOL_NOT_READY');
     return pool;
