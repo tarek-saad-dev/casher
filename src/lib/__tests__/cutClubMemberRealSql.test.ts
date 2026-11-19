@@ -38,6 +38,7 @@ describe.skipIf(!enabled)('CUT CLUB REAL disposable SQL acceptance (NO staging /
     }).connect();
     process.env.CUT_CLUB_MEMBER_WALLET_ENABLED='true';
     process.env.CUT_CLUB_AUTH_TENANT_ID=tenant;
+    process.env.CUT_CLUB_AUTH_TENANT_CODE='CUT_SALON_TEST';
   });
   afterAll(async()=>{await pool?.close();pool=null;});
   beforeEach(async()=>{
