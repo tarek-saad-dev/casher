@@ -22,6 +22,7 @@ describe('CUT CLUB production OTP foundations',()=>{
     mocks.send.mockReset();mocks.verify.mockReset();mocks.getPool.mockReset();
     process.env.CUT_CLUB_MEMBER_WALLET_ENABLED='true';
     process.env.CUT_CLUB_AUTH_TENANT_ID=tenant;
+    process.env.CUT_CLUB_AUTH_TENANT_CODE='CUT_SALON_TEST';
   });
   it('normalizes exactly Egyptian mobile numbers and rejects unsupported identifiers',()=>{
     expect(normalizeCutClubPhone('01557994946')).toBe('201557994946');
