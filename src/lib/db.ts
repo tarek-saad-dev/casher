@@ -9,6 +9,46 @@ export let sql: typeof tediousSql = tediousSql;
 const RETRY_MAX_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 3000;
 
+async function assertStagingDbSafetyFence(
+  pool: sql.ConnectionPool,
+  target: DbTarget,
+): Promise<void> {
+  const rawEnforce = String(process.env.STAGING_SAFETY_ENFORCE || '')
+    .trim()
+    .toLowerCase();
+  const enforce = rawEnforce === '1' || rawEnforce === 'true';
+  if (!enforce) return;
+
+  const expected = String(process.env.STAGING_SAFETY_DB_NAME || '').trim();
+  if (!expected) {
+    const err = new Error(
+      '[staging-safety] STAGING_SAFETY_DB_NAME must be set when STAGING_SAFETY_ENFORCE is enabled',
+    );
+    (err as any).code = 'STAGING_SAFETY';
+    try {
+      await pool.close();
+    } catch {
+      /* best effort */
+    }
+    throw err;
+  }
+
+  const res = await pool.request().query('SELECT DB_NAME() AS name;');
+  const actual = String(res.recordset?.[0]?.name ?? '').trim();
+  if (actual !== expected) {
+    const err = new Error(
+      `[staging-safety] Refusing DB usage (target=${target}): DB_NAME()=${actual || '(empty)'} expected ${expected}`,
+    );
+    (err as any).code = 'STAGING_SAFETY';
+    try {
+      await pool.close();
+    } catch {
+      /* best effort */
+    }
+    throw err;
+  }
+}
+
 // Database target type
 export type DbTarget = "local" | "cloud";
 
@@ -162,11 +202,17 @@ async function connectWithRetry(
       newPool = await new sql.ConnectionPool(config).connect();
     }
 
+    await assertStagingDbSafetyFence(newPool, target);
     console.log(`[db:${target}] Connected to SQL Server successfully`);
     return newPool;
   } catch (err) {
     const error = err instanceof Error ? err : new Error(String(err));
     console.error(`[db:${target}] Connection attempt ${attempt} failed:`, error.message);
+
+    const code = (error as any).code;
+    if (code === 'STAGING_SAFETY' || error.message.includes('[staging-safety]')) {
+      throw error;
+    }
 
     if (attempt < RETRY_MAX_ATTEMPTS) {
       console.log(`[db:${target}] Retrying in ${RETRY_DELAY_MS}ms...`);
