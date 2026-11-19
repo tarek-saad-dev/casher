@@ -9,6 +9,9 @@ on:
       - 'src/lib/__tests__/cutClubMemberRealSql.test.ts'
       - 'scripts/cut-club/ci/seed-member-ephemeral-sql.cjs'
       - 'scripts/cut-club/sql/member-wallet-staging-schema.sql'
+      - 'db/drvo-migrations/023-cut-club-member-wallet/schema.sql'
+      - 'scripts/drvo/migrations/023-cut-club-member-wallet.ts'
+      - 'scripts/drvo/migrations/index.ts'
       - '.github/workflows/cut-club-member-real-sql.yml'
 
 permissions:
