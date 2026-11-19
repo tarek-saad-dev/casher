@@ -90,6 +90,7 @@ describe('CUT CLUB OTP → binding → owned wallet state with isolated SQL adap
     fake.db=new FakeSql();
     fake.providerSend.mockReset();fake.providerVerify.mockReset();
     process.env.CUT_CLUB_AUTH_TENANT_ID=tenant;
+    process.env.CUT_CLUB_AUTH_TENANT_CODE='CUT_SALON_TEST';
     process.env.CUT_CLUB_MEMBER_WALLET_ENABLED='true';
     fake.providerSend.mockImplementation(async()=>({
       challengeId:randomUUID(),status:'SENT',
