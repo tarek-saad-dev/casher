@@ -35,6 +35,7 @@ jobs:
       CUT_CLUB_EPHEMERAL_AGENT_PASSWORD: "Isolated-Drvo-Agent-2026!"
       CUT_CLUB_MEMBER_WALLET_ENABLED: "true"
       CUT_CLUB_AUTH_TENANT_ID: "413d433e-f36b-1410-8820-009ec495c7e1"
+      CUT_CLUB_AUTH_TENANT_CODE: "CUT_SALON_TEST"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
