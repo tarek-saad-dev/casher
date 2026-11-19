@@ -30,6 +30,7 @@ Browser `cutsaloon.com` â†’ same-origin Website BFF (only `/api/club/auth/*`) â†
 |---|---|---|
 | Casher | `CUT_CLUB_MEMBER_WALLET_ENABLED` | `false` initially; `true` only after schema + security gates |
 | Casher | `CUT_CLUB_AUTH_TENANT_ID` | UUID of the **verified** CUT Salon tenant, never request-supplied |
+| Casher | `CUT_CLUB_AUTH_TENANT_CODE` | Exact active `dbo.Tenant.Code` that maps to the approved CUT Salon tenant UUID; absent/mismatch fails closed |
 | Casher | `CUT_CLUB_BFF_SHARED_KEY` | Unique random 32+ byte secret shared with Website server only |
 | Casher | `CUT_CLUB_CASHER_PUBLIC_ORIGIN` | `https://ops.cutsaloon.com` for admin CSRF guard |
 | Website | `CUT_CLUB_CASHER_ORIGIN` | `https://ops.cutsaloon.com` |
