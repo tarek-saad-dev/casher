@@ -257,3 +257,38 @@ export async function markDrvowaInboxRead(
     method: 'POST',
   });
 }
+
+
+/** CUT CLUB: provider-backed OTP — same encrypted ERP pairing key, never browser-visible. */
+export type CutClubOtpPurpose = 'CUT_CLUB_SIGNUP' | 'LOGIN';
+export type CutClubOtpSent = {
+  challengeId: string;
+  status: 'SENT' | 'SENDING' | 'UNKNOWN';
+  expiresAtUtc: string;
+  resendAfterSec: number;
+  idempotentReplay: boolean;
+};
+export type CutClubOtpVerified = {
+  verified: true;
+  phoneNormalized: string;
+  purpose: CutClubOtpPurpose;
+};
+export async function sendDrvowaCutClubOtp(input: {
+  phone: string;
+  purpose: CutClubOtpPurpose;
+  requestId: string;
+}): Promise<CutClubOtpSent> {
+  return drvowaRequest<CutClubOtpSent>({
+    path: '/api/external/v1/otp/send', method: 'POST', body: input, timeoutMs: 15000,
+  });
+}
+export async function verifyDrvowaCutClubOtp(input: {
+  phone: string;
+  purpose: CutClubOtpPurpose;
+  challengeId: string;
+  code: string;
+}): Promise<CutClubOtpVerified> {
+  return drvowaRequest<CutClubOtpVerified>({
+    path: '/api/external/v1/otp/verify', method: 'POST', body: input, timeoutMs: 15000,
+  });
+}
