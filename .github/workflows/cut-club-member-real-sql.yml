@@ -1,0 +1,57 @@
+name: CUT CLUB Member Real SQL Isolated Acceptance
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/lib/cut-club/memberOtp.ts'
+      - 'src/lib/cut-club/memberWalletRead.ts'
+      - 'src/lib/__tests__/cutClubMemberRealSql.test.ts'
+      - 'scripts/cut-club/ci/seed-member-ephemeral-sql.cjs'
+      - 'scripts/cut-club/sql/member-wallet-staging-schema.sql'
+      - '.github/workflows/cut-club-member-real-sql.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  sql-acceptance:
+    name: CUT CLUB / disposable SQL Server 2022, no production access
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        ports:
+          - 1433:1433
+        env:
+          ACCEPT_EULA: "Y"
+          MSSQL_SA_PASSWORD: "Isolated-SQL-SA-2026-Only!"
+    env:
+      CI: "true"
+      CUT_CLUB_EPHEMERAL_SQL: "1"
+      CUT_CLUB_EPHEMERAL_HOST: "127.0.0.1"
+      CUT_CLUB_EPHEMERAL_SA_PASSWORD: "Isolated-SQL-SA-2026-Only!"
+      CUT_CLUB_EPHEMERAL_AGENT_PASSWORD: "Isolated-Drvo-Agent-2026!"
+      CUT_CLUB_MEMBER_WALLET_ENABLED: "true"
+      CUT_CLUB_AUTH_TENANT_ID: "413d433e-f36b-1410-8820-009ec495c7e1"
+      CUT_CLUB_AUTH_TENANT_CODE: "CUT_SALON_TEST"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Check disposable SQL host and no production credentials
+        run: |
+          test "$CUT_CLUB_EPHEMERAL_HOST" = "127.0.0.1"
+          test "$CUT_CLUB_EPHEMERAL_SQL" = "1"
+          test "$CI" = "true"
+          test -z "${CLOUD_DB_SERVER:-}"
+          test -z "${DB_SERVER:-}"
+          echo 'Dedicated localhost-only Docker SQL fixture, no staging/production credentials'
+      - name: Create isolated tenant/client/loyalty fixtures and apply staging-guarded member migration
+        run: node scripts/cut-club/ci/seed-member-ephemeral-sql.cjs
+      - name: Exercise DRVO OTP verification workflow over real SQL (provider mocked ONLY)
+        run: npx vitest run src/lib/__tests__/cutClubMemberRealSql.test.ts

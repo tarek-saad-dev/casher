@@ -1,3 +1,4 @@
+import { legacyCutClubPublicDenied } from '@/lib/cut-club/legacyPublicQuarantine';
 // ============================================
 // GET /api/public/client/loyalty/activity
 // Client Loyalty Activity History
@@ -45,6 +46,10 @@ export async function OPTIONS(): Promise<NextResponse> {
 export async function GET(
   req: NextRequest,
 ): Promise<NextResponse<LoyaltyActivityListResponse | LoyaltyErrorResponse>> {
+  // Old clientId API remains backward-compatible only until verified
+  // member wallets are explicitly enabled. Then fail closed.
+  if (process.env.CUT_CLUB_MEMBER_WALLET_ENABLED === 'true')
+    return legacyCutClubPublicDenied() as any;
   try {
     // TODO: Replace with authenticated session / OTP token
     const { searchParams } = new URL(req.url);

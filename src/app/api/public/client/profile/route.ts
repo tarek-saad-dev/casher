@@ -1,3 +1,4 @@
+import { legacyCutClubPublicDenied } from '@/lib/cut-club/legacyPublicQuarantine';
 /**
  * POST /api/public/client/profile
  * Returns client profile from TblClient by phone number.
@@ -16,6 +17,7 @@ export async function OPTIONS() {
 }
 
 export async function POST(req: NextRequest) {
+  if(process.env.CUT_CLUB_MEMBER_WALLET_ENABLED === 'true') return legacyCutClubPublicDenied() as any;
   try {
     const body = await req.json();
     const phone = body.phone;

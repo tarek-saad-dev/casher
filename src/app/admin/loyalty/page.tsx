@@ -479,6 +479,11 @@ export default function LoyaltyPage() {
               </div>
             </div>
             <div className="flex items-center gap-2">
+              <a href="/admin/cut-club/member-review"
+                className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 text-xs font-bold text-amber-200 hover:bg-amber-500/20">
+                <Users className="h-4 w-4" aria-hidden="true" />
+                مراجعة ربط العضويات
+              </a>
               <Button
                 variant="outline"
                 size="sm"

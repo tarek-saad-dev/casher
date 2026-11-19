@@ -1,0 +1,55 @@
+name: CUT CLUB WhatsApp OTP & Wallet Security
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/lib/cut-club/memberOtp.ts'
+      - 'src/lib/cut-club/memberWalletRead.ts'
+      - 'src/lib/cut-club/legacyPublicQuarantine.ts'
+      - 'src/lib/integrations/drvowaClient.ts'
+      - 'src/app/api/public/cut-club/**'
+      - 'src/app/api/public/client/**'
+      - 'src/app/api/admin/cut-club/**'
+      - 'src/lib/__tests__/cutClubMemberOtp.test.ts'
+      - 'src/lib/__tests__/cutClubLegacyPublicQuarantine.test.ts'
+      - 'src/lib/__tests__/cutClubMemberFlowIsolated.test.ts'
+      - 'scripts/cut-club/sql/member-wallet-staging-schema.sql'
+      - '.github/workflows/cut-club-member-wallet.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  member-security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: CUT CLUB OTP and legacy cross-account denial tests (offline)
+        run: >-
+          npx vitest run
+          src/lib/__tests__/cutClubMemberOtp.test.ts
+          src/lib/__tests__/cutClubLegacyPublicQuarantine.test.ts
+          src/lib/__tests__/cutClubMemberFlowIsolated.test.ts
+      - name: Verify staging migration cannot be applied silently to production
+        run: |
+          node - <<'NODE'
+          const fs=require('node:fs');
+          const sql=fs.readFileSync('scripts/cut-club/sql/member-wallet-staging-schema.sql','utf8');
+          const required=[
+            "DB_NAME() <> N'last132_agent'", "SUSER_SNAME() <> N'drvo_agent'",
+            "CutClubMemberAccount","CutClubOtpPending","CutClubCustomerSession",
+            "UX_CutClubMemberAccount_TenantPhone", "UX_CutClubMemberAccount_TenantClient",
+            "CutClubOtpPending_Request"
+          ];
+          for (const token of required) {
+            if (!sql.includes(token)) throw Error('Missing guarded member schema contract: '+token);
+          }
+          console.log('CUT CLUB member SQL stage-only contract PASS; no DB touched');
+          NODE
