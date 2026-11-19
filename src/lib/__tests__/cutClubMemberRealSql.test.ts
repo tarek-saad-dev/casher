@@ -21,6 +21,7 @@ vi.mock('@/lib/db',async()=>({
 }));
 import { startCutClubOtp,verifyCutClubOtp,getCutClubSession,logoutCutClubSession,digestToken } from '../cut-club/memberOtp';
 import { loadCutClubWallet } from '../cut-club/memberWalletRead';
+import { verifyCutClubMemberWalletSchema } from '../../../scripts/drvo/migrations/023-cut-club-member-wallet';
 
 const tenant='413d433e-f36b-1410-8820-009ec495c7e1';
 const phone='201557994946';
@@ -56,6 +57,10 @@ describe.skipIf(!enabled)('CUT CLUB REAL disposable SQL acceptance (NO staging /
     provider.verify.mockImplementation(async (params:{phone:string;purpose:string})=>({
       verified:true,phoneNormalized:params.phone,purpose:params.purpose,
     }));
+  });
+  it('production manifest verifies real tables, trusted constraints and unique indexes',async()=>{
+    const result=await verifyCutClubMemberWalletSchema(pool!);
+    expect(result).toEqual({ok:true,failures:[]});
   });
   it('signup creates an anonymous-linked customer account after verified WhatsApp phone',async()=>{
     const issued=await startCutClubOtp(inactiveClient,'CUT_CLUB_SIGNUP');
