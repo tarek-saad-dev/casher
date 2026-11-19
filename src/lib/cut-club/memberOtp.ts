@@ -99,7 +99,7 @@ async function bindVerifiedPhone(tenantId: string, phone: string): Promise<Verif
       .input('tenant', sql.UniqueIdentifier, tenantId)
       .input('phone', sql.NVarChar(20), phone)
       .query<{ ClientID: number }>(`
-        SELECT TOP (2) c.ClientID
+        SELECT TOP (200) c.ClientID
         FROM dbo.TblClient AS c WITH (HOLDLOCK)
         CROSS APPLY (SELECT REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
           LTRIM(RTRIM(c.Mobile)), ' ', ''), '-', ''), '+', ''), '(', ''), ')', '')
@@ -126,7 +126,10 @@ async function bindVerifiedPhone(tenantId: string, phone: string): Promise<Verif
     if (knownAccount.recordset.length > 1) throw new ClubAuthError('ACCOUNT_REVIEW_REQUIRED',409);
     const current = knownAccount.recordset[0];
     if (current?.LinkStatus === 'ACTIVE') {
-      if (rows.length !== 1 || rows[0].ClientID !== current.LegacyClientID) {
+      // A trusted human review may pick the rightful account even when several
+      // historic customers share a phone. Reject only if the approved record
+      // no longer matches the verified tenant + phone.
+      if (!current.LegacyClientID || !rows.some(row => row.ClientID === current.LegacyClientID)) {
         // If phone record changes or duplicates arise, fail closed: no wallet.
         throw new ClubAuthError('ACCOUNT_REVIEW_REQUIRED',409);
       }
