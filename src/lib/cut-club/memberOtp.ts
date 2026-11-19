@@ -16,7 +16,9 @@ export class ClubAuthError extends Error {
 }
 export function cutClubTenant(env: NodeJS.ProcessEnv = process.env): string {
   const id = env.CUT_CLUB_AUTH_TENANT_ID;
-  if (!id || !tenantUuid.test(id) || env.CUT_CLUB_MEMBER_WALLET_ENABLED !== 'true')
+  const code=env.CUT_CLUB_AUTH_TENANT_CODE?.trim();
+  if (!id || !tenantUuid.test(id) || env.CUT_CLUB_MEMBER_WALLET_ENABLED !== 'true' ||
+      !code || !/^[A-Za-z0-9_-]{3,64}$/.test(code))
     throw new ClubAuthError('CUT_CLUB_NOT_ENABLED', 503);
   return id.toLowerCase();
 }
@@ -51,11 +53,16 @@ export async function startCutClubOtp(raw: unknown, purpose: unknown) {
   // Fail closed BEFORE sending WhatsApp: never send a code that cannot be
   // persisted into the member session system due to a missing DB migration.
   const db = await getPool();
-  const ready = await db.request().query<{Ready:number}>(`
+  const ready = await db.request()
+    .input('tenant',sql.UniqueIdentifier,tenantId)
+    .input('tenantCode',sql.NVarChar(64),process.env.CUT_CLUB_AUTH_TENANT_CODE)
+    .query<{Ready:number}>(`
     SELECT CASE WHEN OBJECT_ID(N'dbo.CutClubOtpPending',N'U') IS NOT NULL
       AND OBJECT_ID(N'dbo.CutClubCustomerSession',N'U') IS NOT NULL
       AND OBJECT_ID(N'dbo.CutClubMemberAccount',N'U') IS NOT NULL
       AND COL_LENGTH(N'dbo.TblClient',N'TenantId') IS NOT NULL
+      AND EXISTS (SELECT 1 FROM dbo.Tenant
+                  WHERE TenantId=@tenant AND Code=@tenantCode AND Status=N'active')
       THEN 1 ELSE 0 END AS Ready
   `);
   if(ready.recordset[0]?.Ready!==1)throw new ClubAuthError('CUT_CLUB_SCHEMA_NOT_READY',503);
@@ -223,10 +230,13 @@ export async function getCutClubSession(token: unknown): Promise<VerifiedMemberI
   const db=await getPool();
   const result=await db.request().input('digest',sql.Char(64),digestToken(token))
     .input('tenant',sql.UniqueIdentifier,tenantId)
+    .input('tenantCode',sql.NVarChar(64),process.env.CUT_CLUB_AUTH_TENANT_CODE)
     .query<{AccountID:string;TenantId:string;LegacyClientID:number|null;LinkStatus:VerifiedMemberIdentity['linkStatus']}>(`
       SELECT a.AccountID,a.TenantId,a.LegacyClientID,a.LinkStatus
       FROM dbo.CutClubCustomerSession s
       JOIN dbo.CutClubMemberAccount a ON a.AccountID=s.AccountID AND a.TenantId=s.TenantId
+      JOIN dbo.Tenant t ON t.TenantId=a.TenantId
+        AND t.Code=@tenantCode AND t.Status=N'active'
       WHERE s.TokenDigest=@digest AND s.TenantId=@tenant
         AND s.RevokedAtUtc IS NULL AND s.ExpiresAtUtc>SYSUTCDATETIME()
     `);
