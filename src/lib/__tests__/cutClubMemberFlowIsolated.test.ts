@@ -54,7 +54,7 @@ class FakeSql {
     if(q.includes("SET Status='READY',VerifyLease=NULL")){
       if(this.pending&&this.pending.lease===p.lease){this.pending.status='READY';this.pending.lease=null;}return ok();
     }
-    if(q.includes('SELECT TOP (2) c.ClientID'))return ok(this.matches);
+    if(q.includes('SELECT TOP (2) c.ClientID')&&!q.includes('ClientName'))return ok(this.matches);
     if(q.includes('FROM dbo.CutClubMemberAccount WITH (UPDLOCK'))return ok(this.accounts.filter(a=>a.PhoneNormalized===p.phone));
     if(q.includes('INSERT dbo.CutClubMemberAccount')){
       const a:Account={AccountID:randomUUID(),TenantId:p.tenant,PhoneNormalized:p.phone,LegacyClientID:null,LinkStatus:p.desired};
