@@ -274,6 +274,45 @@ describe("CUT CLUB isolated real SQL voucher+invoice atomic acceptance", () => {
     expect(r.recordset[0]).toMatchObject({Claims:1,Logs:1});
   },90000);
 
+  it("cancellation failure rolls back BOTH voucher restoration and claim reversal",async()=>{
+    const v=await issueVoucher();
+    const first=await sale({code:v.code});
+    expect(first.ok).toBe(true);
+    const tx=new sql.Transaction(stage!); await tx.begin();
+    try {
+      expect(await reverseStagingClaimBeforeSaleDeletion(tx,{
+        trustedTenantId:TENANT,trustedBranchId:1,invoiceId:first.inv
+      })).toBe(true);
+      // Emulate an invoice/treasury deletion failure AFTER voucher restoration.
+      throw Error("SIMULATED_TREASURY_DELETE_FAILURE");
+    } catch(e) {
+      await tx.rollback();
+      expect(String(e)).toContain("SIMULATED_TREASURY_DELETE_FAILURE");
+    }
+    expect(await voucherState(v.id)).toMatchObject({Status:"USED",UsedInvID:first.inv});
+    expect(await counts(first.inv)).toMatchObject({Head:1,Payment:1,Applied:1});
+    const r=await stage!.request().input("id",sql.Int,v.id).query(
+      "SELECT COUNT(*) AS Reversals FROM dbo.CutClubVoucherInvoiceClaim WHERE InventoryID=@id AND Status=N'REVERSED'");
+    expect(r.recordset[0].Reversals).toBe(0);
+  });
+
+  it("flag OFF blocks claimed invoice reversal and preserves invoice/voucher",async()=>{
+    const v=await issueVoucher();
+    const first=await sale({code:v.code});
+    expect(first.ok).toBe(true);
+    process.env.CUT_CLUB_STAGING_CLAIM_WRITE_ENABLED="false";
+    try {
+      const tx=new sql.Transaction(stage!); await tx.begin();
+      try {
+        await expect(reverseStagingClaimBeforeSaleDeletion(tx,{
+          trustedTenantId:TENANT,trustedBranchId:1,invoiceId:first.inv
+        })).rejects.toThrow("CUT_CLUB_REVERSAL_WRITE_DISABLED");
+      } finally { await tx.rollback(); }
+      expect(await voucherState(v.id)).toMatchObject({Status:"USED",UsedInvID:first.inv});
+      expect(await counts(first.inv)).toMatchObject({Head:1,Payment:1,Applied:1});
+    } finally {process.env.CUT_CLUB_STAGING_CLAIM_WRITE_ENABLED="true";}
+  });
+
   it("flag OFF fails closed and rolls back invoice/payment",async()=>{
     const v=await issueVoucher();
     process.env.CUT_CLUB_STAGING_CLAIM_WRITE_ENABLED="false";
