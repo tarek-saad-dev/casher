@@ -33,6 +33,11 @@ export async function GET(){
  * in person. OTP alone never links an old balance automatically.
  */
 export async function POST(req:NextRequest){
+  const trustedOrigin=process.env.CUT_CLUB_CASHER_PUBLIC_ORIGIN ||
+    (process.env.NODE_ENV==='production'?'https://ops.cutsaloon.com':req.nextUrl.origin);
+  if(req.headers.get('origin')!==trustedOrigin ||
+      !req.headers.get('content-type')?.startsWith('application/json'))
+    return reply({ok:false,code:'ORIGIN_REQUIRED'},403);
   const staff=await requireAdmin();
   if(!isAuthResult(staff))return staff;
   try {
