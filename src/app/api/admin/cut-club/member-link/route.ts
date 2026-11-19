@@ -55,7 +55,7 @@ export async function POST(req:NextRequest){
           WHERE TenantId=@tenant AND AccountID=@accountId
         `);
       const a=account.recordset[0];
-      if(!a || a.LinkStatus==='ACTIVE')return reply({ok:false,code:'REVIEW_NOT_PENDING'},409);
+      if(!a || a.LinkStatus==='ACTIVE'){await tx.rollback();return reply({ok:false,code:'REVIEW_NOT_PENDING'},409);}
       const customer=await new sql.Request(tx)
         .input('tenant',sql.UniqueIdentifier,tenant).input('clientId',sql.Int,b.clientId)
         .query<{Mobile:string|null}>(`
