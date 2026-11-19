@@ -48,6 +48,17 @@ export async function startCutClubOtp(raw: unknown, purpose: unknown) {
   const tenantId = cutClubTenant();
   const phone = normalizeCutClubPhone(raw);
   if (!phone || !validPurpose(purpose)) throw new ClubAuthError('INVALID_REQUEST', 400);
+  // Fail closed BEFORE sending WhatsApp: never send a code that cannot be
+  // persisted into the member session system due to a missing DB migration.
+  const db = await getPool();
+  const ready = await db.request().query<{Ready:number}>(`
+    SELECT CASE WHEN OBJECT_ID(N'dbo.CutClubOtpPending',N'U') IS NOT NULL
+      AND OBJECT_ID(N'dbo.CutClubCustomerSession',N'U') IS NOT NULL
+      AND OBJECT_ID(N'dbo.CutClubMemberAccount',N'U') IS NOT NULL
+      AND COL_LENGTH(N'dbo.TblClient',N'TenantId') IS NOT NULL
+      THEN 1 ELSE 0 END AS Ready
+  `);
+  if(ready.recordset[0]?.Ready!==1)throw new ClubAuthError('CUT_CLUB_SCHEMA_NOT_READY',503);
   // DRVO is authoritative for 60s cooldown, per-phone/hour/day and business quota.
   // It issues and stores the OTP; we only persist a browser-bound pending capability.
   const sent = await sendDrvowaCutClubOtp({ phone, purpose, requestId: randomUUID() });
@@ -57,7 +68,6 @@ export async function startCutClubOtp(raw: unknown, purpose: unknown) {
       Date.parse(sent.expiresAtUtc) <= Date.now())
     throw new ClubAuthError('OTP_PROVIDER_INVALID_RESPONSE', 503);
   const pendingToken = newOpaque();
-  const db = await getPool();
   await db.request()
     .input('digest', sql.Char(64), digestToken(pendingToken))
     .input('tenant', sql.UniqueIdentifier, tenantId)
