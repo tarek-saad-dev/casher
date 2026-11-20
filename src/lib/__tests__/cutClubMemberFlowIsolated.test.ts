@@ -170,8 +170,11 @@ describe('CUT CLUB OTP → binding → owned wallet state with isolated SQL adap
   });
   it('revoking an account kills every live session of that account only',async()=>{
     const a=await verifyCutClubOtp((await startCutClubOtp('01557994946','LOGIN')).pendingToken,'123456');
-    const b=await verifyCutClubOtp((await startCutClubOtp('01557994946','LOGIN')).pendingToken,'123456');
     const account=(await getCutClubSession(a.sessionToken))!.accountId;
+    // Second device of the same member.
+    const b={sessionToken:'B'.repeat(43)};
+    fake.db.sessions.push({digest:digestToken(b.sessionToken),account,revoked:false});
+    expect((await getCutClubSession(b.sessionToken))?.accountId).toBe(account);
     fake.db.sessions.push({digest:'other',account:randomUUID(),revoked:false});
     const db=await import('@/lib/db');
     const pool={request:()=>new (db.sql as any).Request()};
