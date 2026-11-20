@@ -16,15 +16,18 @@ export async function GET(){
     const tenant=cutClubTenant();
     if(staff.tenantId.toLowerCase()!==tenant) return reply({ok:false,code:'NOT_FOUND'},404);
     const accounts=await (await getPool()).request().input('tenant',sql.UniqueIdentifier,tenant)
-      .query<{AccountID:string;PhoneNormalized:string;LinkStatus:string;CreatedAtUtc:Date}>(`
-        SELECT TOP(100) AccountID,PhoneNormalized,LinkStatus,CreatedAtUtc
-        FROM dbo.CutClubMemberAccount
-        WHERE TenantId=@tenant AND LinkStatus IN ('REVIEW_REQUIRED','UNLINKED')
-        ORDER BY CreatedAtUtc DESC
+      .query<{AccountID:string;PhoneNormalized:string;LinkStatus:string;AccessStatus:string;CreatedAtUtc:Date;ClientName:string|null}>(`
+        SELECT TOP(200) a.AccountID,a.PhoneNormalized,a.LinkStatus,a.AccessStatus,
+          a.CreatedAtUtc,c.Name AS ClientName
+        FROM dbo.CutClubMemberAccount a
+        LEFT JOIN dbo.TblClient c ON c.TenantId=a.TenantId AND c.ClientID=a.LegacyClientID
+        WHERE a.TenantId=@tenant
+        ORDER BY a.CreatedAtUtc DESC
       `);
     return reply({ok:true,items:accounts.recordset.map(x=>({
       accountId:x.AccountID,phoneMasked:x.PhoneNormalized.slice(0,4)+'****'+x.PhoneNormalized.slice(-3),
-      linkStatus:x.LinkStatus,createdAt:x.CreatedAtUtc,
+      linkStatus:x.LinkStatus,accessStatus:x.AccessStatus,
+      clientName:x.ClientName?.trim()||null,createdAt:x.CreatedAtUtc,
     }))});
   }catch{return reply({ok:false,code:'CUT_CLUB_UNAVAILABLE'},503);}
 }
@@ -54,13 +57,13 @@ export async function POST(req:NextRequest){
     try{
       const account=await new sql.Request(tx)
         .input('tenant',sql.UniqueIdentifier,tenant).input('accountId',sql.UniqueIdentifier,b.accountId)
-        .query<{PhoneNormalized:string;LinkStatus:string;LegacyClientID:number|null}>(`
-          SELECT PhoneNormalized,LinkStatus,LegacyClientID
+        .query<{PhoneNormalized:string;LinkStatus:string;AccessStatus:string;LegacyClientID:number|null}>(`
+          SELECT PhoneNormalized,LinkStatus,AccessStatus,LegacyClientID
           FROM dbo.CutClubMemberAccount WITH (UPDLOCK,HOLDLOCK)
           WHERE TenantId=@tenant AND AccountID=@accountId
         `);
       const a=account.recordset[0];
-      if(!a || a.LinkStatus==='ACTIVE'){await tx.rollback();return reply({ok:false,code:'REVIEW_NOT_PENDING'},409);}
+      if(!a || a.LinkStatus==='ACTIVE' || a.AccessStatus==='SUSPENDED'){await tx.rollback();return reply({ok:false,code:'REVIEW_NOT_PENDING'},409);}
       const customer=await new sql.Request(tx)
         .input('tenant',sql.UniqueIdentifier,tenant).input('clientId',sql.Int,b.clientId)
         .query<{Mobile:string|null}>(`
@@ -91,7 +94,7 @@ export async function POST(req:NextRequest){
               LinkApprovedAtUtc=SYSUTCDATETIME(),
               LinkApprovedBy=@staffId,LinkProofType='IN_PERSON_ID',UpdatedAtUtc=SYSUTCDATETIME()
           WHERE TenantId=@tenant AND AccountID=@accountId
-            AND LinkStatus IN ('UNLINKED','REVIEW_REQUIRED')
+            AND LinkStatus IN ('UNLINKED','REVIEW_REQUIRED') AND AccessStatus='ENABLED'
         `);
       if(linked.rowsAffected[0]!==1){await tx.rollback();return reply({ok:false,code:'REVIEW_CONFLICT'},409);}
       await tx.commit();
