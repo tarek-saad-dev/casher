@@ -21,9 +21,9 @@ export async function GET(req:NextRequest){
     if(!phone)return reply({ok:false,code:'INVALID_PHONE'},400);
     const r=await (await getPool()).request()
       .input('tenant',sql.UniqueIdentifier,tenant).input('phone',sql.NVarChar(20),phone)
-      .query<{AccountID:string;LinkStatus:string;LegacyClientID:number|null;ClientName:string|null;
+      .query<{AccountID:string;LinkStatus:string;AccessStatus:string;LegacyClientID:number|null;ClientName:string|null;
         LinkApprovedAtUtc:Date|null;LinkApprovedBy:number|null;CreatedAtUtc:Date;LiveSessions:number}>(`
-        SELECT a.AccountID,a.LinkStatus,a.LegacyClientID,c.Name AS ClientName,
+        SELECT a.AccountID,a.LinkStatus,a.AccessStatus,a.LegacyClientID,c.Name AS ClientName,
           a.LinkApprovedAtUtc,a.LinkApprovedBy,a.CreatedAtUtc,
           (SELECT COUNT(*) FROM dbo.CutClubCustomerSession s
             WHERE s.TenantId=a.TenantId AND s.AccountID=a.AccountID
@@ -35,7 +35,7 @@ export async function GET(req:NextRequest){
     const a=r.recordset[0];
     if(!a)return reply({ok:true,account:null});
     return reply({ok:true,account:{
-      accountId:a.AccountID,phoneMasked:mask(phone),linkStatus:a.LinkStatus,
+      accountId:a.AccountID,phoneMasked:mask(phone),linkStatus:a.LinkStatus,accessStatus:a.AccessStatus,
       legacyClientId:a.LegacyClientID,clientName:a.ClientName?.trim()||null,
       linkApprovedAt:a.LinkApprovedAtUtc,linkApprovedBy:a.LinkApprovedBy,
       createdAt:a.CreatedAtUtc,liveSessions:a.LiveSessions,
@@ -65,15 +65,15 @@ export async function POST(req:NextRequest){
     const b=await req.json().catch(()=>null);
     const reason=typeof b?.reason==='string'?b.reason.trim():'';
     if(!b||typeof b.accountId!=='string'||!accountIdRe.test(b.accountId)||
-        (b.action!=='UNLINK'&&b.action!=='REVOKE_SESSIONS')||reason.length<5||reason.length>300)
+        !['UNLINK','REVOKE_SESSIONS','SUSPEND','RESUME'].includes(b.action)||reason.length<5||reason.length>300)
       return reply({ok:false,code:'INVALID_REQUEST'},400);
     const tx=new sql.Transaction(await getPool());
     await tx.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
     try{
       const found=await new sql.Request(tx)
         .input('tenant',sql.UniqueIdentifier,tenant).input('accountId',sql.UniqueIdentifier,b.accountId)
-        .query<{LinkStatus:string;LegacyClientID:number|null}>(`
-          SELECT LinkStatus,LegacyClientID FROM dbo.CutClubMemberAccount WITH (UPDLOCK,HOLDLOCK)
+        .query<{LinkStatus:string;AccessStatus:string;LegacyClientID:number|null}>(`
+          SELECT LinkStatus,AccessStatus,LegacyClientID FROM dbo.CutClubMemberAccount WITH (UPDLOCK,HOLDLOCK)
           WHERE TenantId=@tenant AND AccountID=@accountId
         `);
       const a=found.recordset[0];
@@ -89,14 +89,42 @@ export async function POST(req:NextRequest){
             WHERE TenantId=@tenant AND AccountID=@accountId AND LinkStatus='ACTIVE'
           `);
       }
+      if(b.action==='SUSPEND'||b.action==='RESUME'){
+        const next=b.action==='SUSPEND'?'SUSPENDED':'ENABLED';
+        if(a.AccessStatus===next){await tx.rollback();return reply({ok:false,code:'STATUS_UNCHANGED'},409);}
+        const applied=await new sql.Request(tx)
+          .input('tenant',sql.UniqueIdentifier,tenant).input('accountId',sql.UniqueIdentifier,b.accountId)
+          .input('next',sql.VarChar(16),next).input('staffId',sql.Int,staff.userId)
+          .query(`
+            UPDATE dbo.CutClubMemberAccount
+            SET AccessStatus=@next,AccessUpdatedAtUtc=SYSUTCDATETIME(),
+              AccessUpdatedBy=@staffId,UpdatedAtUtc=SYSUTCDATETIME()
+            WHERE TenantId=@tenant AND AccountID=@accountId
+          `);
+        if(applied.rowsAffected[0]!==1){await tx.rollback();return reply({ok:false,code:'REVIEW_CONFLICT'},409);}
+        await new sql.Request(tx)
+          .input('tenant',sql.UniqueIdentifier,tenant)
+          .input('accountId',sql.UniqueIdentifier,b.accountId)
+          .input('staffId',sql.Int,staff.userId)
+          .input('action',sql.VarChar(24),b.action)
+          .input('reason',sql.NVarChar(300),reason)
+          .query(`
+            INSERT dbo.CutClubMemberAccessAudit(TenantId,AccountID,StaffUserID,Action,Reason)
+            VALUES(@tenant,@accountId,@staffId,@action,@reason)
+          `);
+        // Do NOT revoke the status-only session: the customer must still see
+        // the explicit suspension banner at /club/home. getCutClubSession
+        // removes wallet ownership on EVERY read as soon as access is suspended.
+        await tx.commit();
+        return reply({ok:true,action:b.action,accessStatus:next,linkStatus:a.LinkStatus});
+      }
       const revoked=await revokeCutClubAccountSessions(tx,tenant,b.accountId);
       await tx.commit();
-      // Structured operator trail (no phone, no balances). Durable audit table: follow-up.
       console.info(JSON.stringify({event:'cut_club_member_support',action:b.action,
         accountId:b.accountId,previousClientId:a.LegacyClientID,staffUserId:staff.userId,
         reason,revokedSessions:revoked,at:new Date().toISOString()}));
       return reply({ok:true,action:b.action,revokedSessions:revoked,
-        linkStatus:b.action==='UNLINK'?'REVIEW_REQUIRED':a.LinkStatus});
+        linkStatus:b.action==='UNLINK'?'REVIEW_REQUIRED':a.LinkStatus,accessStatus:a.AccessStatus});
     }catch(error){await tx.rollback().catch(()=>null);throw error;}
   }catch{return reply({ok:false,code:'CUT_CLUB_UNAVAILABLE'},503);}
 }
