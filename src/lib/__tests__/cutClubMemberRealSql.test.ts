@@ -21,7 +21,7 @@ vi.mock('@/lib/db',async()=>({
 }));
 import { startCutClubOtp,verifyCutClubOtp,getCutClubSession,logoutCutClubSession,digestToken } from '../cut-club/memberOtp';
 import { loadCutClubWallet } from '../cut-club/memberWalletRead';
-import { verifyCutClubMemberWalletSchema } from '../../../scripts/drvo/migrations/023-cut-club-member-wallet';
+import { verifyCutClubMemberWalletSchema } from '../../../scripts/drvo/migrations/026-cut-club-member-wallet';
 
 const tenant='413d433e-f36b-1410-8820-009ec495c7e1';
 const phone='201557994946';
