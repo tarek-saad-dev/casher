@@ -72,6 +72,16 @@ export async function POST(req:NextRequest){
         await tx.rollback();
         return reply({ok:false,code:'IDENTITY_MISMATCH'},409);
       }
+      // One legacy client record can back at most one ACTIVE member wallet.
+      const taken=await new sql.Request(tx)
+        .input('tenant',sql.UniqueIdentifier,tenant).input('clientId',sql.Int,b.clientId)
+        .input('accountId',sql.UniqueIdentifier,b.accountId)
+        .query<{AccountID:string}>(`
+          SELECT TOP (1) AccountID FROM dbo.CutClubMemberAccount WITH (UPDLOCK,HOLDLOCK)
+          WHERE TenantId=@tenant AND LegacyClientID=@clientId AND LinkStatus='ACTIVE'
+            AND AccountID<>@accountId
+        `);
+      if(taken.recordset.length>0){await tx.rollback();return reply({ok:false,code:'CLIENT_ALREADY_LINKED'},409);}
       const linked=await new sql.Request(tx)
         .input('tenant',sql.UniqueIdentifier,tenant).input('accountId',sql.UniqueIdentifier,b.accountId)
         .input('clientId',sql.Int,b.clientId).input('staffId',sql.Int,staff.userId)

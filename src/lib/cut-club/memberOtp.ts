@@ -231,17 +231,47 @@ export async function getCutClubSession(token: unknown): Promise<VerifiedMemberI
   const result=await db.request().input('digest',sql.Char(64),digestToken(token))
     .input('tenant',sql.UniqueIdentifier,tenantId)
     .input('tenantCode',sql.NVarChar(64),process.env.CUT_CLUB_AUTH_TENANT_CODE)
-    .query<{AccountID:string;TenantId:string;LegacyClientID:number|null;LinkStatus:VerifiedMemberIdentity['linkStatus']}>(`
-      SELECT a.AccountID,a.TenantId,a.LegacyClientID,a.LinkStatus
+    .query<{AccountID:string;TenantId:string;LegacyClientID:number|null;LinkStatus:VerifiedMemberIdentity['linkStatus'];ClientPhoneMatches:number|null}>(`
+      SELECT a.AccountID,a.TenantId,a.LegacyClientID,a.LinkStatus,
+        CASE WHEN a.LinkStatus<>'ACTIVE' THEN NULL
+             WHEN linked.Phone=a.PhoneNormalized THEN 1 ELSE 0 END AS ClientPhoneMatches
       FROM dbo.CutClubCustomerSession s
       JOIN dbo.CutClubMemberAccount a ON a.AccountID=s.AccountID AND a.TenantId=s.TenantId
       JOIN dbo.Tenant t ON t.TenantId=a.TenantId
         AND t.Code=@tenantCode AND t.Status=N'active'
+      OUTER APPLY (
+        SELECT TOP (1) CASE
+          WHEN LEN(cleaned.MobileClean)=11 AND cleaned.MobileClean LIKE '01[0125]%'
+            THEN '2' + cleaned.MobileClean
+          WHEN LEN(cleaned.MobileClean)=14 AND cleaned.MobileClean LIKE '00201[0125]%'
+            THEN SUBSTRING(cleaned.MobileClean, 3, 12)
+          ELSE cleaned.MobileClean END AS Phone
+        FROM dbo.TblClient c
+        CROSS APPLY (SELECT REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+          LTRIM(RTRIM(c.Mobile)), ' ', ''), '-', ''), '+', ''), '(', ''), ')', '')
+          AS MobileClean) cleaned
+        WHERE c.TenantId=a.TenantId AND c.ClientID=a.LegacyClientID
+      ) linked
       WHERE s.TokenDigest=@digest AND s.TenantId=@tenant
         AND s.RevokedAtUtc IS NULL AND s.ExpiresAtUtc>SYSUTCDATETIME()
     `);
   const a=result.recordset[0];
-  return a?{accountId:a.AccountID,tenantId:a.TenantId,legacyClientId:a.LinkStatus==='ACTIVE'?a.LegacyClientID:null,linkStatus:a.LinkStatus}:null;
+  if(!a)return null;
+  // Re-validated on EVERY request: if the linked Casher record was deleted or its
+  // mobile changed after approval, an already-open session loses the wallet at
+  // once (fail closed to review) instead of waiting for the next OTP login.
+  if(a.LinkStatus==='ACTIVE'&&(a.ClientPhoneMatches!==1||!a.LegacyClientID))
+    return {accountId:a.AccountID,tenantId:a.TenantId,legacyClientId:null,linkStatus:'REVIEW_REQUIRED'};
+  return {accountId:a.AccountID,tenantId:a.TenantId,legacyClientId:a.LinkStatus==='ACTIVE'?a.LegacyClientID:null,linkStatus:a.LinkStatus};
+}
+/** Revoke every live session of one member account (unlink, phone change, support). */
+export async function revokeCutClubAccountSessions(tx: unknown, tenantId: string, accountId: string): Promise<number> {
+  const r = await request(tx).input('tenant',sql.UniqueIdentifier,tenantId)
+    .input('accountId',sql.UniqueIdentifier,accountId).query(`
+      UPDATE dbo.CutClubCustomerSession SET RevokedAtUtc=SYSUTCDATETIME()
+      WHERE TenantId=@tenant AND AccountID=@accountId AND RevokedAtUtc IS NULL
+    `);
+  return r.rowsAffected?.[0] ?? 0;
 }
 export async function logoutCutClubSession(token: unknown): Promise<void> {
   if(!goodToken(token))return;
