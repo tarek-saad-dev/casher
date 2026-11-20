@@ -4,11 +4,14 @@ import { randomUUID } from 'node:crypto';
 type Pending={digest:string;phone:string;purpose:string;challengeId:string;status:string;lease:string|null;expires:Date};
 type Account={AccountID:string;TenantId:string;PhoneNormalized:string;LegacyClientID:number|null;LinkStatus:'ACTIVE'|'UNLINKED'|'REVIEW_REQUIRED'};
 const fake=vi.hoisted(()=>({
-  providerSend:vi.fn(),providerVerify:vi.fn(),db:null as any,
+  providerSend:vi.fn(),providerVerify:vi.fn(),db:null as any,upcoming:vi.fn(),
 }));
 vi.mock('@/lib/integrations/drvowaClient',()=>({
   sendDrvowaCutClubOtp:fake.providerSend,
   verifyDrvowaCutClubOtp:fake.providerVerify,
+}));
+vi.mock('@/lib/booking/publicBookingReader',()=>({
+  listPublicUpcomingBookings:fake.upcoming,
 }));
 vi.mock('@/lib/db',()=>{
   const types={Char:(n:number)=>'char'+n,NVarChar:(n:number)=>'nv'+n,VarChar:(n:number)=>'v'+n,Int:'int',UniqueIdentifier:'uuid',DateTime2:'dt2',ISOLATION_LEVEL:{SERIALIZABLE:'serializable'}};
@@ -27,7 +30,7 @@ vi.mock('@/lib/db',()=>{
   return {getPool:async()=>({request:()=>new Request()}),sql:{...types,Request,Transaction}};
 });
 import { startCutClubOtp,verifyCutClubOtp,getCutClubSession,logoutCutClubSession,digestToken,revokeCutClubAccountSessions } from '../cut-club/memberOtp';
-import { loadCutClubWallet } from '../cut-club/memberWalletRead';
+import { loadCutClubWallet,loadCutClubActivity } from '../cut-club/memberWalletRead';
 
 const tenant='413d433e-f36b-1410-8820-009ec495c7e1';
 const phone='201557994946';
@@ -37,6 +40,7 @@ class FakeSql {
   sessions:{digest:string;account:string;revoked:boolean}[]=[];
   matches:{ClientID:number}[]=[];
   linkedPhoneChanged=false;
+  ledger:{LedgerID:number;ClientID:number;MovementType:string;PointsDelta:number;CreatedAt:Date}[]=[];
   async execute(q:string,p:Record<string,any>){
     const ok=(recordset:any[]=[],rowsAffected=[1])=>({recordset,rowsAffected});
     if(q.includes(' AS Ready'))return ok([{Ready:1}]);
@@ -79,6 +83,17 @@ class FakeSql {
     if(q.includes('UPDATE dbo.CutClubCustomerSession SET RevokedAtUtc')){
       const s=this.sessions.find(x=>x.digest===p.digest);if(s)s.revoked=true;return ok();
     }
+    if(q.includes('SELECT PhoneNormalized FROM dbo.CutClubMemberAccount')){
+      const a=this.accounts.find(x=>x.AccountID===p.accountId);return ok(a?[{PhoneNormalized:a.PhoneNormalized}]:[]);
+    }
+    if(q.includes('SELECT TOP (@take) l.LedgerID')){
+      let rows=this.ledger.filter(l=>l.ClientID===p.clientId);
+      if(q.includes('l.PointsDelta>0'))rows=rows.filter(l=>l.PointsDelta>0);
+      if(q.includes('l.PointsDelta<0'))rows=rows.filter(l=>l.PointsDelta<0);
+      rows.sort((a,b)=>b.CreatedAt.getTime()-a.CreatedAt.getTime()||b.LedgerID-a.LedgerID);
+      if(p.cAt)rows=rows.filter(l=>l.CreatedAt<p.cAt||(l.CreatedAt.getTime()===p.cAt.getTime()&&l.LedgerID<p.cId));
+      return ok(rows.slice(0,p.take));
+    }
     if(q.includes('SELECT TOP (2) c.ClientID,c.Name AS ClientName')){
       return ok([{ClientID:7,ClientName:'مستخدم حقيقي',ClientLoyaltyID:8,PointsBalance:250,TierNameAr:'ذهبي',TotalVisits:5}]);
     }
@@ -103,6 +118,8 @@ describe('CUT CLUB OTP → binding → owned wallet state with isolated SQL adap
       expiresAtUtc:new Date(Date.now()+240_000).toISOString(),
       resendAfterSec:60,idempotentReplay:false,
     }));
+    fake.upcoming.mockReset();
+    fake.upcoming.mockResolvedValue({bookings:[],meta:{count:0,hasMore:false}});
     fake.providerVerify.mockImplementation(async(p:any)=>({
       verified:true,phoneNormalized:phone,purpose:p.purpose,
     }));
@@ -182,6 +199,45 @@ describe('CUT CLUB OTP → binding → owned wallet state with isolated SQL adap
     expect(await getCutClubSession(a.sessionToken)).toBeNull();
     expect(await getCutClubSession(b.sessionToken)).toBeNull();
     expect(fake.db.sessions.find(x=>x.digest==='other')?.revoked).toBe(false);
+  });
+  it('wallet shows the next booking of the verified phone; booking failure never breaks the wallet',async()=>{
+    fake.upcoming.mockResolvedValueOnce({bookings:[{code:'CUT-AB12',statusLabelAr:'مؤكد',branch:{branchName:'جليم'},
+      barber:{nameAr:'كريم'},startDateTime:'2026-11-22T15:00:00+02:00',workDate:'2026-11-22',time:'15:00',
+      servicesSummary:'قص شعر',services:[]}],meta:{count:1,hasMore:false}});
+    const auth=await verifyCutClubOtp((await startCutClubOtp('01557994946','CUT_CLUB_SIGNUP')).pendingToken,'123456');
+    const wallet=await loadCutClubWallet(auth.sessionToken);
+    expect(fake.upcoming).toHaveBeenCalledWith(expect.objectContaining({tenantId:tenant,phone:'01557994946',limit:1}));
+    // Exact website contract (zod .strict()): no extra keys allowed.
+    expect(Object.keys(wallet!.upcomingBooking!).sort()).toEqual(['branch','date','service']);
+    expect(wallet?.upcomingBooking).toMatchObject({service:'قص شعر',branch:'جليم'});
+    expect(wallet?.upcomingBooking?.date).toMatch(/\S/);
+    fake.upcoming.mockRejectedValueOnce(Error('boom'));
+    expect((await loadCutClubWallet(auth.sessionToken))?.upcomingBooking).toBeNull();
+  });
+  it('activity is paginated by keyset, filterable, and only for the linked owner',async()=>{
+    fake.db.matches=[{ClientID:7}];
+    fake.db.accounts.push({AccountID:randomUUID(),TenantId:tenant,PhoneNormalized:phone,LegacyClientID:7,LinkStatus:'ACTIVE'});
+    const t0=Date.parse('2026-11-01T10:00:00Z');
+    for(let i=1;i<=5;i++)fake.db.ledger.push({LedgerID:i,ClientID:7,MovementType:i===3?'REDEEM':'EARN_SALE',PointsDelta:i===3?-50:10,CreatedAt:new Date(t0+i*1000)});
+    fake.db.ledger.push({LedgerID:99,ClientID:8,MovementType:'EARN_SALE',PointsDelta:999,CreatedAt:new Date(t0+9000)});
+    const auth=await verifyCutClubOtp((await startCutClubOtp('01557994946','LOGIN')).pendingToken,'123456');
+    const p1=await loadCutClubActivity(auth.sessionToken,{limit:2});
+    if(!p1||p1==='INVALID')throw Error('expected page');
+    expect(p1.items.map(i=>i.id)).toEqual(['5','4']);
+    expect(p1.nextCursor).toBeTruthy();
+    const p2=await loadCutClubActivity(auth.sessionToken,{limit:2,cursor:p1.nextCursor});
+    if(!p2||p2==='INVALID')throw Error('expected page');
+    expect(p2.items.map(i=>i.id)).toEqual(['3','2']);
+    const spend=await loadCutClubActivity(auth.sessionToken,{type:'spend'});
+    if(!spend||spend==='INVALID')throw Error('expected page');
+    expect(spend.items).toEqual([expect.objectContaining({id:'3',coinsDelta:-50,title:'استبدال مكافأة'})]);
+    expect(spend.nextCursor).toBeNull();
+    expect(await loadCutClubActivity(auth.sessionToken,{cursor:'not-a-cursor'})).toBe('INVALID');
+    expect(await loadCutClubActivity(auth.sessionToken,{type:'x'})).toBe('INVALID');
+  });
+  it('activity is denied for members that are not linked',async()=>{
+    const auth=await verifyCutClubOtp((await startCutClubOtp('01557994946','CUT_CLUB_SIGNUP')).pendingToken,'123456');
+    expect(await loadCutClubActivity(auth.sessionToken)).toBeNull();
   });
   it('wrong OTP releases local lease for next attempt but mints NO member session',async()=>{
     const issued=await startCutClubOtp('01557994946','LOGIN');

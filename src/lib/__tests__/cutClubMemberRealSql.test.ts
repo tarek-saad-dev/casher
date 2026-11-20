@@ -12,6 +12,9 @@ vi.mock('@/lib/integrations/drvowaClient',()=>({
   sendDrvowaCutClubOtp:provider.send,verifyDrvowaCutClubOtp:provider.verify,
 }));
 let pool:mssql.ConnectionPool|null=null;
+vi.mock('@/lib/booking/publicBookingReader',()=>({
+  listPublicUpcomingBookings:async()=>({bookings:[],meta:{count:0,hasMore:false}}),
+}));
 vi.mock('@/lib/db',async()=>({
   sql:(await import('mssql')).default,
   getPool:async()=>{
