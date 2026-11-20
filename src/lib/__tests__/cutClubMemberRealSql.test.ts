@@ -49,8 +49,10 @@ describe.skipIf(!enabled)('CUT CLUB REAL disposable SQL acceptance (NO staging /
     await pool!.request().query(`
       DELETE FROM dbo.CutClubCustomerSession;
       DELETE FROM dbo.CutClubOtpPending;
+      DELETE FROM dbo.CutClubMemberAccessAudit;
       DELETE FROM dbo.CutClubMemberAccount;
     `);
+    process.env.CUT_CLUB_AUTO_LINK_UNIQUE_PHONE_ENABLED='false';
     provider.send.mockReset();provider.verify.mockReset();
     provider.send.mockImplementation(async()=>({
       challengeId:randomUUID(),status:'SENT',
@@ -110,6 +112,52 @@ describe.skipIf(!enabled)('CUT CLUB REAL disposable SQL acceptance (NO staging /
     expect(wallet?.memberCode).not.toContain('ClientID');
     expect((wallet?.coins??0)).not.toBe(9000);
     expect(await loadCutClubWallet('X'.repeat(43))).toBeNull();
+  });
+  it('automatic unique matching is opt-in and writes explicit system proof, not forged staff approval',async()=>{
+    process.env.CUT_CLUB_AUTO_LINK_UNIQUE_PHONE_ENABLED='true';
+    await pool!.request().query(`
+      INSERT dbo.TblClient(ClientID,TenantId,Mobile,Name)
+      VALUES(9,'413d433e-f36b-1410-8820-009ec495c7e1','01012345678',N'صاحب رقم فريد')
+    `);
+    try{
+      const issued=await startCutClubOtp('01012345678','LOGIN');
+      const auth=await verifyCutClubOtp(issued.pendingToken,'123456');
+      expect(auth.status).toBe('ACTIVE');
+      const row=await pool!.request().query<{LegacyClientID:number;LinkProofType:string;LinkApprovedBy:number|null}>(`
+        SELECT LegacyClientID,LinkProofType,LinkApprovedBy FROM dbo.CutClubMemberAccount
+      `);
+      expect(row.recordset[0]).toEqual({LegacyClientID:9,LinkProofType:'VERIFIED_PHONE_UNIQUE',LinkApprovedBy:null});
+      const member=await getCutClubSession(auth.sessionToken);
+      expect(member?.legacyClientId).toBe(9);
+    }finally{
+      await pool!.request().query(`DELETE FROM dbo.TblClient WHERE ClientID=9`);
+      process.env.CUT_CLUB_AUTO_LINK_UNIQUE_PHONE_ENABLED='false';
+    }
+  });
+  it('suspension immediately hides wallet on same session; reason is audit-only and legacy ledger untouched',async()=>{
+    const issued=await startCutClubOtp('01557994946','LOGIN');
+    const auth=await verifyCutClubOtp(issued.pendingToken,'123456');
+    await pool!.request().query(`
+      UPDATE dbo.CutClubMemberAccount
+      SET LinkStatus='ACTIVE',LegacyClientID=7,LinkApprovedBy=1,
+          LinkProofType='IN_PERSON_ID',LinkApprovedAtUtc=SYSUTCDATETIME()
+    `);
+    expect((await loadCutClubWallet(auth.sessionToken))?.coins).toBe(225.75);
+    await pool!.request().query(`
+      UPDATE dbo.CutClubMemberAccount SET AccessStatus='SUSPENDED';
+      INSERT dbo.CutClubMemberAccessAudit(TenantId,AccountID,StaffUserID,Action,Reason)
+      SELECT TenantId,AccountID,1,'SUSPEND',N'مراجعة إدارة' FROM dbo.CutClubMemberAccount;
+    `);
+    expect(await getCutClubSession(auth.sessionToken)).toMatchObject({linkStatus:'SUSPENDED',legacyClientId:null});
+    expect(await loadCutClubWallet(auth.sessionToken)).toMatchObject({
+      linkStatus:'SUSPENDED',coins:null,movements:null,ownedVouchers:null,
+    });
+    const balance=await pool!.request().query<{PointsBalance:number}>(`
+      SELECT PointsBalance FROM dbo.TblClientLoyalty WHERE ClientID=7
+    `);
+    expect(balance.recordset[0]?.PointsBalance).toBe(225.75);
+    await pool!.request().query(`UPDATE dbo.CutClubMemberAccount SET AccessStatus='ENABLED'`);
+    expect((await loadCutClubWallet(auth.sessionToken))?.coins).toBe(225.75);
   });
   it('an incorrect tenant code cannot mint OTP or restore even a previously valid session',async()=>{
     const issued=await startCutClubOtp(inactiveClient,'LOGIN');
