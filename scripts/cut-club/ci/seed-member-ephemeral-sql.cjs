@@ -101,7 +101,15 @@ async function main(){
     `);
     if(verified.recordset[0]?.ok!==1)
       throw Error('CUT_CLUB_MEMBER_MIGRATION_DID_NOT_CREATE_TABLES');
-    console.log('CUT CLUB isolated SQL fixture+STAGING-GUARDED member migration PASS');
+    const moderation=fs.readFileSync('db/drvo-migrations/027-cut-club-member-moderation/schema.sql','utf8');
+    await agent.request().query(moderation);
+    const gate=await agent.request().query(`
+      SELECT CASE WHEN COL_LENGTH('dbo.CutClubMemberAccount','AccessStatus') IS NOT NULL
+        AND OBJECT_ID('dbo.CutClubMemberAccessAudit','U') IS NOT NULL
+      THEN 1 ELSE 0 END AS Ready
+    `);
+    if(gate.recordset[0]?.Ready!==1)throw Error('CUT_CLUB_MODERATION_MIGRATION_DID_NOT_APPLY');
+    console.log('CUT CLUB isolated SQL fixture+migrations 026/027 PASS');
   }finally{await agent.close();}
 }
 main().catch(err=>{console.error('Isolated SQL fixture failed:',err.message);process.exitCode=1;});
