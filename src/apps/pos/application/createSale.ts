@@ -11,6 +11,10 @@ import {
 } from '../internal/legacySaleCreateAdapter';
 import { isPosSaleTreasuryPostingEnabled } from '../internal/posSaleTreasuryFlag';
 import { runSalePostCommitEffects } from '../internal/salePostCommitEffects';
+import {
+  prepareReferralSaleTransaction,
+  finalizeReferralSaleTransaction,
+} from '@/lib/referrals/referralSaleTransaction.service';
 
 export type CreateSaleInput = LegacySaleCreateTransactionInput & {
   branchName: string;
@@ -35,10 +39,22 @@ export async function createSale(input: CreateSaleInput): Promise<CreateSaleResu
   }
 
   try {
+    const referral = await prepareReferralSaleTransaction(transaction, {
+      tenantId: input.tenantId,
+      clientId: input.clientId,
+      referralCode: input.referralCode,
+      referralVoucherId: input.referralVoucherId,
+      items: input.items.map(item => ({
+        proId: item.proId, sPrice: item.sPrice, qty: item.qty, bonus: item.bonus,
+      })),
+    });
     const { invID, invType, targetRecalcScopes } = await executeLegacySaleCreateTransaction(
       transaction,
       { ...txInput, postSaleCashMove },
     );
+    await finalizeReferralSaleTransaction(transaction, referral, {
+      invID, invType, expectedGrandTotal: input.computed.grandTotal,
+    });
 
     await transaction.commit();
     console.log(
