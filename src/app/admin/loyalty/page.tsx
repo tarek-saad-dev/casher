@@ -484,6 +484,11 @@ export default function LoyaltyPage() {
                 <Users className="h-4 w-4" aria-hidden="true" />
                 مراجعة ربط العضويات
               </a>
+              <a href="/admin/cut-club/member-support"
+                className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-zinc-600 bg-zinc-800/60 px-3 text-xs font-bold text-zinc-200 hover:bg-zinc-700">
+                <Users className="h-4 w-4" aria-hidden="true" />
+                دعم العضويات
+              </a>
               <Button
                 variant="outline"
                 size="sm"
