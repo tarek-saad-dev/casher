@@ -29,7 +29,7 @@ vi.mock('@/lib/db',()=>{
   }
   return {getPool:async()=>({request:()=>new Request()}),sql:{...types,Request,Transaction}};
 });
-import { startCutClubOtp,verifyCutClubOtp,getCutClubSession,logoutCutClubSession,digestToken } from '../cut-club/memberOtp';
+import { startCutClubOtp,verifyCutClubOtp,getCutClubSession,logoutCutClubSession,digestToken,revokeCutClubAccountSessions } from '../cut-club/memberOtp';
 import { loadCutClubWallet,loadCutClubActivity } from '../cut-club/memberWalletRead';
 
 const tenant='413d433e-f36b-1410-8820-009ec495c7e1';
@@ -39,6 +39,7 @@ class FakeSql {
   accounts:Account[]=[];
   sessions:{digest:string;account:string;revoked:boolean}[]=[];
   matches:{ClientID:number}[]=[];
+  linkedPhoneChanged=false;
   ledger:{LedgerID:number;ClientID:number;MovementType:string;PointsDelta:number;CreatedAt:Date}[]=[];
   async execute(q:string,p:Record<string,any>){
     const ok=(recordset:any[]=[],rowsAffected=[1])=>({recordset,rowsAffected});
@@ -72,7 +73,12 @@ class FakeSql {
       const sess=this.sessions.find(x=>x.digest===p.digest&&!x.revoked);
       if(!sess)return ok([]);
       const a=this.accounts.find(x=>x.AccountID===sess.account)!;
-      return ok([{AccountID:a.AccountID,TenantId:a.TenantId,LegacyClientID:a.LegacyClientID,LinkStatus:a.LinkStatus}]);
+      return ok([{AccountID:a.AccountID,TenantId:a.TenantId,LegacyClientID:a.LegacyClientID,LinkStatus:a.LinkStatus,
+        ClientPhoneMatches:a.LinkStatus!=='ACTIVE'?null:(this.linkedPhoneChanged?0:1)}]);
+    }
+    if(q.includes('UPDATE dbo.CutClubCustomerSession SET RevokedAtUtc')&&p.accountId){
+      const live=this.sessions.filter(x=>x.account===p.accountId&&!x.revoked);
+      live.forEach(x=>{x.revoked=true;});return ok([], [live.length]);
     }
     if(q.includes('UPDATE dbo.CutClubCustomerSession SET RevokedAtUtc')){
       const s=this.sessions.find(x=>x.digest===p.digest);if(s)s.revoked=true;return ok();
@@ -165,6 +171,34 @@ describe('CUT CLUB OTP → binding → owned wallet state with isolated SQL adap
     expect(auth.status).toBe('ACTIVE');
     const session=await getCutClubSession(auth.sessionToken);
     expect(session?.legacyClientId).toBe(8);
+  });
+  it('open session loses the wallet at once if the linked Casher mobile changes',async()=>{
+    fake.db.matches=[{ClientID:7}];
+    fake.db.accounts.push({AccountID:randomUUID(),TenantId:tenant,PhoneNormalized:phone,LegacyClientID:7,LinkStatus:'ACTIVE'});
+    const issued=await startCutClubOtp('01557994946','LOGIN');
+    const auth=await verifyCutClubOtp(issued.pendingToken,'123456');
+    expect((await getCutClubSession(auth.sessionToken))?.legacyClientId).toBe(7);
+    fake.db.linkedPhoneChanged=true;
+    const session=await getCutClubSession(auth.sessionToken);
+    expect(session).toMatchObject({legacyClientId:null,linkStatus:'REVIEW_REQUIRED'});
+    const wallet=await loadCutClubWallet(auth.sessionToken);
+    expect(wallet?.coins).toBeNull();
+    expect(wallet?.movements).toBeNull();
+  });
+  it('revoking an account kills every live session of that account only',async()=>{
+    const a=await verifyCutClubOtp((await startCutClubOtp('01557994946','LOGIN')).pendingToken,'123456');
+    const account=(await getCutClubSession(a.sessionToken))!.accountId;
+    // Second device of the same member.
+    const b={sessionToken:'B'.repeat(43)};
+    fake.db.sessions.push({digest:digestToken(b.sessionToken),account,revoked:false});
+    expect((await getCutClubSession(b.sessionToken))?.accountId).toBe(account);
+    fake.db.sessions.push({digest:'other',account:randomUUID(),revoked:false});
+    const db=await import('@/lib/db');
+    const pool={request:()=>new (db.sql as any).Request()};
+    expect(await revokeCutClubAccountSessions(pool,tenant,account)).toBe(2);
+    expect(await getCutClubSession(a.sessionToken)).toBeNull();
+    expect(await getCutClubSession(b.sessionToken)).toBeNull();
+    expect(fake.db.sessions.find(x=>x.digest==='other')?.revoked).toBe(false);
   });
   it('wallet shows the next booking of the verified phone; booking failure never breaks the wallet',async()=>{
     fake.upcoming.mockResolvedValueOnce({bookings:[{code:'CUT-AB12',statusLabelAr:'مؤكد',branch:{branchName:'جليم'},
