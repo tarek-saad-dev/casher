@@ -20,8 +20,8 @@ IF COL_LENGTH('dbo.CutClubMemberAccount','AccessUpdatedAtUtc') IS NULL
 IF COL_LENGTH('dbo.CutClubMemberAccount','AccessUpdatedBy') IS NULL
   ALTER TABLE dbo.CutClubMemberAccount ADD AccessUpdatedBy INT NULL;
 IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name=N'CK_CutClubMemberAccount_AccessStatus' AND parent_object_id=OBJECT_ID(N'dbo.CutClubMemberAccount'))
-  ALTER TABLE dbo.CutClubMemberAccount WITH CHECK ADD CONSTRAINT CK_CutClubMemberAccount_AccessStatus
-    CHECK (AccessStatus IN ('ENABLED','SUSPENDED'));
+  EXEC(N'ALTER TABLE dbo.CutClubMemberAccount WITH CHECK ADD CONSTRAINT CK_CutClubMemberAccount_AccessStatus
+    CHECK (AccessStatus IN (''ENABLED'',''SUSPENDED''))');
 -- The prior approval rule permits only staff-linked balances. A uniquely matched
 -- OTP can be linked by explicit operator policy without fabricating a staff ID.
 -- Keep the proof tag so audit can distinguish manual from automated linking.
