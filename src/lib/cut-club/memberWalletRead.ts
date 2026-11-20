@@ -3,10 +3,8 @@ import { getPool, sql } from '@/lib/db';
 import { getCutClubSession } from './memberOtp';
 import { listPublicUpcomingBookings } from '@/lib/booking/publicBookingReader';
 
-export type MemberUpcomingBooking = {
-  code: string; statusLabel: string; branchName: string | null; barberName: string | null;
-  startDateTime: string | null; workDate: string | null; time: string | null; servicesSummary: string | null;
-};
+/** Must stay exactly {service,date,branch}: the website validates it with zod .strict(). */
+export type MemberUpcomingBooking = { service: string; date: string; branch: string };
 export type MemberActivityItem = {id:string;type:string;title:string;occurredAt:string;coinsDelta:number};
 export type MemberActivityPage = {items:MemberActivityItem[];nextCursor:string|null};
 
@@ -127,11 +125,12 @@ async function loadUpcomingBooking(tenantId:string,accountId:string):Promise<Mem
     const {bookings}=await listPublicUpcomingBookings({tenantId,phone:'0'+phone.slice(2),limit:1});
     const b=bookings[0];
     if(!b)return null;
-    return {
-      code:b.code,statusLabel:b.statusLabelAr,branchName:b.branch?.branchName??null,
-      barberName:b.barber?.nameAr??null,startDateTime:b.startDateTime,workDate:b.workDate,
-      time:b.time,servicesSummary:b.servicesSummary??(b.services.map(x=>x.nameAr).filter(Boolean).join('، ')||null),
-    };
+    const service=(b.servicesSummary??b.services.map(x=>x.nameAr).filter(Boolean).join('، '))||'حجز CUT Salon';
+    const start=b.startDateTime?new Date(b.startDateTime):null;
+    const date=start&&Number.isFinite(start.getTime())
+      ?new Intl.DateTimeFormat('ar-EG',{timeZone:'Africa/Cairo',weekday:'long',day:'numeric',month:'long',hour:'numeric',minute:'2-digit'}).format(start)
+      :[b.workDate,b.time].filter(Boolean).join(' ')||'موعد قادم';
+    return {service:service.slice(0,150),date:date.slice(0,80),branch:(b.branch?.branchName||'CUT Salon').slice(0,80)};
   }catch{return null;}
 }
 

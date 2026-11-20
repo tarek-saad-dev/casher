@@ -173,7 +173,10 @@ describe('CUT CLUB OTP → binding → owned wallet state with isolated SQL adap
     const auth=await verifyCutClubOtp((await startCutClubOtp('01557994946','CUT_CLUB_SIGNUP')).pendingToken,'123456');
     const wallet=await loadCutClubWallet(auth.sessionToken);
     expect(fake.upcoming).toHaveBeenCalledWith(expect.objectContaining({tenantId:tenant,phone:'01557994946',limit:1}));
-    expect(wallet?.upcomingBooking).toMatchObject({code:'CUT-AB12',branchName:'جليم',barberName:'كريم',servicesSummary:'قص شعر'});
+    // Exact website contract (zod .strict()): no extra keys allowed.
+    expect(Object.keys(wallet!.upcomingBooking!).sort()).toEqual(['branch','date','service']);
+    expect(wallet?.upcomingBooking).toMatchObject({service:'قص شعر',branch:'جليم'});
+    expect(wallet?.upcomingBooking?.date).toMatch(/\S/);
     fake.upcoming.mockRejectedValueOnce(Error('boom'));
     expect((await loadCutClubWallet(auth.sessionToken))?.upcomingBooking).toBeNull();
   });
