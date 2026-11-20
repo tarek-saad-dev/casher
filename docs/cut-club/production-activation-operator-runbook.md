@@ -41,7 +41,7 @@ The migration adds three empty, additive tables:
 
 No loyalty balance, invoices, client ownership or vouchers are edited. Production already has migration #25 (customer education/occupation); the manifest now includes that exact applied definition. IDs 23/24 remain reserved by other feature tracks. Never run APPLY if the PLAN reports unknownApplied, checksumMismatches or ok:false. The
 authoritative manifest is `scripts/drvo/migrations/index.ts` with migration
-`cut-club-member-wallet-auth`, #23. Do not run the old staging-only file:
+`cut-club-member-wallet-auth`, #26. Do not run the old staging-only file:
 `scripts/cut-club/sql/member-wallet-staging-schema.sql`.
 
 ## Step 3 — create read-only production PLAN (operator's own GitHub account)
@@ -67,7 +67,7 @@ risk and required backup. If PLAN fails, stop and review before changing anythin
 ## Step 4 — verified backup and APPLY
 
 Take and verify an SQL backup/snapshot; record its genuine backup reference.
-The #23 manifest **requires** a backup. Do not invent a backup ID.
+The #26 manifest **requires** a backup. Do not invent a backup ID.
 
 Edit the same file on `migration-control`, commit with the authorized human account:
 
@@ -84,6 +84,9 @@ Edit the same file on `migration-control`, commit with the authorized human acco
 }
 ```
 
+**Do NOT run APPLY if PLAN.plan.ok is false, even when GitHub Action says PASS.**
+The first PLAN on Nov 20 2026 had plan.ok=false due to unknownApplied #25; the migration manifest has now been reconciled from the exact already-applied #25 SQL SHA-256.
+Re-run PLAN against the NEW exact PR #323 SHA and inspect `unknownApplied: []`, `checksumMismatches: []`, `ok: true`.
 **Never guess** migration keys: more than one may be pending in an existing environment.
 Only the trusted GitHub-hosted executor may access production SQL credentials;
 it runs checksum/identity checks and publishes the apply result on PR #323.
