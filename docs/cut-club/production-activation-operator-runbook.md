@@ -32,14 +32,14 @@ through the proper tenant onboarding and legacy ownership procedure first;
 ## Step 2 — prepare immutable production migration
 
 Review this PR's SQL:
-`db/drvo-migrations/023-cut-club-member-wallet/schema.sql`.
+`db/drvo-migrations/026-cut-club-member-wallet/schema.sql`.
 
 The migration adds three empty, additive tables:
 - `dbo.CutClubMemberAccount`
 - `dbo.CutClubOtpPending`
 - `dbo.CutClubCustomerSession`
 
-No loyalty balance, invoices, client ownership or vouchers are edited. The
+No loyalty balance, invoices, client ownership or vouchers are edited. Production already has migration #25 (customer education/occupation); the manifest now includes that exact applied definition. IDs 23/24 remain reserved by other feature tracks. Never run APPLY if the PLAN reports unknownApplied, checksumMismatches or ok:false. The
 authoritative manifest is `scripts/drvo/migrations/index.ts` with migration
 `cut-club-member-wallet-auth`, #23. Do not run the old staging-only file:
 `scripts/cut-club/sql/member-wallet-staging-schema.sql`.
