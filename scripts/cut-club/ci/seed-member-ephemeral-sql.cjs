@@ -91,7 +91,7 @@ async function main(){
   }finally{await sa.close();}
   const agent=await connect(config('drvo_agent',agentPassword,'last132_agent'));
   try{
-    const migration=fs.readFileSync('db/drvo-migrations/023-cut-club-member-wallet/schema.sql','utf8');
+    const migration=fs.readFileSync('db/drvo-migrations/026-cut-club-member-wallet/schema.sql','utf8');
     const result=await agent.request().query(migration);
     const verified=await agent.request().query(`
       SELECT CASE WHEN OBJECT_ID(N'dbo.CutClubMemberAccount',N'U') IS NOT NULL
