@@ -239,6 +239,25 @@ describe('CUT CLUB OTP → binding → owned wallet state with isolated SQL adap
     const auth=await verifyCutClubOtp((await startCutClubOtp('01557994946','CUT_CLUB_SIGNUP')).pendingToken,'123456');
     expect(await loadCutClubActivity(auth.sessionToken)).toBeNull();
   });
+  it('normalizes SQL Server uppercase UUID before verifying DRVO OTP HMAC',async()=>{
+    const issued=await startCutClubOtp('01557994946','LOGIN');
+    // DRVO hashes lowercase randomUUID() on send, but mssql can read
+    // the same UNIQUEIDENTIFIER as uppercase text from CutClubOtpPending.
+    const originallyIssued=fake.db.pending!.challengeId;
+    fake.db.pending!.challengeId=originallyIssued.toUpperCase();
+    fake.providerVerify.mockImplementationOnce(async(p:any)=>{
+      if(p.challengeId!==originallyIssued)throw Error('INVALID_OTP');
+      return {verified:true,phoneNormalized:phone,purpose:p.purpose};
+    });
+    const result=await verifyCutClubOtp(issued.pendingToken,'123456');
+    expect(result.sessionToken).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(fake.providerVerify).toHaveBeenCalledWith(expect.objectContaining({
+      challengeId:originallyIssued,
+      phone,
+      purpose:'LOGIN',
+    }));
+    expect(fake.db.pending?.status).toBe('CONSUMED');
+  });
   it('wrong OTP releases local lease for next attempt but mints NO member session',async()=>{
     const issued=await startCutClubOtp('01557994946','LOGIN');
     fake.providerVerify.mockRejectedValueOnce(Error('INVALID_OTP'));

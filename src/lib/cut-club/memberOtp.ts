@@ -191,7 +191,10 @@ export async function verifyCutClubOtp(pendingToken: unknown, code: unknown) {
   let verified;
   try {
     verified = await verifyDrvowaCutClubOtp({
-      challengeId:pending.ChallengeID,phone:pending.PhoneNormalized,
+      // mssql can return SQL Server UNIQUEIDENTIFIER values in uppercase.
+      // DRVO HMACs the originally issued randomUUID() (lowercase): UUID text
+      // case is not significant for SQL, but IS significant to that HMAC.
+      challengeId:pending.ChallengeID.toLowerCase(),phone:pending.PhoneNormalized,
       purpose:pending.Purpose,code,
     });
   } catch (error) {
