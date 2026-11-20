@@ -25,6 +25,8 @@ function StateTag({m}:{m:Member}){
 }
 export default function CutClubMemberReviewPage(){
   const [items,setItems]=useState<Member[]>([]);
+  const [stats,setStats]=useState<{all:number;active:number;review:number;suspended:number}|null>(null);
+  const [serverPhone,setServerPhone]=useState<string|null>(null);
   const [selected,setSelected]=useState('');
   const [tab,setTab]=useState<Tab>('all');
   const [search,setSearch]=useState('');
@@ -39,31 +41,33 @@ export default function CutClubMemberReviewPage(){
   const [proof,setProof]=useState(false);
   const [reason,setReason]=useState('');
 
-  const reload=useCallback(async()=>{
+  const reload=useCallback(async(phone?:string)=>{
     setLoading(true);setError('');
     try{
-      const res=await fetch('/api/admin/cut-club/member-link',{cache:'no-store',credentials:'same-origin'});
+      const url='/api/admin/cut-club/member-link'+(phone?'?phone='+encodeURIComponent(phone):'');
+      const res=await fetch(url,{cache:'no-store',credentials:'same-origin'});
       const data=await res.json();
       if(!res.ok||!data.ok)throw new Error(data?.code||'CUT_CLUB_UNAVAILABLE');
       setItems(data.items||[]);
+      setStats(data.stats||null);
     }catch{setError('تعذر تحميل العضويات. تحقق من صلاحيات الإدارة واتصال Casher.');}
     finally{setLoading(false);}
   },[]);
   useEffect(()=>{void reload();},[reload]);
   const current=items.find(a=>a.accountId===selected)||null;
-  const counts=useMemo(()=>({
+  const counts=useMemo(()=>stats||({
     all:items.length,
     active:items.filter(a=>a.accessStatus==='ENABLED'&&a.linkStatus==='ACTIVE').length,
     review:items.filter(a=>a.accessStatus==='ENABLED'&&a.linkStatus!=='ACTIVE').length,
     suspended:items.filter(a=>a.accessStatus==='SUSPENDED').length,
-  }),[items]);
+  }),[items,stats]);
   const filtered=useMemo(()=>items.filter(a=>{
     if(tab==='active'&&(a.accessStatus!=='ENABLED'||a.linkStatus!=='ACTIVE'))return false;
     if(tab==='review'&&(a.accessStatus!=='ENABLED'||a.linkStatus==='ACTIVE'))return false;
     if(tab==='suspended'&&a.accessStatus!=='SUSPENDED')return false;
     const q=search.trim().toLowerCase();
-    return !q||a.phoneMasked.includes(q)||a.clientName?.toLowerCase().includes(q);
-  }),[items,tab,search]);
+    return !q||(serverPhone===search.trim())||a.phoneMasked.includes(q)||Boolean(a.clientName?.toLowerCase().includes(q));
+  }),[items,tab,search,serverPhone]);
 
   const choose=async(a:Member)=>{
     setSelected(a.accountId);setError('');setNotice('');setProof(false);setReason('');
@@ -94,7 +98,7 @@ export default function CutClubMemberReviewPage(){
       const d=await r.json();
       if(!r.ok||!d.ok)throw Error(d.code||'DENIED');
       setNotice('تم ربط العضوية بعد التحقق من الهوية. المحفظة جاهزة للعضو.');
-      setSelected('');await reload();
+      setSelected('');await reload(serverPhone||undefined);
     }catch(e){
       setError(e instanceof Error&&e.message==='CLIENT_ALREADY_LINKED'
         ?'سجل العميل مربوط بعضوية أخرى، يجب مراجعة التعارض.'
@@ -113,7 +117,7 @@ export default function CutClubMemberReviewPage(){
       const d=await r.json();
       if(!r.ok||!d.ok)throw Error(d.code||'DENIED');
       setNotice(action==='SUSPEND'?'تم إيقاف العضوية. العميل هيشوف حالة المراجعة بدون محفظة.':'تم إعادة تفعيل العضوية.');
-      setReason('');await reload();
+      setReason('');await reload(serverPhone||undefined);
     }catch{setError('تعذر تحديث حالة العضوية. راجع الصلاحيات وحاول مرة أخرى.');}
     finally{setBusy(false);}
   };
@@ -135,7 +139,7 @@ export default function CutClubMemberReviewPage(){
       </header>
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="ملخص حالات العضوية">
         {([
-          {id:'all' as Tab,label:'آخر الأعضاء',value:counts.all,icon:Users,color:'text-[#e9c99f]'},
+          {id:'all' as Tab,label:'إجمالي الأعضاء',value:counts.all,icon:Users,color:'text-[#e9c99f]'},
           {id:'active' as Tab,label:'نشط',value:counts.active,icon:UserRoundCheck,color:'text-emerald-300'},
           {id:'review' as Tab,label:'تحتاج متابعة',value:counts.review,icon:Clock3,color:'text-amber-300'},
           {id:'suspended' as Tab,label:'موقوف',value:counts.suspended,icon:ShieldOff,color:'text-rose-300'},
@@ -156,8 +160,23 @@ export default function CutClubMemberReviewPage(){
             </div>
             <label className="relative mt-4 block">
               <Search size={18} className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-500"/>
-              <input aria-label="بحث عن عضو" className={field+' pr-11'} value={search} onChange={e=>setSearch(e.target.value)} placeholder="بحث بالاسم أو أجزاء الرقم المعروض"/>
+              <input aria-label="بحث عن عضو" className={field+' pr-11'} value={search} onChange={e=>{
+                setSearch(e.target.value);
+                if(serverPhone){setServerPhone(null);void reload();}
+              }} placeholder="بحث بالاسم أو رقم الموبايل"/>
             </label>
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+              <p className="text-[11px] leading-5 text-zinc-500">بحث الاسم في آخر 200 حساب، أو أدخل رقم كامل للبحث في كل الأعضاء.</p>
+              <button type="button" className={button+' border border-[#e2bb94]/40 text-[#e9c9a9] hover:bg-white/5'}
+                onClick={()=>{
+                  if(!/^(?:01[0125]\\d{8}|(?:\\+?20|0020)1[0125]\\d{8})$/.test(search.trim())){
+                    setError('اكتب رقم موبايل مصري كامل علشان نبحث في كل الحسابات.');return;
+                  }
+                  setError('');setServerPhone(search.trim());void reload(search.trim());
+                }}>
+                <Search size={15}/> بحث بالرقم في كل الحسابات
+              </button>
+            </div>
           </div>
           {loading?<div className="p-8 text-center text-zinc-400">جاري تحميل العضويات…</div>
             :filtered.length===0?<div className="px-5 py-14 text-center text-sm text-zinc-400">مفيش حسابات مطابقة للبحث أو الفلتر.</div>
