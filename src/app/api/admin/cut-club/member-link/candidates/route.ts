@@ -27,12 +27,12 @@ export async function GET(req:NextRequest){
     const db=await getPool();
     const account=await db.request()
       .input('tenant',sql.UniqueIdentifier,tenant).input('accountId',sql.UniqueIdentifier,accountId)
-      .query<{PhoneNormalized:string;LinkStatus:string}>(`
-        SELECT PhoneNormalized,LinkStatus FROM dbo.CutClubMemberAccount
+      .query<{PhoneNormalized:string;LinkStatus:string;AccessStatus:string}>(`
+        SELECT PhoneNormalized,LinkStatus,AccessStatus FROM dbo.CutClubMemberAccount
         WHERE TenantId=@tenant AND AccountID=@accountId
       `);
     const a=account.recordset[0];
-    if(!a||!['UNLINKED','REVIEW_REQUIRED'].includes(a.LinkStatus))
+    if(!a||a.AccessStatus==='SUSPENDED'||!['UNLINKED','REVIEW_REQUIRED'].includes(a.LinkStatus))
       return reply({ok:false,code:'REVIEW_NOT_PENDING'},409);
     const rows=await db.request()
       .input('tenant',sql.UniqueIdentifier,tenant).input('phone',sql.NVarChar(20),a.PhoneNormalized)
