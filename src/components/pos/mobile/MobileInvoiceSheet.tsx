@@ -23,6 +23,7 @@ interface MobileInvoiceSheetProps {
   onPaymentMethodSelect: (id: number) => void;
   onPaymentAllocationsChange: (allocations: SaleState['paymentAllocations']) => void;
   onSave: (forcePrint?: boolean, source?: string) => void;
+  isEditingSale?: boolean;
 }
 
 export default function MobileInvoiceSheet({

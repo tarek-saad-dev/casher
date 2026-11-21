@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import CartPanel from '@/components/pos/CartPanel';
 import InvoiceSummary from '@/components/pos/InvoiceSummary';
+import PosReferralPreview from '@/components/pos/PosReferralPreview';
+import { REFERRAL_PREVIEW_ENABLED } from '@/lib/referrals/posReferralPreview';
 import PaymentMethodSelect from '@/components/pos/PaymentMethodSelect';
 import SplitPaymentInput from '@/components/pos/SplitPaymentInput';
 import type { Barber, CartItem, PaymentMethod, SaleState, SaleTotals } from '@/lib/types';
@@ -27,6 +29,7 @@ interface PosInvoicePanelProps {
   onPaymentAllocationsChange: (allocations: SaleState['paymentAllocations']) => void;
   onSave: (forcePrint?: boolean, source?: string) => void;
   showKeyboardHints?: boolean;
+  isEditingSale?: boolean;
 }
 
 export default function PosInvoicePanel({
@@ -47,6 +50,7 @@ export default function PosInvoicePanel({
   onPaymentAllocationsChange,
   onSave: _onSave,
   showKeyboardHints = true,
+  isEditingSale = false,
 }: PosInvoicePanelProps) {
   const hasSplitAllocations = state.paymentAllocations.some(
     (pa) => pa.amount > 0 && pa.amount !== totals.grandTotal,
@@ -69,6 +73,9 @@ export default function PosInvoicePanel({
         onDiscountPercentChange={onDiscountPercentChange}
         onDiscountValueChange={onDiscountValueChange}
       />
+      {REFERRAL_PREVIEW_ENABLED && state.customer && !isEditingSale && (
+        <PosReferralPreview key={state.customer.ClientID} clientId={state.customer.ClientID} />
+      )}
       <Separator />
       {paymentMethods.length > 0 && (
         <>

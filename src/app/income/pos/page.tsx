@@ -1035,6 +1035,7 @@ export default function PosPage() {
     onPaymentMethodSelect: handlePaymentMethodSelect,
     onPaymentAllocationsChange: setPaymentAllocations,
     onSave: handleSave,
+    isEditingSale: editingSaleId !== null,
   };
 
   const invoiceLabel = editingSaleId
