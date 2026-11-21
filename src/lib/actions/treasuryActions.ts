@@ -6,7 +6,8 @@
 
 import { sql } from '@/lib/db';
 import { getCairoInvTimeDotStr } from '@/lib/businessDate';
-import { lockOperationalWrite } from '@/modules/operations/infra/businessDayLock';
+import { lockOperationalWrite, lockBranchForDayMutation } from '@/modules/operations/infra/businessDayLock';
+import { closeBusinessDayInTransaction } from '@/modules/operations/infra/businessDayMutationTx';
 import { postTransferPair } from '@/apps/treasury/internal/postTransferPair';
 import type { TreasuryWritePorts } from '@/lib/treasuryComposition';
 import { now as businessClockNow } from '@/modules/operations/clock/BusinessClock';
@@ -378,41 +379,60 @@ export async function closeTreasuryDay(
 ): Promise<CloseDayResult> {
   const { newDay, branchId, reconciliations, closedByUserId } = input;
 
-  // Resolve the business day ID from its date within the active branch
+  // Treasury and Operations must serialize on the same branch -> day -> shifts
+  // lock order. The caller owns this transaction; never open a nested one.
+  await lockBranchForDayMutation(connection, branchId);
+  const branch = await new sql.Request(connection)
+    .input('branchId', sql.Int, branchId)
+    .query('SELECT BranchCode FROM dbo.TblBranch WHERE BranchID = @branchId');
+  const branchCode = String(branch.recordset[0]?.BranchCode ?? '');
+
   const dayLookup = await new sql.Request(connection)
     .input('newDay', sql.Date, newDay)
     .input('branchId', sql.Int, branchId)
     .query(`
-      SELECT TOP 1 ID FROM dbo.TblNewDay
+      SELECT TOP 1 ID, Status FROM dbo.TblNewDay WITH (UPDLOCK, HOLDLOCK)
       WHERE NewDay = @newDay AND BranchID = @branchId
     `);
-  const dayId = dayLookup.recordset[0]?.ID;
-  if (!dayId) {
-    throw new Error('لا يوجد يوم عمل مطابق للتاريخ المحدد في الفرع النشط');
-  }
+  const dayId = Number(dayLookup.recordset[0]?.ID ?? 0);
+  if (!dayId) throwWithStatus('لا يوجد يوم عمل مطابق للتاريخ المحدد في الفرع النشط', 404);
+  if (!dayLookup.recordset[0]?.Status) throwWithStatus('يوم العمل مغلق بالفعل', 409);
 
-  // Idempotency guard: day-level recon only (ShiftMoveID IS NULL).
-  // Shift-level rows must not block end-of-day close.
-  // TblTreasuryCloseRecon.NewDay stores the day ID (int), not the date.
+  // Day-level recon is distinct from shift-level recon; retries cannot insert
+  // another financial snapshot, and another branch cannot affect this day.
   const existingRecon = await new sql.Request(connection)
     .input('dayId', sql.Int, dayId)
-    .query(`
-      SELECT TOP 1 ID FROM dbo.TblTreasuryCloseRecon
-      WHERE NewDay = @dayId AND ShiftMoveID IS NULL
-    `);
-  if (existingRecon.recordset.length > 0) {
-    throw new Error('تم تقفيل هذا اليوم مسبقاً — لا يمكن إنشاء تسويات جديدة');
-  }
-
-  // Update TblNewDay status for this branch day only
-  await new sql.Request(connection)
-    .input('id', sql.Int, dayId)
     .input('branchId', sql.Int, branchId)
     .query(`
-      UPDATE dbo.TblNewDay
-      SET Status = 0
-      WHERE ID = @id AND BranchID = @branchId
+      SELECT TOP 1 ID FROM dbo.TblTreasuryCloseRecon WITH (UPDLOCK, HOLDLOCK)
+      WHERE NewDay = @dayId AND BranchID = @branchId AND ShiftMoveID IS NULL
     `);
+  if (existingRecon.recordset.length > 0) {
+    throwWithStatus('تم تسجيل تسوية لهذا اليوم مسبقاً', 409);
+  }
+
+  if (!reconciliations.length) throwWithStatus('يجب تقديم تسويات طرق الدفع قبل إغلاق اليوم', 400);
+  const seenMethods = new Set<number>();
+  for (const recon of reconciliations) {
+    if (recon.paymentMethodId == null || !Number.isInteger(recon.paymentMethodId) ||
+        seenMethods.has(recon.paymentMethodId) ||
+        !Number.isFinite(recon.systemAmount) || !Number.isFinite(recon.countedAmount) ||
+        recon.countedAmount < 0) {
+      throwWithStatus('بيانات التسوية غير صالحة أو طريقة الدفع مكررة', 400);
+    }
+    seenMethods.add(recon.paymentMethodId);
+  }
+
+  // Shared operational close preflight refuses OPEN shifts and unfinished salon
+  // queue tickets. Closing and reconciliation writes commit/rollback together.
+  const closed = await closeBusinessDayInTransaction(connection, {
+    branchId,
+    branchCode,
+    forceCloseShifts: false,
+  });
+  if (closed.day.id !== dayId || closed.day.newDay !== newDay) {
+    throwWithStatus('تاريخ يوم العمل المفتوح لا يطابق طلب التسوية', 409);
+  }
 
   const reconciliationIds: number[] = [];
   const variances: CloseDayReconRow[] = [];
