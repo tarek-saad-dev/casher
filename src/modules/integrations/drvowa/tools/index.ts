@@ -3,6 +3,7 @@ import { toolErr } from '../result';
 import { executeCatalogListServices } from './catalogListServices';
 import { executeCustomerListChanges } from './customerListChanges';
 import { executeInvoiceListChanges } from './invoiceListChanges';
+import { executeSourceSyncCounts } from './sourceSyncStats';
 
 const CRM_TOOL_HANDLERS: Record<
   string,
@@ -10,6 +11,7 @@ const CRM_TOOL_HANDLERS: Record<
 > = {
   'customer.list_changes': executeCustomerListChanges,
   'invoice.list_changes': executeInvoiceListChanges,
+  'sync.source_counts': async () => executeSourceSyncCounts(),
   'catalog.list_services': executeCatalogListServices,
 };
 

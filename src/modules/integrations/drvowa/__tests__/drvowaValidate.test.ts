@@ -52,6 +52,7 @@ describe('drvowa CRM sync validate + manifest', () => {
     expect(names).toEqual([
       'customer.list_changes',
       'invoice.list_changes',
+      'sync.source_counts',
       'catalog.list_services',
     ]);
     expect(listImplementedDrvowaCrmTools()).toEqual(names);
