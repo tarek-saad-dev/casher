@@ -32,6 +32,7 @@ function mapServices(rows: ProRow[]) {
  */
 export async function executeCatalogListServices(
   input: Record<string, unknown>,
+  context: { tenantId: string },
 ): Promise<DrvowaToolResult> {
   try {
     const sinceProId = parseOptionalNonNegativeInt(input.sinceProId, 'sinceProId');
@@ -52,8 +53,8 @@ export async function executeCatalogListServices(
         c.CatName AS categoryName,
         CASE WHEN ISNULL(p.isDeleted, 0) = 1 THEN 1 ELSE 0 END AS isDeleted
       FROM dbo.TblPro p
-      LEFT JOIN dbo.TblCat c ON c.CatID = p.CatID
-      WHERE p.ProID > @sinceProId
+      LEFT JOIN dbo.TblCat c ON c.CatID = p.CatID AND c.TenantId = @tenantId
+      WHERE p.ProID > @sinceProId AND p.TenantId = @tenantId
       ORDER BY p.ProID ASC
     `;
 
@@ -62,6 +63,7 @@ export async function executeCatalogListServices(
         .request()
         .input('sinceProId', sql.Int, identitySweepSinceProId)
         .input('limit', sql.Int, limit)
+        .input('tenantId', sql.UniqueIdentifier, context.tenantId)
         .query(selectSql);
       let rows = result.recordset as ProRow[];
       let wrapped = false;
@@ -71,6 +73,7 @@ export async function executeCatalogListServices(
           .request()
           .input('sinceProId', sql.Int, 0)
           .input('limit', sql.Int, limit)
+        .input('tenantId', sql.UniqueIdentifier, context.tenantId)
           .query(selectSql);
         rows = result.recordset as ProRow[];
       }
@@ -95,6 +98,7 @@ export async function executeCatalogListServices(
       .request()
       .input('sinceProId', sql.Int, sinceProId)
       .input('limit', sql.Int, limit)
+        .input('tenantId', sql.UniqueIdentifier, context.tenantId)
       .query(selectSql);
 
     const services = mapServices(result.recordset as ProRow[]);
