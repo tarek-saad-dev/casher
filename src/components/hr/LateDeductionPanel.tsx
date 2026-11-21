@@ -1,11 +1,28 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { AlertTriangle, Clock3, Loader2, ShieldCheck, Ban, UserRound } from 'lucide-react';
+import {
+  AlertTriangle,
+  Ban,
+  CalendarCog,
+  Clock3,
+  ExternalLink,
+  Loader2,
+  ShieldCheck,
+  UserRound,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
 interface LateConfig {
   enabled: boolean;
@@ -52,6 +69,13 @@ function formatRange(start: string | null, end: string | null): string {
   return start || end || '—';
 }
 
+/** All-off for this branch often means wrong branch distribution, not true weekly leave. */
+function isSuspiciousAllOff(e: LateEmployee): boolean {
+  return (
+    e.weeklySchedule.length > 0 && e.weeklySchedule.every((d) => !d.isWorking)
+  );
+}
+
 export default function LateDeductionPanel() {
   const [config, setConfig] = useState<LateConfig | null>(null);
   const [cases, setCases] = useState<LateCase[]>([]);
@@ -65,6 +89,10 @@ export default function LateDeductionPanel() {
   const [amounts, setAmounts] = useState<Record<number, string>>({});
   const [cancelReasons, setCancelReasons] = useState<Record<number, string>>({});
   const [empFilter, setEmpFilter] = useState('');
+  const [scheduleEdit, setScheduleEdit] = useState<{
+    empId: number;
+    empName: string;
+  } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -303,6 +331,7 @@ export default function LateDeductionPanel() {
                   <th className="px-3 py-2 font-medium whitespace-nowrap">اليوم</th>
                   <th className="px-3 py-2 font-medium">الأسبوع</th>
                   <th className="px-3 py-2 font-medium whitespace-nowrap">استثناء من الخصم</th>
+                  <th className="px-3 py-2 font-medium whitespace-nowrap">تعديل</th>
                 </tr>
               </thead>
               <tbody>
@@ -311,14 +340,25 @@ export default function LateDeductionPanel() {
                     e.todayIsWorkingDay === false
                       ? 'إجازة'
                       : formatRange(e.todayScheduleStart, e.todayScheduleEnd);
+                  const allOff = isSuspiciousAllOff(e);
                   return (
-                    <tr key={e.empId} className="border-t border-border align-top">
+                    <tr
+                      key={e.empId}
+                      className={`border-t border-border align-top ${
+                        allOff ? 'bg-amber-500/5' : ''
+                      }`}
+                    >
                       <td className="px-3 py-2">
                         <div className="font-medium">{e.empName}</div>
                         <div className="text-xs text-muted-foreground">
                           #{e.empId}
                           {e.job ? ` · ${e.job}` : ''}
                         </div>
+                        {allOff && (
+                          <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-300">
+                            كل الأيام إجازة على هذا الفرع — غالبًا توزيع فروع يحتاج مراجعة.
+                          </p>
+                        )}
                       </td>
                       <td
                         className="px-3 py-2 font-mono text-xs whitespace-nowrap text-left"
@@ -378,6 +418,20 @@ export default function LateDeductionPanel() {
                           </span>
                         </div>
                       </td>
+                      <td className="px-3 py-2">
+                        <Button
+                          type="button"
+                          variant={allOff ? 'default' : 'outline'}
+                          size="xs"
+                          onClick={() =>
+                            setScheduleEdit({ empId: e.empId, empName: e.empName })
+                          }
+                          title="تعديل مواعيد وفروع الموظف"
+                        >
+                          <CalendarCog className="w-3.5 h-3.5 ml-1" />
+                          الجدول
+                        </Button>
+                      </td>
                     </tr>
                   );
                 })}
@@ -386,6 +440,66 @@ export default function LateDeductionPanel() {
           </div>
         )}
       </div>
+
+      <Dialog
+        open={scheduleEdit != null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setScheduleEdit(null);
+            void load();
+          }
+        }}
+      >
+        <DialogContent
+          className="flex h-[min(92vh,920px)] w-[min(96vw,1100px)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none"
+          dir="rtl"
+        >
+          <DialogHeader className="shrink-0 border-b border-border px-4 py-3">
+            <DialogTitle className="flex items-center gap-2">
+              <CalendarCog className="h-4 w-4 text-primary" />
+              تعديل مواعيد وفروع — {scheduleEdit?.empName}
+            </DialogTitle>
+            <DialogDescription>
+              لو الجدول ظاهر كله إجازة بالغلط، صحّح توزيع الفروع/أيام العمل هنا ثم احفظ. بعد
+              الإغلاق هيتحدّث العرض في لوحة خصم التأخير.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="min-h-0 flex-1 bg-background">
+            {scheduleEdit ? (
+              <iframe
+                title={`جدول ${scheduleEdit.empName}`}
+                src={`/admin/hr/employees/${scheduleEdit.empId}/branch-schedule?embed=1`}
+                className="h-full w-full border-0"
+              />
+            ) : null}
+          </div>
+          <DialogFooter className="shrink-0 sm:justify-between" showCloseButton={false}>
+            <a
+              href={
+                scheduleEdit
+                  ? `/admin/hr/employees/${scheduleEdit.empId}/branch-schedule`
+                  : '#'
+              }
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+              فتح في صفحة كاملة
+            </a>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setScheduleEdit(null);
+                void load();
+              }}
+            >
+              إغلاق وتحديث القائمة
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <div className="space-y-3">
         <h4 className="text-sm font-semibold flex items-center gap-2">
