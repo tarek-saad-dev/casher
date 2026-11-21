@@ -18,6 +18,22 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { NextRequest } from 'next/server';
 
 vi.mock('server-only', () => ({}));
+// Existing DELETE route regressions simulate invoices without referral accounting.
+// Dedicated #235 tests cover the new financial mutation service separately.
+vi.mock('@/lib/referrals/referralInvoiceRefund.service', () => ({
+  getReferralRefundAuditSnapshot: vi.fn().mockResolvedValue(null),
+  reverseReferralInvoiceOnFullRefund: vi.fn().mockResolvedValue({
+    claimId: null, voucherId: null, rewardPreserved: false, voucherRestored: false,
+  }),
+}));
+
+// Preserve the original DELETE tests' legacy-writer assumptions. Other
+// dedicated tests cover extracted POS branch. This repo's default may now
+// point to the extracted path independently of the refund feature.
+vi.mock('@/apps/pos/public', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/apps/pos/public')>()),
+  isPosPortEnabled: () => false,
+}));
 
 // ── Shared mutable state ──────────────────────────────────────────────────
 let fakeAuditId = 42;
