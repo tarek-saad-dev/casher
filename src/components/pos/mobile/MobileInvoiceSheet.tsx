@@ -23,6 +23,11 @@ interface MobileInvoiceSheetProps {
   onPaymentMethodSelect: (id: number) => void;
   onPaymentAllocationsChange: (allocations: SaleState['paymentAllocations']) => void;
   onSave: (forcePrint?: boolean, source?: string) => void;
+  isEditingSale?: boolean;
+  onApplyReferral: (code: string, clientId: number) => void;
+  onClearReferral: () => void;
+  onApplyReferralReward: (voucherId: number, clientId: number) => void;
+  onClearReferralReward: () => void;
 }
 
 export default function MobileInvoiceSheet({

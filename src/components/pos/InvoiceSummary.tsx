@@ -9,6 +9,8 @@ interface InvoiceSummaryProps {
   totals: SaleTotals;
   discountPercent: number;
   discountValue: number;
+  referralApplied?: boolean;
+  referralRewardApplied?: boolean;
   onDiscountPercentChange: (v: number) => void;
   onDiscountValueChange: (v: number) => void;
 }
@@ -17,6 +19,8 @@ export default function InvoiceSummary({
   totals,
   discountPercent,
   discountValue,
+  referralApplied = false,
+  referralRewardApplied = false,
   onDiscountPercentChange,
   onDiscountValueChange,
 }: InvoiceSummaryProps) {
@@ -43,11 +47,18 @@ export default function InvoiceSummary({
           </div>
         )}
 
+        {referralApplied && (
+          <p className="text-xs text-emerald-700 dark:text-emerald-300" data-testid="referral-summary-label">
+            {referralRewardApplied ? 'خصم مكافأة إحالة 20%' : 'خصم إحالة 50%'} — لا يمكن إضافة خصم يدوي معه.
+          </p>
+        )}
+
         {/* Header / invoice discount controls */}
         <div className="flex items-center gap-2">
           <span className="text-muted-foreground text-xs shrink-0">خصم فاتورة %</span>
           <Input
             type="number"
+            disabled={referralApplied}
             min={0}
             max={100}
             step="1"
@@ -62,6 +73,7 @@ export default function InvoiceSummary({
           <span className="text-muted-foreground text-xs shrink-0">أو قيمة</span>
           <Input
             type="number"
+            disabled={referralApplied}
             min={0}
             step="1"
             value={discountValue || ''}
@@ -76,7 +88,7 @@ export default function InvoiceSummary({
 
         {headerDiscount > 0 && (
           <div className="flex justify-between text-destructive">
-            <span>خصم الفاتورة</span>
+            <span>{referralRewardApplied ? 'مكافأة إحالة 20%' : referralApplied ? 'خصم الإحالة 50%' : 'خصم الفاتورة'}</span>
             <span>- {headerDiscount.toFixed(2)} ج.م</span>
           </div>
         )}

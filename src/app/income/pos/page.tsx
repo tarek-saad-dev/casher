@@ -40,6 +40,7 @@ import { printReceiptWithFallback, type PrintReceiptData } from '@/lib/printServ
 import { isCustomerIncomplete } from '@/lib/customerSource';
 import type { Barber, Service, PaymentMethod, Customer, CartItem } from '@/lib/types';
 import { isGroomHomeVisitCategory } from '@/lib/catalog/groomOptionalAddons';
+import { referralSalePayloadDiscount } from '@/lib/referrals/posReferralCheckoutPolicy';
 
 // ─── Toast Types ─────────────────────────────────────────────────────────
 interface Toast { id: number; type: 'success' | 'error' | 'info'; message: string }
@@ -107,6 +108,8 @@ export default function PosPage() {
     state, totals,
     setCustomer: setCustomerBase, setBarber, addItem, addItems, removeItem, removeItems, updateItem,
     setDiscountPercent, setDiscountValue,
+    applyReferral, clearReferral,
+    applyReferralReward, clearReferralReward,
     applyDiscountToLargestLine,
     setPaymentMethod,
     setPaymentAllocations,
@@ -169,6 +172,9 @@ export default function PosPage() {
   const [splitPaymentActive, setSplitPaymentActive] = useState(false);
   const [editingSaleId, setEditingSaleId] = useState<number | null>(null);
   const [vouchersOpen, setVouchersOpen] = useState(false);
+  useEffect(() => {
+    if (state.referralCode || state.referralVoucherId) setVouchersOpen(false);
+  }, [state.referralCode, state.referralVoucherId]);
   const [invoiceSheetOpen, setInvoiceSheetOpen] = useState(false);
   const [isPaymentTransferOpen, setIsPaymentTransferOpen] = useState(false);
   const [isQuickExpenseOpen, setIsQuickExpenseOpen] = useState(false);
@@ -596,6 +602,11 @@ export default function PosPage() {
     console.log('[POS SAVE] START', { requestId, source });
 
     if (state.items.length === 0) { setSaveError('يجب إضافة خدمة واحدة على الأقل'); saveLockRef.current = false; setSaving(false); return; }
+    if ((state.referralCode || state.referralVoucherId) && (editingSaleId !== null || !state.customer)) {
+      setSaveError('خصم الإحالة متاح للفاتورة الجديدة مع عميل محدد فقط');
+      saveLockRef.current = false; setSaving(false);
+      return;
+    }
     if (state.paymentMethodId === null) { setSaveError('اختر طريقة الدفع'); saveLockRef.current = false; setSaving(false); return; }
 
     // Validate split payment totals
@@ -652,8 +663,7 @@ export default function PosPage() {
           notes: i.ProName,
         })),
         subTotal: totals.subTotal,
-        dis: state.discountPercent,
-        disVal: state.discountValue,
+        ...referralSalePayloadDiscount(state),
         grandTotal: totals.grandTotal,
         totalBonus: totals.totalBonus,
         totalQty: totals.totalQty,
@@ -801,7 +811,9 @@ export default function PosPage() {
       }
       console.log('[POS SAVE] SUCCESS', { requestId });
     } catch {
-      setSaveError('خطأ في الاتصال بالخادم');
+      setSaveError(state.referralCode || state.referralVoucherId
+        ? 'تعذر تأكيد حفظ فاتورة الإحالة. راجع الفواتير الأخيرة قبل إعادة المحاولة، تجنبًا للتكرار.'
+        : 'خطأ في الاتصال بالخادم');
       console.error('[POS SAVE] ERROR', { requestId });
     } finally {
       saveLockRef.current = false;
@@ -1035,6 +1047,11 @@ export default function PosPage() {
     onPaymentMethodSelect: handlePaymentMethodSelect,
     onPaymentAllocationsChange: setPaymentAllocations,
     onSave: handleSave,
+    isEditingSale: editingSaleId !== null,
+    onApplyReferral: applyReferral,
+    onClearReferral: clearReferral,
+    onApplyReferralReward: applyReferralReward,
+    onClearReferralReward: clearReferralReward,
   };
 
   const invoiceLabel = editingSaleId
@@ -1160,7 +1177,7 @@ export default function PosPage() {
               </button>
             </div>
           ) : null}
-          {state.customer && !vouchersOpen && (
+          {state.customer && !state.referralCode && !state.referralVoucherId && !vouchersOpen && (
             <button
               type="button"
               onClick={() => setVouchersOpen(true)}
@@ -1229,7 +1246,7 @@ export default function PosPage() {
           ) : null}
 
           {/* Vouchers button — shown when customer is selected and modal is closed */}
-          {state.customer && !vouchersOpen && (
+          {state.customer && !state.referralCode && !state.referralVoucherId && !vouchersOpen && (
             <button
               onClick={() => setVouchersOpen(true)}
               className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-warning/10 border border-warning/20 hover:bg-warning/15 transition-colors text-sm text-warning font-medium"
@@ -1305,7 +1322,7 @@ export default function PosPage() {
       />
 
       {/* ═══════ Client Vouchers Modal ═══════ */}
-      {state.customer && (
+      {state.customer && !state.referralCode && !state.referralVoucherId && (
         <ClientVouchersModal
           clientId={state.customer.ClientID}
           clientName={state.customer.Name}
