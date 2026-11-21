@@ -1,7 +1,7 @@
 #!/usr/bin/env npx tsx
 /**
- * Production VPS runner for progressive late-attendance WhatsApp alerts
- * (+ durable finalize recovery).
+ * Production VPS runner for late-deduction financial recovery ONLY.
+ * Pre-check-in WhatsApp reminders/escalations have been permanently disabled.
  *
  * Once:
  *   npm run late-deduction:alerts

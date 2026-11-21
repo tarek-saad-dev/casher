@@ -3,6 +3,8 @@ import 'server-only';
 import { getPool, sql } from '@/lib/db';
 import { upsertLateDeductionLedgerEntry, voidLateDeductionLedgerEntry } from './ledger';
 import { buildManagerDecisionEmployeeMessage } from './messages';
+import { isEmployeeLateDeductionExempt } from './repository';
+import { getLateDeductionConfig, isWorkDateEligibleForLateDeduction } from './config';
 import {
   findLateDeductionCaseById,
   listPendingManagerCases,
@@ -124,8 +126,21 @@ export async function applyManagerLatePenalty(params: {
   const updated = await findLateDeductionCaseById(db, params.caseId);
   if (!updated) throw new LateDeductionActionError('فشل تحديث الحالة');
 
+  // A manual decision records its ledger entry above, but messaging remains
+  // opt-in to the tenant's active deduction policy and the employee exemption.
+  let notifyEmployee = false;
   if (!params.suppressWhatsApp) {
-    // Await so the HTTP request keeps the process alive until WhatsApp is attempted.
+    try {
+      const config = await getLateDeductionConfig(updated.branchId);
+      notifyEmployee =
+        isWorkDateEligibleForLateDeduction(updated.workDate, config) &&
+        !(await isEmployeeLateDeductionExempt(db, updated.empId));
+    } catch (err) {
+      console.warn('[late-deduction] manager notice eligibility check failed:', err);
+    }
+  }
+  if (notifyEmployee) {
+    // Notify only after a real manager-applied financial debit.
     const wa = await sendLateDeductionWhatsApp({
       empId: updated.empId,
       branchId: updated.branchId,

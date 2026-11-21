@@ -1,6 +1,6 @@
 /**
  * Pure late-deduction boundary + amount rules.
- * Spec: 1–60 → 25%, 61–120 → 50%, 121+ → manager review (no auto amount).
+ * Spec: 0–14 → grace/no penalty; 15–60 → 25%; 61–120 → 50%; 121+ → manager review.
  */
 
 import { roundMoney } from '@/lib/reportMonthUtils';
@@ -18,7 +18,7 @@ export type LateDeductionKind = LateDeductionBracket | 'exempt' | 'missing_pay_d
 
 export function resolveLateDeductionBracket(lateMinutes: number): LateDeductionBracket {
   const mins = Math.max(0, Math.floor(Number(lateMinutes) || 0));
-  if (mins <= 0) return 'none';
+  if (mins < 15) return 'none';
   if (mins <= 60) return 'quarter';
   if (mins <= 120) return 'half';
   return 'manager_review';
@@ -75,23 +75,6 @@ export function calculateLateDeductionAmount(params: {
     amount: roundMoney(Number(params.dailyBasePay) * fraction),
     fraction,
   };
-}
-
-/** Threshold minutes that trigger progressive pre-check-in alerts. */
-export const LATE_ALERT_THRESHOLDS = [1, 61, 121] as const;
-export type LateAlertThreshold = (typeof LATE_ALERT_THRESHOLDS)[number];
-
-export function alertThresholdReached(lateMinutes: number): LateAlertThreshold | null {
-  const mins = Math.max(0, Math.floor(Number(lateMinutes) || 0));
-  if (mins >= 121) return 121;
-  if (mins >= 61) return 61;
-  if (mins >= 1) return 1;
-  return null;
-}
-
-export function thresholdsDueForLateMinutes(lateMinutes: number): LateAlertThreshold[] {
-  const mins = Math.max(0, Math.floor(Number(lateMinutes) || 0));
-  return LATE_ALERT_THRESHOLDS.filter((t) => mins >= t);
 }
 
 export interface LateDeductionConfigLike {

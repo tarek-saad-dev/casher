@@ -107,7 +107,9 @@ describe('financial finalization ignores booking window and stale attendance sna
 
   it.each([
     ['12:00:00', 'skipped', 'none', 0, null],
-    ['12:01:00', 'applied', 'quarter', 1, 100],
+    ['12:01:00', 'skipped', 'none', 1, null],
+    ['12:14:00', 'skipped', 'none', 14, null],
+    ['12:15:00', 'applied', 'quarter', 15, 100],
     ['12:20:00', 'applied', 'quarter', 20, 100],
     ['13:00:00', 'applied', 'quarter', 60, 100],
     ['13:01:00', 'applied', 'half', 61, 200],
@@ -138,7 +140,69 @@ describe('financial finalization ignores booking window and stale attendance sna
     } else {
       expect(m.upsertLedger).not.toHaveBeenCalled();
     }
-    expect(m.sendWa).not.toHaveBeenCalled(); // no outbound WhatsApp in tests
+    expect(m.sendWa).not.toHaveBeenCalled(); // suppressed in these acceptance cases
+  });
+
+  it('notifies in Arabic only after a successful quarter-day debit', async () => {
+    const result = await finalizeLateDeductionOnCheckIn({
+      ...params, suppressWhatsApp: false,
+    });
+    expect(result.status).toBe('applied');
+    expect(m.upsertLedger).toHaveBeenCalledOnce();
+    expect(m.sendWa).toHaveBeenCalledOnce();
+    const message = (m.sendWa.mock.calls as unknown as Array<Array<unknown>>)[0]?.[0] as { text: string; metadata: { event: string } };
+    expect(message.metadata.event).toBe('final_deduction');
+    expect(message.text).toContain('مدة التأخير');
+    expect(message.text).toContain('100.00');
+    expect(message.text).toContain('ربع يوم');
+    expect(message.text).not.toMatch(/Attendance|Check-in|Escalation|EGP/i);
+  });
+
+  it('does not notify when a debit failed to write', async () => {
+    m.upsertLedger.mockRejectedValueOnce(new Error('ledger failed'));
+    const result = await finalizeLateDeductionOnCheckIn({
+      ...params, suppressWhatsApp: false,
+    });
+    expect(result.status).toBe('finalize_pending');
+    expect(m.sendWa).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['12:01:00', 'within_grace_period'],
+    ['12:14:00', 'within_grace_period'],
+    ['14:01:00', undefined],
+  ] as const)('no WhatsApp for arrival %s without applied penalty', async (checkIn, reason) => {
+    m.checkIn = checkIn;
+    const result = await finalizeLateDeductionOnCheckIn({
+      ...params, suppressWhatsApp: false,
+    });
+    if (reason) expect(result.reason).toBe(reason);
+    expect(m.upsertLedger).not.toHaveBeenCalled();
+    expect(m.sendWa).not.toHaveBeenCalled();
+  });
+
+  it('does not notify exempt employee even with no WhatsApp suppression', async () => {
+    m.exempt.mockResolvedValueOnce(true);
+    const result = await finalizeLateDeductionOnCheckIn({
+      ...params, suppressWhatsApp: false,
+    });
+    expect(result.status).toBe('exempt');
+    expect(m.upsertLedger).not.toHaveBeenCalled();
+    expect(m.sendWa).not.toHaveBeenCalled();
+  });
+
+  it('on-time correction at 14 minutes voids prior debit', async () => {
+    m.checkIn = '12:14:00';
+    m.findCase.mockResolvedValueOnce({
+      caseId: 77, status: 'applied', ledgerEntryId: 4001, attendanceId: 44,
+      doNotAutoRecreate: false,
+    });
+    const result = await finalizeLateDeductionOnCheckIn(params);
+    expect(result).toMatchObject({
+      status: 'skipped', reason: 'within_grace_period', lateMinutes: 14,
+    });
+    expect(m.voidLedger).toHaveBeenCalledOnce();
+    expect(m.upsertLedger).not.toHaveBeenCalled();
   });
 
   it('does not charge on HR weekly day off even if booking slots are available', async () => {

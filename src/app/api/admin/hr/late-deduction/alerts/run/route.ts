@@ -1,6 +1,7 @@
 /**
  * POST /api/admin/hr/late-deduction/alerts/run
- * Cron / system job: progressive late-arrival WhatsApp alerts.
+ * Cron / system job: recovery of missed financial finalizations.
+ * Never sends pre-check-in reminders or 121-minute escalations.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { requireSystemJobAuth } from '@/lib/api-auth';
