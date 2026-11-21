@@ -1,0 +1,93 @@
+name: DRVO-117 Core Workspace Staging QA
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: drvo-117-staging-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  core-workspace-qa:
+    if: >
+      (github.event_name == 'workflow_dispatch') ||
+      (
+        github.event.pull_request.head.repo.full_name == github.repository &&
+        github.event.pull_request.head.ref == 'drvo-117-core-workspace-staging-qa'
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: drvo-staging
+
+    env:
+      DRVO_STAGING_SSH_HOST: ${{ secrets.DRVO_STAGING_SSH_HOST || secrets.VPS_HOST }}
+      DRVO_STAGING_SSH_KEY: ${{ secrets.DRVO_STAGING_SSH_KEY }}
+      DRVO_STAGING_DB_PASSWORD: ${{ secrets.DRVO_STAGING_DB_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Refuse local env files
+        run: |
+          set -euo pipefail
+          for f in .env .env.local .env.production .env.production.local; do
+            if [[ -f "$f" ]]; then
+              echo "Refusing: checkout contains $f" >&2
+              exit 10
+            fi
+          done
+
+      - name: Check staging secrets
+        run: |
+          set -euo pipefail
+          missing=0
+          for key in DRVO_STAGING_SSH_HOST DRVO_STAGING_SSH_KEY DRVO_STAGING_DB_PASSWORD; do
+            if [[ -z "${!key:-}" ]]; then
+              echo "Missing staging secret: $key" >&2
+              missing=1
+            fi
+          done
+          [[ "$missing" -eq 0 ]] || exit 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Open SSH tunnel to staging SQL
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$DRVO_STAGING_SSH_KEY" > ~/.ssh/drvo_staging
+          chmod 600 ~/.ssh/drvo_staging
+          ssh-keyscan -H "$DRVO_STAGING_SSH_HOST" >> ~/.ssh/known_hosts
+          ssh -i ~/.ssh/drvo_staging -o BatchMode=yes -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 \
+            -L 14330:127.0.0.1:1433 "drvo-tunnel@$DRVO_STAGING_SSH_HOST" -N &
+          echo $! > /tmp/drvo117-staging-tunnel.pid
+          for i in {1..30}; do
+            if nc -z 127.0.0.1 14330; then exit 0; fi
+            sleep 1
+          done
+          echo 'Staging SQL tunnel unavailable' >&2
+          exit 12
+
+      - name: Issue #117 core workspace staging QA
+        run: npm run drvo-117:smoke
+
+      - name: Close SSH tunnel
+        if: always()
+        run: |
+          if [[ -f /tmp/drvo117-staging-tunnel.pid ]]; then
+            kill "$(cat /tmp/drvo117-staging-tunnel.pid)" || true
+          fi
