@@ -159,6 +159,9 @@ jobs:
       - name: Paid booking handoff reconciliation safety contracts
         run: npx vitest run src/lib/__tests__/handoffChargeReconciliationContracts.test.ts src/lib/__tests__/handoffPaidLinePolicy.test.ts
 
+      - name: CUT Pulse automation validation
+        run: npx vitest run src/modules/messaging/automation/draftRules.test.ts --reporter=default
+
       - name: Production build
         run: npm run build
 
