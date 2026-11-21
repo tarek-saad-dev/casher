@@ -33,7 +33,7 @@ function safeCoins(v:unknown):number|null{
 
 export async function loadMemberRewardCatalog(token:unknown):Promise<CutClubCatalog|null>{
   const member=await getCutClubSession(token);
-  if(!member||member.linkStatus==='SUSPENDED')return null;
+  if(!member||!['ACTIVE','UNLINKED','REVIEW_REQUIRED'].includes(member.linkStatus))return null;
   let balance:number|null=null;
   const db=await getPool();
   if(member.linkStatus==='ACTIVE'&&member.legacyClientId){
@@ -75,7 +75,7 @@ export async function loadMemberRewardCatalog(token:unknown):Promise<CutClubCata
       priceCoins:price,
       serviceId:row.ServiceID===approved[row.ItemID]?row.ServiceID:null,
       stockState,
-      expiresAfterDays:Number.isSafeInteger(row.ExpiresAfterDays)&&row.ExpiresAfterDays!>0?row.ExpiresAfterDays:null,
+      expiresAfterDays:Number.isSafeInteger(row.ExpiresAfterDays)&&Number(row.ExpiresAfterDays)>0?row.ExpiresAfterDays:null,
       canAfford:balance===null?null:balance>=price,
       serviceMappingReady:row.ServiceID===approved[row.ItemID],
       purchaseAvailable:false as const,
