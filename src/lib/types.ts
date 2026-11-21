@@ -91,6 +91,8 @@ export interface SaleState {
   items: CartItem[];
   discountPercent: number;     // header-level discount %
   discountValue: number;       // header-level discount value
+  /** Explicitly applied verified referral code; new sale only. Server validates again. */
+  referralCode?: string | null;
   paymentMethodId: number | null;  // legacy single payment method
   paymentAllocations: PaymentAllocation[]; // split payment allocations
   notes: string;
