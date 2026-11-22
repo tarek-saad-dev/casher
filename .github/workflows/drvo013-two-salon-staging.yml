@@ -61,6 +61,7 @@ jobs:
         run: npm ci --no-audit --no-fund
 
       - name: Open staging-only SSH tunnel
+        id: tunnel
         shell: bash
         run: |
           set -euo pipefail
@@ -81,6 +82,11 @@ jobs:
       - name: Test real SQL two synthetic Salon Tenants and scoped Booking contact reads
         timeout-minutes: 12
         run: npx tsx scripts/drvo/drvo013-two-salon-booking-isolation-staging.ts
+
+      - name: Independent recovery cleanup for synthetic QA tenants
+        if: always() && steps.tunnel.outcome == 'success'
+        timeout-minutes: 4
+        run: npx tsx scripts/drvo/drvo013-two-salon-staging-cleanup.ts
 
       - name: Close staging SSH tunnel
         if: always()
