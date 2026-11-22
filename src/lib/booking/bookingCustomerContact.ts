@@ -44,6 +44,11 @@ async function readBookingCustomerContact(
       INNER JOIN dbo.Tenant scopeTenant
         ON scopeTenant.TenantId = scopeLocation.TenantId
        AND scopeTenant.Status = N'active'`;
+  // DRVO-015 establishes TenantId on legacy master records. A BookingId/ClientId/EmpId
+  // is NOT authorization to join a different tenant's customer, barber or offering.
+  const clientScope = tenantId === null ? '' : ' AND c.TenantId = @tenantId';
+  const employeeScope = tenantId === null ? '' : ' AND e.TenantId = @tenantId';
+  const productScope = tenantId === null ? '' : ' AND p.TenantId = @tenantId';
   const r = await request.query(`
       SELECT
         b.BookingID, b.BookingCode, b.ClientID, b.AssignedEmpID, b.BranchID,
@@ -56,13 +61,13 @@ async function readBookingCustomerContact(
         (
           SELECT STRING_AGG(p.ProName, N'، ')
           FROM dbo.BookingServices bs
-          LEFT JOIN dbo.TblPro p ON p.ProID = bs.ProID
+          LEFT JOIN dbo.TblPro p ON p.ProID = bs.ProID${productScope}
           WHERE bs.BookingID = b.BookingID
         ) AS ServicesSummary
       FROM dbo.Bookings b
       ${tenantJoin}
-      LEFT JOIN dbo.TblClient c ON c.ClientID = b.ClientID
-      LEFT JOIN dbo.TblEmp e ON e.EmpID = b.AssignedEmpID
+      LEFT JOIN dbo.TblClient c ON c.ClientID = b.ClientID${clientScope}
+      LEFT JOIN dbo.TblEmp e ON e.EmpID = b.AssignedEmpID${employeeScope}
       LEFT JOIN dbo.TblBranch br ON br.BranchID = b.BranchID
       WHERE b.BookingID = @id
     `);
@@ -77,10 +82,12 @@ async function readBookingCustomerContact(
         SELECT COL_LENGTH(N'dbo.TblClient', N'Phone') AS Len
       `);
       if (Number(phoneCol.recordset[0]?.Len ?? 0) > 0) {
-        const pr = await db
-          .request()
-          .input('cid', sql.Int, Number(row.ClientID))
-          .query(`SELECT Phone FROM dbo.TblClient WHERE ClientID = @cid`);
+        // The optional legacy Phone column is a second PII read: scope it too.
+        const phoneReq = db.request().input('cid', sql.Int, Number(row.ClientID));
+        if (tenantId !== null) phoneReq.input('tenantId', sql.UniqueIdentifier, tenantId);
+        const pr = await phoneReq.query(
+          `SELECT Phone FROM dbo.TblClient WHERE ClientID = @cid${tenantId === null ? '' : ' AND TenantId = @tenantId'}`,
+        );
         clientPhone =
           pr.recordset[0]?.Phone != null ? String(pr.recordset[0].Phone) : null;
       }
