@@ -1,7 +1,8 @@
 'use client';
 
-import { ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
+import { ArrowDownRight, ArrowUpRight, Minus } from 'lucide-react';
 
 interface KpiCardProps {
   title: string;
@@ -14,24 +15,25 @@ interface KpiCardProps {
   variant?: 'default' | 'primary' | 'success' | 'warning' | 'danger' | 'info';
 }
 
-const variantStyles = {
-  default: 'bg-zinc-900/50 border-zinc-800/50',
-  primary: 'bg-amber-500/5 border-amber-500/20',
-  success: 'bg-emerald-500/5 border-emerald-500/20',
-  warning: 'bg-yellow-500/5 border-yellow-500/20',
-  danger: 'bg-rose-500/5 border-rose-500/20',
-  info: 'bg-cyan-500/5 border-cyan-500/20',
-};
-
 const iconStyles = {
-  default: 'bg-zinc-800/50 text-zinc-400',
-  primary: 'bg-amber-500/10 text-amber-400',
-  success: 'bg-emerald-500/10 text-emerald-400',
-  warning: 'bg-yellow-500/10 text-yellow-400',
-  danger: 'bg-rose-500/10 text-rose-400',
-  info: 'bg-cyan-500/10 text-cyan-400',
+  default: 'bg-muted text-muted-foreground',
+  primary: 'bg-brand-soft text-brand',
+  success: 'bg-success-soft text-success',
+  warning: 'bg-warning-soft text-warning',
+  danger: 'bg-destructive-soft text-destructive',
+  info: 'bg-info-soft text-info',
 };
 
+const accentStyles = {
+  default: 'before:bg-border',
+  primary: 'before:bg-brand',
+  success: 'before:bg-success',
+  warning: 'before:bg-warning',
+  danger: 'before:bg-destructive',
+  info: 'before:bg-info',
+};
+
+/** KPI tile. Only show verified numbers; pass a "—" value with a subtitle when data is missing. */
 export default function KpiCard({
   title,
   value,
@@ -42,36 +44,37 @@ export default function KpiCard({
   className,
   variant = 'default',
 }: KpiCardProps) {
+  const TrendIcon = trend === 'up' ? ArrowUpRight : trend === 'down' ? ArrowDownRight : Minus;
   return (
-    <div className={cn(
-      'rounded-xl border p-4 transition-all duration-200 hover:border-zinc-700/50',
-      variantStyles[variant],
-      className
-    )}>
-      <div className="flex items-start justify-between">
-        <div className="flex-1 min-w-0">
-          <p className="text-xs font-medium text-zinc-500 uppercase tracking-wider">{title}</p>
-          <p className="mt-2 text-2xl font-bold text-white truncate">{value}</p>
-          {subtitle && (
-            <p className="mt-1 text-xs text-zinc-400">{subtitle}</p>
-          )}
+    <div
+      className={cn(
+        'relative overflow-hidden rounded-xl border border-border bg-card p-4 shadow-xs',
+        'before:absolute before:inset-y-3 before:start-0 before:w-[3px] before:rounded-full',
+        accentStyles[variant],
+        className,
+      )}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-semibold text-muted-foreground">{title}</p>
+          <p className="num mt-1.5 truncate text-2xl font-bold text-foreground">{value}</p>
+          {subtitle && <p className="mt-0.5 text-xs text-muted-foreground">{subtitle}</p>}
           {trend && trendValue && (
-            <div className={cn(
-              'mt-2 flex items-center gap-1 text-xs',
-              trend === 'up' && 'text-emerald-400',
-              trend === 'down' && 'text-rose-400',
-              trend === 'neutral' && 'text-zinc-400'
-            )}>
-              <span>{trend === 'up' ? '↑' : trend === 'down' ? '↓' : '→'}</span>
-              <span>{trendValue}</span>
+            <div
+              className={cn(
+                'mt-1.5 inline-flex items-center gap-1 text-xs font-semibold',
+                trend === 'up' && 'text-success',
+                trend === 'down' && 'text-destructive',
+                trend === 'neutral' && 'text-muted-foreground',
+              )}
+            >
+              <TrendIcon className="size-3.5" aria-hidden />
+              <span className="num">{trendValue}</span>
             </div>
           )}
         </div>
         {icon && (
-          <div className={cn(
-            'flex items-center justify-center w-10 h-10 rounded-lg shrink-0',
-            iconStyles[variant]
-          )}>
+          <div className={cn('flex size-9 shrink-0 items-center justify-center rounded-lg [&_svg]:size-4.5', iconStyles[variant])}>
             {icon}
           </div>
         )}

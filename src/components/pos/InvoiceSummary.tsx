@@ -33,7 +33,7 @@ export default function InvoiceSummary({
       <div className="space-y-2 text-sm">
         <div className="flex justify-between">
           <span className="text-muted-foreground">المجموع</span>
-          <span className="font-medium">{totals.subTotal.toFixed(2)} ج.م</span>
+          <span className="num font-medium">{totals.subTotal.toFixed(2)} ج.م</span>
         </div>
 
         {lineDiscount > 0 && (
@@ -83,9 +83,9 @@ export default function InvoiceSummary({
 
         <Separator />
 
-        <div className="flex justify-between text-lg font-bold">
+        <div className="flex items-baseline justify-between rounded-lg bg-brand-soft px-3 py-2.5 text-base font-bold text-brand-deep">
           <span>الإجمالي</span>
-          <span className="text-primary">{totals.grandTotal.toFixed(2)} ج.م</span>
+          <span className="num text-xl text-foreground">{totals.grandTotal.toFixed(2)} <span className="text-sm font-semibold text-muted-foreground">ج.م</span></span>
         </div>
 
         {totals.totalBonus > 0 && (

@@ -37,9 +37,9 @@ function nextRetailLineId(proId: number): string {
 }
 
 const STATUS_META: Record<ProductStockStatus, { label: string; className: string }> = {
-  ok: { label: 'متوفر', className: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400' },
-  low: { label: 'كمية منخفضة', className: 'border-amber-500/40 bg-amber-500/10 text-amber-400' },
-  out: { label: 'نفد المخزون', className: 'border-rose-500/40 bg-rose-500/10 text-rose-400' },
+  ok: { label: 'متوفر', className: 'border-success/25 text-success' },
+  low: { label: 'كمية منخفضة', className: 'border-warning/30 text-warning' },
+  out: { label: 'نفد المخزون', className: 'border-destructive/25 text-destructive' },
 };
 
 function normalize(value: string | null | undefined): string {
@@ -138,7 +138,7 @@ export default function ProductCatalog({ products, onAddItem, onToast, loading }
                   'group relative overflow-hidden rounded-xl border border-border bg-surface transition-all duration-300',
                   isOut
                     ? 'opacity-60'
-                    : 'hover:border-primary/50 hover:shadow-lg hover:shadow-primary/10',
+                    : 'hover:border-primary/40 hover:shadow-md',
                 )}
               >
                 <div className="relative h-20 overflow-hidden">
@@ -151,12 +151,12 @@ export default function ProductCatalog({ products, onAddItem, onToast, loading }
                       const img = e.currentTarget;
                       if (!img.src.endsWith(FALLBACK_IMAGE)) img.src = FALLBACK_IMAGE;
                     }}
-                    className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
+                    className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-[var(--surface)] via-transparent to-transparent" />
                   <span
                     className={cn(
-                      'absolute right-2 top-2 rounded-full border px-2 py-0.5 text-[10px] font-medium backdrop-blur-sm',
+                      'absolute start-2 top-2 rounded-full border bg-card/90 px-2 py-0.5 text-[0.6875rem] font-semibold',
                       status.className,
                     )}
                   >

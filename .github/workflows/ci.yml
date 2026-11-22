@@ -133,6 +133,22 @@ jobs:
       - name: Deploy script shell syntax
         run: bash -n deploy/deploy-casher
 
+      - name: DRVO Light UI design-system regression (tokens, contrast, ratchet, PWA)
+        run: >
+          npx vitest run
+          src/lib/__tests__/drvoTheme.test.ts
+          scripts/ui/__tests__/legacyColorRatchet.test.ts
+          src/lib/__tests__/pwaApps.test.ts
+          --reporter=default
+
+      - name: Legacy colour class ratchet (new code must use DRVO tokens)
+        run: node scripts/ui/legacy-color-report.mjs --check
+
+      - name: Legacy dark bridge CSS is up to date
+        run: |
+          node scripts/ui/generate-legacy-bridge.mjs
+          git diff --exit-code -- src/app/legacy-dark-bridge.css
+
       - name: Local print client and receipt interaction regressions
         run: npx vitest run src/lib/__tests__/localPrintClient.test.ts src/components/expenses/__tests__/ExpenseReceiptPopup.print.test.tsx
 

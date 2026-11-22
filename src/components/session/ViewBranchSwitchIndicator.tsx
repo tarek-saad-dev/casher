@@ -21,7 +21,7 @@ export default function ViewBranchSwitchIndicator() {
 
   return (
     <div
-      className="sticky top-0 z-[60] flex items-center justify-center gap-2 border-b border-primary/20 bg-primary/10 px-3 py-2 text-xs text-primary backdrop-blur-sm"
+      className="sticky top-0 z-[60] flex items-center justify-center gap-2 border-b border-info/20 bg-info-soft px-3 py-2 text-xs text-info"
       dir="rtl"
       role="status"
       aria-live="polite"

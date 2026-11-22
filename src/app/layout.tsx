@@ -9,7 +9,7 @@ import ThemeProvider from "@/components/providers/ThemeProvider";
 import { ThemeInit } from "@/components/theme/ThemeInit";
 import PwaBootstrap from "@/components/pwa/PwaBootstrap";
 import { cookies } from "next/headers";
-import { parseThemeCookie } from "@/lib/theme";
+import { parseThemeCookie, resolveThemeMode } from "@/lib/theme";
 import { CUT_SYSTEM_PWA } from "@/lib/pwa/apps";
 
 const cairo = Cairo({
@@ -57,9 +57,17 @@ export default async function RootLayout({
 }>) {
   const cookieHeader = (await cookies()).toString();
   const initialTheme = parseThemeCookie(cookieHeader);
+  const initialMode = resolveThemeMode(initialTheme.mode);
 
   return (
-    <html lang="ar" dir="rtl" className={`h-full antialiased ${cairo.variable}`} suppressHydrationWarning>
+    <html
+      lang="ar"
+      dir="rtl"
+      className={`h-full antialiased ${cairo.variable} ${initialMode}`}
+      data-theme-mode={initialMode}
+      data-theme-palette={initialTheme.palette}
+      suppressHydrationWarning
+    >
       <head>
         <ThemeInit />
       </head>

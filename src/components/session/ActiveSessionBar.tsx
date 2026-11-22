@@ -13,7 +13,6 @@ import OperationalMobileSheet from '@/components/session/OperationalMobileSheet'
 import { useOperationalToast } from '@/components/session/OperationalToast';
 import { User, LogOut, ShieldCheck, ShieldAlert } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import TopNav from '@/components/layout/TopNav';
 import BranchSwitcher from '@/components/session/BranchSwitcher';
 import {
   branchDisplayName,
@@ -216,103 +215,97 @@ function ActiveSessionBar() {
     showToast(`تم تقفيل وردية ${opLabel}`);
   }
 
+  const shiftTone = hasOpenShift
+    ? viewMatchesOperational
+      ? 'bg-success-soft text-success border-success/20'
+      : 'bg-warning-soft text-warning border-warning/25'
+    : 'bg-muted text-muted-foreground border-border';
+
   return (
-    <div className="flex items-center gap-3 px-3 py-1.5 bg-muted/50 border-b border-border text-xs overflow-hidden relative min-w-0">
-      <div className="hidden xl:flex items-center gap-2.5 shrink-0 max-w-[46%] min-w-0">
-        <div className="flex items-center gap-1.5 shrink-0">
-          <User className="w-3.5 h-3.5 text-muted-foreground" />
-          <span className="font-medium truncate max-w-[7rem]">{user.UserName}</span>
-          {isAdmin ? (
-            <ShieldCheck className="w-3.5 h-3.5 text-success shrink-0" />
-          ) : (
-            <ShieldAlert className="w-3.5 h-3.5 text-info shrink-0" />
-          )}
-        </div>
-
-        <span className="text-muted-foreground/40">|</span>
-
-        <div className="flex items-center gap-1.5 min-w-0">
-          <span className="text-muted-foreground whitespace-nowrap">عرض:</span>
+    <div
+      role="banner"
+      className="relative flex h-12 min-w-0 shrink-0 items-center gap-2 border-b border-border bg-topbar-background px-3 text-xs text-topbar-foreground xl:h-14 xl:gap-3 xl:px-4"
+    >
+      {/* Desktop: branch context + shift state (always visible — ADR-023 global context) */}
+      <div className="hidden min-w-0 flex-1 items-center gap-2.5 xl:flex">
+        <div className="flex h-8 min-w-0 items-center gap-1.5 rounded-lg border border-border bg-card px-2">
+          <span className="whitespace-nowrap text-muted-foreground">الفرع</span>
           <BranchSwitcher />
         </div>
 
-        <span className="text-muted-foreground/40">|</span>
-
         {hasOpenShift && operationalBranch ? (
           <div
-            className="flex items-center gap-1.5 min-w-0"
+            className={`flex h-8 min-w-0 items-center gap-2 rounded-lg border px-2.5 ${shiftTone}`}
             title={
               viewMatchesOperational
                 ? `تعمل في ${opLabel}`
                 : `عرض ${viewLabel} — تعمل في ${opLabel}`
             }
           >
-            <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-success" />
-            <span className="font-semibold text-foreground whitespace-nowrap">
-              تعمل في {opLabel}
-            </span>
-            <span className="text-muted-foreground whitespace-nowrap">
+            <span className="size-1.5 shrink-0 rounded-full bg-current" aria-hidden />
+            <span className="whitespace-nowrap font-semibold">تعمل في {opLabel}</span>
+            <span className="num whitespace-nowrap opacity-80">
               وردية مفتوحة
               {elapsed ? ` • ${elapsed}` : startedAt && mounted ? ` • منذ ${startedAt}` : ''}
             </span>
-            <OperationalHandoffControl className="text-[10px] font-medium text-primary hover:underline underline-offset-2 whitespace-nowrap" />
+          </div>
+        ) : (
+          <div className={`flex h-8 items-center gap-2 rounded-lg border px-2.5 ${shiftTone}`}>
+            <span className="size-1.5 shrink-0 rounded-full bg-current" aria-hidden />
+            <span className="whitespace-nowrap">لا توجد وردية مفتوحة</span>
+          </div>
+        )}
+
+        {hasOpenShift && operationalBranch ? (
+          <div className="flex items-center gap-1">
+            <OperationalHandoffControl className="h-8 whitespace-nowrap rounded-md px-2 text-xs font-semibold text-primary hover:bg-primary-soft" />
             <button
               type="button"
               onClick={requestEndShift}
-              className="text-[10px] text-muted-foreground hover:text-destructive underline-offset-2 hover:underline mr-0.5"
+              className="h-8 whitespace-nowrap rounded-md px-2 text-xs font-medium text-muted-foreground hover:bg-destructive-soft hover:text-destructive"
             >
-              إنهاء
+              إنهاء الوردية
             </button>
           </div>
-        ) : (
-          <span className="text-muted-foreground whitespace-nowrap">لا توجد وردية مفتوحة</span>
-        )}
-
-        {!isPosPage && (
-          <>
-            <span className="text-muted-foreground/40">|</span>
-            <DbToggleButton />
-          </>
-        )}
+        ) : null}
       </div>
 
-      <div className="flex xl:hidden items-center gap-1.5 shrink-0">
-        <User className="w-3.5 h-3.5 text-muted-foreground" />
-        <span className="font-medium truncate max-w-[5.5rem]">{user.UserName}</span>
+      {/* Compact (< xl): user + state chip opens the operational sheet */}
+      <div className="flex min-w-0 flex-1 items-center gap-1.5 xl:hidden">
         <button
           type="button"
           onClick={() => setMobileSheetOpen(true)}
-          className={`text-[10px] whitespace-nowrap rounded-md px-1.5 py-0.5 ${
-            hasOpenShift
-              ? viewMatchesOperational
-                ? 'text-success bg-success/10'
-                : 'text-amber-700 dark:text-amber-400 bg-amber-500/10'
-              : 'text-muted-foreground bg-muted'
-          }`}
+          className={`flex h-8 min-w-0 items-center gap-1.5 rounded-lg border px-2 text-xs font-semibold ${shiftTone}`}
           aria-label="الحالة التشغيلية"
         >
-          {hasOpenShift ? `● ${opLabel}` : 'لا توجد وردية'}
+          <span className="size-1.5 shrink-0 rounded-full bg-current" aria-hidden />
+          <span className="truncate">{hasOpenShift ? opLabel : 'لا توجد وردية'}</span>
         </button>
         <OperationalHandoffControl
           label="نقل التشغيل"
-          className="text-[10px] font-medium text-primary whitespace-nowrap rounded-md px-1.5 py-0.5 bg-primary/10"
+          className="h-8 whitespace-nowrap rounded-lg bg-primary-soft px-2 text-xs font-semibold text-primary"
         />
+      </div>
+
+      {/* End: environment toggle, user, logout */}
+      <div className="flex shrink-0 items-center gap-1.5 xl:gap-2">
         {!isPosPage && <DbToggleButton />}
+        <div className="hidden h-8 items-center gap-1.5 rounded-lg px-1.5 sm:flex">
+          <span className="flex size-7 items-center justify-center rounded-full bg-brand-soft text-brand">
+            <User className="size-3.5" aria-hidden />
+          </span>
+          <span className="max-w-[7rem] truncate font-semibold">{user.UserName}</span>
+          {isAdmin ? (
+            <ShieldCheck className="size-3.5 shrink-0 text-success" aria-label="مدير" />
+          ) : (
+            <ShieldAlert className="size-3.5 shrink-0 text-info" aria-label="مستخدم" />
+          )}
+        </div>
+        <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive" onClick={requestLogout}>
+          <LogOut aria-hidden />
+          خروج
+        </Button>
       </div>
-
-      <div className="flex-1 min-w-0 overflow-hidden">
-        <TopNav />
-      </div>
-
-      <Button
-        variant="ghost"
-        size="sm"
-        className="h-6 text-xs px-2 shrink-0"
-        onClick={requestLogout}
-      >
-        <LogOut className="w-3.5 h-3.5 ml-1" />
-        خروج
-      </Button>
 
       <LogoutConfirmModal
         isOpen={showLogoutModal}

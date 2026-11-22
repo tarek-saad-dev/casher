@@ -31,12 +31,12 @@ const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
     return (
       <label
         className={cn(
-          "peer relative flex h-4 w-4 shrink-0 cursor-pointer items-center justify-center rounded border border-zinc-600 transition-colors",
-          "hover:border-zinc-500",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900",
+          "peer relative flex h-4 w-4 shrink-0 cursor-pointer items-center justify-center rounded border border-input bg-card transition-colors",
+          "hover:border-muted-foreground",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
           "disabled:cursor-not-allowed disabled:opacity-50",
-          isChecked && "border-amber-500 bg-amber-500",
-          isIndeterminate && "border-amber-500 bg-amber-500",
+          isChecked && "border-primary bg-primary",
+          isIndeterminate && "border-primary bg-primary",
           className
         )}
       >
@@ -49,10 +49,10 @@ const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
           {...props}
         />
         {isChecked && (
-          <Check className="h-3 w-3 text-black" strokeWidth={3} />
+          <Check className="h-3 w-3 text-primary-foreground" strokeWidth={3} />
         )}
         {isIndeterminate && (
-          <Minus className="h-3 w-3 text-black" strokeWidth={3} />
+          <Minus className="h-3 w-3 text-primary-foreground" strokeWidth={3} />
         )}
       </label>
     )

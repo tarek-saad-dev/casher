@@ -43,11 +43,11 @@ export default function AuthenticatedAppShell({
     return (
       <TenantShellProvider>
         <div className="flex flex-1 min-h-0 flex-col overflow-hidden">
-          <header dir="rtl" className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
-            <span className="font-semibold">واجهة المدير</span>
-            <div className="flex items-center gap-4 text-sm">
-              <Link href="/admin/hr" className="py-2">الإدارة</Link>
-              <button onClick={() => logout()} className="min-h-11 px-3">خروج</button>
+          <header dir="rtl" className="flex h-14 items-center justify-between gap-3 border-b border-border bg-card px-4">
+            <span className="font-bold text-foreground">واجهة المدير</span>
+            <div className="flex items-center gap-2 text-sm">
+              <Link href="/admin/hr" className="rounded-lg px-3 py-2 font-medium text-foreground hover:bg-muted">الإدارة</Link>
+              <button type="button" onClick={() => logout()} className="min-h-11 rounded-lg px-3 text-muted-foreground hover:bg-destructive-soft hover:text-destructive">خروج</button>
             </div>
           </header>
           <main className="flex-1 min-h-0 overflow-auto">
@@ -75,26 +75,30 @@ export default function AuthenticatedAppShell({
       <WhatsAppAttentionProvider>
       <ShiftOperationalGateProvider>
         <MobileNavProvider>
-        <div className={cn((isPosPage || isOperationsPage) && 'max-md:hidden')}>
-          <ActiveSessionBar />
-        </div>
-        <OperationalStaleBanner />
-        <TenantSubscriptionBanner />
-        <ViewBranchSwitchIndicator />
-        <div className="flex flex-col lg:flex-row flex-1 overflow-hidden">
+        {/* DRVO App Shell: contextual sidebar at logical start, global context bar
+            + status zone + work area in the content column (ADR-023). */}
+        <div className="flex flex-1 flex-col overflow-hidden lg:flex-row">
           <MainNav suppressMobileChrome={isPosPage} />
-          <main
-            className={cn(
-              'flex-1 w-full min-h-0 min-w-0',
-              lockMainToViewport
-                ? 'flex flex-col overflow-hidden'
-                : isPosPage
-                  ? 'max-md:overflow-hidden overflow-y-auto'
-                  : 'overflow-y-auto',
-            )}
-          >
-            <TenantShellGate>{children}</TenantShellGate>
-          </main>
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+            <div className={cn((isPosPage || isOperationsPage) && 'max-md:hidden')}>
+              <ActiveSessionBar />
+            </div>
+            <OperationalStaleBanner />
+            <TenantSubscriptionBanner />
+            <ViewBranchSwitchIndicator />
+            <main
+              className={cn(
+                'flex-1 w-full min-h-0 min-w-0 bg-background',
+                lockMainToViewport
+                  ? 'flex flex-col overflow-hidden'
+                  : isPosPage
+                    ? 'max-md:overflow-hidden overflow-y-auto'
+                    : 'overflow-y-auto',
+              )}
+            >
+              <TenantShellGate>{children}</TenantShellGate>
+            </main>
+          </div>
         </div>
         </MobileNavProvider>
       </ShiftOperationalGateProvider>
