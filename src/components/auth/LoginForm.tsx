@@ -90,30 +90,30 @@ export default function LoginForm({ onSuccess }: LoginFormProps) {
 
   return (
     <div className="w-full max-w-[400px] mx-auto">
-      <div className="rounded-2xl sm:rounded-3xl bg-white/95 backdrop-blur-sm shadow-2xl shadow-black/20 border border-amber-200/40 overflow-hidden">
-        {/* Brand header */}
-        <div className="bg-gradient-to-br from-amber-900 via-amber-800 to-amber-950 px-5 pt-8 pb-7 sm:px-8 sm:pt-10 sm:pb-8 text-center">
-          <div className="mx-auto mb-4 flex h-[72px] w-[72px] sm:h-20 sm:w-20 items-center justify-center rounded-2xl bg-white/10 ring-1 ring-amber-400/30 shadow-lg shadow-black/20">
+      <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-lg">
+        {/* Brand header (Deep Plum, on-dark treatment) */}
+        <div className="bg-brand-deep px-5 pt-7 pb-6 text-center sm:px-8 sm:pt-8">
+          <div className="mx-auto mb-3 flex size-16 items-center justify-center rounded-xl bg-card shadow-sm">
             <img
               src="/cutsalon.png"
               alt="Cut Salon"
-              className="h-14 w-14 sm:h-16 sm:w-16 object-contain drop-shadow-md"
+              className="size-12 object-contain"
             />
           </div>
-          <h1 className="text-xl sm:text-2xl font-bold tracking-wide text-amber-50">
+          <h1 className="text-xl font-bold text-brand-foreground">
             Cut Salon System
           </h1>
-          <p className="mt-1.5 text-sm text-amber-200/80">نظام إدارة الصالون</p>
+          <p className="mt-1 text-sm text-brand-foreground/80">نظام إدارة الصالون</p>
         </div>
 
         {/* Form */}
         <form
           onSubmit={handleSubmit}
-          className="px-5 py-6 sm:px-8 sm:py-8 space-y-5"
+          className="space-y-5 px-5 py-6 sm:px-8 sm:py-7"
         >
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="loginName" className="text-sm font-medium text-stone-700">
+              <Label htmlFor="loginName" className="text-sm font-semibold text-foreground">
                 اسم المستخدم
               </Label>
               <Input
@@ -124,13 +124,13 @@ export default function LoginForm({ onSuccess }: LoginFormProps) {
                 value={loginName}
                 onChange={(e) => setLoginName(e.target.value)}
                 placeholder="أدخل اسم المستخدم"
-                className="h-12 text-base w-full bg-stone-50 border-stone-200 focus-visible:border-amber-500 focus-visible:ring-amber-500/30 rounded-xl"
+                className="h-11 w-full rounded-lg bg-card text-base"
                 dir="ltr"
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="password" className="text-sm font-medium text-stone-700">
+              <Label htmlFor="password" className="text-sm font-semibold text-foreground">
                 كلمة المرور
               </Label>
               <Input
@@ -140,7 +140,7 @@ export default function LoginForm({ onSuccess }: LoginFormProps) {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="أدخل كلمة المرور"
-                className="h-12 text-base w-full bg-stone-50 border-stone-200 focus-visible:border-amber-500 focus-visible:ring-amber-500/30 rounded-xl"
+                className="h-11 w-full rounded-lg bg-card text-base"
                 dir="ltr"
               />
             </div>
@@ -149,7 +149,7 @@ export default function LoginForm({ onSuccess }: LoginFormProps) {
           {error && (
             <div
               role="alert"
-              className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl p-3 text-center leading-relaxed"
+              className="rounded-lg border border-destructive/20 bg-destructive-soft p-3 text-center text-sm leading-relaxed text-destructive"
             >
               {error}
             </div>
@@ -157,17 +157,19 @@ export default function LoginForm({ onSuccess }: LoginFormProps) {
 
           <Button
             type="submit"
-            className="w-full h-12 text-base font-bold rounded-xl bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 text-white shadow-lg shadow-amber-900/20 active:scale-[0.98] transition-transform"
+            size="xl"
+            className="w-full font-bold"
             disabled={loading}
+            aria-busy={loading || undefined}
           >
             {loading ? (
               <>
-                <Loader2 className="w-5 h-5 ml-2 animate-spin" />
+                <Loader2 className="size-5 animate-spin" aria-hidden />
                 جاري الدخول...
               </>
             ) : (
               <>
-                <LogIn className="w-5 h-5 ml-2" />
+                <LogIn className="size-5" aria-hidden />
                 تسجيل الدخول
               </>
             )}
@@ -175,7 +177,7 @@ export default function LoginForm({ onSuccess }: LoginFormProps) {
         </form>
       </div>
 
-      <p className="mt-5 text-center text-xs text-amber-200/60 px-4">
+      <p className="mt-5 px-4 text-center text-xs text-muted-foreground">
         Cut Salon &mdash; نظام نقاط البيع
       </p>
     </div>

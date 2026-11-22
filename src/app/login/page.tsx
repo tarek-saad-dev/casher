@@ -111,12 +111,9 @@ export default function LoginPage() {
   }
 
   const loginShell = (
-    <div className="relative flex-1 flex flex-col min-h-0 overflow-y-auto bg-gradient-to-br from-amber-950 via-amber-900 to-stone-950">
-      <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
-        <div className="absolute -top-24 -right-24 h-64 w-64 rounded-full bg-amber-500/10 blur-3xl" />
-        <div className="absolute -bottom-32 -left-16 h-72 w-72 rounded-full bg-amber-400/10 blur-3xl" />
-        <div className="absolute top-1/3 left-1/2 -translate-x-1/2 h-48 w-48 rounded-full bg-amber-300/5 blur-2xl" />
-      </div>
+    <div className="relative flex-1 flex flex-col min-h-0 overflow-y-auto bg-background">
+      {/* Calm DRVO canvas: a soft brand band behind the card, no decorative blobs. */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-56 bg-brand-soft" aria-hidden="true" />
       <div className="relative flex-1 flex items-center justify-center px-4 py-6 min-h-0 pt-[max(1.5rem,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))]">
         {loginData && sessionState ? (
           <OpenShiftPrompt
