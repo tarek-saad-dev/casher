@@ -13,6 +13,9 @@ const script = fs.readFileSync(
 const workflow = fs.readFileSync(
   path.join(root, '.github/workflows/drvo013-two-salon-staging.yml'), 'utf8',
 );
+const cleanup = fs.readFileSync(
+  path.join(root, 'scripts/drvo/drvo013-two-salon-staging-cleanup.ts'), 'utf8',
+);
 
 describe('DRVO-013 stage-only two Salon proof contract', () => {
   it('pins exact staging database, login and local SSH tunnel rather than production', () => {
@@ -50,5 +53,17 @@ describe('DRVO-013 stage-only two Salon proof contract', () => {
     expect(workflow).toContain('DRVO_STAGING_DB_PASSWORD');
     expect(workflow).not.toContain('drvo:migrate');
     expect(workflow).not.toContain('migrate-production');
+    expect(workflow).toContain("if: always() && steps.tunnel.outcome == 'success'");
+    expect(workflow).toContain('drvo013-two-salon-staging-cleanup.ts');
+  });
+
+  it('residual cleanup is independently constrained to synthetic QA identifiers and stage SQL', () => {
+    expect(cleanup).toContain("const DB = 'last132_agent'");
+    expect(cleanup).toContain("const LOGIN = 'drvo_agent'");
+    expect(cleanup).toContain("Name LIKE N'DRVO013 Isolation QA %'");
+    expect(cleanup).toContain('Unexpected non-QA branch under target tenant');
+    expect(cleanup).toContain('if (rows.length > 6)');
+    expect(cleanup).toContain("await purgeSmokeTenant(pool, row.Code)");
+    expect(cleanup).not.toContain('sendViaTenantChannel(');
   });
 });
