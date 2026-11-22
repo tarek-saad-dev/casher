@@ -2,6 +2,7 @@ import 'server-only';
 
 import { getPool, sql } from '@/lib/db';
 import { loadBookingCustomerContact } from '@/lib/booking/bookingCustomerContact';
+import { assertLegacyBranchInTenant } from '@/platform/tenant/tenantContext';
 import { composeMessage } from '@/modules/messaging/application/composeMessage';
 import { runWithMessagingTenant } from '@/modules/messaging/tenancy/messagingTenantScope';
 import { sendViaTenantChannel } from '@/modules/messaging/tenancy/transport';
@@ -154,6 +155,13 @@ async function deliverBookingEvent(row: PlatformOutboxRow): Promise<void> {
   if (!contact) {
     throw new Error('BOOKING_NOT_FOUND');
   }
+  // The outbox TenantId is authoritative for this job. Legacy Bookings carries a BranchID,
+  // not TenantId; validate its active Location ownership before reading/sending any message.
+  // A stale or cross-tenant aggregate pointer must retry/dead-letter without sending.
+  if (contact.branchId == null) {
+    throw new Error('BOOKING_BRANCH_MISSING');
+  }
+  await assertLegacyBranchInTenant(String(row.TenantId), contact.branchId);
   if (!contact.phone) {
     throw new Error('BOOKING_CUSTOMER_PHONE_MISSING');
   }
