@@ -31,6 +31,7 @@ const state = vi.hoisted(() => ({
   sends: [] as Array<Record<string, unknown>>,
   scopes: [] as Array<{ tenantId: string; source: string; detail: string }>,
   validated: [] as Array<{ tenantId: string; branchId: number }>,
+  reads: [] as Array<{ tenantId: string; bookingId: number }>,
 }));
 
 vi.mock('@/lib/db', () => {
@@ -78,9 +79,12 @@ vi.mock('@/lib/db', () => {
 });
 
 vi.mock('@/lib/booking/bookingCustomerContact', () => ({
-  loadBookingCustomerContact: vi.fn(async (id: number) => {
+  loadBookingCustomerContactForTenant: vi.fn(async (id: number, tenantId: string) => {
+    state.reads.push({ bookingId: id, tenantId });
     const contact = state.contacts.get(id);
-    if (!contact) return null;
+    // Emulate the SQL Location/Tenant JOIN: never materialize a foreign contact.
+    if (!contact || contact.branchId == null ||
+        state.locationTenants.get(contact.branchId)?.toLowerCase() !== tenantId.toLowerCase()) return null;
     return {
       bookingId: id,
       bookingCode: contact.bookingCode,
@@ -156,6 +160,7 @@ beforeEach(() => {
   state.sends = [];
   state.scopes = [];
   state.validated = [];
+  state.reads = [];
   state.locationTenants.set(11, A);
   state.locationTenants.set(22, B);
 });
@@ -166,7 +171,8 @@ describe('DRVO-013 legacy booking outbox contact/tenant ownership', () => {
     state.contacts.set(202, { branchId: 22, phone: '201000000002', bookingCode: 'BK-B' });
     const result = await processPlatformOutboxTick({ batchSize: 10 });
     expect(result).toMatchObject({ claimed: 1, delivered: 0, retried: 1 });
-    expect(state.validated).toEqual([{ tenantId: A, branchId: 22 }]);
+    expect(state.reads).toEqual([{ bookingId: 202, tenantId: A }]);
+    expect(state.validated).toEqual([]);
     expect(state.sends).toEqual([]);
     expect(state.rows[0].Status).toBe('pending');
   });
@@ -177,6 +183,10 @@ describe('DRVO-013 legacy booking outbox contact/tenant ownership', () => {
     state.contacts.set(202, { branchId: 22, phone: '201000000002', bookingCode: 'BK-B' });
     const result = await processPlatformOutboxTick({ batchSize: 10 });
     expect(result).toMatchObject({ claimed: 2, delivered: 2, retried: 0 });
+    expect(state.reads).toEqual([
+      { bookingId: 101, tenantId: A },
+      { bookingId: 202, tenantId: B },
+    ]);
     expect(state.validated).toEqual([
       { tenantId: A, branchId: 11 },
       { tenantId: B, branchId: 22 },
