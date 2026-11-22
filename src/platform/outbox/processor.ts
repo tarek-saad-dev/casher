@@ -156,7 +156,7 @@ async function deliverBookingEvent(row: PlatformOutboxRow): Promise<void> {
     throw new Error('BOOKING_NOT_FOUND');
   }
   // The outbox TenantId is authoritative for this job. Legacy Bookings carries a BranchID,
-  // not TenantId; validate its active Location ownership before reading/sending any message.
+  // not TenantId; validate its active Location ownership before composing/sending any message.
   // A stale or cross-tenant aggregate pointer must retry/dead-letter without sending.
   if (contact.branchId == null) {
     throw new Error('BOOKING_BRANCH_MISSING');
