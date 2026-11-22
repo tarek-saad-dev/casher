@@ -26,14 +26,25 @@ export type BookingCustomerContact = {
   servicesSummary: string | null;
 };
 
-export async function loadBookingCustomerContact(
+/** Internal shared reader. Tenant-scoped worker calls require an active Location at SQL read time. */
+async function readBookingCustomerContact(
   bookingId: number,
+  tenantId: string | null,
 ): Promise<BookingCustomerContact | null> {
+  // A foreign BookingID must not cause even a customer name/phone to be read by a
+  // worker. The JOIN happens before projecting PII or trying a secondary phone query.
   const db = await getPool();
-  const r = await db
-    .request()
-    .input('id', sql.Int, bookingId)
-    .query(`
+  const request = db.request().input('id', sql.Int, bookingId);
+  if (tenantId !== null) request.input('tenantId', sql.UniqueIdentifier, tenantId);
+  const tenantJoin = tenantId === null ? '' : `
+      INNER JOIN dbo.Location scopeLocation
+        ON scopeLocation.LegacyBranchId = b.BranchID
+       AND scopeLocation.TenantId = @tenantId
+       AND scopeLocation.Status = N'active'
+      INNER JOIN dbo.Tenant scopeTenant
+        ON scopeTenant.TenantId = scopeLocation.TenantId
+       AND scopeTenant.Status = N'active'`;
+  const r = await request.query(`
       SELECT
         b.BookingID, b.BookingCode, b.ClientID, b.AssignedEmpID, b.BranchID,
         CONVERT(varchar(10), b.BookingDate, 23) AS BookingDate,
@@ -49,6 +60,7 @@ export async function loadBookingCustomerContact(
           WHERE bs.BookingID = b.BookingID
         ) AS ServicesSummary
       FROM dbo.Bookings b
+      ${tenantJoin}
       LEFT JOIN dbo.TblClient c ON c.ClientID = b.ClientID
       LEFT JOIN dbo.TblEmp e ON e.EmpID = b.AssignedEmpID
       LEFT JOIN dbo.TblBranch br ON br.BranchID = b.BranchID
@@ -105,4 +117,26 @@ export async function loadBookingCustomerContact(
     startTime: row.StartTime != null ? String(row.StartTime).slice(0, 5) : null,
     servicesSummary: row.ServicesSummary != null ? String(row.ServicesSummary) : null,
   };
+}
+
+/** Legacy callers without authoritative tenant still use their existing adapter. */
+export async function loadBookingCustomerContact(
+  bookingId: number,
+): Promise<BookingCustomerContact | null> {
+  return readBookingCustomerContact(bookingId, null);
+}
+
+/**
+ * Tenant-owned outbox/worker path. No booking or customer data is selected until
+ * a verified active Location maps the Booking BranchID to the claimed TenantId.
+ * Reject a missing/invalid tenant before SQL; never default to CASHER_BOOT.
+ */
+export async function loadBookingCustomerContactForTenant(
+  bookingId: number,
+  tenantId: string,
+): Promise<BookingCustomerContact | null> {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(tenantId ?? '')) {
+    throw new Error('BOOKING_CONTACT_TENANT_REQUIRED');
+  }
+  return readBookingCustomerContact(bookingId, tenantId.toLowerCase());
 }
