@@ -12,9 +12,11 @@
 
 ## Minimal change
 
-1. `src/platform/outbox/processor.ts`: before composing a message or calling `sendViaTenantChannel`, fail closed for a booking missing `BranchID`; check the booking contact's BranchID maps to an **active Location of the outbox row's TenantId**. Wrong or unmapped Location means retry/dead-letter according to the existing worker policy. No direct use of the legacy CASHER_BOOT bootstrap.
-2. `src/platform/__tests__/drvo013BookingOutboxIsolation.test.ts`: fake SQL, two synthetic tenants; negative foreign booking/outbox aggregate; positive A and B deliveries; missing and unmapped Branch negative. No real PII/DB connection.
-3. `.github/workflows/ci.yml`: make this regression mandatory on every `main` pull request (alongside existing DRVO-013 tenant and Outbox tests).
+1. `src/lib/booking/bookingCustomerContact.ts` adds a **tenant-required reader** for outbox/worker use: join the Bookings row to an active `dbo.Location` belonging to the outbox `TenantId`, and an active `dbo.Tenant` **inside the SQL query before projecting contact PII**. Existing explicitly legacy unscope-read callers preserve their API, pending separate audit. Missing/foreign/inactive locations select no contact. This is defense before any notification side effects.
+2. `src/platform/outbox/processor.ts` exclusively calls this scoped reader from its row `TenantId`, then **independently rechecks** the contact's BranchID against the same active Tenant before composing/sending any message. No new CASHER_BOOT fallback. Wrong, unmapped or invalid source means retry/dead-letter according to existing worker policy.
+3. `src/platform/__tests__/drvo013BookingOutboxIsolation.test.ts`: fake SQL, two synthetic tenants; negative foreign booking/outbox aggregate; positive A and B deliveries; missing and unmapped Branch negative. No real PII/DB connection.
+4. `src/lib/booking/__tests__/bookingCustomerContactTenantIsolation.test.ts`: six fake-SQL tests assert SQL tenant predicate, no foreign phone fallback/PII query, invalid tenant rejection, two-tenant separation, inactive Location rejection and explicit legacy adapter compatibility.
+5. `.github/workflows/ci.yml`: make this regression mandatory on every `main` pull request (alongside existing DRVO-013 tenant and Outbox tests).
 
 ## Verify and release gates
 
@@ -23,4 +25,6 @@
 - Do not write `last132` production, run DB migration, activate trial/payment, deploy from this PR, or declare Tenant Isolation finished solely due to unit tests.
 - A legitimately owned **inactive/unmapped** legacy Branch will now suppress notifications, intentionally fail closed. Audit and repair the staging Location mapping before rollout; never bypass by assuming CASHER_BOOT.
 
-**Status at drafting:** source+unit tests added to a review branch. **CI/staging/VPS/Production unverified** until their exact evidence is linked.
+**2026-11-22 CI checkpoint (earlier patch head):** GitHub Actions [#45049363631](https://github.com/tarek-saad-dev/casher/actions/runs/45049363631) SUCCESS on commit `58ae3bf9` (print / Windows / DRVO validation, including build). **The stronger SQL-scoped read + six new tests were added after that run and must pass on their own latest exact HEAD.** Real SQL staging/VPS/production remain **unverified**.
+
+**Remaining risks:** The compatibility `loadBookingCustomerContact(bookingId)` remains intentionally unscoped for existing callers; all tenant-owned callers must migrate explicitly. Linked legacy `TblClient`/`TblEmp` ownership and downstream side-effect verification require independent two-Tenant SQL/HTTP audit. This PR does not claim universal booking/CRM isolation, business-model completeness, or new-customer GO.
