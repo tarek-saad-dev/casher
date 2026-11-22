@@ -1,7 +1,7 @@
 import 'server-only';
 
 import { getPool, sql } from '@/lib/db';
-import { loadBookingCustomerContact } from '@/lib/booking/bookingCustomerContact';
+import { loadBookingCustomerContactForTenant } from '@/lib/booking/bookingCustomerContact';
 import { assertLegacyBranchInTenant } from '@/platform/tenant/tenantContext';
 import { composeMessage } from '@/modules/messaging/application/composeMessage';
 import { runWithMessagingTenant } from '@/modules/messaging/tenancy/messagingTenantScope';
@@ -151,12 +151,12 @@ function servicesFromSummary(summary: string | null): string {
 
 async function deliverBookingEvent(row: PlatformOutboxRow): Promise<void> {
   const bookingId = bookingIdFromRow(row);
-  const contact = await loadBookingCustomerContact(bookingId);
+  const contact = await loadBookingCustomerContactForTenant(bookingId, String(row.TenantId));
   if (!contact) {
     throw new Error('BOOKING_NOT_FOUND');
   }
-  // The outbox TenantId is authoritative for this job. Legacy Bookings carries a BranchID,
-  // not TenantId; validate its active Location ownership before composing/sending any message.
+  // Defensive second check: the contact query itself was SQL-scoped to row.TenantId,
+  // and the Branch must still belong to that active tenant before compose/send.
   // A stale or cross-tenant aggregate pointer must retry/dead-letter without sending.
   if (contact.branchId == null) {
     throw new Error('BOOKING_BRANCH_MISSING');
