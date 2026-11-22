@@ -78,7 +78,6 @@ export const ROUTES: RouteEntry[] = [
   { path: '/employee-portal/account-settings', module: 'employee-portal', access: 'public' },
   { path: '/employee-portal/bookings', module: 'employee-portal', access: 'public' },
   { path: '/employee-portal/change-password', module: 'employee-portal', access: 'public' },
-  { path: '/employee-portal/logout', module: 'employee-portal', access: 'public' },
 
   // ── POS & sales ────────────────────────────────────────────────────────────
   { path: '/income/pos', module: 'pos', access: 'page' },
