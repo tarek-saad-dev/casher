@@ -3,6 +3,15 @@ import path from "path";
 
 const nextConfig: NextConfig = {
   allowedDevOrigins: ['127.0.0.1', 'localhost'],
+  experimental: {
+    // SPA feel: keep visited page segments in the client router cache so
+    // back/forward and returning to a recent screen are instant (no server
+    // round trip). Pages still refetch their own data on mount.
+    staleTimes: {
+      dynamic: 30,
+      static: 180,
+    },
+  },
   // Isolated write E2E needs a production bundle; pre-existing TS debt in tests/legacy
   // must not block compile+start against HawaiBookingV2Isolated.
   typescript: {
