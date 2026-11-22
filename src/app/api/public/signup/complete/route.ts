@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
 import { createSession } from '@/lib/session';
 import { BRANCH_SESSION_VERSION } from '@/lib/session-types';
+import { isPublicSignupEnabled, PUBLIC_SIGNUP_DISABLED } from '@/platform/publicSignup/launchGate';
 import {
   PublicSignupError,
   provisionPublicSignup,
@@ -16,6 +17,15 @@ function requestIp(req: Request): string | null {
 }
 
 export async function POST(req: Request) {
+  // No parsing, session creation or database access until launch prerequisites are approved.
+  // Edge/public route access alone never authorizes a new Tenant/Owner/trial.
+  if (!isPublicSignupEnabled()) {
+    return NextResponse.json(
+      { error: PUBLIC_SIGNUP_DISABLED.message, code: PUBLIC_SIGNUP_DISABLED.code },
+      { status: 503, headers: { 'Cache-Control': 'no-store' } },
+    );
+  }
+
   let body: unknown;
   try {
     body = await req.json();
