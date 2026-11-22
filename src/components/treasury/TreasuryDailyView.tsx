@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * TreasuryDailyView — shared view for /treasury/daily (admin) and /cashier/treasury/daily (cashier).
+ * TreasuryDailyView — shared view for /treasury/daily (full or cashier capabilities by grant).
  *
  * Cashier view is read-only.
  * Scope can be tightened to current user/shift if needed by passing userId filter.

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import {
   Crown, ShoppingBag, Package, Tag, AlertTriangle, Users,
-  RefreshCw, ArrowUpRight, Store, Gift, Settings, BarChart3
+  RefreshCw, ArrowUpRight, Store, Gift, Settings, BarChart3, History, UserPlus
 } from 'lucide-react';
 import PageHeader from '@/components/cut-club/PageHeader';
 import StatCard from '@/components/cut-club/StatCard';
@@ -28,6 +28,10 @@ const quickLinks = [
   { label: 'إدارة المتجر', href: '/admin/cut-club/store', icon: Store, color: 'text-blue-400' },
   { label: 'المخزون', href: '/admin/cut-club/inventory', icon: Package, color: 'text-green-400' },
   { label: 'صناديق الغموض', href: '/admin/cut-club/mystery-boxes', icon: Gift, color: 'text-purple-400' },
+  { label: 'التحليلات', href: '/admin/cut-club/analytics', icon: BarChart3, color: 'text-primary' },
+  { label: 'المستويات', href: '/admin/cut-club/tiers', icon: Crown, color: 'text-primary' },
+  { label: 'المعاملات', href: '/admin/cut-club/transactions', icon: History, color: 'text-primary' },
+  { label: 'الإحالات', href: '/admin/cut-club/referrals', icon: UserPlus, color: 'text-primary' },
   { label: 'الإعدادات', href: '/admin/cut-club/settings', icon: Settings, color: 'text-zinc-400' },
 ];
 

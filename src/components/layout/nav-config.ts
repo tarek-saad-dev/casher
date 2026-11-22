@@ -1,15 +1,20 @@
 // ── Single source of truth for navigation ────────────────────────────────────
 // Both MainNav and TopNav import from here.
 // Add / remove / reorder nav items here only.
+//
+// Structure (R3 routing IA): MAIN groups (NAV_CATEGORIES) are business
+// modules; SUB sections group the pages of a module. Every href must exist in
+// src/lib/routing/routeRegistry.ts (enforced by routeRegistry.test.ts), and
+// each link is shown only when the user may open it (decideRouteAccess).
 
 import {
-  LayoutGrid, PlusCircle, CreditCard, ClipboardList, TrendingUp,
+  LayoutGrid, PlusCircle, ClipboardList, TrendingUp,
   History, Receipt, Wallet, Lock, ArrowLeftRight, BarChart3, Clock,
   Calculator, Settings, Scissors, Tags, Shield, Activity, Star,
-  UsersRound, FileBarChart, Calendar, Ticket, CalendarCheck, MonitorPlay,
-  AlertTriangle, Crown, KeyRound, FileKey2, Banknote, ShieldCheck, Users,
+  UsersRound, FileBarChart, Calendar, Ticket, CalendarCheck,
+  AlertTriangle, KeyRound, FileKey2, ShieldCheck, Users,
   HeartHandshake, Layers, Beaker, Settings2, Sun, Building2, Package, Boxes,
-  MessageCircle,
+  MessageCircle, CreditCard,
   Inbox,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -43,7 +48,7 @@ export const NAV_CATEGORIES: NavCategory[] = [
   {
     title: 'العمليات اليومية',
     description: 'البيع، المصروفات، الطابور والحجوزات',
-    sectionTitles: ['المدخلات', 'المصروفات', 'الطابور', 'الحجوزات'],
+    sectionTitles: ['المبيعات', 'المصروفات', 'الطابور', 'الحجوزات'],
   },
   {
     title: 'المراجعة',
@@ -51,131 +56,144 @@ export const NAV_CATEGORIES: NavCategory[] = [
     sectionTitles: ['مراجعة المدخلات', 'مراجعة المصروفات'],
   },
   {
-    title: 'التقارير',
-    description: 'تقارير الموظف والمدير والشريك',
-    sectionTitles: ['تقارير موظف', 'تقارير مدير', 'تقارير شريك'],
-  },
-  {
     title: 'المالية',
-    description: 'الخزنة والميزانية والكاشير',
-    sectionTitles: ['الخزنة', 'الميزانية', 'الكاشير'],
+    description: 'الخزنة والتقفيل والميزانية',
+    sectionTitles: ['الخزنة', 'التقفيل', 'الميزانية'],
   },
   {
-    title: 'الإدارة والموارد',
-    description: 'الموظفون، الإعدادات والتدقيق',
-    sectionTitles: ['الموارد البشرية', 'الإدارة', 'التدقيق'],
+    title: 'التقارير',
+    description: 'تقارير التشغيل والموظفين والشركاء',
+    sectionTitles: ['تقارير مدير', 'تقارير موظف', 'الشركاء'],
+  },
+  {
+    title: 'الموظفون والتشغيل',
+    description: 'الموظفون والحضور والورديات ومركز التشغيل',
+    sectionTitles: ['الموارد البشرية', 'التشغيل'],
+  },
+  {
+    title: 'الكتالوج والعملاء',
+    description: 'الخدمات والمنتجات والمخزون والعملاء والنقاط',
+    sectionTitles: ['الكتالوج والمخزون', 'العملاء والولاء'],
   },
   {
     title: 'واتساب',
-    description: 'المحادثات، القوالب، الحملات، الجروبات والتقارير',
+    description: 'المحادثات، القوالب، الحملات، الجروبات والمساعد',
     sectionTitles: ['واتساب'],
+  },
+  {
+    title: 'الإعدادات',
+    description: 'الفروع والمستخدمون والصلاحيات والتدقيق',
+    sectionTitles: ['الإعدادات', 'المستخدمون والصلاحيات', 'التدقيق'],
   },
 ];
 
-// ── Themes ────────────────────────────────────────────────────────────────────
+// ── Themes (legacy TopNav only — the DRVO shell does not colour sections) ────
 
 export const NAV_THEMES: Record<string, NavTheme> = {
-  'المدخلات':          { rgb: '214,168,79',  emoji: '📥' },
-  'مراجعة المدخلات':   { rgb: '59,130,246',  emoji: '🔎' },
-  'المصروفات':         { rgb: '244,63,94',   emoji: '💸' },
-  'الخصومات':          { rgb: '220,38,38',   emoji: '🔻' },
-  'مراجعة المصروفات':  { rgb: '168,85,247',  emoji: '📋' },
-  'مراجعة الخصومات':  { rgb: '185,28,28',   emoji: '📊' },
-  'تقارير موظف':       { rgb: '245,158,11',  emoji: '👷' },
-  'تقارير مدير':       { rgb: '59,130,246',  emoji: '📊' },
-  'تقارير شريك':       { rgb: '139,92,246',  emoji: '🤝' },
-  'الخزنة':            { rgb: '16,185,129',  emoji: '🏦' },
-  'الميزانية':         { rgb: '6,182,212',   emoji: '💰' },
-  'الموارد البشرية':   { rgb: '236,72,153',  emoji: '👥' },
-  'الإدارة':           { rgb: '148,163,184', emoji: '⚙️' },
-  'لوحة التشغيل':      { rgb: '20,184,166',  emoji: '🖥️' },
-  'الطابور':           { rgb: '245,158,11',  emoji: '🎫' },
-  'الحجوزات':          { rgb: '99,102,241',  emoji: '📅' },
-  'CUT CLUB':          { rgb: '234,179,8',   emoji: '👑' },
-  'التدقيق':           { rgb: '239,68,68',   emoji: '🔍' },
-  'الكاشير':           { rgb: '16,185,129',  emoji: '💵' },
-  'واتساب':            { rgb: '37,211,102',  emoji: '💬' },
+  'المبيعات':              { rgb: '26,123,128',  emoji: '' },
+  'مراجعة المدخلات':       { rgb: '26,123,128',  emoji: '' },
+  'المصروفات':             { rgb: '26,123,128',  emoji: '' },
+  'مراجعة المصروفات':      { rgb: '26,123,128',  emoji: '' },
+  'الخزنة':                { rgb: '26,123,128',  emoji: '' },
+  'التقفيل':               { rgb: '26,123,128',  emoji: '' },
+  'الميزانية':             { rgb: '26,123,128',  emoji: '' },
+  'تقارير مدير':           { rgb: '26,123,128',  emoji: '' },
+  'تقارير موظف':           { rgb: '26,123,128',  emoji: '' },
+  'الشركاء':               { rgb: '26,123,128',  emoji: '' },
+  'الموارد البشرية':       { rgb: '26,123,128',  emoji: '' },
+  'التشغيل':               { rgb: '26,123,128',  emoji: '' },
+  'الطابور':               { rgb: '26,123,128',  emoji: '' },
+  'الحجوزات':              { rgb: '26,123,128',  emoji: '' },
+  'الكتالوج والمخزون':     { rgb: '26,123,128',  emoji: '' },
+  'العملاء والولاء':       { rgb: '26,123,128',  emoji: '' },
+  'واتساب':                { rgb: '26,123,128',  emoji: '' },
+  'الإعدادات':             { rgb: '26,123,128',  emoji: '' },
+  'المستخدمون والصلاحيات': { rgb: '26,123,128',  emoji: '' },
+  'التدقيق':               { rgb: '26,123,128',  emoji: '' },
 };
 
 export function getTheme(title: string): NavTheme {
-  return NAV_THEMES[title] ?? { rgb: '161,161,170', emoji: '📌' };
+  return NAV_THEMES[title] ?? { rgb: '116,83,110', emoji: '' };
 }
 
 // ── Sections ──────────────────────────────────────────────────────────────────
 
 export const NAV_SECTIONS: NavSection[] = [
+  // ── العمليات اليومية ────────────────────────────────────────────────────────
   {
-    title: 'المدخلات',
+    title: 'المبيعات',
     icon: LayoutGrid,
     items: [
-      { href: '/income/pos',        label: 'نقطة البيع',     icon: LayoutGrid },
-      { href: '/income/new',        label: 'إيراد جديد',    icon: PlusCircle },
-      { href: '/income/collection', label: 'تحصيل / دفعة',  icon: CreditCard, disabled: true },
+      { href: '/income/pos', label: 'نقطة البيع', icon: LayoutGrid },
+      { href: '/income/new', label: 'إيراد جديد', icon: PlusCircle },
     ],
   },
   {
     title: 'المصروفات',
     icon: Receipt,
     items: [
-      { href: '/expenses', label: 'تسجيل مصروف', icon: Receipt },
-      { href: '/deductions', label: 'تسجيل خصم', icon: Users },
+      { href: '/expenses',   label: 'تسجيل مصروف', icon: Receipt },
+      { href: '/deductions', label: 'تسجيل خصم',   icon: Users },
     ],
   },
   {
+    title: 'الطابور',
+    icon: Ticket,
+    items: [
+      { href: '/queue/live', label: 'لوحة الانتظار', icon: LayoutGrid },
+      { href: '/queue/new',  label: 'تذكرة جديدة',  icon: PlusCircle },
+    ],
+  },
+  {
+    title: 'الحجوزات',
+    icon: Calendar,
+    items: [
+      { href: '/bookings',          label: 'قائمة الحجوزات', icon: ClipboardList },
+      { href: '/bookings/new',      label: 'حجز جديد',        icon: PlusCircle },
+      { href: '/bookings/calendar', label: 'التقويم',          icon: Calendar },
+    ],
+  },
+
+  // ── المراجعة ───────────────────────────────────────────────────────────────
+  {
     title: 'مراجعة المدخلات',
-    icon: ClipboardList,
+    icon: TrendingUp,
     items: [
       { href: '/sales/today',                 label: 'مبيعات اليوم',  icon: TrendingUp },
-      { href: '/income-review/all-sales',     label: 'كل المبيعات',   icon: History    },
-      { href: '/income-review/today-revenue', label: 'إيرادات اليوم', icon: Wallet     },
-      { href: '/income-review/all-revenue',   label: 'كل الإيرادات',  icon: History    },
+      { href: '/income-review/all-sales',     label: 'كل المبيعات',   icon: History },
+      { href: '/income-review/today-revenue', label: 'إيرادات اليوم', icon: Wallet },
+      { href: '/income-review/all-revenue',   label: 'كل الإيرادات',  icon: History },
       { href: '/income-review/payments',      label: 'المدفوعات',     icon: CreditCard },
     ],
   },
   {
-    title: 'تقارير موظف',
+    title: 'مراجعة المصروفات',
     icon: FileBarChart,
     items: [
-      { href: '/admin/reports/employee-services', label: 'خدمات الصنايعية', icon: FileBarChart },
-      { href: '/admin/reports/employee-monthly-work-revenue', label: 'مواعيد وإيرادات الموظفين', icon: CalendarCheck },
+      { href: '/reports/expenses/monthly',   label: 'تقرير المصروفات', icon: BarChart3 },
+      { href: '/reports/deductions/monthly', label: 'تقرير الخصومات',  icon: BarChart3 },
     ],
   },
-  {
-    title: 'تقارير مدير',
-    icon: BarChart3,
-    items: [
-      { href: '/admin/reports/full-day', label: 'تقرير اليوم كامل', icon: Sun       },
-      { href: '/reports/monthly',        label: 'التقرير الشهري',   icon: BarChart3 },
-    ],
-  },
-  {
-    title: 'تقارير شريك',
-    icon: UsersRound,
-    items: [
-      { href: '/admin/reports/partners',      label: 'تقرير الشركاء',        icon: UsersRound },
-      { href: '/admin/reports/partners-real', label: 'تقرير الشهر الحقيقي', icon: FileBarChart },
-      { href: '/admin/partners',              label: 'إدارة الشركاء',         icon: Building2  },
-    ],
-  },
-  {
-    title: 'مراجعة المصروفات',
-    icon: BarChart3,
-    items: [
-      { href: '/reports/expenses/monthly', label: 'تقرير المصروفات', icon: BarChart3 },
-      { href: '/reports/deductions/monthly', label: 'تقرير الخصومات', icon: BarChart3 },
-    ],
-  },
+
+  // ── المالية ────────────────────────────────────────────────────────────────
   {
     title: 'الخزنة',
     icon: Wallet,
     items: [
-      { href: '/treasury/daily',          label: 'قفل اليوم',           icon: Lock          },
-      { href: '/treasury/group-daily',    label: 'خزنة كل الفروع',      icon: Building2     },
-      { href: '/treasury/period-summary', label: 'ملخص الخزنة الدوري',  icon: Calendar      },
+      // One page for treasury staff and cashiers (capabilities follow the grant).
+      { href: '/treasury/daily',          label: 'الخزنة اليومية',      icon: Wallet },
+      { href: '/treasury/group-daily',    label: 'خزنة كل الفروع',      icon: Building2 },
       { href: '/treasury/movement',       label: 'حركة الخزنة',         icon: ArrowLeftRight },
-      { href: '/treasury/summary',        label: 'ملخص حسب الدفع',      icon: BarChart3     },
-      { href: '/treasury/shift-close',    label: 'تقفيل الوردية',        icon: Clock         },
-      { href: '/admin/monthly-closing',   label: 'تقفيل الشهر',          icon: Lock          },
+      { href: '/treasury/summary',        label: 'ملخص حسب الدفع',      icon: BarChart3 },
+      { href: '/treasury/period-summary', label: 'ملخص الخزنة الدوري',  icon: Calendar },
+    ],
+  },
+  {
+    title: 'التقفيل',
+    icon: Lock,
+    items: [
+      { href: '/treasury/shift-close',  label: 'تقفيل الوردية', icon: Clock },
+      { href: '/admin/monthly-closing', label: 'تقفيل الشهر',   icon: Lock },
     ],
   },
   {
@@ -185,89 +203,123 @@ export const NAV_SECTIONS: NavSection[] = [
       { href: '/budget', label: 'الميزانية الشهرية', icon: Calculator },
     ],
   },
+
+  // ── التقارير ───────────────────────────────────────────────────────────────
   {
-    title: 'الطابور',
-    icon: Ticket,
+    title: 'تقارير مدير',
+    icon: BarChart3,
     items: [
-      { href: '/queue/live', label: 'لوحة الانتظار', icon: LayoutGrid  },
-      { href: '/queue/new',  label: 'تذكرة جديدة',  icon: PlusCircle  },
+      { href: '/admin/reports/full-day', label: 'تقرير اليوم كامل', icon: Sun },
+      { href: '/reports/monthly',        label: 'التقرير الشهري',   icon: BarChart3 },
     ],
   },
   {
-    title: 'الحجوزات',
-    icon: CalendarCheck,
+    title: 'تقارير موظف',
+    icon: FileBarChart,
     items: [
-      { href: '/bookings',          label: 'قائمة الحجوزات', icon: ClipboardList },
-      { href: '/bookings/new',      label: 'حجز جديد',        icon: PlusCircle   },
-      { href: '/bookings/calendar', label: 'التقويم',          icon: Calendar     },
+      { href: '/admin/reports/employee-services',             label: 'خدمات الصنايعية',          icon: FileBarChart },
+      { href: '/admin/reports/employee-monthly-work-revenue', label: 'مواعيد وإيرادات الموظفين', icon: CalendarCheck },
     ],
   },
   {
-    title: 'واتساب',
-    icon: MessageCircle,
+    title: 'الشركاء',
+    icon: UsersRound,
     items: [
-      { href: '/admin/whatsapp/inbox',              label: 'صندوق الوارد',           icon: Inbox },
-      { href: '/admin/whatsapp?tab=templates',      label: 'قوالب الرسائل',          icon: FileBarChart },
-      { href: '/admin/whatsapp?tab=campaigns',      label: 'الحملات',                icon: PlusCircle },
-      { href: '/admin/whatsapp?tab=groups',         label: 'الجروبات',               icon: UsersRound },
-      { href: '/admin/reports/full-day',            label: 'إرسال التقارير اليومية', icon: Sun },
-      { href: '/admin/customers/follow-up',         label: 'متابعة العملاء',          icon: HeartHandshake },
-      { href: '/admin/integrations/whatsapp',       label: 'تشخيص تكامل واتساب',     icon: Activity },
-      { href: '/admin/whatsapp',                    label: 'إعدادات واتساب',         icon: Settings },
+      { href: '/admin/reports/partners',           label: 'تقرير الشركاء',         icon: UsersRound },
+      { href: '/admin/reports/partners-real',      label: 'تقرير الشهر الحقيقي',  icon: FileBarChart },
+      { href: '/admin/reports/partners-overrides', label: 'تعديلات تقرير الشركاء', icon: FileKey2 },
+      { href: '/admin/partners',                   label: 'إدارة الشركاء',         icon: Building2 },
     ],
   },
+
+  // ── الموظفون والتشغيل ─────────────────────────────────────────────────────
   {
     title: 'الموارد البشرية',
     icon: UsersRound,
     items: [
-      { href: '/admin/hr',                        label: 'الموظفون',          icon: UsersRound },
-      { href: '/admin/hr?tab=attendance',       label: 'متابعة الحضور',    icon: Clock      },
-      { href: '/admin/hr?tab=employee-monthly-sheet', label: 'تقرير الموظف الشهري', icon: FileBarChart },
-      { href: '/admin/hr/branch-transfer',      label: 'نقل بين الفروع',    icon: ArrowLeftRight },
-      { href: '/admin/workforce/availability',  label: 'توافر الموظفين',   icon: CalendarCheck },
+      { href: '/admin/hr',                              label: 'الموظفون',            icon: UsersRound },
+      { href: '/admin/hr?tab=attendance',               label: 'متابعة الحضور',       icon: Clock },
+      { href: '/admin/hr?tab=employee-monthly-sheet',   label: 'تقرير الموظف الشهري', icon: FileBarChart },
+      { href: '/admin/hr/branch-transfer',              label: 'نقل بين الفروع',      icon: ArrowLeftRight },
+      { href: '/admin/workforce/availability',          label: 'توافر الموظفين',      icon: CalendarCheck },
     ],
   },
   {
-    title: 'الإدارة',
+    title: 'التشغيل',
+    icon: Activity,
+    items: [
+      { href: '/admin/operations',         label: 'مركز التشغيل',       icon: Activity },
+      { href: '/admin/day',                label: 'اليوم التشغيلي',     icon: Sun },
+      { href: '/admin/shift',              label: 'الورديات',           icon: Clock },
+      { href: '/admin/booking/operations', label: 'تشغيل الحجز العام', icon: CalendarCheck },
+    ],
+  },
+
+  // ── الكتالوج والعملاء ─────────────────────────────────────────────────────
+  {
+    title: 'الكتالوج والمخزون',
+    icon: Package,
+    items: [
+      { href: '/admin/services',   label: 'الخدمات',    icon: Scissors },
+      { href: '/admin/packages',   label: 'الباكدجات',  icon: Package },
+      { href: '/admin/products',   label: 'المنتجات',   icon: Package },
+      { href: '/admin/inventory',  label: 'المخزون',    icon: Boxes },
+      { href: '/admin/categories', label: 'التصنيفات',  icon: Tags },
+    ],
+  },
+  {
+    title: 'العملاء والولاء',
+    icon: HeartHandshake,
+    items: [
+      { href: '/admin/customers/follow-up', label: 'متابعة العملاء', icon: HeartHandshake },
+      { href: '/admin/loyalty',             label: 'إدارة النقاط',  icon: Star },
+    ],
+  },
+
+  // ── واتساب ─────────────────────────────────────────────────────────────────
+  {
+    title: 'واتساب',
+    icon: MessageCircle,
+    items: [
+      { href: '/admin/whatsapp/inbox',         label: 'صندوق الوارد',       icon: Inbox, badge: 'whatsapp-unread' },
+      { href: '/admin/whatsapp?tab=templates', label: 'قوالب الرسائل',      icon: FileBarChart },
+      { href: '/admin/whatsapp?tab=campaigns', label: 'الحملات',            icon: PlusCircle },
+      { href: '/admin/whatsapp?tab=groups',    label: 'الجروبات',           icon: UsersRound },
+      { href: '/admin/ai-concierge',           label: 'مساعد الصالون',      icon: MessageCircle },
+      { href: '/admin/integrations/whatsapp',  label: 'تشخيص تكامل واتساب', icon: Activity },
+      { href: '/admin/whatsapp',               label: 'إعدادات واتساب',     icon: Settings },
+    ],
+  },
+
+  // ── الإعدادات ──────────────────────────────────────────────────────────────
+  {
+    title: 'الإعدادات',
     icon: Settings,
     items: [
-      { href: '/admin/operations',                label: 'مركز التشغيل',          icon: Activity   },
-      { href: '/admin/booking/operations',        label: 'تشغيل الحجز العام',     icon: CalendarCheck },
-      { href: '/admin/reports/partners-overrides', label: 'تعديل',  icon: FileKey2   },
-      { href: '/admin/branches',                  label: 'الفروع',                 icon: Building2  },
-      { href: '/admin/users',                     label: 'المستخدمون',             icon: Shield     },
-      { href: '/admin/services',                  label: 'الخدمات',                icon: Scissors   },
-      { href: '/admin/products',                  label: 'المنتجات',               icon: Package    },
-      { href: '/admin/inventory',                 label: 'المخزون',                icon: Boxes      },
-      { href: '/admin/packages',                  label: 'الباكدجات',              icon: Package    },
-      { href: '/admin/payment-methods',           label: 'طرق الدفع',             icon: CreditCard },
-      { href: '/admin/categories',                label: 'التصنيفات',              icon: Tags       },
-      { href: '/admin/loyalty',                   label: 'إدارة النقاط',          icon: Star       },
-      { href: '/admin/shift',                     label: 'الورديات',               icon: Clock      },
-      { href: '/admin/settings',                  label: 'الإعدادات',              icon: Settings   },
-      { href: '/admin/ai-concierge',              label: 'مساعد الصالون',          icon: MessageCircle },
-      { href: '/admin/queue-booking-settings',    label: 'إعدادات الطابور',       icon: Ticket     },
-      { href: '/admin/permissions/users',         label: 'صلاحيات المستخدمين',    icon: KeyRound     },
-      { href: '/admin/permissions/pages',         label: 'صلاحيات الصفحات',       icon: FileKey2     },
-      { href: '/admin/approvals',                 label: 'طلبات الموافقة',          icon: ShieldCheck  },
-      { href: '/admin/customers/follow-up',       label: 'متابعة العملاء',           icon: HeartHandshake },
+      { href: '/admin/branches',               label: 'الفروع',           icon: Building2 },
+      { href: '/admin/payment-methods',        label: 'طرق الدفع',        icon: CreditCard },
+      { href: '/admin/queue-booking-settings', label: 'إعدادات الطابور', icon: Ticket },
+      { href: '/admin/settings',               label: 'الإعدادات العامة', icon: Settings },
+    ],
+  },
+  {
+    title: 'المستخدمون والصلاحيات',
+    icon: Shield,
+    items: [
+      { href: '/admin/users',             label: 'المستخدمون',          icon: Shield },
+      { href: '/admin/permissions/users', label: 'صلاحيات المستخدمين', icon: KeyRound },
+      { href: '/admin/permissions/pages', label: 'صلاحيات الصفحات',    icon: FileKey2 },
+      { href: '/admin/approvals',         label: 'طلبات الموافقة',      icon: ShieldCheck },
     ],
   },
   {
     title: 'التدقيق',
     icon: AlertTriangle,
     items: [
-      { href: '/admin/audit/unspecified-payment-methods', label: 'تدقيق طرق الدفع', icon: AlertTriangle, badge: 'payment-audit' },
-      { href: '/admin/audit/cash-move-classification', label: 'تدقيق تصنيف الخزنة', icon: Layers },
-      { href: '/admin/accounting/classification-lab', label: 'معمل التصنيف المحاسبي', icon: Beaker },
-      { href: '/admin/accounting/classification-settings', label: 'إعدادات التصنيف', icon: Settings2 },
-    ],
-  },
-  {
-    title: 'الكاشير',
-    icon: Banknote,
-    items: [
-      { href: '/cashier/treasury/daily', label: 'خزنة الكاشير اليومية', icon: Wallet },
+      { href: '/admin/audit/unspecified-payment-methods',   label: 'تدقيق طرق الدفع',        icon: AlertTriangle, badge: 'payment-audit' },
+      { href: '/admin/audit/cash-move-classification',      label: 'تدقيق تصنيف الخزنة',     icon: Layers },
+      { href: '/admin/accounting/classification-lab',       label: 'معمل التصنيف المحاسبي', icon: Beaker },
+      { href: '/admin/accounting/classification-settings',  label: 'إعدادات التصنيف',        icon: Settings2 },
     ],
   },
 ];
@@ -285,30 +337,54 @@ export function normPath(p: string): string {
   return p.replace(/\/+$/, '') || '/';
 }
 
-export function isRouteActive(pathname: string, href: string): boolean {
+function splitHref(href: string): { path: string; query: URLSearchParams } {
+  const [path, query = ''] = href.split('?');
+  return { path: normPath(path), query: new URLSearchParams(query) };
+}
+
+/**
+ * Active-state matching. Items with a query (e.g. `/admin/hr?tab=attendance`)
+ * are active only when the current URL carries the same params; plain items
+ * match their path and sub-paths. Pass `search` (location.search) for tabs.
+ */
+export function isRouteActive(pathname: string, href: string, search = ''): boolean {
   if (!href || href === '#') return false;
-  const cur = normPath(pathname);
-  const tgt = normPath(href);
-  if (tgt === '/') return cur === '/';
-  return cur === tgt || cur.startsWith(tgt + '/');
+  const cur = normPath(pathname.split('?')[0]);
+  const target = splitHref(href);
+  if (target.path === '/') return cur === '/';
+  const pathMatches = cur === target.path || cur.startsWith(target.path + '/');
+  if (!pathMatches) return false;
+  if ([...target.query.keys()].length === 0) return true;
+  const current = new URLSearchParams(search);
+  for (const [key, value] of target.query) {
+    if (current.get(key) !== value) return false;
+  }
+  return true;
 }
 
-export function getActiveSectionTitle(pathname: string): string | null {
-  for (const section of NAV_SECTIONS) {
-    for (const item of section.items) {
-      if (!item.disabled && isRouteActive(pathname, item.href)) return section.title;
-    }
-  }
-  return null;
+export function getActiveSectionTitle(pathname: string, search = ''): string | null {
+  return getActiveNavLocation(pathname, search)?.section.title ?? null;
 }
 
-export function getActiveNavItem(pathname: string): NavItem | null {
+export function getActiveNavItem(pathname: string, search = ''): NavItem | null {
+  return getActiveNavLocation(pathname, search)?.item ?? null;
+}
+
+/**
+ * Most specific matching item: query items beat plain items, longer paths
+ * beat shorter ones (so `/admin/hr?tab=attendance` wins over `/admin/hr`).
+ */
+function getActiveNavLocation(pathname: string, search: string): { section: NavSection; item: NavItem } | null {
+  let best: { section: NavSection; item: NavItem; score: number } | null = null;
   for (const section of NAV_SECTIONS) {
     for (const item of section.items) {
-      if (!item.disabled && isRouteActive(pathname, item.href)) return item;
+      if (item.disabled || !isRouteActive(pathname, item.href, search)) continue;
+      const { path, query } = splitHref(item.href);
+      const score = path.length * 10 + [...query.keys()].length;
+      if (!best || score > best.score) best = { section, item, score };
     }
   }
-  return null;
+  return best ? { section: best.section, item: best.item } : null;
 }
 
 export function getActiveCategoryTitle(sectionTitle: string | null): string | null {
@@ -319,24 +395,24 @@ export function getActiveCategoryTitle(sectionTitle: string | null): string | nu
   return null;
 }
 
-// ── NEW nav tree (MAIN → SUB → items) ─────────────────────────────────────────
-// Added alongside the legacy structures above — nothing is removed.
-// MAIN groups reuse NAV_CATEGORIES titles; SUB groups are the existing sections.
+// ── Nav tree (MAIN → SUB → items) ────────────────────────────────────────────
 
 export interface NavMainMeta { icon: LucideIcon; rgb: string; emoji: string; }
 
-/** Visual identity for each MAIN group (keyed by NAV_CATEGORIES title). */
+/** Icon for each MAIN group (keyed by NAV_CATEGORIES title). */
 export const NAV_MAIN_META: Record<string, NavMainMeta> = {
-  'العمليات اليومية': { icon: LayoutGrid,    rgb: '214,168,79',  emoji: '🗓️' },
-  'المراجعة':          { icon: ClipboardList, rgb: '59,130,246',  emoji: '🔎' },
-  'التقارير':          { icon: BarChart3,     rgb: '139,92,246',  emoji: '📊' },
-  'المالية':           { icon: Wallet,        rgb: '16,185,129',  emoji: '💰' },
-  'الإدارة والموارد':  { icon: Settings,      rgb: '148,163,184', emoji: '⚙️' },
-  'واتساب':            { icon: MessageCircle, rgb: '37,211,102',  emoji: '💬' },
+  'العمليات اليومية':   { icon: LayoutGrid,     rgb: '116,83,110', emoji: '' },
+  'المراجعة':            { icon: ClipboardList,  rgb: '116,83,110', emoji: '' },
+  'المالية':             { icon: Wallet,         rgb: '116,83,110', emoji: '' },
+  'التقارير':            { icon: BarChart3,      rgb: '116,83,110', emoji: '' },
+  'الموظفون والتشغيل':  { icon: UsersRound,     rgb: '116,83,110', emoji: '' },
+  'الكتالوج والعملاء':  { icon: Package,        rgb: '116,83,110', emoji: '' },
+  'واتساب':              { icon: MessageCircle,  rgb: '116,83,110', emoji: '' },
+  'الإعدادات':           { icon: Settings,       rgb: '116,83,110', emoji: '' },
 };
 
 export function getMainMeta(title: string): NavMainMeta {
-  return NAV_MAIN_META[title] ?? { icon: LayoutGrid, rgb: '161,161,170', emoji: '📌' };
+  return NAV_MAIN_META[title] ?? { icon: LayoutGrid, rgb: '116,83,110', emoji: '' };
 }
 
 /** MAIN group resolved with its concrete (already permission-filtered) SUB sections. */
@@ -382,6 +458,6 @@ export function buildNavTree(sections: NavSection[]): NavMainGroup[] {
   return groups;
 }
 
-export function getActiveMainTitle(pathname: string): string | null {
-  return getActiveCategoryTitle(getActiveSectionTitle(pathname));
+export function getActiveMainTitle(pathname: string, search = ''): string | null {
+  return getActiveCategoryTitle(getActiveSectionTitle(pathname, search));
 }

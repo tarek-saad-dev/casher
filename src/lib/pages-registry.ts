@@ -79,6 +79,14 @@ export const SYSTEM_PAGES: PageDefinition[] = [
   { key: 'admin.whatsapp',          name: 'إعدادات واتساب',          path: '/admin/whatsapp',                  section: 'واتساب',            accessMode: 'roles', sort: 1095, defaultRoles: ['super_admin','admin'] },
   { key: 'admin.integrations.whatsapp', name: 'تشخيص تكامل واتساب', path: '/admin/integrations/whatsapp',  section: 'واتساب',            accessMode: 'roles', sort: 1096, defaultRoles: ['super_admin','admin'] },
   { key: 'admin.queue_settings',    name: 'إعدادات الطابور',         path: '/admin/queue-booking-settings',    section: 'الإدارة',           accessMode: 'roles', sort: 110, defaultRoles: ['super_admin','admin'] },
+  // ── Routing R0 (2026-11): menu pages that were missing from the catalogue.
+  // No defaultRoles on purpose: visibility stays exactly as before (super admin
+  // only) until an admin grants them in صلاحيات الصفحات.
+  { key: 'expenses.deductions',       name: 'تسجيل خصم',        path: '/deductions',                 section: 'المصروفات',         accessMode: 'roles', sort: 32 },
+  { key: 'reports.deductions',        name: 'تقرير الخصومات',   path: '/reports/deductions/monthly', section: 'مراجعة المصروفات', accessMode: 'roles', sort: 41 },
+  { key: 'admin.customers_follow_up', name: 'متابعة العملاء',   path: '/admin/customers/follow-up',  section: 'العملاء والولاء',   accessMode: 'roles', sort: 1071 },
+  { key: 'admin.ai_concierge',        name: 'مساعد الصالون',    path: '/admin/ai-concierge',         section: 'واتساب',            accessMode: 'roles', sort: 1097 },
+  { key: 'admin.day',                 name: 'اليوم التشغيلي',   path: '/admin/day',                  section: 'التشغيل',           accessMode: 'roles', sort: 1001 },
   // ── Special ──────────────────────────────────────────────────────────────────
   { key: 'operations.main',         name: 'لوحة التشغيل',            path: '/operations',                      section: 'لوحة التشغيل',      accessMode: 'all',   sort: 5 },
   { key: 'cut_club.main',           name: 'CUT CLUB',                path: '/admin/cut-club',                  section: 'CUT CLUB',          accessMode: 'roles', sort: 6,   defaultRoles: ['super_admin','admin'] },

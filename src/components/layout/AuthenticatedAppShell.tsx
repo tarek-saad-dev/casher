@@ -15,6 +15,7 @@ import TenantShellProvider from '@/components/tenant/TenantShellProvider';
 import { TenantShellGate, TenantSubscriptionBanner } from '@/components/tenant/TenantShellGate';
 import { cn } from '@/lib/utils';
 import WhatsAppAttentionProvider from '@/components/layout/WhatsAppAttentionProvider';
+import RouteAccessGate from '@/components/guards/RouteAccessGate';
 import type { UserAccess } from '@/lib/hooks/useMyAccess';
 
 interface AuthenticatedAppShellProps {
@@ -96,7 +97,9 @@ export default function AuthenticatedAppShell({
                     : 'overflow-y-auto',
               )}
             >
-              <TenantShellGate>{children}</TenantShellGate>
+              <TenantShellGate>
+                <RouteAccessGate>{children}</RouteAccessGate>
+              </TenantShellGate>
             </main>
           </div>
         </div>

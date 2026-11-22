@@ -139,6 +139,7 @@ jobs:
           src/lib/__tests__/drvoTheme.test.ts
           scripts/ui/__tests__/legacyColorRatchet.test.ts
           src/lib/__tests__/pwaApps.test.ts
+          src/lib/__tests__/routeRegistry.test.ts
           --reporter=default
 
       - name: Legacy colour class ratchet (new code must use DRVO tokens)
