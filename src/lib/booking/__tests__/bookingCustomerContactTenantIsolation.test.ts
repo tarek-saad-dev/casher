@@ -67,8 +67,8 @@ vi.mock('@/lib/db', () => {
 });
 
 vi.mock('@/lib/publicBookingHelpers', () => ({
-  normalizePublicBookingPhone: (phone: string) => String(phone ?? '').replace(/\\D/g, ''),
-  isUsableCustomerPhone: (phone: string) => /^201\\d{9}$/.test(phone),
+  normalizePublicBookingPhone: (phone: string) => String(phone ?? '').replace(/\D/g, ''),
+  isUsableCustomerPhone: (phone: string) => /^201\d{9}$/.test(phone),
 }));
 
 import {
