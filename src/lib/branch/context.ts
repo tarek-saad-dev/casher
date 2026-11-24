@@ -8,6 +8,7 @@ import {
   getUserBranchAccess,
 } from './repository';
 import { validateUserBranchAccess } from './access';
+import { staffTenantMemo, userKey, userStatusMemo } from '@/lib/auth/authMemo';
 import {
   assertLegacyBranchInTenant,
   isTenantContextError,
@@ -119,7 +120,10 @@ async function resolveActiveBranchContext(at: Date): Promise<ActiveBranchContext
     );
   }
 
-  const user = await getUserActiveStatus(payload.UserID);
+  // Shared 10s memo with api-auth (see authMemo.ts); deletes invalidate it.
+  const user = (await userStatusMemo.getOrLoad(userKey(payload.UserID), () =>
+    getUserActiveStatus(payload.UserID),
+  )) as Awaited<ReturnType<typeof getUserActiveStatus>>;
   if (!user.exists) {
     throw new BranchDomainError('USER_NOT_FOUND', 'المستخدم غير موجود', 401);
   }
@@ -166,11 +170,15 @@ async function verifySessionTenantBinding(payload: {
   }
   let tenantId: string;
   try {
-    const tenant = await resolveStaffTenantContextForRequest({
-      userId: payload.UserID,
-      activeBranchId: payload.ActiveBranchID,
-      preferredTenantId: payload.TenantId,
-    });
+    const tenant = (await staffTenantMemo.getOrLoad(
+      userKey(payload.UserID, payload.ActiveBranchID, payload.TenantId),
+      () =>
+        resolveStaffTenantContextForRequest({
+          userId: payload.UserID,
+          activeBranchId: payload.ActiveBranchID,
+          preferredTenantId: payload.TenantId,
+        }),
+    )) as Awaited<ReturnType<typeof resolveStaffTenantContextForRequest>>;
     tenantId = tenant.tenantId;
   } catch (err) {
     if (isTenantContextError(err)) {

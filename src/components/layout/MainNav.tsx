@@ -107,24 +107,10 @@ export default function MainNav({ suppressMobileChrome = false }: MainNavProps) 
     })).filter(section => section.items.length > 0);
   }, [access, permLoading, isAuthenticated, canSeePage]);
 
-  // Badge count for payment audit
-  const [paymentAuditCount, setPaymentAuditCount] = useState<number>(0);
-  useEffect(() => {
-    const fetchCount = async () => {
-      try {
-        const response = await fetch('/api/audit/unspecified-payment-methods/count');
-        if (response.ok) {
-          const data = await response.json();
-          setPaymentAuditCount(data.count || 0);
-        }
-      } catch {
-        // Silent fail - badge will just show 0
-      }
-    };
-    fetchCount();
-    const interval = setInterval(fetchCount, 5 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, []);
+  // The payment-audit badge used to poll /api/audit/unspecified-payment-methods/count
+  // on every page. That API was removed (96ef91ad), so the call only produced 404s;
+  // the badge stays hidden until a count endpoint exists again.
+  const paymentAuditCount = 0;
 
   const activeSectionTitle = getActiveSectionTitle(pathname, search);
   const activeNavItem = getActiveNavItem(pathname, search);

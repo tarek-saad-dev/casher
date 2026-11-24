@@ -40,6 +40,7 @@ import { isCustomerIncomplete } from '@/lib/customerSource';
 import type { Barber, Service, PaymentMethod, Customer, CartItem } from '@/lib/types';
 import { isGroomHomeVisitCategory } from '@/lib/catalog/groomOptionalAddons';
 import { hasCached, swrGetJson } from '@/lib/swrCache';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 
 // ─── Toast Types ─────────────────────────────────────────────────────────
 interface Toast { id: number; type: 'success' | 'error' | 'info'; message: string }
@@ -82,6 +83,8 @@ export default function PosPage() {
 
   // ───────────────── Session ─────────────────
   const { shift, viewBranch, revision, loading: sessionLoading, refresh: refreshSession } = useSession();
+  // Both POS layouts stay mounted (CSS switches them); only the visible one may poll.
+  const isDesktopLayout = useMediaQuery('(min-width: 768px)', true);
   const { ensureShiftWrite } = useShiftOperationalGate();
 
   // Set page title
@@ -1091,7 +1094,7 @@ export default function PosPage() {
         <div className="sticky top-0 z-30 shrink-0 border-b border-border bg-card px-3 py-2">
           <div className="mb-2 flex justify-end">
             <BarberHandoffInbox
-              enabled={Boolean(shift?.ID)}
+              enabled={Boolean(shift?.ID) && !isDesktopLayout}
               onClaim={handleClaimHandoff}
               claimingId={claimingHandoffId}
             />
@@ -1157,7 +1160,7 @@ export default function PosPage() {
         <aside aria-label="العميل" className="order-1 flex w-full shrink-0 flex-col gap-3 overflow-y-auto border-e border-border bg-card p-3 scrollbar-luxury-v lg:order-1 lg:w-72 xl:w-80">
           <div className="flex justify-end">
             <BarberHandoffInbox
-              enabled={Boolean(shift?.ID)}
+              enabled={Boolean(shift?.ID) && isDesktopLayout}
               onClaim={handleClaimHandoff}
               claimingId={claimingHandoffId}
             />

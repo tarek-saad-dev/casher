@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { destroySession, getSession } from '@/lib/session';
 import { getUserAccess } from '@/lib/permissions-server';
 import { getUserActiveStatus } from '@/lib/branch/repository';
+import { staffTenantMemo, userKey, userStatusMemo } from '@/lib/auth/authMemo';
 import {
   extractBearerToken,
   isCronBearerAuthorized,
@@ -92,7 +93,9 @@ async function authenticateIdentity(): Promise<IdentityResult | NextResponse> {
     );
   }
 
-  const userStatus = await getUserActiveStatus(session.UserID);
+  const userStatus = (await userStatusMemo.getOrLoad(userKey(session.UserID), () =>
+    getUserActiveStatus(session.UserID),
+  )) as Awaited<ReturnType<typeof getUserActiveStatus>>;
   if (!userStatus.exists || userStatus.isDeleted) {
     await destroySession();
     return NextResponse.json(
@@ -143,11 +146,16 @@ export async function authenticate(): Promise<AuthResult | NextResponse> {
 
   let tenant: StaffTenantContext;
   try {
-    tenant = await resolveStaffTenantContextForRequest({
-      userId: session.UserID,
-      activeBranchId: session.ActiveBranchID,
-      preferredTenantId: session.TenantId ?? null,
-    });
+    // Memoized per user + branch + preferred tenant (failures are never cached).
+    tenant = (await staffTenantMemo.getOrLoad(
+      userKey(session.UserID, session.ActiveBranchID, session.TenantId ?? null),
+      () =>
+        resolveStaffTenantContextForRequest({
+          userId: session.UserID,
+          activeBranchId: session.ActiveBranchID,
+          preferredTenantId: session.TenantId ?? null,
+        }),
+    )) as StaffTenantContext;
     await assertTenantSubscriptionActive(tenant.tenantId);
     await assertRouteAppEntitlement(tenant.tenantId);
   } catch (err) {
@@ -312,11 +320,15 @@ export async function authenticateTenantShell(): Promise<TenantShellAuthResult |
   let tenant: StaffTenantContext;
   let subscription: SubscriptionEvaluation;
   try {
-    tenant = await resolveStaffTenantContextForRequest({
-      userId: session.UserID,
-      activeBranchId: session.ActiveBranchID,
-      preferredTenantId: session.TenantId ?? null,
-    });
+    tenant = (await staffTenantMemo.getOrLoad(
+      userKey(session.UserID, session.ActiveBranchID, session.TenantId ?? null),
+      () =>
+        resolveStaffTenantContextForRequest({
+          userId: session.UserID,
+          activeBranchId: session.ActiveBranchID,
+          preferredTenantId: session.TenantId ?? null,
+        }),
+    )) as StaffTenantContext;
     subscription = await evaluateTenantSubscriptionGate(tenant.tenantId);
   } catch (err) {
     const denied = await tenantDenialResponse(err, {

@@ -77,6 +77,21 @@ export async function requireBranchOperatorContext(): Promise<
  * operational branch, never the ViewBranch cookie.
  * DAY-scope fallback (view cookie) only when there is no OPEN shift.
  */
+/**
+ * Read-only fast path for inboxes/polls: the branch of the user's open shift, with
+ * the same branch + access checks as the write gate, but without the business-day
+ * snapshot/reconcile (which costs several DB round trips and may write).
+ * Returns null when the user has no open shift — callers fall back to the full gate.
+ * Never use this for writes; mutations must keep resolveBranchDayAndShiftForWrite.
+ */
+export async function resolveOpenShiftBranchForRead(
+  userId: number,
+): Promise<ActiveBranchContext | null> {
+  const openShift = await getUserOpenShift(userId);
+  if (!openShift?.status) return null;
+  return toOperationalBranchContext(userId, openShift.branchId);
+}
+
 export async function resolveBranchDayAndShiftForWrite(userId: number): Promise<
   | {
       ok: true;

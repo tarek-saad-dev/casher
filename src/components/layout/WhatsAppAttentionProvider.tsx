@@ -53,11 +53,16 @@ export default function WhatsAppAttentionProvider({
 
   const count = items.length;
   const latest = items[0] ?? null;
+  // Read the path through a ref so navigating does not recreate refresh()
+  // (which used to restart polling and fire an extra inbox request per page).
+  const pathnameRef = useRef(pathname);
+  pathnameRef.current = pathname;
 
   const refresh = useCallback(async () => {
     try {
       const response = await fetch(
-        '/api/admin/whatsapp/inbox?filter=unread&limit=200',
+        // The badge caps at 99+, so 100 rows are enough to count.
+        '/api/admin/whatsapp/inbox?filter=unread&limit=100',
         { cache: 'no-store' },
       );
 
@@ -84,7 +89,7 @@ export default function WhatsAppAttentionProvider({
       if (
         initializedRef.current
         && nextCount > previousCountRef.current
-        && !pathname.startsWith('/admin/whatsapp/inbox')
+        && !pathnameRef.current.startsWith('/admin/whatsapp/inbox')
       ) {
         setToastVisible(true);
         if (toastTimerRef.current) {
@@ -102,7 +107,7 @@ export default function WhatsAppAttentionProvider({
     } catch {
       // Global notification should never break the cashier shell.
     }
-  }, [pathname]);
+  }, []);
 
   /** The platform console is not a tenant inbox context, and its wizard footer sits where the launcher floats. */
   const onPlatformConsole = pathname.startsWith('/platform');
@@ -112,6 +117,8 @@ export default function WhatsAppAttentionProvider({
     if (!polling) return;
     void refresh();
     const timer = window.setInterval(() => {
+      // Skip while the tab is hidden; the focus listener refreshes on return.
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
       void refresh();
     }, 10_000);
 

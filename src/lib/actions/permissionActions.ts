@@ -3,6 +3,7 @@
  */
 
 import { sql } from '@/lib/db';
+import { invalidateAllUserAccess, invalidateUserAuth } from '@/lib/auth/authMemo';
 
 export interface UserRolesSnapshot {
   userId: number;
@@ -42,6 +43,7 @@ export async function updateUserRoles(
   userId: number,
   roleKeys: string[],
 ): Promise<UserRolesSnapshot> {
+  invalidateUserAuth(userId);
   const old = await getUserRolesSnapshot(transaction, userId);
 
   await new sql.Request(transaction)
@@ -127,6 +129,7 @@ export async function createPage(
     roles?: string[];
   },
 ): Promise<{ pageID: number; pageKey: string; accessMode: string; roles: string[] }> {
+  invalidateAllUserAccess();
   const dup = await new sql.Request(transaction)
     .input('key', sql.NVarChar, input.pageKey)
     .query(`SELECT 1 FROM dbo.TblSystemPages WHERE PageKey = @key`);
@@ -173,6 +176,7 @@ export async function updatePageAccess(
   accessMode: 'all' | 'roles' | 'super_admin_only',
   roles: string[],
 ): Promise<PageAccessSnapshot> {
+  invalidateAllUserAccess();
   const oldSnapshot = await getPageAccessSnapshot(transaction, pageKey);
 
   await new sql.Request(transaction)

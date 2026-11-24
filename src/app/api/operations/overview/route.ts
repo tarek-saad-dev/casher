@@ -4,7 +4,11 @@ import { getAvailableBarbers } from '@/lib/barberAvailability';
 import { requireTenantSession } from '@/lib/api-auth';
 
 // ── Inline idempotent migration for estimate columns ─────────────────────────
+// Schema probe runs once per process (set only after it succeeds).
+let estimateColumnsEnsured = false;
+
 async function ensureEstimateColumns(db: Awaited<ReturnType<typeof getPool>>): Promise<void> {
+  if (estimateColumnsEnsured) return;
   try {
     await db.request().query(`
       IF COL_LENGTH('dbo.QueueTickets', 'EstimatedStartTime') IS NULL
@@ -14,6 +18,7 @@ async function ensureEstimateColumns(db: Awaited<ReturnType<typeof getPool>>): P
       IF COL_LENGTH('dbo.QueueTickets', 'WaitingCountAtCreation') IS NULL
         ALTER TABLE dbo.QueueTickets ADD WaitingCountAtCreation INT NULL;
     `);
+    estimateColumnsEnsured = true;
   } catch (e) {
     console.warn('[operations overview] ensureEstimateColumns failed (non-fatal):', e);
   }

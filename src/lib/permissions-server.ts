@@ -2,27 +2,57 @@
 // Never import this in client components or client hooks.
 import 'server-only';
 import type { UserAccess } from './permissions-types';
+import { userAccessMemo, userKey } from './auth/authMemo';
 import {
   getDefaultLandingPath,
   isPartnerOnlyUser,
   PARTNERS_REPORT_PAGE_PATH,
 } from './partnerAccess';
 
+/** Once the permission tables exist they never disappear: check once per process. */
+let permTablesConfirmed = false;
+
 /** Check whether the new TblRoles tables exist */
 async function permTablesExist(db: import('mssql').ConnectionPool): Promise<boolean> {
+  if (permTablesConfirmed) return true;
   const r = await db.request().query(`
     SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.TABLES
     WHERE TABLE_NAME IN ('TblRoles','TblUserRoles','TblSystemPages','TblPageRoleAccess')
   `);
-  return (r.recordset[0]?.cnt ?? 0) >= 4;
+  permTablesConfirmed = (r.recordset[0]?.cnt ?? 0) >= 4;
+  return permTablesConfirmed;
 }
 
 /**
  * Load the full access profile for a user.
  * Falls back gracefully if tables don't exist yet (before migration).
+ * Answers are memoized for a few seconds per user (see lib/auth/authMemo.ts);
+ * a DB error is never cached — it returns the deny-all fallback once.
  */
 export async function getUserAccess(userID: number, userName: string, userLevel: string): Promise<UserAccess> {
-  // Fallback: no roles, no pages — deny all (pre-migration or error state)
+  try {
+    return (await userAccessMemo.getOrLoad(userKey(userID, userName, userLevel), () =>
+      loadUserAccess(userID, userName, userLevel),
+    )) as UserAccess;
+  } catch {
+    return denyAllAccess(userID, userName, userLevel);
+  }
+}
+
+function denyAllAccess(userID: number, userName: string, userLevel: string): UserAccess {
+  return {
+    userID, userName, userLevel,
+    roles: [],
+    isSuperAdmin: false,
+    isPartnerOnly: false,
+    defaultLandingPath: '/income/pos',
+    allowedPagePaths: [],
+    allowedPageKeys: [],
+  };
+}
+
+async function loadUserAccess(userID: number, userName: string, userLevel: string): Promise<UserAccess> {
+  // Fallback: no roles, no pages — deny all (pre-migration state)
   const fallback: UserAccess = {
     userID, userName, userLevel,
     roles: [],
@@ -97,8 +127,10 @@ export async function getUserAccess(userID: number, userName: string, userLevel:
     };
 
     return access;
-  } catch {
-    return fallback;
+  } catch (err) {
+    // Surface DB errors so the memo never caches a transient deny-all;
+    // getUserAccess() turns them into the deny-all fallback.
+    throw err;
   }
 }
 

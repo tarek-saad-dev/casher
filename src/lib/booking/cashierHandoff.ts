@@ -24,7 +24,11 @@ export {
 
 const LOCK_TTL_MS = 5 * 60 * 1000;
 
+// Once per process: the probe used to run on every inbox poll (every 12s per POS).
+let handoffTableEnsured = false;
+
 export async function ensureBookingCashierHandoffTable(): Promise<void> {
+  if (handoffTableEnsured) return;
   const pool = await getPool();
   await pool.request().query(`
     IF OBJECT_ID(N'dbo.TblBookingCashierHandoff', N'U') IS NULL
@@ -65,6 +69,7 @@ export async function ensureBookingCashierHandoffTable(): Promise<void> {
         ON dbo.TblBookingCashierHandoff (TenantId, EmpID, Status);
     END
   `);
+  handoffTableEnsured = true;
 }
 
 export type UpsertHandoffResult =

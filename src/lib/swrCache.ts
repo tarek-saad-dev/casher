@@ -48,6 +48,33 @@ async function load<T>(key: string, url: string, init?: RequestInit): Promise<T>
   return p;
 }
 
+const sharedInflight = new Map<string, Promise<{ ok: boolean; status: number; data: unknown }>>();
+
+/**
+ * Fresh GET with no caching, but concurrent callers for the same URL share one
+ * request (e.g. a component mounted twice while the page settles). Safe for
+ * prices and other data that must never be served stale.
+ */
+export function fetchJsonShared<T = unknown>(
+  url: string,
+): Promise<{ ok: boolean; status: number; data: T }> {
+  const pending = sharedInflight.get(url);
+  if (pending) return pending as Promise<{ ok: boolean; status: number; data: T }>;
+  const p = fetch(url, { cache: 'no-store' })
+    .then(async (res) => {
+      let data: unknown = null;
+      try {
+        data = await res.json();
+      } catch {
+        data = null;
+      }
+      return { ok: res.ok, status: res.status, data };
+    })
+    .finally(() => sharedInflight.delete(url));
+  sharedInflight.set(url, p);
+  return p as Promise<{ ok: boolean; status: number; data: T }>;
+}
+
 /**
  * Deliver cached data (if any) synchronously through `onData`, then fetch fresh
  * data and deliver it again when it differs. Returns a cancel function so a
