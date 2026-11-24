@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server';
 import { isAuthResult, requirePageAccess } from '@/lib/api-auth';
 import { getSession } from '@/lib/session';
-import { resolveBranchDayAndShiftForWrite, branchErrorResponse } from '@/lib/branch/operationalGates';
+import {
+  resolveBranchDayAndShiftForWrite,
+  resolveOpenShiftBranchForRead,
+  branchErrorResponse,
+} from '@/lib/branch/operationalGates';
 import { listPendingHandoffsForBranch } from '@/lib/booking/cashierHandoff';
 
 export const runtime = 'nodejs';
@@ -21,13 +25,22 @@ export async function GET() {
       return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
     }
 
-    const gated = await resolveBranchDayAndShiftForWrite(session.UserID);
-    if (!gated.ok) {
-      // No open shift / day → empty inbox (do not block POS UI).
-      return NextResponse.json({ items: [], count: 0, reason: 'no_open_shift' });
+    // This GET is polled every ~12s by the POS, so it takes the read-only fast path
+    // (open shift's branch + access check). Claiming still uses the full write gate.
+    let branchId: number;
+    const shiftBranch = await resolveOpenShiftBranchForRead(session.UserID);
+    if (shiftBranch) {
+      branchId = shiftBranch.branchId;
+    } else {
+      const gated = await resolveBranchDayAndShiftForWrite(session.UserID);
+      if (!gated.ok) {
+        // No open shift / day → empty inbox (do not block POS UI).
+        return NextResponse.json({ items: [], count: 0, reason: 'no_open_shift' });
+      }
+      branchId = gated.branch.branchId;
     }
     const items = await listPendingHandoffsForBranch({
-      branchId: gated.branch.branchId,
+      branchId,
       tenantId: String(session.TenantId),
       viewerUserId: session.UserID,
     });

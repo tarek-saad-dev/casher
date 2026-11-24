@@ -489,27 +489,44 @@ export async function GET(request: NextRequest) {
       ORDER BY totalSales DESC
     `);
     
-    // Get top service for each barber separately
-    for (const barber of barberResult.recordset) {
+    // Top service per barber — one query for all barbers (was one query each).
+    const barberEmpIds: number[] = barberResult.recordset
+      .map((b: { EmpID: number }) => Number(b.EmpID))
+      .filter((id: number) => Number.isFinite(id));
+    const topServiceByEmp = new Map<number, string>();
+    if (barberEmpIds.length > 0) {
       const topServiceReq = db.request();
-      topServiceReq.input('empId', sql.Int, barber.EmpID);
       topServiceReq.input('targetDate', sql.Date, targetDate);
       topServiceReq.input('branchId', sql.Int, branchId);
-      
+      const empParams = barberEmpIds.map((id, i) => {
+        topServiceReq.input(`topEmp${i}`, sql.Int, id);
+        return `@topEmp${i}`;
+      });
       const topServiceResult = await topServiceReq.query(`
-        SELECT TOP 1 p.ProName
-        FROM [dbo].[TblinvServHead] h4
-        INNER JOIN [dbo].[TblinvServDetail] d4 ON h4.invID = d4.invID AND h4.invType = d4.invType
-        INNER JOIN [dbo].[TblPro] p ON d4.ProID = p.ProID
-        WHERE d4.EmpID = @empId
-          AND ${dateFilter('h4')}
-          AND h4.invType = N'مبيعات'
-          AND ${activeSalesCondition('h4')}
-          AND h4.BranchID = @branchId
-        GROUP BY p.ProName
-        ORDER BY SUM(d4.SPriceAfterDis) DESC
+        SELECT x.EmpID, x.ProName
+        FROM (
+          SELECT
+            d4.EmpID,
+            p.ProName,
+            ROW_NUMBER() OVER (PARTITION BY d4.EmpID ORDER BY SUM(d4.SPriceAfterDis) DESC) AS rn
+          FROM [dbo].[TblinvServHead] h4
+          INNER JOIN [dbo].[TblinvServDetail] d4 ON h4.invID = d4.invID AND h4.invType = d4.invType
+          INNER JOIN [dbo].[TblPro] p ON d4.ProID = p.ProID
+          WHERE d4.EmpID IN (${empParams.join(', ')})
+            AND ${dateFilter('h4')}
+            AND h4.invType = N'مبيعات'
+            AND ${activeSalesCondition('h4')}
+            AND h4.BranchID = @branchId
+          GROUP BY d4.EmpID, p.ProName
+        ) x
+        WHERE x.rn = 1
       `);
-      barber.topService = topServiceResult.recordset.length > 0 ? topServiceResult.recordset[0].ProName : null;
+      for (const row of topServiceResult.recordset as Array<{ EmpID: number; ProName: string }>) {
+        topServiceByEmp.set(Number(row.EmpID), row.ProName);
+      }
+    }
+    for (const barber of barberResult.recordset) {
+      barber.topService = topServiceByEmp.get(Number(barber.EmpID)) ?? null;
     }
 
     const barberTotal = barberResult.recordset.reduce((sum: number, row: any) => sum + row.totalSales, 0);

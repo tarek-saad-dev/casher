@@ -15,6 +15,7 @@ import {
 import { getUserOpenShift, type ShiftMoveRecord } from './shiftSession';
 import { getBranchById } from './repository';
 import { validateUserBranchAccess } from './access';
+import { branchKey, branchRecordMemo } from '@/lib/auth/authMemo';
 import { requireOperationalSnapshot } from '@/modules/operations/application/OperationalContextService';
 import { ensureBusinessDayCurrent } from '@/modules/operations/application/reconcileBusinessDay';
 import { withOperationalRequestScope } from '@/modules/operations/requestScope';
@@ -26,7 +27,9 @@ async function toOperationalBranchContext(
   userId: number,
   branchId: number,
 ): Promise<ActiveBranchContext> {
-  const branch = await getBranchById(branchId);
+  const branch = (await branchRecordMemo.getOrLoad(branchKey(branchId), () =>
+    getBranchById(branchId),
+  )) as Awaited<ReturnType<typeof getBranchById>>;
   if (!branch || !branch.isActive) {
     throw new BranchDomainError('BRANCH_NOT_FOUND', 'الفرع غير موجود', 403);
   }
@@ -77,6 +80,21 @@ export async function requireBranchOperatorContext(): Promise<
  * operational branch, never the ViewBranch cookie.
  * DAY-scope fallback (view cookie) only when there is no OPEN shift.
  */
+/**
+ * Read-only fast path for inboxes/polls: the branch of the user's open shift, with
+ * the same branch + access checks as the write gate, but without the business-day
+ * snapshot/reconcile (which costs several DB round trips and may write).
+ * Returns null when the user has no open shift — callers fall back to the full gate.
+ * Never use this for writes; mutations must keep resolveBranchDayAndShiftForWrite.
+ */
+export async function resolveOpenShiftBranchForRead(
+  userId: number,
+): Promise<ActiveBranchContext | null> {
+  const openShift = await getUserOpenShift(userId);
+  if (!openShift?.status) return null;
+  return toOperationalBranchContext(userId, openShift.branchId);
+}
+
 export async function resolveBranchDayAndShiftForWrite(userId: number): Promise<
   | {
       ok: true;

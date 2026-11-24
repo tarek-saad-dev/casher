@@ -2,7 +2,7 @@ import 'server-only';
 import type { ConnectionPool } from 'mssql';
 import { getPool, sql } from '@/lib/db';
 import {
-  getPackageItems,
+  getPackageItemsForPackages,
   getServicePackageById,
   listServicePackages,
 } from '@/lib/catalog/servicePackages';
@@ -171,26 +171,27 @@ async function loadServiceMetaByIds(
   const unique = [...new Set(proIds.filter((id) => Number.isFinite(id) && id > 0))];
   if (unique.length === 0) return map;
 
-  // Small catalogs — load individually to avoid dynamic IN construction issues
-  await Promise.all(
-    unique.map(async (proId) => {
-      const result = await db
-        .request()
-        .input('ProID', sql.Int, proId)
-        .input('tenantId', sql.UniqueIdentifier, tenantId)
-        .query(`
-          SELECT
-            p.ProID, p.ProName, p.ProNameAr, p.SPrice1, p.DurationMinutes,
-            ISNULL(p.isDeleted, 0) AS isDeleted,
-            c.CatName
-          FROM dbo.TblPro p
-          LEFT JOIN dbo.TblCat c ON c.CatID = p.CatID AND c.TenantId = p.TenantId
-          WHERE p.ProID = @ProID AND p.TenantId = @tenantId
-        `);
-      const row = result.recordset[0] as Record<string, unknown> | undefined;
-      if (!row) return;
+  // One parameterised IN query per 500 ids (was one query per service — N+1).
+  for (let start = 0; start < unique.length; start += 500) {
+    const chunk = unique.slice(start, start + 500);
+    const req = db.request().input('tenantId', sql.UniqueIdentifier, tenantId);
+    const params = chunk.map((id, i) => {
+      req.input(`p${i}`, sql.Int, id);
+      return `@p${i}`;
+    });
+    const result = await req.query(`
+      SELECT
+        p.ProID, p.ProName, p.ProNameAr, p.SPrice1, p.DurationMinutes,
+        ISNULL(p.isDeleted, 0) AS isDeleted,
+        c.CatName
+      FROM dbo.TblPro p
+      LEFT JOIN dbo.TblCat c ON c.CatID = p.CatID AND c.TenantId = p.TenantId
+      WHERE p.TenantId = @tenantId AND p.ProID IN (${params.join(', ')})
+    `);
+    for (const row of result.recordset as Record<string, unknown>[]) {
+      const proId = Number(row.ProID);
       map.set(proId, {
-        ProID: Number(row.ProID),
+        ProID: proId,
         ProName: String(row.ProName ?? ''),
         ProNameAr: row.ProNameAr != null ? String(row.ProNameAr) : null,
         SPrice1: Number(row.SPrice1) || 0,
@@ -198,8 +199,8 @@ async function loadServiceMetaByIds(
         CatName: row.CatName != null ? String(row.CatName) : null,
         isDeleted: Number(row.isDeleted) === 1,
       });
-    }),
-  );
+    }
+  }
   return map;
 }
 
@@ -342,15 +343,9 @@ async function loadItemsByPackageIds(
   tenantId: string,
   packageIds: number[],
 ): Promise<Map<number, PackageItemRow[]>> {
-  const map = new Map<number, PackageItemRow[]>();
-  if (packageIds.length === 0) return map;
-
-  await Promise.all(
-    packageIds.map(async (id) => {
-      map.set(id, await getPackageItems(db, tenantId, id));
-    }),
-  );
-  return map;
+  if (packageIds.length === 0) return new Map<number, PackageItemRow[]>();
+  // Single batched query (was one query per package — N+1).
+  return getPackageItemsForPackages(db, tenantId, packageIds);
 }
 
 export async function getPublicPackagesCatalog(opts: {

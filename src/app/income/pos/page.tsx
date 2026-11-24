@@ -39,6 +39,8 @@ import { printReceiptWithFallback, type PrintReceiptData } from '@/lib/printServ
 import { isCustomerIncomplete } from '@/lib/customerSource';
 import type { Barber, Service, PaymentMethod, Customer, CartItem } from '@/lib/types';
 import { isGroomHomeVisitCategory } from '@/lib/catalog/groomOptionalAddons';
+import { hasCached, swrGetJson } from '@/lib/swrCache';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 
 // ─── Toast Types ─────────────────────────────────────────────────────────
 interface Toast { id: number; type: 'success' | 'error' | 'info'; message: string }
@@ -81,6 +83,8 @@ export default function PosPage() {
 
   // ───────────────── Session ─────────────────
   const { shift, viewBranch, revision, loading: sessionLoading, refresh: refreshSession } = useSession();
+  // Both POS layouts stay mounted (CSS switches them); only the visible one may poll.
+  const isDesktopLayout = useMediaQuery('(min-width: 768px)', true);
   const { ensureShiftWrite } = useShiftOperationalGate();
 
   // Set page title
@@ -135,6 +139,7 @@ export default function PosPage() {
   const [hydratePackageId, setHydratePackageId] = useState<number | null>(null);
   const [hydrateAddonProIds, setHydrateAddonProIds] = useState<number[]>([]);
   const bookingHydrateDoneRef = useRef(false);
+  const editHydrateDoneRef = useRef(false);
   const [catalogTab, setCatalogTab] = useState<'services' | 'packages' | 'products'>('services');
   const [retailProducts, setRetailProducts] = useState<CatalogProduct[]>([]);
   const [retailProductsLoading, setRetailProductsLoading] = useState(false);
@@ -442,34 +447,42 @@ export default function PosPage() {
   useEffect(() => {
     if (sessionLoading || viewBranch?.branchId == null) return;
 
-    setBarbers([]);
-    setOtherEmployees([]);
+    // Staff lists and payment methods are cached per branch (stale-while-
+    // revalidate): returning to POS shows them instantly, then refreshes.
+    // Services/prices and stock are always fetched fresh (they price the sale).
+    const scope = `branch:${viewBranch.branchId}`;
+    if (!hasCached(`pos:barbers:${scope}`)) setBarbers([]);
+    if (!hasCached(`pos:other-employees:${scope}`)) {
+      setOtherEmployees([]);
+      setOtherEmployeesLoading(true);
+    }
     setServices([]);
     setRetailProducts([]);
-    setOtherEmployeesLoading(true);
 
-    fetch('/api/barbers?scope=barber')
-      .then((r) => r.json())
-      .then((d) => {
-        if (Array.isArray(d)) setBarbers(d);
-      });
-    fetch('/api/barbers?scope=other')
-      .then((r) => r.json())
-      .then((d) => {
-        if (Array.isArray(d)) setOtherEmployees(d);
-      })
-      .finally(() => setOtherEmployeesLoading(false));
+    const cancels = [
+      swrGetJson<unknown>(`pos:barbers:${scope}`, '/api/barbers?scope=barber', (d) => {
+        if (Array.isArray(d)) setBarbers(d as Barber[]);
+      }),
+      swrGetJson<unknown>(
+        `pos:other-employees:${scope}`,
+        '/api/barbers?scope=other',
+        (d) => {
+          if (Array.isArray(d)) setOtherEmployees(d as typeof otherEmployees);
+          setOtherEmployeesLoading(false);
+        },
+        { onError: () => setOtherEmployeesLoading(false) },
+      ),
+      swrGetJson<unknown>(`pos:payment-methods:${scope}`, '/api/payment-methods', (d) => {
+        if (Array.isArray(d)) setPaymentMethods(d as PaymentMethod[]);
+      }),
+    ];
     fetch('/api/services')
       .then((r) => r.json())
       .then((d) => {
         if (Array.isArray(d)) setServices(d);
       });
-    fetch('/api/payment-methods')
-      .then((r) => r.json())
-      .then((d) => {
-        if (Array.isArray(d)) setPaymentMethods(d);
-      });
     void loadRetailProducts();
+    return () => cancels.forEach((cancel) => cancel());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionLoading, viewBranch?.branchId, revision]);
 
@@ -960,6 +973,22 @@ export default function PosPage() {
     }
   }, [ensureShiftWrite]);
 
+  // ───────────────── Open an existing invoice for editing (?edit=<saleId>) ─────────────────
+  // Used by "تعديل" in مبيعات اليوم. Waits for staff + payment lookups so the
+  // loaded lines and tenders map correctly, then reuses handleEditSale.
+  useEffect(() => {
+    if (editHydrateDoneRef.current || sessionLoading || typeof window === 'undefined') return;
+    const raw = new URLSearchParams(window.location.search).get('edit');
+    const saleId = raw ? Number(raw) : NaN;
+    if (!Number.isInteger(saleId) || saleId <= 0) {
+      editHydrateDoneRef.current = true;
+      return;
+    }
+    if (paymentMethods.length === 0 || barbers.length === 0) return;
+    editHydrateDoneRef.current = true;
+    void handleEditSale(saleId);
+  }, [sessionLoading, paymentMethods.length, barbers.length, handleEditSale]);
+
   const invoicePanelProps = {
     state,
     totals,
@@ -1065,7 +1094,7 @@ export default function PosPage() {
         <div className="sticky top-0 z-30 shrink-0 border-b border-border bg-card px-3 py-2">
           <div className="mb-2 flex justify-end">
             <BarberHandoffInbox
-              enabled={Boolean(shift?.ID)}
+              enabled={Boolean(shift?.ID) && !isDesktopLayout}
               onClaim={handleClaimHandoff}
               claimingId={claimingHandoffId}
             />
@@ -1131,7 +1160,7 @@ export default function PosPage() {
         <aside aria-label="العميل" className="order-1 flex w-full shrink-0 flex-col gap-3 overflow-y-auto border-e border-border bg-card p-3 scrollbar-luxury-v lg:order-1 lg:w-72 xl:w-80">
           <div className="flex justify-end">
             <BarberHandoffInbox
-              enabled={Boolean(shift?.ID)}
+              enabled={Boolean(shift?.ID) && isDesktopLayout}
               onClaim={handleClaimHandoff}
               claimingId={claimingHandoffId}
             />

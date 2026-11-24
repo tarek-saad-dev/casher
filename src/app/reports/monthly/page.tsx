@@ -6,7 +6,6 @@ import type { MonthlyBusinessReport } from '@/lib/types/monthly-report';
 import { calculateMonthlyFinancialEquations } from '@/lib/reports/monthlyFinancialEquations';
 import MonthlyFinancialEquations from '@/components/reports/MonthlyFinancialEquations';
 import FinancialClassificationPanel from '@/components/reports/FinancialClassificationPanel';
-import { generateMonthlyReportPDF, downloadPDF } from '@/lib/services/MonthlyReportPDFService';
 
 const ARABIC_MONTHS = [
   'يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو',
@@ -78,6 +77,8 @@ export default function MonthlyBusinessReportPage() {
     
     setPdfLoading(true);
     try {
+      // PDF libraries (jspdf + html2canvas) load only when exporting.
+      const { generateMonthlyReportPDF, downloadPDF } = await import('@/lib/services/MonthlyReportPDFService');
       const blob = await generateMonthlyReportPDF({
         month,
         year,

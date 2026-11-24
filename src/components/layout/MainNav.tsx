@@ -2,10 +2,11 @@
 
 import { useState, useEffect, useMemo, useCallback, type ReactNode } from 'react';
 import { usePermissions } from '@/components/providers/PermissionsProvider';
+import { useRouteAccess } from '@/hooks/useRouteAccess';
 import { useTenantShell } from '@/components/tenant/TenantShellProvider';
 import { brandPrintTitle, brandWordmark } from '@/platform/branding/brandProfile';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { ChevronDown, Menu, X, PanelRightClose, PanelRightOpen, MonitorPlay, Crown, ServerCog } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import {
@@ -28,7 +29,8 @@ import { useWhatsAppAttention } from '@/components/layout/WhatsAppAttentionProvi
 // DRVO App Shell — contextual sidebar (ADR-023 `sidebar` pattern).
 // Plum marks navigation context (active item), neutrals everywhere else.
 // No per-section colours, glows or emojis. Permission / tenant-app filtering
-// is unchanged: items come from nav-config and are filtered by canSeePage.
+// comes from the route registry (useRouteAccess) — the same rule the page
+// gate uses — plus the tenant's installed apps.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const COLLAPSE_KEY = 'drvo-sidebar-collapsed';
@@ -54,6 +56,8 @@ function CountBadge({ count, tone = 'danger' }: { count: number; tone?: 'danger'
 
 export default function MainNav({ suppressMobileChrome = false }: MainNavProps) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const search = searchParams?.toString() ?? '';
   const { isOpen: mobileMenuOpen, close: closeMobileMenu, toggle: toggleMobileMenu } = useMobileNav();
   const { mode: navMode, setMode: setNavMode } = useNavMode();
   const [expandedSections, setExpandedSections] = useState<string[]>(['المدخلات']);
@@ -61,12 +65,13 @@ export default function MainNav({ suppressMobileChrome = false }: MainNavProps) 
   const [expandedMobileCategories, setExpandedMobileCategories] = useState<string[]>(['العمليات اليومية']);
   const [isCollapsed, setIsCollapsedState] = useState(false);
 
-  const { canSeePage: canSeePageByRole, access, loading: permLoading, isAuthenticated } = usePermissions();
+  const { access, loading: permLoading, isAuthenticated } = usePermissions();
+  const { canOpen } = useRouteAccess();
   const { count: whatsAppAttentionCount } = useWhatsAppAttention();
   const { snapshot: tenantShell, isAppRouteAvailable } = useTenantShell();
   const canSeePage = useCallback(
-    (href: string) => (href === '/admin/apps' || href === '/admin/billing' ? canSeePageByRole('/admin/tenant') : canSeePageByRole(href)) && isAppRouteAvailable(href),
-    [canSeePageByRole, isAppRouteAvailable],
+    (href: string) => canOpen(href) && isAppRouteAvailable(href),
+    [canOpen, isAppRouteAvailable],
   );
   const brandName = tenantShell?.brand.displayName ?? '';
   const brandTitle = brandPrintTitle(brandName);
@@ -102,30 +107,18 @@ export default function MainNav({ suppressMobileChrome = false }: MainNavProps) 
     })).filter(section => section.items.length > 0);
   }, [access, permLoading, isAuthenticated, canSeePage]);
 
-  // Badge count for payment audit
-  const [paymentAuditCount, setPaymentAuditCount] = useState<number>(0);
-  useEffect(() => {
-    const fetchCount = async () => {
-      try {
-        const response = await fetch('/api/audit/unspecified-payment-methods/count');
-        if (response.ok) {
-          const data = await response.json();
-          setPaymentAuditCount(data.count || 0);
-        }
-      } catch {
-        // Silent fail - badge will just show 0
-      }
-    };
-    fetchCount();
-    const interval = setInterval(fetchCount, 5 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, []);
+  // The payment-audit badge used to poll /api/audit/unspecified-payment-methods/count
+  // on every page. That API was removed (96ef91ad), so the call only produced 404s;
+  // the badge stays hidden until a count endpoint exists again.
+  const paymentAuditCount = 0;
 
-  const isActive = (href: string) => navIsRouteActive(pathname, href);
-  const activeSectionTitle = getActiveSectionTitle(pathname);
-  const activeNavItem = getActiveNavItem(pathname);
+  const activeSectionTitle = getActiveSectionTitle(pathname, search);
+  const activeNavItem = getActiveNavItem(pathname, search);
   const activeCategoryTitle = getActiveCategoryTitle(activeSectionTitle);
-  const activeMainTitle = getActiveMainTitle(pathname);
+  const activeMainTitle = getActiveMainTitle(pathname, search);
+  // Exactly one menu item is active: the most specific match (tabs included).
+  const isActive = (href: string) =>
+    activeNavItem ? activeNavItem.href === href : navIsRouteActive(pathname, href, search);
   const activeDirectLink = useMemo(() => {
     if (navIsRouteActive(pathname, '/operations')) return { label: 'لوحة التشغيل', section: 'اختصار' };
     if (navIsRouteActive(pathname, '/admin/cut-club')) return { label: clubLabel, section: 'اختصار' };

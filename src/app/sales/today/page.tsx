@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import { Calendar, Loader2, RotateCcw, TrendingUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import TodaySalesKpiCards from '@/components/sales/TodaySalesKpiCards';
@@ -18,6 +19,7 @@ type AnalysisMode = 'overview' | 'shift' | 'payment' | 'barber' | 'service' | 'h
 
 export default function TodaySalesPage() {
   const { user } = useSession();
+  const router = useRouter();
   const canDelete = usePermission('sales.delete');
   const [data, setData] = useState<TodaySalesData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -277,7 +279,7 @@ export default function TodaySalesPage() {
                   }}
                   onEdit={(txn) => {
                     // Navigate to POS with invoice data for editing
-                    window.location.href = `/income/pos?edit=${txn.invId}`;
+                    router.push(`/income/pos?edit=${txn.invId}`);
                   }}
                   onDelete={(invId) => {
                     addToast('success', `تم حذف الفاتورة #${invId} بنجاح`);

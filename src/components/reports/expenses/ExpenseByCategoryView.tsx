@@ -5,7 +5,6 @@ import { ChevronLeft, ChevronDown, Edit2, Trash2, AlertTriangle, FileDown, Loade
 import { Button } from '@/components/ui/button';
 import EditExpenseCategoryDialog from './EditExpenseCategoryDialog';
 import type { ExpenseTransaction } from '@/lib/types';
-import { exportCategoryToPdf } from '@/lib/exportCategoryPdf';
 import {
   formatArabicCurrency,
   formatArabicDate,
@@ -385,6 +384,7 @@ export default function ExpenseByCategoryView({
                         e.stopPropagation();
                         setExportingCategory(category.ExpINID);
                         try {
+                          const { exportCategoryToPdf } = await import('@/lib/exportCategoryPdf');
                           await exportCategoryToPdf({
                             categoryName: category.CatName,
                             totalAmount: category.TotalAmount,

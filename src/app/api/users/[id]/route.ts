@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
 import { requireTenantSession } from '@/lib/api-auth';
 import { hashPassword } from '@/lib/auth/passwordHash';
+import { invalidateUserAuth } from '@/lib/auth/authMemo';
 import { hasPermission } from '@/lib/permissions';
 import { grantStaffAccessToAllActiveBranches } from '@/lib/branch/userLoginBranch';
 import { validateUserBranchAccess } from '@/lib/branch/access';
@@ -208,6 +209,7 @@ export async function DELETE(
       .input('id', sql.Int, userID)
       .query(`UPDATE [dbo].[TblUser] SET isDeleted = 1 WHERE UserID = @id`);
 
+    invalidateUserAuth(userID);
     console.log(`[users] Soft-deleted UserID=${userID} by ${sessionUser.UserName}`);
     return NextResponse.json({ ok: true });
   } catch (err: unknown) {

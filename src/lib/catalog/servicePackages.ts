@@ -179,6 +179,50 @@ export async function getPackageItems(
   return (result.recordset as Record<string, unknown>[]).map(mapItemRow);
 }
 
+/**
+ * Items for many packages in one round trip per 500 ids (instead of one query
+ * per package). Same rows and ordering as getPackageItems for each package.
+ */
+export async function getPackageItemsForPackages(
+  db: ConnectionPool,
+  tenantId: string,
+  packageIds: number[],
+): Promise<Map<number, PackageItemRow[]>> {
+  const tid = requireMasterDataTenantId(tenantId, 'getPackageItemsForPackages');
+  const ids = [...new Set(packageIds.filter((id) => Number.isInteger(id) && id > 0))];
+  const map = new Map<number, PackageItemRow[]>(ids.map((id) => [id, []]));
+  for (let start = 0; start < ids.length; start += 500) {
+    const chunk = ids.slice(start, start + 500);
+    const req = db.request().input('tenantId', sql.UniqueIdentifier, tid);
+    const params = chunk.map((id, i) => {
+      req.input(`p${i}`, sql.Int, id);
+      return `@p${i}`;
+    });
+    const result = await req.query(`
+      SELECT
+        i.PackageItemID,
+        i.PackageID,
+        i.ProID,
+        i.Qty,
+        i.SortOrder,
+        i.IsOptional,
+        pro.ProName,
+        pro.ProNameAr,
+        pro.SPrice1,
+        pro.DurationMinutes
+      FROM dbo.TblServicePackageItem i
+      LEFT JOIN dbo.TblPro pro ON pro.ProID = i.ProID AND pro.TenantId = i.TenantId
+      WHERE i.TenantId = @tenantId AND i.PackageID IN (${params.join(', ')})
+      ORDER BY i.PackageID, i.SortOrder, i.PackageItemID
+    `);
+    for (const row of result.recordset as Record<string, unknown>[]) {
+      const item = mapItemRow(row);
+      map.get(Number(row.PackageID))?.push(item);
+    }
+  }
+  return map;
+}
+
 function normalizeItems(items: PackageItemInput[] | undefined): PackageItemInput[] {
   if (!Array.isArray(items)) return [];
   const seen = new Set<number>();

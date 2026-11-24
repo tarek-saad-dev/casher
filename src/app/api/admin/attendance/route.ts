@@ -27,12 +27,17 @@ import {
   empBranchWorkDayCloseErrorResponse,
   isEmpBranchWorkDayCloseError,
 } from "@/lib/hr/empBranchWorkDayClose.http";
+import { skipSchemaProbe } from '@/lib/schemaProbeOnce';
 import {
   saveAdminAttendance,
   AttendanceCommandError,
 } from "@/modules/attendance";
 
+// Schema probes run once per process (flag set only after all succeed).
+let attendanceSchemaEnsured = false;
+
 async function ensureAttendanceTable(db: { request: () => sql.Request }) {
+  if (skipSchemaProbe(attendanceSchemaEnsured)) return;
   await db.request().query(`
     IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'TblEmpAttendance')
     BEGIN
@@ -72,6 +77,7 @@ async function ensureAttendanceTable(db: { request: () => sql.Request }) {
   `);
   await ensureAttendanceBreakSchema(db);
   await ensureAttendanceBreakTimeSchema(db);
+  attendanceSchemaEnsured = true;
 }
 
 // GET /api/admin/attendance?date=YYYY-MM-DD&employeeScope=all|<tenant branch code>&onlyPayrollEnabled=true&includeFreelance=false
@@ -125,7 +131,8 @@ export async function GET(req: NextRequest) {
       }
     > = [];
 
-    for (const vb of viewScope.branches) {
+    // Branches are loaded in parallel (each is independent); rows are sorted below.
+    const perBranchRows = await Promise.all(viewScope.branches.map(async (vb) => {
       const result = await db
         .request()
         .input("workDate", sql.Date, dateStr)
@@ -261,8 +268,10 @@ export async function GET(req: NextRequest) {
       const attendanceIds = rawRows
         .map((r) => r.AttendanceID)
         .filter((id): id is number => id != null && id > 0);
-      const breaksMap = await loadBreaksByAttendanceIds(db, attendanceIds);
-      const breakTimesMap = await loadBreakTimesByAttendanceIds(db, attendanceIds);
+      const [breaksMap, breakTimesMap] = await Promise.all([
+        loadBreaksByAttendanceIds(db, attendanceIds),
+        loadBreakTimesByAttendanceIds(db, attendanceIds),
+      ]);
       for (const row of rawRows) {
         if (row.AttendanceID != null) {
           row.Breaks = breaksMap.get(row.AttendanceID) ?? [];
@@ -283,8 +292,9 @@ export async function GET(req: NextRequest) {
         BranchCode: vb.branchCode,
         BranchName: vb.branchName,
       }));
-      allRows.push(...rows);
-    }
+      return rows;
+    }));
+    for (const rows of perBranchRows) allRows.push(...rows);
 
     allRows.sort((a, b) => {
       const bc = String(a.BranchCode).localeCompare(String(b.BranchCode));

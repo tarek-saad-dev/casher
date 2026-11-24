@@ -5,6 +5,7 @@
 import 'server-only';
 import { getPool, sql } from '@/lib/db';
 import { getBranchByCode, getBranchById, branchNow } from './repository';
+import { invalidateUserAuth } from '@/lib/auth/authMemo';
 import type { BranchRecord } from './types';
 import { BranchDomainError } from './types';
 import {
@@ -370,6 +371,17 @@ export async function seedPartnerSharesFromSourceBranch(args: {
  * currently-valid row for (userId, branchId) is left untouched.
  */
 export async function grantUserBranchAccess(
+  input: GrantUserBranchAccessInput,
+): Promise<GrantUserBranchAccessResult> {
+  try {
+    return await grantUserBranchAccessUncached(input);
+  } finally {
+    // Drop any cached (possibly negative) branch-access answer for this user.
+    invalidateUserAuth(input.userId);
+  }
+}
+
+async function grantUserBranchAccessUncached(
   input: GrantUserBranchAccessInput,
 ): Promise<GrantUserBranchAccessResult> {
   const db = await getPool();

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Check, Clock, Crown, Gift, Loader2, Plus, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { fetchJsonShared } from '@/lib/swrCache';
 import type { Barber, CartItem } from '@/lib/types';
 import {
   buildPackageCartItems,
@@ -135,8 +136,9 @@ export default function PackagesSection({
       setLoading(true);
       setLoadError('');
       try {
-        const res = await fetch('/api/pos/packages');
-        const data = await res.json();
+        // Fresh every mount (prices), but concurrent mounts share one request.
+        const res = await fetchJsonShared<{ packages?: unknown; error?: string }>('/api/pos/packages');
+        const data = res.data ?? {};
         if (!res.ok) throw new Error(data.error || 'فشل تحميل الباقات');
         if (!cancelled) {
           const list = Array.isArray(data.packages) ? data.packages : [];

@@ -8,6 +8,7 @@ import { capabilitiesFor } from './lifecycle';
 import { getBranchById } from './repository';
 import type { BranchLifecycleStatus, BranchRecord } from './types';
 import { BranchDomainError } from './types';
+import { invalidateBranchAuth } from '@/lib/auth/authMemo';
 
 export type SyncOperationalFlagsResult = {
   branchId: number;
@@ -91,6 +92,7 @@ export async function syncOperationalFlagsFromLifecycle(
       `);
   }
 
+  invalidateBranchAuth(branch.branchId);
   const afterBranch = await getBranchById(branch.branchId);
   const after = afterBranch
     ? {

@@ -59,7 +59,10 @@ export default function BarberHandoffInbox({ enabled, onClaim, claimingId }: Pro
   useEffect(() => {
     void refresh();
     if (!enabled) return;
-    const id = window.setInterval(() => void refresh(), 12_000);
+    // Poll only while the tab is visible (a hidden POS tab must not load the server).
+    const id = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void refresh();
+    }, 12_000);
     const onFocus = () => void refresh();
     window.addEventListener('focus', onFocus);
     return () => {

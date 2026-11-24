@@ -15,6 +15,7 @@ import {
 import { BranchDomainError } from './types';
 import type { BranchRecord } from './types';
 import { invalidatePublicSettingsCache } from '@/lib/publicBookingHelpers';
+import { invalidateBranchAuth } from '@/lib/auth/authMemo';
 
 export type TransitionBranchLifecycleInput = {
   branchId: number;
@@ -211,6 +212,7 @@ export async function transitionBranchLifecycle(
   }
 
   invalidatePublicSettingsCache(branch.branchId);
+  invalidateBranchAuth(branch.branchId);
   try {
     const { invalidatePublicBookingBranchContextCache } = await import(
       '@/lib/booking/publicBookingBranchContext'

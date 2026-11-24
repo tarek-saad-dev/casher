@@ -20,10 +20,6 @@ import {
   isAtPartnersReportMinimum,
 } from '@/lib/reports/partnersReportPeriod';
 import type { PartnersMonthlyReportResponse } from '@/lib/types/partners-report';
-import {
-  downloadPDF,
-  generatePartnersReportPDF,
-} from '@/lib/services/partnersReportPdfService';
 
 function parseYearFromParams(value: string | null, fallback: number): number {
   const parsed = value ? parseInt(value, 10) : fallback;
@@ -215,6 +211,8 @@ function PartnersReportPageContent({
 
     setPrintLoading(true);
     try {
+      // PDF libraries (jspdf + html2canvas) load only when exporting.
+      const { downloadPDF, generatePartnersReportPDF } = await import('@/lib/services/partnersReportPdfService');
       const blob = await generatePartnersReportPDF({
         report,
         title,

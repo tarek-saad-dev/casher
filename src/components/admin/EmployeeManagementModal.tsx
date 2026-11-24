@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
@@ -99,6 +100,7 @@ export default function EmployeeManagementModal({
   employee, open, onClose, onRefresh, onOpenWorkHours: _onOpenWorkHours 
 }: EmployeeManagementModalProps) {
   void _onOpenWorkHours;
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState('profile');
   
   // Profile state
@@ -279,7 +281,7 @@ export default function EmployeeManagementModal({
   // Phase 1S — legacy weekly schedule editors removed (SoT = branch-schedule).
   const openBranchSchedule = () => {
     if (!profile?.EmpID) return;
-    window.location.href = `/admin/hr/employees/${profile.EmpID}/branch-schedule`;
+    router.push(`/admin/hr/employees/${profile.EmpID}/branch-schedule`);
   };
 
   const handleCopySchedule = () => {
