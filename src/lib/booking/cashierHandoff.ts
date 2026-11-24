@@ -21,6 +21,7 @@ export {
   parseHandoffPayload,
   serializeHandoffPayload,
 } from '@/lib/booking/cashierHandoffShared';
+import { skipSchemaProbe } from '@/lib/schemaProbeOnce';
 
 const LOCK_TTL_MS = 5 * 60 * 1000;
 
@@ -28,7 +29,7 @@ const LOCK_TTL_MS = 5 * 60 * 1000;
 let handoffTableEnsured = false;
 
 export async function ensureBookingCashierHandoffTable(): Promise<void> {
-  if (handoffTableEnsured) return;
+  if (skipSchemaProbe(handoffTableEnsured)) return;
   const pool = await getPool();
   await pool.request().query(`
     IF OBJECT_ID(N'dbo.TblBookingCashierHandoff', N'U') IS NULL

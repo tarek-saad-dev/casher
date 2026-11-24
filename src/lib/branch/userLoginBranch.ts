@@ -3,6 +3,7 @@ import { getPool, sql } from '@/lib/db';
 import { grantUserBranchAccess } from './bootstrap';
 import { getBranchById, listActiveBranches } from './repository';
 import { BranchDomainError } from './types';
+import { invalidateUserAuth } from '@/lib/auth/authMemo';
 import { listTenantLegacyBranchIds } from '@/platform/tenant/tenantContext';
 
 export type AssignUserLoginBranchResult = {
@@ -42,6 +43,7 @@ async function setSoleDefaultBranch(userId: number, branchId: number): Promise<v
       WHERE UserID = @userId
         AND BranchID = @branchId
     `);
+  invalidateUserAuth(userId);
 }
 
 /**

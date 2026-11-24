@@ -7,6 +7,7 @@ import { getBranchById } from './repository';
 import { BranchDomainError, type BranchRecord } from './types';
 import { normalizeEgyptianDisplayPhone } from './branchDisplayIdentity';
 import { invalidatePublicSettingsCache } from '@/lib/publicBookingHelpers';
+import { invalidateBranchAuth } from '@/lib/auth/authMemo';
 
 export type UpdateBranchSetupInput = {
   branchId: number;
@@ -99,6 +100,7 @@ export async function updateBranchSetupFields(
     `);
 
   invalidatePublicSettingsCache(input.branchId);
+  invalidateBranchAuth(input.branchId);
 
   if (
     input.defaultOpenTime !== undefined ||

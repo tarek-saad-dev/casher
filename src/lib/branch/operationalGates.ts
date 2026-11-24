@@ -15,6 +15,7 @@ import {
 import { getUserOpenShift, type ShiftMoveRecord } from './shiftSession';
 import { getBranchById } from './repository';
 import { validateUserBranchAccess } from './access';
+import { branchKey, branchRecordMemo } from '@/lib/auth/authMemo';
 import { requireOperationalSnapshot } from '@/modules/operations/application/OperationalContextService';
 import { ensureBusinessDayCurrent } from '@/modules/operations/application/reconcileBusinessDay';
 import { withOperationalRequestScope } from '@/modules/operations/requestScope';
@@ -26,7 +27,9 @@ async function toOperationalBranchContext(
   userId: number,
   branchId: number,
 ): Promise<ActiveBranchContext> {
-  const branch = await getBranchById(branchId);
+  const branch = (await branchRecordMemo.getOrLoad(branchKey(branchId), () =>
+    getBranchById(branchId),
+  )) as Awaited<ReturnType<typeof getBranchById>>;
   if (!branch || !branch.isActive) {
     throw new BranchDomainError('BRANCH_NOT_FOUND', 'الفرع غير موجود', 403);
   }

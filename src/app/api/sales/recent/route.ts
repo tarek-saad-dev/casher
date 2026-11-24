@@ -49,23 +49,35 @@ export async function GET() {
       ORDER BY h.invDate DESC, h.invID DESC
     `);
 
-    // Get services for each sale separately to avoid complex aggregation
+    // Services for all listed sales in one query (was one query per sale).
     const sales = result.recordset;
-    
-    for (const sale of sales) {
-      const servicesResult = await db.request()
-        .input('invID', sale.InvID)
-        .query(`
-          SELECT 
+    const servicesByInv = new Map<number, Array<{ ProName: string | null; EmpName: string | null; EmpID?: number | null }>>();
+    if (sales.length > 0) {
+      const detailReq = db.request();
+      const invParams = sales.map((sale: { InvID: number }, i: number) => {
+        detailReq.input(`inv${i}`, sale.InvID);
+        return `@inv${i}`;
+      });
+      const servicesResult = await detailReq.query(`
+          SELECT
+            d.invID,
             p.ProName,
             e.EmpName
           FROM [dbo].[TblinvServDetail] d
           LEFT JOIN [dbo].[TblPro] p ON d.ProID = p.ProID
           LEFT JOIN [dbo].[TblEmp] e ON d.EmpID = e.EmpID
-          WHERE d.invID = @invID AND d.invType = N'مبيعات'
+          WHERE d.invID IN (${invParams.join(', ')}) AND d.invType = N'مبيعات'
+          ORDER BY d.invID, d.ID
         `);
-      
-      const services = servicesResult.recordset;
+      for (const row of servicesResult.recordset) {
+        const list = servicesByInv.get(Number(row.invID)) ?? [];
+        list.push({ ProName: row.ProName, EmpName: row.EmpName });
+        servicesByInv.set(Number(row.invID), list);
+      }
+    }
+
+    for (const sale of sales) {
+      const services = servicesByInv.get(Number(sale.InvID)) ?? [];
       sale.ServicesSummary = services.map(s => 
         `${s.ProName || 'خدمة'} (${s.EmpName || 'موظف'})`
       ).join(', ');

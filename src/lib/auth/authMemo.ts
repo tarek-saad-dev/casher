@@ -73,6 +73,14 @@ export class KeyedTtlMemo<T> {
 export const userStatusMemo = new KeyedTtlMemo<unknown>(AUTH_MEMO_TTL_MS);
 export const userAccessMemo = new KeyedTtlMemo<unknown>(AUTH_MEMO_TTL_MS);
 export const staffTenantMemo = new KeyedTtlMemo<unknown>(AUTH_MEMO_TTL_MS);
+/** Branch-context gate: user ↔ branch link (keyed by userKey(userId, branchId)). */
+export const userBranchAccessMemo = new KeyedTtlMemo<unknown>(AUTH_MEMO_TTL_MS);
+/** Branch-context gate: the branch row itself (keyed by branchKey(branchId)). */
+export const branchRecordMemo = new KeyedTtlMemo<unknown>(AUTH_MEMO_TTL_MS);
+
+export function branchKey(branchId: number): string {
+  return `b:${branchId}:`;
+}
 
 export function userKey(userId: number, ...parts: Array<string | number | null | undefined>): string {
   return [`u:${userId}`, ...parts.map((p) => String(p ?? ''))].join(':') + ':';
@@ -84,6 +92,16 @@ export function invalidateUserAuth(userId: number): void {
   userStatusMemo.invalidate(prefix);
   userAccessMemo.invalidate(prefix);
   staffTenantMemo.invalidate(prefix);
+  userBranchAccessMemo.invalidate(prefix);
+}
+
+/**
+ * A branch row changed (active flag, lifecycle, code): drop it and every cached
+ * user↔branch link, since those carry the branch's active flag too.
+ */
+export function invalidateBranchAuth(branchId: number): void {
+  branchRecordMemo.invalidate(branchKey(branchId));
+  userBranchAccessMemo.clear();
 }
 
 /** Test-only. */
@@ -91,6 +109,8 @@ export function resetAuthMemo(): void {
   userStatusMemo.clear();
   userAccessMemo.clear();
   staffTenantMemo.clear();
+  userBranchAccessMemo.clear();
+  branchRecordMemo.clear();
 }
 
 /** Page grants changed for a role/page: every user's access answer is stale. */

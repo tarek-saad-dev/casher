@@ -4,6 +4,7 @@ import { PARTNER_ROLE_KEY } from '@/lib/partnerAccess';
 import { grantUserBranchAccess } from './bootstrap';
 import { getBranchById, listAllBranches, listUserBranchAccessRows } from './repository';
 import { BranchDomainError } from './types';
+import { invalidateUserAuth } from '@/lib/auth/authMemo';
 
 export type PartnerUserBranchRow = {
   userId: number;
@@ -156,6 +157,7 @@ export async function assignPartnerHomeBranch(input: {
       WHERE UserID = @userId
         AND BranchID = @branchId
     `);
+  invalidateUserAuth(input.userId);
 
   return {
     userId: input.userId,

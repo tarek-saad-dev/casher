@@ -94,8 +94,8 @@ async function loadUserAccess(userID: number, userName: string, userLevel: strin
         JOIN dbo.TblUserRoles ur   ON ur.RoleID = pra.RoleID
         WHERE ur.UserID = @uid AND sp.IsActive = 1 AND pra.CanView = 1
       `);
-      allowedPagePaths = [...new Set(roleRes.recordset.map((x: { PagePath: string }) => x.PagePath))];
-      allowedPageKeys  = [...new Set(roleRes.recordset.map((x: { PageKey: string }) => x.PageKey))];
+      allowedPagePaths = [...new Set<string>(roleRes.recordset.map((x: { PagePath: string }) => x.PagePath))];
+      allowedPageKeys  = [...new Set<string>(roleRes.recordset.map((x: { PageKey: string }) => x.PageKey))];
     } else {
       const allRes = await db.request().query(`
         SELECT PageKey, PagePath FROM dbo.TblSystemPages WHERE IsActive=1 AND AccessMode='all'

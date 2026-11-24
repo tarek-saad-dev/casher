@@ -23,6 +23,7 @@ import {
 import { detectQueueTicketsSchema } from "@/lib/queueSchema";
 import { resolveQueueHistoryActorColumn } from "@/lib/queue/queueTicketHistoryActor";
 import { isEmployeeEligibleForBranchBookings } from "@/lib/branch/bookingQueueOwnership";
+import { skipSchemaProbe } from '@/lib/schemaProbeOnce';
 
 export const runtime = "nodejs";
 
@@ -33,7 +34,7 @@ let estimateColumnsEnsured = false;
 async function ensureEstimateColumns(
   db: Awaited<ReturnType<typeof getPool>>,
 ): Promise<void> {
-  if (estimateColumnsEnsured) return;
+  if (skipSchemaProbe(estimateColumnsEnsured)) return;
   try {
     await db.request().query(`
       IF COL_LENGTH('dbo.QueueTickets', 'EstimatedStartTime') IS NULL

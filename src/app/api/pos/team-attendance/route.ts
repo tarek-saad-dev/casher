@@ -11,6 +11,7 @@ import {
   isTransferDestinationActive,
   isTransferSourceInactive,
 } from '@/lib/hr/temporaryTransferWindow';
+import { skipSchemaProbe } from '@/lib/schemaProbeOnce';
 
 // The DDL probe only needs to succeed once per process; it used to cost a
 // remote round trip on every POS load.
@@ -19,7 +20,7 @@ let attendanceTableEnsured = false;
 async function ensureAttendanceTable(db: {
   request: () => { query: (q: string) => Promise<unknown> };
 }) {
-  if (attendanceTableEnsured) return;
+  if (skipSchemaProbe(attendanceTableEnsured)) return;
   await db.request().query(`
     IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'TblEmpAttendance')
     BEGIN

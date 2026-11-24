@@ -6,13 +6,17 @@ import {
   listUserValidBranchAccess,
 } from './repository';
 import { BranchDomainError, type UserBranchAccessRecord } from './types';
+import { userBranchAccessMemo, userKey } from '@/lib/auth/authMemo';
 
 export async function validateUserBranchAccess(
   userId: number,
   branchId: number,
   at: Date = branchNow(),
 ): Promise<UserBranchAccessRecord> {
-  const row = await getUserBranchAccess(userId, branchId);
+  // Row is memoized briefly (authMemo); the validity window is still checked at `at`.
+  const row = (await userBranchAccessMemo.getOrLoad(userKey(userId, 'branch', branchId), () =>
+    getUserBranchAccess(userId, branchId),
+  )) as UserBranchAccessRecord | null;
   if (!row) {
     throw new BranchDomainError(
       'NO_BRANCH_ACCESS',

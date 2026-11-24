@@ -2,13 +2,14 @@ import { NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
 import { getAvailableBarbers } from '@/lib/barberAvailability';
 import { requireTenantSession } from '@/lib/api-auth';
+import { skipSchemaProbe } from '@/lib/schemaProbeOnce';
 
 // ── Inline idempotent migration for estimate columns ─────────────────────────
 // Schema probe runs once per process (set only after it succeeds).
 let estimateColumnsEnsured = false;
 
 async function ensureEstimateColumns(db: Awaited<ReturnType<typeof getPool>>): Promise<void> {
-  if (estimateColumnsEnsured) return;
+  if (skipSchemaProbe(estimateColumnsEnsured)) return;
   try {
     await db.request().query(`
       IF COL_LENGTH('dbo.QueueTickets', 'EstimatedStartTime') IS NULL

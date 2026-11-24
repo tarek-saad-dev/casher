@@ -8,7 +8,13 @@ import {
   getUserBranchAccess,
 } from './repository';
 import { validateUserBranchAccess } from './access';
-import { staffTenantMemo, userKey, userStatusMemo } from '@/lib/auth/authMemo';
+import {
+  branchKey,
+  branchRecordMemo,
+  staffTenantMemo,
+  userKey,
+  userStatusMemo,
+} from '@/lib/auth/authMemo';
 import {
   assertLegacyBranchInTenant,
   isTenantContextError,
@@ -131,7 +137,9 @@ async function resolveActiveBranchContext(at: Date): Promise<ActiveBranchContext
     throw new BranchDomainError('USER_DELETED', 'تم تعطيل الحساب', 401);
   }
 
-  const branch = await getBranchById(payload.ActiveBranchID);
+  const branch = (await branchRecordMemo.getOrLoad(branchKey(payload.ActiveBranchID), () =>
+    getBranchById(payload.ActiveBranchID),
+  )) as Awaited<ReturnType<typeof getBranchById>>;
   if (!branch) {
     throw new BranchDomainError('BRANCH_NOT_FOUND', 'الفرع غير موجود', 403);
   }
