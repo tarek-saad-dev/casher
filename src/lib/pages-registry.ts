@@ -19,10 +19,7 @@ export const SYSTEM_PAGES: PageDefinition[] = [
   { key: 'income.new',              name: 'إيراد جديد',              path: '/income/new',                      section: 'المدخلات',         accessMode: 'roles', sort: 11,  defaultRoles: ['super_admin','admin','cashier'] },
   // ── Sales / revenue review ──────────────────────────────────────────────────
   { key: 'sales.today',             name: 'مبيعات اليوم',            path: '/sales/today',                     section: 'مراجعة المدخلات',  accessMode: 'roles', sort: 20,  defaultRoles: ['super_admin','admin','manager','cashier','viewer'] },
-  { key: 'income_review.all_sales', name: 'كل المبيعات',             path: '/income-review/all-sales',         section: 'مراجعة المدخلات',  accessMode: 'roles', sort: 21,  defaultRoles: ['super_admin','admin','manager','viewer'] },
-  { key: 'income_review.today_rev', name: 'إيرادات اليوم',           path: '/income-review/today-revenue',     section: 'مراجعة المدخلات',  accessMode: 'roles', sort: 22,  defaultRoles: ['super_admin','admin','manager','cashier','viewer'] },
   { key: 'income_review.all_rev',   name: 'كل الإيرادات',            path: '/income-review/all-revenue',       section: 'مراجعة المدخلات',  accessMode: 'roles', sort: 23,  defaultRoles: ['super_admin','admin','accountant'] },
-  { key: 'income_review.payments',  name: 'المدفوعات',               path: '/income-review/payments',          section: 'مراجعة المدخلات',  accessMode: 'roles', sort: 24,  defaultRoles: ['super_admin','admin','accountant'] },
   // ── Reports ─────────────────────────────────────────────────────────────────
   { key: 'reports.emp_services',    name: 'خدمات الصنايعية',         path: '/admin/reports/employee-services', section: 'تقارير موظف',     accessMode: 'roles', sort: 25,  defaultRoles: ['super_admin','admin','manager'] },
   { key: 'reports.emp_monthly_work_revenue', name: 'مواعيد وإيرادات الموظفين', path: '/admin/reports/employee-monthly-work-revenue', section: 'تقارير موظف', accessMode: 'roles', sort: 26, defaultRoles: ['super_admin','admin','manager'] },
@@ -40,9 +37,6 @@ export const SYSTEM_PAGES: PageDefinition[] = [
   { key: 'treasury.group_daily',       name: 'خزنة كل الفروع',          path: '/treasury/group-daily',            section: 'الخزنة',            accessMode: 'super_admin_only', sort: 505 },
   { key: 'cashier_treasury_daily',    name: 'خزنة الكاشير اليومية',      path: '/cashier/treasury/daily',          section: 'الكاشير',          accessMode: 'roles', sort: 56,  defaultRoles: ['super_admin','cashier','admin','manager'] },
   { key: 'treasury.period_summary', name: 'ملخص الخزنة الدوري',      path: '/treasury/period-summary',         section: 'الخزنة',            accessMode: 'roles', sort: 51,  defaultRoles: ['super_admin','admin','manager','accountant','viewer'] },
-  { key: 'treasury.movement',       name: 'حركة الخزنة',             path: '/treasury/movement',               section: 'الخزنة',            accessMode: 'roles', sort: 52,  defaultRoles: ['super_admin','admin','accountant','viewer'] },
-  { key: 'treasury.summary',        name: 'ملخص حسب الدفع',          path: '/treasury/summary',                section: 'الخزنة',            accessMode: 'roles', sort: 53,  defaultRoles: ['super_admin','admin','accountant'] },
-  { key: 'treasury.shift_close',    name: 'تقفيل الوردية',           path: '/treasury/shift-close',            section: 'الخزنة',            accessMode: 'roles', sort: 54,  defaultRoles: ['super_admin','admin','accountant'] },
   { key: 'treasury.monthly_close',  name: 'تقفيل الشهر',             path: '/admin/monthly-closing',           section: 'الخزنة',            accessMode: 'roles', sort: 55,  defaultRoles: ['super_admin','admin','accountant'] },
   // ── Budget ───────────────────────────────────────────────────────────────────
   { key: 'budget.main',             name: 'الميزانية الشهرية',       path: '/budget',                          section: 'الميزانية',         accessMode: 'roles', sort: 60,  defaultRoles: ['super_admin','admin','accountant'] },
@@ -70,7 +64,6 @@ export const SYSTEM_PAGES: PageDefinition[] = [
   { key: 'admin.products',          name: 'المنتجات',                path: '/admin/products',                  section: 'الإدارة',           accessMode: 'roles', sort: 1035, defaultRoles: ['super_admin','admin'] },
   { key: 'admin.inventory',         name: 'المخزون',                 path: '/admin/inventory',                 section: 'الإدارة',           accessMode: 'roles', sort: 1036, defaultRoles: ['super_admin','admin'] },
   { key: 'admin.packages',          name: 'الباكدجات',               path: '/admin/packages',                  section: 'الإدارة',           accessMode: 'roles', sort: 104, defaultRoles: ['super_admin','admin'] },
-  { key: 'admin.payment_methods',   name: 'طرق الدفع',               path: '/admin/payment-methods',           section: 'الإدارة',           accessMode: 'roles', sort: 105, defaultRoles: ['super_admin','admin'] },
   { key: 'admin.categories',        name: 'التصنيفات',               path: '/admin/categories',                section: 'الإدارة',           accessMode: 'roles', sort: 106, defaultRoles: ['super_admin','admin'] },
   { key: 'admin.loyalty',           name: 'إدارة النقاط',            path: '/admin/loyalty',                   section: 'الإدارة',           accessMode: 'roles', sort: 107, defaultRoles: ['super_admin','admin'] },
   { key: 'admin.shift',             name: 'الورديات',                path: '/admin/shift',                     section: 'الإدارة',           accessMode: 'roles', sort: 108, defaultRoles: ['super_admin','admin'] },
@@ -91,7 +84,6 @@ export const SYSTEM_PAGES: PageDefinition[] = [
   { key: 'operations.main',         name: 'لوحة التشغيل',            path: '/operations',                      section: 'لوحة التشغيل',      accessMode: 'all',   sort: 5 },
   { key: 'cut_club.main',           name: 'CUT CLUB',                path: '/admin/cut-club',                  section: 'CUT CLUB',          accessMode: 'roles', sort: 6,   defaultRoles: ['super_admin','admin'] },
   // ── Audit ────────────────────────────────────────────────────────────────────
-  { key: 'audit.payment_methods',   name: 'تدقيق طرق الدفع',        path: '/admin/audit/unspecified-payment-methods', section: 'التدقيق', accessMode: 'roles', sort: 110, defaultRoles: ['super_admin','admin'] },
   { key: 'audit.cash_move_classification', name: 'تدقيق تصنيف الخزنة', path: '/admin/audit/cash-move-classification', section: 'التدقيق', accessMode: 'roles', sort: 111, defaultRoles: ['super_admin','admin'] },
   { key: 'accounting.classification_lab', name: 'معمل التصنيف المحاسبي', path: '/admin/accounting/classification-lab', section: 'التدقيق', accessMode: 'roles', sort: 112, defaultRoles: ['super_admin','admin'] },
   { key: 'accounting.classification_settings', name: 'إعدادات التصنيف المحاسبي', path: '/admin/accounting/classification-settings', section: 'التدقيق', accessMode: 'roles', sort: 113, defaultRoles: ['super_admin','admin'] },

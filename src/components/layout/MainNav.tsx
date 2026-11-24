@@ -107,10 +107,6 @@ export default function MainNav({ suppressMobileChrome = false }: MainNavProps) 
     })).filter(section => section.items.length > 0);
   }, [access, permLoading, isAuthenticated, canSeePage]);
 
-  // The payment-audit badge used to poll /api/audit/unspecified-payment-methods/count
-  // on every page. That API was removed (96ef91ad), so the call only produced 404s;
-  // the badge stays hidden until a count endpoint exists again.
-  const paymentAuditCount = 0;
 
   const activeSectionTitle = getActiveSectionTitle(pathname, search);
   const activeNavItem = getActiveNavItem(pathname, search);
@@ -193,7 +189,6 @@ export default function MainNav({ suppressMobileChrome = false }: MainNavProps) 
   );
 
   const itemBadge = (item: NavItem): ReactNode => {
-    if (item.badge === 'payment-audit') return <CountBadge count={paymentAuditCount} />;
     if (item.badge === 'whatsapp-unread') return <CountBadge count={whatsAppAttentionCount} tone="success" />;
     return null;
   };

@@ -82,22 +82,12 @@ export const ROUTES: RouteEntry[] = [
   // ── POS & sales ────────────────────────────────────────────────────────────
   { path: '/income/pos', module: 'pos', access: 'page' },
   { path: '/income/new', module: 'sales', access: 'page' },
-  { path: '/income/collection', module: 'pos', access: 'redirect', redirectTo: '/income/pos' },
   { path: '/sales/today', module: 'sales', access: 'page' },
-  { path: '/income-review/today-sales', module: 'sales', access: 'redirect', redirectTo: '/sales/today' },
-  { path: '/income-review/all-sales', module: 'sales', access: 'page' },
-  { path: '/income-review/today-revenue', module: 'sales', access: 'page' },
   { path: '/income-review/all-revenue', module: 'sales', access: 'page' },
-  { path: '/income-review/payments', module: 'sales', access: 'page' },
 
   // ── Expenses & deductions ──────────────────────────────────────────────────
   { path: '/expenses', module: 'expenses', access: 'page' },
-  { path: '/expenses/new', module: 'expenses', access: 'redirect', redirectTo: '/expenses' },
-  { path: '/expenses/fixed', module: 'expenses', access: 'redirect', redirectTo: '/expenses' },
   { path: '/expenses/salaries', module: 'hr', access: 'page', permissions: ['/expenses-review/salaries'] },
-  { path: '/expenses-review/salaries', module: 'hr', access: 'page' },
-  { path: '/expenses-review/advances', module: 'hr', access: 'redirect', redirectTo: '/admin/hr' },
-  { path: '/expenses-review/report', module: 'reports', access: 'redirect', redirectTo: '/reports/expenses/monthly' },
   { path: '/deductions', module: 'expenses', access: 'page' },
 
   // ── Treasury & cash ────────────────────────────────────────────────────────
@@ -109,13 +99,8 @@ export const ROUTES: RouteEntry[] = [
     // cashier (close-shift only) view with the cashier grant.
     permissions: ['/treasury/daily', '/cashier/treasury/daily'],
   },
-  { path: '/cashier/treasury/daily', module: 'treasury', access: 'redirect', redirectTo: '/treasury/daily' },
-  { path: '/treasury/daily-close', module: 'treasury', access: 'redirect', redirectTo: '/treasury/daily' },
   { path: '/treasury/group-daily', module: 'treasury', access: 'page' },
   { path: '/treasury/period-summary', module: 'treasury', access: 'page' },
-  { path: '/treasury/movement', module: 'treasury', access: 'page' },
-  { path: '/treasury/summary', module: 'treasury', access: 'page' },
-  { path: '/treasury/shift-close', module: 'treasury', access: 'page' },
   { path: '/admin/monthly-closing', module: 'treasury', access: 'page' },
   { path: '/budget', module: 'treasury', access: 'page' },
   { path: '/budget/[id]', module: 'treasury', access: 'page' },
@@ -139,12 +124,7 @@ export const ROUTES: RouteEntry[] = [
   // ── HR & workforce ─────────────────────────────────────────────────────────
   { path: '/admin/hr', module: 'hr', access: 'page' },
   { path: '/admin/hr/branch-transfer', module: 'hr', access: 'page' },
-  { path: '/admin/hr/employee-monthly-sheet', module: 'hr', access: 'redirect', redirectTo: '/admin/hr?tab=employee-monthly-sheet' },
   { path: '/admin/hr/employees/[empId]/branch-schedule', module: 'hr', access: 'page', permissions: ['/admin/hr'] },
-  { path: '/admin/employees', module: 'hr', access: 'redirect', redirectTo: '/admin/hr?tab=employees' },
-  { path: '/admin/employees/run-migration', module: 'hr', access: 'redirect', redirectTo: '/admin/hr' },
-  { path: '/admin/attendance', module: 'hr', access: 'redirect', redirectTo: '/admin/hr?tab=attendance' },
-  { path: '/admin/attendance/daily-payroll', module: 'hr', access: 'redirect', redirectTo: '/admin/hr?tab=daily-payroll' },
   { path: '/admin/workforce/availability', module: 'hr', access: 'page' },
 
   // ── Reports & partners ─────────────────────────────────────────────────────
@@ -166,7 +146,6 @@ export const ROUTES: RouteEntry[] = [
   { path: '/admin/inventory', module: 'catalog', access: 'page' },
   { path: '/admin/packages', module: 'catalog', access: 'page' },
   { path: '/admin/categories', module: 'catalog', access: 'page' },
-  { path: '/admin/payment-methods', module: 'settings', access: 'page' },
 
   // ── Loyalty & customers ────────────────────────────────────────────────────
   { path: '/admin/loyalty', module: 'loyalty', access: 'page' },
@@ -197,7 +176,6 @@ export const ROUTES: RouteEntry[] = [
   { path: '/admin/approvals', module: 'audit', access: 'page' },
 
   // ── Audit & accounting ─────────────────────────────────────────────────────
-  { path: '/admin/audit/unspecified-payment-methods', module: 'audit', access: 'page' },
   { path: '/admin/audit/cash-move-classification', module: 'audit', access: 'page' },
   { path: '/admin/accounting/classification-lab', module: 'audit', access: 'page' },
   { path: '/admin/accounting/classification-settings', module: 'audit', access: 'page' },

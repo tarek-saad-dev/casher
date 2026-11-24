@@ -14,8 +14,7 @@ import {
   UsersRound, FileBarChart, Calendar, Ticket, CalendarCheck,
   AlertTriangle, KeyRound, FileKey2, ShieldCheck, Users,
   HeartHandshake, Layers, Beaker, Settings2, Sun, Building2, Package, Boxes,
-  MessageCircle, CreditCard,
-  Inbox,
+  MessageCircle, Inbox,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -160,10 +159,7 @@ export const NAV_SECTIONS: NavSection[] = [
     icon: TrendingUp,
     items: [
       { href: '/sales/today',                 label: 'مبيعات اليوم',  icon: TrendingUp },
-      { href: '/income-review/all-sales',     label: 'كل المبيعات',   icon: History },
-      { href: '/income-review/today-revenue', label: 'إيرادات اليوم', icon: Wallet },
       { href: '/income-review/all-revenue',   label: 'كل الإيرادات',  icon: History },
-      { href: '/income-review/payments',      label: 'المدفوعات',     icon: CreditCard },
     ],
   },
   {
@@ -183,8 +179,6 @@ export const NAV_SECTIONS: NavSection[] = [
       // One page for treasury staff and cashiers (capabilities follow the grant).
       { href: '/treasury/daily',          label: 'الخزنة اليومية',      icon: Wallet },
       { href: '/treasury/group-daily',    label: 'خزنة كل الفروع',      icon: Building2 },
-      { href: '/treasury/movement',       label: 'حركة الخزنة',         icon: ArrowLeftRight },
-      { href: '/treasury/summary',        label: 'ملخص حسب الدفع',      icon: BarChart3 },
       { href: '/treasury/period-summary', label: 'ملخص الخزنة الدوري',  icon: Calendar },
     ],
   },
@@ -192,7 +186,6 @@ export const NAV_SECTIONS: NavSection[] = [
     title: 'التقفيل',
     icon: Lock,
     items: [
-      { href: '/treasury/shift-close',  label: 'تقفيل الوردية', icon: Clock },
       { href: '/admin/monthly-closing', label: 'تقفيل الشهر',   icon: Lock },
     ],
   },
@@ -297,7 +290,6 @@ export const NAV_SECTIONS: NavSection[] = [
     icon: Settings,
     items: [
       { href: '/admin/branches',               label: 'الفروع',           icon: Building2 },
-      { href: '/admin/payment-methods',        label: 'طرق الدفع',        icon: CreditCard },
       { href: '/admin/queue-booking-settings', label: 'إعدادات الطابور', icon: Ticket },
       { href: '/admin/settings',               label: 'الإعدادات العامة', icon: Settings },
     ],
@@ -316,7 +308,6 @@ export const NAV_SECTIONS: NavSection[] = [
     title: 'التدقيق',
     icon: AlertTriangle,
     items: [
-      { href: '/admin/audit/unspecified-payment-methods',   label: 'تدقيق طرق الدفع',        icon: AlertTriangle, badge: 'payment-audit' },
       { href: '/admin/audit/cash-move-classification',      label: 'تدقيق تصنيف الخزنة',     icon: Layers },
       { href: '/admin/accounting/classification-lab',       label: 'معمل التصنيف المحاسبي', icon: Beaker },
       { href: '/admin/accounting/classification-settings',  label: 'إعدادات التصنيف',        icon: Settings2 },
