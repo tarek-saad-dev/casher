@@ -3,18 +3,17 @@ import { getPool, sql } from '@/lib/db';
 import { executeTreasuryTransfer, closeTreasuryDay } from '@/lib/actions/treasuryActions';
 import { buildStaffActorContext } from '@/lib/bookingSchedulingComposition';
 import { buildTreasuryWritePorts } from '@/lib/treasuryComposition';
+import { prepareIntegrationDatabaseGate } from '@/lib/db/integrationTestGuard';
 
 let dbAvailable = false;
 let dbReason = '';
 
 beforeAll(async () => {
-  try {
-    const pool = await getPool();
-    await pool.request().query('SELECT 1 AS ok');
-    dbAvailable = true;
-  } catch (e: unknown) {
-    dbAvailable = false;
-    dbReason = e instanceof Error ? e.message : 'DB connection failed';
+  const gate = await prepareIntegrationDatabaseGate();
+  dbAvailable = gate.available;
+  dbReason = gate.reason;
+  if (!dbAvailable) {
+    console.error(`[db-safety] treasuryActions integration blocked: ${dbReason}`);
   }
 });
 
@@ -52,7 +51,7 @@ describe('treasuryActions integration', () => {
       DECLARE @seedInvID INT = ISNULL((SELECT MAX(invID) FROM dbo.TblCashMove WHERE invType = N'ايرادات'), 0) + 99999;
       DECLARE @seedBranchID INT = ${seedBranchId ?? 1};
       INSERT INTO dbo.TblCashMove (invID, invType, invDate, invTime, ClientID, ExpINID, GrandTolal, inOut, Notes, ShiftMoveID, PaymentMethodID, BranchID, BusinessDayID)
-      VALUES (@seedInvID, N'ايرادات', '2024-01-01', '12:00', NULL, @seedCatID, 100000, N'in', N'seed balance for test', NULL, ${fromPm.PaymentID}, @seedBranchID, NULL)
+      VALUES (@seedInvID, N'ايرادات', '2024-01-01', '12:00', NULL, @seedCatID, 100000, N'in', N'seed balance for test [STAGING_ONLY]', NULL, ${fromPm.PaymentID}, @seedBranchID, NULL)
     `);
 
     const transaction = new sql.Transaction(pool);

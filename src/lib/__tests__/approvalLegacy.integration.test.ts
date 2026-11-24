@@ -1,17 +1,16 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { getPool } from '@/lib/db';
+import { prepareIntegrationDatabaseGate } from '@/lib/db/integrationTestGuard';
 
 let dbAvailable = false;
 let dbReason = '';
 
 beforeAll(async () => {
-  try {
-    const pool = await getPool();
-    await pool.request().query('SELECT 1 AS ok');
-    dbAvailable = true;
-  } catch (e: unknown) {
-    dbAvailable = false;
-    dbReason = e instanceof Error ? e.message : 'DB connection failed';
+  const gate = await prepareIntegrationDatabaseGate();
+  dbAvailable = gate.available;
+  dbReason = gate.reason;
+  if (!dbAvailable) {
+    console.error(`[db-safety] approvalLegacy integration blocked: ${dbReason}`);
   }
 });
 
