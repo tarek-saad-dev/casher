@@ -1,5 +1,6 @@
 import type { NextConfig } from "next";
 import path from "path";
+import { LEGACY_REDIRECTS } from "./src/lib/routing/legacyRedirects";
 
 const nextConfig: NextConfig = {
   allowedDevOrigins: ['127.0.0.1', 'localhost'],
@@ -25,6 +26,10 @@ const nextConfig: NextConfig = {
   webpack: (config) => {
     config.context = __dirname;
     return config;
+  },
+  // Old URLs with no page left: redirected before rendering (query kept).
+  async redirects() {
+    return LEGACY_REDIRECTS.map((r) => ({ ...r, permanent: false }));
   },
   async headers() {
     return [

@@ -45,3 +45,7 @@ next-env.d.ts
 
 sync-service
 .deploy/
+
+# Local scratch: probes, logs and check scripts never go to git
+/tmp/
+*.log

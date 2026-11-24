@@ -10,6 +10,7 @@ import {
 } from '@/lib/routing/routeRegistry';
 import { NAV_SECTIONS, NAV_DIRECT_LINKS, getActiveNavItem } from '@/components/layout/nav-config';
 import { SYSTEM_PAGES } from '@/lib/pages-registry';
+import { LEGACY_REDIRECTS } from '@/lib/routing/legacyRedirects';
 
 const root = process.cwd();
 const appDir = path.join(root, 'src', 'app');
@@ -81,6 +82,25 @@ describe('route registry ↔ app directory', () => {
       expect(target, `${entry.path} → ${entry.redirectTo}`).not.toBeNull();
       expect(target!.access, entry.redirectTo).not.toBe('redirect');
     }
+  });
+
+  it('legacy URLs (next.config redirects) have no page and land on a live route', () => {
+    const existing = new Set(pages.map((p) => p.route));
+    const sources = LEGACY_REDIRECTS.map((r) => r.source);
+    expect(sources.filter((s, i) => sources.indexOf(s) !== i)).toEqual([]);
+    for (const r of LEGACY_REDIRECTS) {
+      expect(existing.has(r.source), `${r.source} still has a page.tsx`).toBe(false);
+      expect(matchRoute(r.source)?.path === r.source, `${r.source} still in ROUTES`).toBe(false);
+      const target = matchRoute(r.destination.split('?')[0]);
+      expect(target, `${r.source} → ${r.destination}`).not.toBeNull();
+      expect(target!.access, r.destination).not.toBe('redirect');
+    }
+  });
+
+  it('next.config.ts serves the legacy redirects', () => {
+    const cfg = fs.readFileSync(path.join(root, 'next.config.ts'), 'utf8');
+    expect(cfg).toContain('LEGACY_REDIRECTS');
+    expect(cfg).toMatch(/async redirects\(\)/);
   });
 
   it('every page route needs a grant that can actually be given', () => {

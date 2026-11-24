@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { Suspense, useCallback, useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Activity, RefreshCw, Loader2, Clock, CalendarDays,
   Users, TrendingUp, History
@@ -16,11 +17,15 @@ import type { OperationsStatus } from '@/lib/types/operations';
 import { useSession } from '@/hooks/useSession';
 import { formatShiftElapsed } from '@/lib/operations/viewOperationalState';
 import { branchDisplayName } from '@/lib/operations/viewOperationalState';
+import DayHistoryPanel from '@/components/operations/DayHistoryPanel';
+import ShiftHistoryPanel from '@/components/operations/ShiftHistoryPanel';
+import { usePermissions } from '@/components/providers/PermissionsProvider';
+import { hasPagePermission } from '@/lib/routing/routeRegistry';
 
 const fmt = (n: number) =>
   new Intl.NumberFormat('ar-EG', { minimumFractionDigits: 0 }).format(n);
 
-export default function OperationsCenterPage() {
+function OperationsOverview() {
   const {
     refresh: refreshSession,
     stale,
@@ -430,5 +435,78 @@ function RecentShiftHistory() {
         </div>
       )}
     </section>
+  );
+}
+
+// ── مركز التشغيل: one screen for the day, the shifts and their history ─────────
+// /admin/day and /admin/shift now redirect here (?tab=day / ?tab=shift). Each tab
+// keeps its own grant, so the page shows only what the user could open before.
+const OPERATION_TABS = [
+  { id: 'overview', label: 'نظرة عامة', permission: '/admin/operations' },
+  { id: 'day', label: 'اليوم التشغيلي', permission: '/admin/day' },
+  { id: 'shift', label: 'الورديات', permission: '/admin/shift' },
+] as const;
+
+type OperationTabId = (typeof OPERATION_TABS)[number]['id'];
+
+function OperationsTabs() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { access, loading } = usePermissions();
+  if (loading || !access) return null;
+
+  const subject = {
+    isSuperAdmin: access.isSuperAdmin,
+    isPartnerOnly: access.isPartnerOnly,
+    allowedPagePaths: access.allowedPagePaths,
+  };
+  const tabs = OPERATION_TABS.filter((t) => hasPagePermission(subject, t.permission));
+  const requested = searchParams.get('tab') as OperationTabId | null;
+  const active: OperationTabId = tabs.find((t) => t.id === requested)?.id ?? tabs[0]?.id ?? 'overview';
+
+  const select = (id: OperationTabId) =>
+    router.replace(id === 'overview' ? '/admin/operations' : `/admin/operations?tab=${id}`, { scroll: false });
+
+  return (
+    <div>
+      {tabs.length > 1 ? (
+        <div className="mx-auto max-w-7xl px-6 pt-6">
+          <div role="tablist" aria-label="مركز التشغيل" className="inline-flex gap-1 rounded-xl border border-border bg-surface p-1">
+            {tabs.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                role="tab"
+                aria-selected={active === t.id}
+                onClick={() => select(t.id)}
+                className={cn(
+                  'rounded-lg px-4 py-2 text-sm font-medium transition-colors',
+                  active === t.id
+                    ? 'bg-primary text-primary-foreground'
+                    : 'text-muted-foreground hover:bg-surface-muted hover:text-foreground',
+                )}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
+      {active === 'day' ? (
+        <div className="mx-auto max-w-7xl p-6"><DayHistoryPanel /></div>
+      ) : active === 'shift' ? (
+        <div className="mx-auto max-w-7xl p-6"><ShiftHistoryPanel /></div>
+      ) : (
+        <OperationsOverview />
+      )}
+    </div>
+  );
+}
+
+export default function OperationsCenterPage() {
+  return (
+    <Suspense fallback={null}>
+      <OperationsTabs />
+    </Suspense>
   );
 }
