@@ -115,9 +115,8 @@ export const ROUTES: RouteEntry[] = [
 
   // ── Operations (day / shift / boards) ──────────────────────────────────────
   { path: '/operations', module: 'operations', access: 'page' },
-  { path: '/admin/operations', module: 'operations', access: 'page' },
-  { path: '/admin/day', module: 'operations', access: 'page' },
-  { path: '/admin/shift', module: 'operations', access: 'page' },
+  // مركز التشغيل also hosts the former /admin/day and /admin/shift screens as tabs.
+  { path: '/admin/operations', module: 'operations', access: 'page', permissions: ['/admin/operations', '/admin/day', '/admin/shift'] },
   { path: '/admin/booking/operations', module: 'operations', access: 'page' },
   { path: '/admin/queue-booking-settings', module: 'settings', access: 'page' },
 

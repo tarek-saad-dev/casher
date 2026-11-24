@@ -242,8 +242,6 @@ export const NAV_SECTIONS: NavSection[] = [
     icon: Activity,
     items: [
       { href: '/admin/operations',         label: 'مركز التشغيل',       icon: Activity },
-      { href: '/admin/day',                label: 'اليوم التشغيلي',     icon: Sun },
-      { href: '/admin/shift',              label: 'الورديات',           icon: Clock },
       { href: '/admin/booking/operations', label: 'تشغيل الحجز العام', icon: CalendarCheck },
     ],
   },

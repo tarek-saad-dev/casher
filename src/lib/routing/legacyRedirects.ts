@@ -33,6 +33,10 @@ export const LEGACY_REDIRECTS: readonly LegacyRedirect[] = [
   { source: '/treasury/shift-close', destination: '/treasury/daily' },
   { source: '/admin/payment-methods', destination: '/admin/settings' },
 
+  // Day and shift screens are tabs of مركز التشغيل (2026-11)
+  { source: '/admin/day', destination: '/admin/operations?tab=day' },
+  { source: '/admin/shift', destination: '/admin/operations?tab=shift' },
+
   // Audit screen whose APIs were removed (96ef91ad)
   { source: '/admin/audit/unspecified-payment-methods', destination: '/admin/audit/cash-move-classification' },
 ];
