@@ -175,8 +175,11 @@ export default function LoginForm({ onSuccess }: LoginFormProps) {
         </form>
       </div>
 
-      <p className="mt-5 text-center text-xs text-amber-200/60 px-4">
-        Cut Salon &mdash; نظام نقاط البيع
+      <p className="mt-5 text-center text-xs text-amber-100/80 px-4">
+        عندك صالون أو بيزنس جديد؟{' '}
+        <a href="/start" className="font-bold text-white underline underline-offset-4 hover:text-amber-200">
+          ابدأ تجربة DRVOERP مجانًا
+        </a>
       </p>
     </div>
   );
