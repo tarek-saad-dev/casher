@@ -26,11 +26,12 @@ const REQUIRED: readonly GoLiveMilestoneId[] = [
   'active_branch', 'catalog', 'team', 'business_day', 'first_shift',
 ];
 
-export function buildSelfServiceJourney(report: TenantGoLiveReport) {
+export function buildSelfServiceJourney(report: TenantGoLiveReport, branchDetails?: { name: string; complete: boolean }) {
   const evidence = new Map(report.milestones.map((item) => [item.id, item]));
   const done = (id: GoLiveMilestoneId) => evidence.get(id)?.status === 'done';
   const count = (id: GoLiveMilestoneId) => evidence.get(id)?.count ?? null;
-  const ready = REQUIRED.every(done) && done('commercial_access') && done('users');
+  const branchComplete = done('active_branch') && (branchDetails?.complete ?? true);
+  const ready = REQUIRED.every(done) && branchComplete && done('commercial_access') && done('users');
 
   const steps: SelfServiceStep[] = [
     {
@@ -41,16 +42,16 @@ export function buildSelfServiceJourney(report: TenantGoLiveReport) {
     {
       id: 'branch', href: '/setup/branch', label: 'الفرع', title: 'ظبط بيانات أول فرع',
       description: 'راجع عنوان المحل، رقم التواصل، وساعات الشغل قبل استقبال العملاء.',
-      complete: done('active_branch'), count: count('active_branch'),
+      complete: branchComplete, count: count('active_branch'),
     },
     {
       id: 'services', href: '/setup/services', label: 'الخدمات', title: 'إيه الخدمات اللي بتقدمها؟',
-      description: 'سجل خدماتك وأسعارها ومدتها من شاشة إدارة الخدمات.',
+      description: 'ضيف خدماتك وأسعارها ومدتها، أو افتح الإدارة للتعديلات المتقدمة.',
       complete: done('catalog'), count: count('catalog'),
     },
     {
       id: 'team', href: '/setup/team', label: 'فريقك', title: 'ضيف أول فرد في فريقك',
-      description: 'حدد بيانات الحلاقين وأدوارهم وربطهم بالفرع ومواعيدهم.',
+      description: 'ضيف الحلاقين وحدد وظائفهم. الجداول والرواتب متاحة في الإدارة.',
       complete: done('team'), count: count('team'),
     },
     {
@@ -75,8 +76,8 @@ export function buildSelfServiceJourney(report: TenantGoLiveReport) {
     completeCount,
     totalCount: 4,
     progressPercent: Math.round((completeCount / 4) * 100),
-    pendingMilestones: REQUIRED.filter((id) => !done(id)),
-    branchName: report.primaryBranch?.branchName || 'الفرع الرئيسي',
+    pendingMilestones: REQUIRED.filter((id) => !done(id) || (id === 'active_branch' && !branchComplete)),
+    branchName: branchDetails?.name || report.primaryBranch?.branchName || 'الفرع الرئيسي',
     tenantName: report.tenantName,
     ownerLoginName: report.ownerLoginName,
     bookingInstalled: report.bookingInstalled,
