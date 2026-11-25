@@ -1,6 +1,7 @@
 import { defineConfig } from "vite";
 import path from "path";
 import { loadEnv } from "vite";
+import { configDefaults } from "vitest/config";
 
 export default defineConfig(({ mode }) => {
   // Load .env and .env.local files so DB credentials are available during tests
@@ -23,9 +24,10 @@ export default defineConfig(({ mode }) => {
       // Fail-closed: mutating DB integration suites are excluded from default
       // `vitest run` / CI unless INCLUDE_DB_INTEGRATION_TESTS=1 AND the suite
       // itself passes assertApprovedTestDatabase (never last132).
+      // Extend Vitest defaults so dist/node_modules/.git/etc stay excluded.
       exclude: includeDbIntegration
-        ? ["**/node_modules/**", "**/dist/**"]
-        : ["**/node_modules/**", "**/dist/**", "**/*.integration.test.ts"],
+        ? [...configDefaults.exclude]
+        : [...configDefaults.exclude, "**/*.integration.test.ts"],
     },
     resolve: {
       alias: {
