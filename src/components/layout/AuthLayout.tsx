@@ -50,10 +50,11 @@ export default function AuthLayout({ children }: AuthLayoutProps) {
     });
   }, [pathname, sessionLoading, sessionAuth, permLoading, access, authResolving, isLoginPage]);
 
+  const isSelfServiceSetup = pathname === '/setup' || pathname.startsWith('/setup/');
   const isPublicBookingPage = pathname.startsWith('/book/');
   const isPublicDrvoPage = pathname === '/drvo' || pathname.startsWith('/drvo/') || pathname === '/start' || pathname.startsWith('/start/');
 
-  if (isLoginPage || isEmployeePortal || isPublicBookingPage || isPublicDrvoPage) {
+  if (isLoginPage || isEmployeePortal || isPublicBookingPage || isPublicDrvoPage || isSelfServiceSetup) {
     return (
       <div className="flex-1 flex flex-col min-h-0">
         {children}
