@@ -3,18 +3,53 @@ name: CI
 on:
   pull_request:
     branches: [main]
+  schedule:
+    - cron: '17 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# No production credentials; integration DB tests are never opted into CI.
+env:
+  INCLUDE_DB_INTEGRATION_TESTS: '0'
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
+  detect:
+    name: Select affected regression groups
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      groups: ${{ steps.select.outputs.groups }}
+      mode: ${{ steps.select.outputs.mode }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Select groups from the checked-out merge diff
+        id: select
+        env:
+          CI_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: node scripts/ci/select-checks.mjs
+
   windows-print-startup:
+    needs: detect
+    if: ${{ needs.detect.result == 'success' && contains(fromJSON(needs.detect.outputs.groups), 'printing') }}
     name: Windows print agent startup syntax
     runs-on: windows-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Parse PowerShell startup and uninstall scripts
         shell: pwsh
         run: |
@@ -38,11 +73,15 @@ jobs:
           }
 
   thermal-print-agent:
+    needs: detect
+    if: ${{ needs.detect.result == 'success' && contains(fromJSON(needs.detect.outputs.groups), 'printing') }}
     name: Local print agent / ESC-POS regression
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -54,11 +93,22 @@ jobs:
         run: PRINT_ENGINE=escpos PRINT_ADAPTER=mock npm test --prefix print-service
 
   drvo-validation:
+    needs: detect
+    # Keep the existing required check name and fail if selection itself fails.
+    if: ${{ always() && !cancelled() }}
     name: DRVO / booking / queue validation
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
+      - name: Require successful change selection
+        env:
+          DETECT_RESULT: ${{ needs.detect.result }}
+        run: test "$DETECT_RESULT" = success
+
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
 
       - uses: actions/setup-node@v4
         with:
@@ -68,44 +118,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: DRVO migration + rollout + runner tests
-        run: >
-          npx vitest run
-          scripts/drvo/__tests__
-          src/platform/drvo/__tests__
-          src/platform/__tests__/publicSignup.test.ts
-          src/platform/__tests__/selfServiceJourney.test.ts
-          src/platform/__tests__/onboardingWizardStages.test.ts
-          src/lib/booking/__tests__/bookingBranchDefaults.test.ts
-          src/platform/__tests__/publicSignupAppSelection.test.ts
-          src/platform/__tests__/tenantBillingRequests.test.ts
-          src/platform/__tests__/tenantBillingService.test.ts
-          src/platform/__tests__/modularPricingScenario.test.ts
-          src/platform/__tests__/modularQuoteEngine.test.ts
-          src/platform/__tests__/modularCommercialDrafts.test.ts
-          src/platform/__tests__/modularDraftSelfService.test.ts
-          src/platform/__tests__/modularQuoteInquiry.test.ts
-          src/platform/__tests__/modularInquiryReview.test.ts
-          src/platform/__tests__/tariffResearchGovernance.test.ts
-          src/platform/__tests__/tenantAppManager.test.ts
-          src/platform/__tests__/tenantAppManagerService.test.ts
-          src/platform/__tests__/drvo012Composition.test.ts
-          src/platform/__tests__/drvo012Commercial.test.ts
-          src/platform/__tests__/tenantOnboarding.test.ts
-          src/apps/booking/__tests__/bookingPathRegression.test.ts
-          src/apps/booking/__tests__/holdKeyPersistence.test.ts
-          src/apps/booking/__tests__/publicBootstrapErrorLeak.test.ts
-          src/apps/booking/__tests__/schedulingPortWiring.test.ts
-          src/apps/queue/__tests__/queuePortFlag.test.ts
-          src/apps/queue/__tests__/queuePortWiring.test.ts
-          src/apps/treasury/__tests__/deployMigration.test.ts
-          src/apps/treasury/__tests__/importBoundaries.test.ts
-          src/apps/pos/__tests__
-          src/modules/messaging/__tests__/saleCustomerReceiptSend.test.ts
-          src/modules/messaging/__tests__/phase5aCallersUnchanged.test.ts
-          src/modules/messaging/__tests__/phase6SendTemplateMessage.test.ts
-          src/modules/messaging/__tests__/adminWhatsAppTemplates.test.ts
-          --reporter=default
+      - name: Test the CI classifier and regression inventory
+        run: node --test scripts/ci/*.test.mjs
+
+      - name: Run selected domain regressions
+        env:
+          CI_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          CI_GROUPS: ${{ needs.detect.outputs.groups }}
+        run: node scripts/ci/run-regressions.mjs
 
       # Keep independent tenant/security regressions mandatory on every PR.
       # These tests use isolated in-memory fixtures; they never connect to staging or production.
@@ -120,46 +140,19 @@ jobs:
           src/platform/__tests__/platformOutboxRollback.test.ts
           --reporter=default
 
-      - name: Retroactive payroll agreement math regression
-        run: npx vitest run src/lib/payroll/__tests__/payrollAgreementMath.test.ts src/lib/payroll/__tests__/retroPayrollRolloutGate.test.ts
-
-      - name: Payroll agreement date UX regression
-        run: npx vitest run src/components/hr/__tests__/payrollAgreementDate.test.ts
-
       - name: Payroll rehearsal script syntax
+        if: ${{ contains(fromJSON(needs.detect.outputs.groups), 'payroll') }}
         run: |
           bash -n scripts/payroll/run-ziad-payroll-rehearsal.sh
           bash -n scripts/payroll/resume-ziad-payroll-rehearsal.sh
           bash -n scripts/payroll/apply-v2-schema-production.sh
 
       - name: Payroll rehearsal TypeScript path resolution
+        if: ${{ contains(fromJSON(needs.detect.outputs.groups), 'payroll') }}
         run: npx tsx --tsconfig tsconfig.json -e "import('@/lib/businessDate').then(m => { if (typeof m.getCairoBusinessDate !== 'function') process.exit(1) })"
 
       - name: Deploy script shell syntax
         run: bash -n deploy/deploy-casher
-
-      - name: Receipt Studio layout contract and thermal safety
-        run: npx vitest run src/lib/receipt-studio/__tests__/template.test.ts src/lib/receipt-studio/__tests__/editor.test.ts src/lib/receipt-studio/__tests__/render.test.ts src/lib/receipt-studio/__tests__/cutClassic.test.ts src/lib/receipt-studio/__tests__/layers.test.ts
-
-      - name: Local print client and receipt interaction regressions
-        run: npx vitest run src/lib/__tests__/localPrintClient.test.ts src/lib/__tests__/localPrintAgentV2.test.ts src/lib/__tests__/printRecoveryPlan.test.ts src/components/printing/__tests__/PrintRecoveryCenter.test.tsx src/components/printing/__tests__/MissingChromeRepairPrompt.test.tsx src/components/printing/__tests__/PrintAgentInstallerDownload.test.tsx src/components/expenses/__tests__/ExpenseReceiptPopup.print.test.tsx src/components/printing/__tests__/LocalPrintConnectionHelp.test.tsx
-
-      - name: CUT STAFF extra-service scheduling behavior and contracts
-        run: >-
-          npx vitest run
-          src/lib/__tests__/staffAddonSchedulingBehavior.test.ts
-          src/lib/__tests__/staffAddonSchedulingGuard.test.ts
-          src/lib/__tests__/employeePortalBookingPrivacy.test.ts
-          --reporter=default
-
-      - name: CUT STAFF lifecycle state machine
-        run: npx vitest run src/lib/__tests__/staffBookingLifecycle.test.ts src/lib/__tests__/employeePortalBookingPrivacy.test.ts
-
-      - name: Cashier-assisted addon transfer safety contracts
-        run: npx vitest run src/lib/__tests__/cashierAssistedAddonContracts.test.ts src/lib/__tests__/staffAddonSchedulingBehavior.test.ts
-
-      - name: Paid booking handoff reconciliation safety contracts
-        run: npx vitest run src/lib/__tests__/handoffChargeReconciliationContracts.test.ts src/lib/__tests__/handoffPaidLinePolicy.test.ts
 
       - name: Database integration safety guard (never last132)
         run: npx vitest run src/lib/__tests__/assertApprovedTestDatabase.test.ts --reporter=default

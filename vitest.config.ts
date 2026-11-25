@@ -25,9 +25,12 @@ export default defineConfig(({ mode }) => {
       // `vitest run` / CI unless INCLUDE_DB_INTEGRATION_TESTS=1 AND the suite
       // itself passes assertApprovedTestDatabase (never last132).
       // Extend Vitest defaults so dist/node_modules/.git/etc stay excluded.
-      exclude: includeDbIntegration
-        ? [...configDefaults.exclude]
-        : [...configDefaults.exclude, "**/*.integration.test.ts"],
+      // Node test runner suites are executed separately by CI (node --test).
+      exclude: [
+        ...configDefaults.exclude,
+        "scripts/ci/*.test.mjs",
+        ...(includeDbIntegration ? [] : ["**/*.integration.test.ts"]),
+      ],
     },
     resolve: {
       alias: {
