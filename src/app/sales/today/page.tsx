@@ -1,9 +1,14 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Calendar, Loader2, RotateCcw, TrendingUp } from 'lucide-react';
+import { Calendar, RotateCcw, TrendingUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
+import { ToastProvider, useToast } from '@/components/ui/toast';
+import PageHeader from '@/components/shared/PageHeader';
+import Toolbar from '@/components/shared/Toolbar';
+import EmptyState from '@/components/shared/EmptyState';
 import TodaySalesKpiCards from '@/components/sales/TodaySalesKpiCards';
 import ByShiftView from '@/components/sales/ByShiftView';
 import ByPaymentMethodView from '@/components/sales/ByPaymentMethodView';
@@ -11,15 +16,23 @@ import ByBarberView from '@/components/sales/ByBarberView';
 import ByServiceView from '@/components/sales/ByServiceView';
 import ByHourView from '@/components/sales/ByHourView';
 import TodaySalesTransactionsTable from '@/components/sales/TodaySalesTransactionsTable';
-import { useSession } from '@/hooks/useSession';
 import { usePermission } from '@/hooks/usePermission';
-import type { TodaySalesData, TodaySaleTransaction } from '@/lib/types/today-sales';
+import type { TodaySalesData } from '@/lib/types/today-sales';
 
 type AnalysisMode = 'overview' | 'shift' | 'payment' | 'barber' | 'service' | 'hour';
 
-export default function TodaySalesPage() {
-  const { user } = useSession();
+const ANALYSIS_MODES: { key: AnalysisMode; label: string }[] = [
+  { key: 'overview', label: 'نظرة عامة' },
+  { key: 'shift', label: 'حسب الوردية' },
+  { key: 'payment', label: 'حسب الدفع' },
+  { key: 'barber', label: 'حسب الحلاق' },
+  { key: 'service', label: 'حسب الخدمة' },
+  { key: 'hour', label: 'حسب الساعة' },
+];
+
+function TodaySalesPageInner() {
   const router = useRouter();
+  const { toast } = useToast();
   const canDelete = usePermission('sales.delete');
   const [data, setData] = useState<TodaySalesData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -27,21 +40,10 @@ export default function TodaySalesPage() {
   const [analysisMode, setAnalysisMode] = useState<AnalysisMode>('overview');
   const [selectedDate, setSelectedDate] = useState('');
 
-  // Toast
-  const [toasts, setToasts] = useState<{ id: number; type: 'success' | 'error' | 'info'; message: string }[]>([]);
-  const toastIdRef = useRef(0);
-  const addToast = useCallback((type: 'success' | 'error' | 'info', message: string) => {
-    const id = ++toastIdRef.current;
-    setToasts(p => [...p, { id, type, message }]);
-    setTimeout(() => setToasts(p => p.filter(t => t.id !== id)), 4500);
-  }, []);
-
-  // Set page title
   useEffect(() => {
     document.title = 'مبيعات اليوم | نظام نقاط البيع';
   }, []);
 
-  // Load sales data
   const loadSalesData = useCallback(async () => {
     setLoading(true);
     setError('');
@@ -51,10 +53,11 @@ export default function TodaySalesPage() {
       if (selectedDate) params.set('date', selectedDate);
 
       const response = await fetch(`/api/sales/today?${params.toString()}`);
-      
+
       if (!response.ok) {
-        const errorData = await response.json();
+        const errorData = await response.json().catch(() => ({}));
         setError(errorData.error || 'فشل تحميل البيانات');
+        setData(null);
         return;
       }
 
@@ -63,6 +66,7 @@ export default function TodaySalesPage() {
     } catch (err) {
       console.error('Error loading today sales:', err);
       setError('خطأ في الاتصال بالخادم');
+      setData(null);
     } finally {
       setLoading(false);
     }
@@ -72,238 +76,203 @@ export default function TodaySalesPage() {
     loadSalesData();
   }, [loadSalesData]);
 
-  // Quick date helpers
   const setQuickDate = (type: 'today' | 'yesterday') => {
-    const date = new Date();
-    if (type === 'yesterday') {
-      date.setDate(date.getDate() - 1);
+    if (type === 'today') {
+      setSelectedDate('');
+      return;
     }
+    const date = new Date();
+    date.setDate(date.getDate() - 1);
     setSelectedDate(date.toISOString().split('T')[0]);
   };
 
-  const analysisModes: { key: AnalysisMode; label: string }[] = [
-    { key: 'overview', label: 'نظرة عامة' },
-    { key: 'shift', label: 'حسب الوردية' },
-    { key: 'payment', label: 'حسب الدفع' },
-    { key: 'barber', label: 'حسب الحلاق' },
-    { key: 'service', label: 'حسب الخدمة' },
-    { key: 'hour', label: 'حسب الساعة' }
-  ];
-
   return (
-    <div className="flex flex-col h-screen overflow-hidden bg-zinc-950" dir="rtl">
-      {/* Header */}
-      <div className="border-b border-zinc-800/50 bg-gradient-to-b from-zinc-900/80 to-zinc-900/40 backdrop-blur-sm">
-        <div className="px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-black text-white flex items-center gap-3">
-                <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 border border-emerald-500/20">
-                  <TrendingUp className="w-5 h-5 text-emerald-400" />
-                </div>
-                مبيعات اليوم
-              </h1>
-              <p className="text-sm text-zinc-400 mt-1">
-                تحليل شامل لمبيعات اليوم من عدة زوايا
-              </p>
-            </div>
-
-            <div className="flex items-center gap-3">
-              {/* Quick Date Buttons */}
-              <Button
-                variant={!selectedDate ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setSelectedDate('')}
-                className="text-sm"
-              >
-                <Calendar className="w-4 h-4 ml-2" />
-                اليوم
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setQuickDate('yesterday')}
-                className="text-sm"
-              >
-                أمس
-              </Button>
-              <input
-                type="date"
-                value={selectedDate}
-                onChange={(e) => setSelectedDate(e.target.value)}
-                className="px-3 py-1.5 bg-zinc-900/60 border border-zinc-800/50 rounded-lg text-sm text-white"
-              />
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={loadSalesData}
-                disabled={loading}
-              >
-                <RotateCcw className={`w-4 h-4 ml-2 ${loading ? 'animate-spin' : ''}`} />
+    <div className="flex h-screen flex-col overflow-hidden bg-background" dir="rtl">
+      <div className="border-b border-border bg-card/80 px-4 py-4 backdrop-blur-sm sm:px-6">
+        <PageHeader
+          title="مبيعات اليوم"
+          description="تحليل شامل لمبيعات اليوم من عدة زوايا"
+          icon={<TrendingUp />}
+          eyebrow="التشغيل اليومي"
+        >
+          <Toolbar
+            filters={
+              <>
+                <Button
+                  variant={!selectedDate ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setQuickDate('today')}
+                >
+                  <Calendar className="ms-2 size-4" aria-hidden />
+                  اليوم
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => setQuickDate('yesterday')}>
+                  أمس
+                </Button>
+                <input
+                  type="date"
+                  value={selectedDate}
+                  onChange={(e) => setSelectedDate(e.target.value)}
+                  aria-label="اختيار تاريخ المبيعات"
+                  className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
+              </>
+            }
+            actions={
+              <Button variant="outline" size="sm" onClick={loadSalesData} disabled={loading}>
+                <RotateCcw className={`ms-2 size-4 ${loading ? 'animate-spin' : ''}`} aria-hidden />
                 تحديث
               </Button>
-            </div>
-          </div>
-        </div>
+            }
+          />
+        </PageHeader>
       </div>
 
-      {/* Main Content */}
       <div className="flex-1 overflow-y-auto">
-        <div className="p-6 space-y-6">
-          {/* Loading State */}
-          {loading && !data && (
-            <div className="flex items-center justify-center py-20">
-              <div className="text-center">
-                <Loader2 className="w-8 h-8 animate-spin text-emerald-400 mx-auto mb-3" />
-                <p className="text-sm text-zinc-400">جاري تحميل البيانات...</p>
-              </div>
-            </div>
-          )}
-
-          {/* Error State */}
-          {error && (
-            <div className="bg-rose-500/10 border border-rose-500/20 rounded-xl p-4 text-center">
-              <p className="text-sm text-rose-400">{error}</p>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={loadSalesData}
-                className="mt-3"
-              >
-                إعادة المحاولة
-              </Button>
-            </div>
-          )}
-
-          {/* Data View */}
-          {data && !loading && (
-            <>
-              {/* Date Display */}
-              <div className="flex items-center gap-2 text-sm text-zinc-400">
-                <Calendar className="w-4 h-4" />
-                <span>
-                  البيانات لتاريخ: {new Date(data.date).toLocaleDateString('ar-EG', {
-                    weekday: 'long',
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric'
-                  })}
-                </span>
-              </div>
-
-              {/* KPI Cards */}
-              <TodaySalesKpiCards kpi={data.kpi} />
-
-              {/* Analysis Mode Tabs */}
-              <div className="bg-zinc-900/40 border border-zinc-800/50 rounded-xl p-1 flex gap-1">
-                {analysisModes.map((mode) => (
-                  <button
-                    key={mode.key}
-                    onClick={() => setAnalysisMode(mode.key)}
-                    className={`
-                      flex-1 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all
-                      ${analysisMode === mode.key
-                        ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                        : 'text-zinc-400 hover:bg-zinc-800/40 hover:text-white'
-                      }
-                    `}
-                  >
-                    {mode.label}
-                  </button>
+        <div className="space-y-6 p-4 sm:p-6">
+          {loading && !data ? (
+            <div className="space-y-4" aria-busy="true" aria-live="polite">
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <Skeleton key={i} className="h-24 w-full rounded-xl" />
                 ))}
               </div>
+              <Skeleton className="h-12 w-full rounded-xl" />
+              <Skeleton className="h-64 w-full rounded-xl" />
+            </div>
+          ) : null}
 
-              {/* Analysis View */}
-              <div className="bg-zinc-900/20 border border-zinc-800/50 rounded-xl p-6">
-                {analysisMode === 'overview' && (
+          {error && !loading ? (
+            <EmptyState
+              kind="error"
+              title="تعذر تحميل مبيعات اليوم"
+              description={error}
+              action={{ label: 'إعادة المحاولة', onClick: loadSalesData }}
+            />
+          ) : null}
+
+          {data && !error ? (
+            <>
+              <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Calendar className="size-4" aria-hidden />
+                البيانات لتاريخ:{' '}
+                {new Date(data.date).toLocaleDateString('ar-EG', {
+                  weekday: 'long',
+                  year: 'numeric',
+                  month: 'long',
+                  day: 'numeric',
+                })}
+              </p>
+
+              <TodaySalesKpiCards kpi={data.kpi} loading={loading} />
+
+              <div
+                role="tablist"
+                aria-label="زوايا التحليل"
+                className="flex flex-wrap gap-1 rounded-xl border border-border bg-card p-1"
+              >
+                {ANALYSIS_MODES.map((mode) => {
+                  const selected = analysisMode === mode.key;
+                  return (
+                    <button
+                      key={mode.key}
+                      type="button"
+                      role="tab"
+                      aria-selected={selected}
+                      onClick={() => setAnalysisMode(mode.key)}
+                      className={`flex-1 rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors sm:min-w-[6.5rem] ${
+                        selected
+                          ? 'bg-brand-soft text-brand border border-brand/20'
+                          : 'text-muted-foreground hover:bg-surface-muted hover:text-foreground'
+                      }`}
+                    >
+                      {mode.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <section className="rounded-xl border border-border bg-card p-4 sm:p-6">
+                {analysisMode === 'overview' ? (
                   <div className="space-y-6">
                     <div>
-                      <h3 className="text-lg font-bold text-white mb-4">أفضل 3 ورديات</h3>
+                      <h3 className="mb-4 text-lg font-bold text-foreground">أفضل 3 ورديات</h3>
                       <ByShiftView shifts={data.byShift.slice(0, 3)} />
                     </div>
                     <div>
-                      <h3 className="text-lg font-bold text-white mb-4">طرق الدفع</h3>
+                      <h3 className="mb-4 text-lg font-bold text-foreground">طرق الدفع</h3>
                       <ByPaymentMethodView paymentMethods={data.byPaymentMethod} />
                     </div>
                     <div>
-                      <h3 className="text-lg font-bold text-white mb-4">أفضل 3 حلاقين</h3>
+                      <h3 className="mb-4 text-lg font-bold text-foreground">أفضل 3 حلاقين</h3>
                       <ByBarberView barbers={data.byBarber.slice(0, 3)} />
                     </div>
                   </div>
-                )}
+                ) : null}
 
-                {analysisMode === 'shift' && (
+                {analysisMode === 'shift' ? (
                   <div>
-                    <h3 className="text-lg font-bold text-white mb-4">التحليل حسب الوردية</h3>
+                    <h3 className="mb-4 text-lg font-bold text-foreground">التحليل حسب الوردية</h3>
                     <ByShiftView shifts={data.byShift} />
                   </div>
-                )}
+                ) : null}
 
-                {analysisMode === 'payment' && (
+                {analysisMode === 'payment' ? (
                   <div>
-                    <h3 className="text-lg font-bold text-white mb-4">التحليل حسب طريقة الدفع</h3>
+                    <h3 className="mb-4 text-lg font-bold text-foreground">التحليل حسب طريقة الدفع</h3>
                     <ByPaymentMethodView paymentMethods={data.byPaymentMethod} />
                   </div>
-                )}
+                ) : null}
 
-                {analysisMode === 'barber' && (
+                {analysisMode === 'barber' ? (
                   <div>
-                    <h3 className="text-lg font-bold text-white mb-4">التحليل حسب الحلاق</h3>
+                    <h3 className="mb-4 text-lg font-bold text-foreground">التحليل حسب الحلاق</h3>
                     <ByBarberView barbers={data.byBarber} />
                   </div>
-                )}
+                ) : null}
 
-                {analysisMode === 'service' && (
+                {analysisMode === 'service' ? (
                   <div>
-                    <h3 className="text-lg font-bold text-white mb-4">التحليل حسب الخدمة</h3>
+                    <h3 className="mb-4 text-lg font-bold text-foreground">التحليل حسب الخدمة</h3>
                     <ByServiceView services={data.byService} />
                   </div>
-                )}
+                ) : null}
 
-                {analysisMode === 'hour' && (
+                {analysisMode === 'hour' ? (
                   <div>
-                    <h3 className="text-lg font-bold text-white mb-4">التحليل حسب الساعة</h3>
+                    <h3 className="mb-4 text-lg font-bold text-foreground">التحليل حسب الساعة</h3>
                     <ByHourView hourly={data.byHour} />
                   </div>
-                )}
-              </div>
+                ) : null}
+              </section>
 
-              {/* Detailed Transactions */}
-              <div className="bg-zinc-900/20 border border-zinc-800/50 rounded-xl p-6">
-                <h3 className="text-lg font-bold text-white mb-4">تفاصيل المعاملات</h3>
-                <TodaySalesTransactionsTable 
+              <section className="rounded-xl border border-border bg-card p-4 sm:p-6">
+                <h3 className="mb-4 text-lg font-bold text-foreground">تفاصيل المعاملات</h3>
+                <TodaySalesTransactionsTable
                   transactions={data.transactions}
-                  onInvoiceClick={(invId) => {
-                    // Could navigate to invoice detail page
-                    console.log('Invoice clicked:', invId);
-                  }}
+                  loading={loading}
                   onEdit={(txn) => {
-                    // Navigate to POS with invoice data for editing
                     router.push(`/income/pos?edit=${txn.invId}`);
                   }}
                   onDelete={(invId) => {
-                    addToast('success', `تم حذف الفاتورة #${invId} بنجاح`);
+                    toast({ tone: 'success', title: `تم حذف الفاتورة #${invId} بنجاح` });
                     loadSalesData();
                   }}
                   canEdit={canDelete}
                 />
-              </div>
+              </section>
             </>
-          )}
+          ) : null}
         </div>
       </div>
-      {/* Toasts */}
-      <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[80] flex flex-col gap-2 w-80" dir="rtl">
-        {toasts.map(t => (
-          <div key={t.id} className={`flex items-center gap-3 px-4 py-3 rounded-xl border shadow-xl text-sm font-medium
-            ${t.type === 'success' ? 'bg-emerald-950/90 border-emerald-500/40 text-emerald-300' : ''}
-            ${t.type === 'error'   ? 'bg-rose-950/90 border-rose-500/40 text-rose-300' : ''}
-            ${t.type === 'info'    ? 'bg-blue-950/90 border-blue-500/30 text-blue-300' : ''}
-          `}>
-            <span className="flex-1">{t.message}</span>
-          </div>
-        ))}
-      </div>
     </div>
+  );
+}
+
+export default function TodaySalesPage() {
+  return (
+    <ToastProvider>
+      <TodaySalesPageInner />
+    </ToastProvider>
   );
 }
