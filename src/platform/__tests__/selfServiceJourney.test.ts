@@ -4,6 +4,8 @@ import { describe, expect, it } from 'vitest';
 import type { GoLiveMilestone, GoLiveMilestoneId, TenantGoLiveReport } from '@/platform/onboarding/goLiveTypes';
 import { buildSelfServiceJourney, isSelfServiceStepId } from '@/platform/onboarding/selfServiceJourney';
 
+import { parseSetupAction, SetupInputError, SETUP_JOBS } from '@/platform/onboarding/selfServiceInput';
+
 const IDS: GoLiveMilestoneId[] = [
   'commercial_access', 'active_branch', 'catalog', 'team', 'users',
   'business_day', 'first_shift', 'first_sale', 'first_booking',
@@ -116,5 +118,59 @@ describe('self-service setup security and routing guardrails', () => {
     ].map(read).join('\n');
     expect(files).not.toMatch(/PublicBookingEnabled|UPDATE\s+dbo\.|TenantMessagingChannel/);
     expect(files).not.toContain('/api/public/signup/complete');
+  });
+});
+
+describe('inline setup input and tenant boundaries', () => {
+  it('normalizes valid branch, service and employee actions', () => {
+    expect(parseSetupAction({ action: 'branch', address: ' شارع 1 ', phone: '01012345678', defaultOpenTime: '10:00', defaultCloseTime: '01:00' })).toMatchObject({ action: 'branch', address: 'شارع 1' });
+    expect(parseSetupAction({ action: 'service', name: ' حلاقة ', price: 150.5, durationMinutes: 30 })).toEqual({
+      action: 'service', service: { name: 'حلاقة', arabicName: 'حلاقة', price: 150.5, durationMinutes: 30, active: true },
+    });
+    expect(parseSetupAction({ action: 'employee', name: ' أحمد ', job: SETUP_JOBS[0] })).toEqual({ action: 'employee', employee: { name: 'أحمد', job: SETUP_JOBS[0], active: true } });
+  });
+
+  it('rejects client-selected tenant/branch IDs and invalid values', () => {
+    const service = { action: 'service', name: 'قص', price: 150, durationMinutes: 30 };
+    for (const payload of [
+      { ...service, tenantId: 'another-tenant' },
+      { ...service, price: -10 },
+      { ...service, price: '150' },
+      { ...service, price: 1.234 },
+      { ...service, durationMinutes: 0 },
+      { ...service, durationMinutes: 30.5 },
+      { action: 'employee', name: 'أحمد', job: 'unknown' },
+      { action: 'employee', name: 'أحمد', job: SETUP_JOBS[0], primaryBranchCode: 'FOREIGN' },
+      { action: 'branch', address: 'عنوان', phone: '1234', defaultOpenTime: '09:00', defaultCloseTime: '21:00' },
+      { action: 'branch', address: 'عنوان', phone: '01012345678', defaultOpenTime: '25:00', defaultCloseTime: '21:00' },
+      { action: 'branch', address: 'عنوان', phone: '01012345678', defaultOpenTime: '09:00', defaultCloseTime: '09:00' },
+      { action: 'branch', address: 'عنوان', phone: '01012345678', defaultOpenTime: '09:00', defaultCloseTime: '21:00', branchId: 999 },
+    ]) expect(() => parseSetupAction(payload)).toThrow(SetupInputError);
+  });
+
+  it('does not consider an empty branch address complete just because a branch exists', () => {
+    const journey = buildSelfServiceJourney(example([
+      'commercial_access', 'active_branch', 'catalog', 'team', 'users', 'business_day', 'first_shift',
+    ]), { name: 'فرع أول', complete: false });
+    expect(journey.branchName).toBe('فرع أول');
+    expect(journey.steps.find(s => s.id === 'branch')?.complete).toBe(false);
+    expect(journey.progressPercent).toBe(75);
+    expect(journey.ready).toBe(false);
+  });
+
+  it('keeps writes behind admin auth, self-registration eligibility and verified active branch', () => {
+    const read = (rel: string) => fs.readFileSync(path.join(process.cwd(), rel), 'utf8');
+    const route = read('src/app/api/tenant/onboarding/setup-data/route.ts');
+    const eligibility = read('src/platform/onboarding/selfServiceEligibility.ts');
+    const layout = read('src/app/setup/layout.tsx');
+    expect(route.match(/await requireAdmin\(\)/g)).toHaveLength(2);
+    expect(route).toContain('isPublicSalonSetupTenant(auth.tenantId, auth.tenant.tenantCode)');
+    expect(route).toContain('assertLegacyBranchInTenant(auth.tenantId, auth.activeBranchId)');
+    expect(route).toContain('primaryBranchCode: auth.activeBranchCode');
+    expect(route).toContain('runServicesStage(ctx');
+    expect(route).toContain('runTeamStage(ctx');
+    expect(eligibility).toContain("tenantCode === 'CASHER_BOOT'");
+    expect(eligibility).toContain("IndustryCode = N'salon' AND Status = N'provisioned'");
+    expect(layout).toContain('isPublicSalonSetupTenant(auth.tenantId, auth.tenant.tenantCode)');
   });
 });
