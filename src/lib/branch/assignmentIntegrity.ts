@@ -213,8 +213,8 @@ export async function ensureEmployeeBranchAssignment(args: {
   effectiveFrom: string;
   canReceiveBookings?: boolean;
   isHomeBranch?: boolean;
-}): Promise<{ created: boolean; assignmentId: number }> {
-  const db = await getPool();
+}, externalTransaction?: sql.Transaction): Promise<{ created: boolean; assignmentId: number }> {
+  const db = externalTransaction ?? await getPool();
   const existing = await db
     .request()
     .input('empId', sql.Int, args.empId)
