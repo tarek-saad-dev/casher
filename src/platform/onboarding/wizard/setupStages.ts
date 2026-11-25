@@ -100,7 +100,7 @@ export const runBranchesStage: OnboardingStageExecutor = async (ctx, req) => {
 };
 
 /** Tenant-owned services in the tenant's own categories (default: the seeded "خدمات"). */
-export const runServicesStage: OnboardingStageExecutor = async (ctx, req) => {
+export const runServicesStage = async (ctx: OnboardingSetupContext, req: Pick<OnboardingRequest, 'services'>): Promise<StageOutcome> => {
   const tenantId = requireMasterDataTenantId(ctx.tenantId, 'onboarding services');
   const pool = await getPool();
   const categoryIds = new Map<string, number>();
@@ -154,7 +154,7 @@ export const runServicesStage: OnboardingStageExecutor = async (ctx, req) => {
 };
 
 /** Tenant employees with a home-branch assignment; payroll/schedule detail stays in HR setup. */
-export const runTeamStage: OnboardingStageExecutor = async (ctx, req) => {
+export const runTeamStage = async (ctx: OnboardingSetupContext, req: Pick<OnboardingRequest, 'employees'>): Promise<StageOutcome> => {
   const tenantId = requireMasterDataTenantId(ctx.tenantId, 'onboarding team');
   const pool = await getPool();
   const bookingInstalled = ctx.apps.includes('booking');
