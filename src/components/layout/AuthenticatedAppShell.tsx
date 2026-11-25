@@ -11,11 +11,21 @@ import ShiftOperationalGateProvider from '@/components/session/ShiftOperationalG
 import { OperationalToastProvider } from '@/components/session/OperationalToast';
 import PartnerOnlyShell from '@/components/layout/PartnerOnlyShell';
 import { MobileNavProvider } from '@/components/layout/MobileNavContext';
-import TenantShellProvider from '@/components/tenant/TenantShellProvider';
+import TenantShellProvider, { useTenantShell } from '@/components/tenant/TenantShellProvider';
 import { TenantShellGate, TenantSubscriptionBanner } from '@/components/tenant/TenantShellGate';
 import { cn } from '@/lib/utils';
 import WhatsAppAttentionProvider from '@/components/layout/WhatsAppAttentionProvider';
 import type { UserAccess } from '@/lib/hooks/useMyAccess';
+
+function SetupReturnLink({ access }: { access: UserAccess }) {
+  const { snapshot } = useTenantShell();
+  const admin = access.userLevel === 'admin' || access.roles.includes('admin') || access.isSuperAdmin;
+  if (!admin || !snapshot?.subscription.allowed || snapshot.tenant.industryPackCode !== 'salon' || !/^DRVO_[A-F0-9]{10}$/.test(snapshot.tenant.code)) return null;
+  return <div dir="rtl" className="flex shrink-0 items-center justify-between gap-2 border-b border-border bg-muted/40 px-3 py-1.5 text-xs">
+    <span className="text-muted-foreground">تجهيز منشأتك</span>
+    <Link href="/setup" className="font-bold text-primary hover:underline">افتح خطوات التجهيز ←</Link>
+  </div>;
+}
 
 interface AuthenticatedAppShellProps {
   children: React.ReactNode;
@@ -80,6 +90,7 @@ export default function AuthenticatedAppShell({
         </div>
         <OperationalStaleBanner />
         <TenantSubscriptionBanner />
+        <SetupReturnLink access={access} />
         <ViewBranchSwitchIndicator />
         <div className="flex flex-col lg:flex-row flex-1 overflow-hidden">
           <MainNav suppressMobileChrome={isPosPage} />
