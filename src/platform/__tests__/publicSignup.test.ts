@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
+import { localSignupPhone, SIGNUP_STEPS, signupStepError, type SignupDraft } from '@/platform/publicSignup/presentation';
 
 vi.mock('server-only', () => ({}));
 vi.mock('@/lib/db', () => ({
@@ -207,5 +208,28 @@ describe('public signup safety guards', () => {
     const src = read('src/components/layout/AuthLayout.tsx');
     expect(src).toContain("pathname === '/drvo'");
     expect(src).toContain("pathname === '/start'");
+  });
+});
+
+
+const presentationDraft: SignupDraft = { industry: 'salon', selectedApps: ['pos'], contactName: 'محمد أحمد', businessName: 'صالون', phone: '01012345678', email: '', password: 'secure-password', confirmation: 'secure-password', startMode: 'real' };
+
+describe('signup V2 presentation', () => {
+  it('normalizes mobile entry without pretending to verify ownership', () => {
+    for (const value of ['01012345678', '+20 1012345678', '00201012345678', '٠١٠١٢٣٤٥٦٧٨', '۰۱۰۱۲۳۴۵۶۷۸']) expect(localSignupPhone(value)).toBe('01012345678');
+    for (const value of ['abc01012345678', '1234', '', '010123456789']) expect(localSignupPhone(value)).toBeNull();
+  });
+  it('requires all five steps to be valid before submission', () => {
+    expect(SIGNUP_STEPS).toHaveLength(5);
+    for (let step = 0; step < 5; step++) expect(signupStepError(step, presentationDraft, null)).toBeNull();
+    expect(signupStepError(4, { ...presentationDraft, industry: null }, null)).not.toBeNull();
+    expect(signupStepError(4, presentationDraft, 'invalid apps')).toBe('invalid apps');
+    expect(signupStepError(4, { ...presentationDraft, email: 'bad' }, null)).not.toBeNull();
+    expect(signupStepError(4, { ...presentationDraft, confirmation: 'wrong' }, null)).not.toBeNull();
+  });
+  it('rejects whitespace-bound passwords that would fail subsequent login and invalid lengths', () => {
+    for (const password of ['short', ' leading-space', 'trailing-space ', 'x'.repeat(129)]) {
+      expect(signupStepError(3, { ...presentationDraft, password, confirmation: password }, null)).not.toBeNull();
+    }
   });
 });
