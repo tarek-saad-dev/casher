@@ -14,6 +14,11 @@ test('onboarding changes select provisioning dependencies but not printer agents
   for (const group of ['printing', 'migration', 'messaging']) assert.ok(!plan.groups.includes(group));
 });
 
+test('onboarding presentation changes only select onboarding and commercial', () => {
+  assert.deepEqual(selectChecks(['src/components/onboarding/InlineSetupForm.tsx']).groups, ['onboarding', 'commercial']);
+  assert.deepEqual(selectChecks(['src/app/setup/page.tsx']).groups, ['onboarding', 'commercial']);
+});
+
 test('payroll, booking and printing select their domain and downstream checks', () => {
   const payroll = selectChecks(['src/lib/payroll/payrollAgreementMath.ts']);
   assert.ok(payroll.groups.includes('payroll'));
