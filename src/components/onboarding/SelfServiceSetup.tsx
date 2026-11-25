@@ -104,7 +104,7 @@ export default function SelfServiceSetup({ currentStep }: Props) {
 
   const index = journey?.steps.findIndex((step) => step.id === currentStep) ?? 0;
   const step = journey?.steps[index];
-  const next = journey?.steps[index + 1];
+  const next = currentStep === 'welcome' ? journey?.steps.slice(1, 5).find(item => !item.complete) ?? journey?.steps[5] : journey?.steps[index + 1];
   const previous = journey?.steps[index - 1];
   const Icon = ICONS[currentStep];
   const actions = SCREEN_ACTIONS[currentStep] ?? [];
@@ -211,7 +211,7 @@ export default function SelfServiceSetup({ currentStep }: Props) {
 
                     {(currentStep === 'services' || currentStep === 'team') && (
                       <div className="mt-7 rounded-2xl border border-white/10 bg-white/[0.035] p-5">
-                        <div className="text-xs text-slate-400">{currentStep === 'services' ? 'الخدمات المسجلة' : 'أفراد الفريق المسجلين'}</div>
+                        <div className="text-xs text-slate-400">{currentStep === 'services' ? 'الخدمات المسجلة' : 'أفراد الفريق في الفرع الحالي'}</div>
                         <div className="mt-2 text-4xl font-black text-cyan-300">{step.count ?? '—'}</div>
                         <p className="mt-2 text-xs leading-6 text-slate-500">ده العدد الحالي داخل منشأتك.</p>
                       </div>
@@ -248,6 +248,9 @@ export default function SelfServiceSetup({ currentStep }: Props) {
                             ? 'تقدر تبدأ التشغيل الداخلي. خليك متأكد من الأسعار والموظفين وإعدادات الورديات.'
                             : 'مش لازم تخلص كل حاجة دلوقتي. ارجع لأي خطوة ناقصة وقت ما تحتاج.'}
                         </p>
+                        {!journey.ready && <div className="mt-4 space-y-2">
+                          {journey.steps.slice(1, 5).filter(item => !item.complete).map(item => <Link key={item.id} href={item.href} className="flex items-center justify-between gap-2 rounded-xl border border-white/10 px-3 py-2.5 text-sm text-slate-200 hover:bg-white/5"><span>{item.label} — لسه محتاجة تجهيز</span><ChevronLeft className="h-4 w-4 text-cyan-300" /></Link>)}
+                        </div>}
                         <Link href="/operations" className="mt-5 inline-flex items-center gap-2 rounded-full bg-cyan-300 px-5 py-3 text-sm font-black text-slate-950 hover:bg-cyan-200">
                           افتح لوحة التشغيل <ArrowLeft className="h-4 w-4" />
                         </Link>
@@ -292,7 +295,7 @@ export default function SelfServiceSetup({ currentStep }: Props) {
                     {previous ? <Link href={previous.href} className="inline-flex items-center gap-2 text-sm font-bold text-slate-300 hover:text-white"><ArrowRight className="h-4 w-4" /> السابق</Link> : <span />}
                     {next ? (
                       <Link href={next.href} className="inline-flex items-center gap-2 rounded-full bg-cyan-300 px-6 py-3 text-sm font-black text-slate-950 transition hover:bg-cyan-200">
-                        {step.complete || currentStep === 'welcome' ? 'التالي' : 'تخطي مؤقتًا'} <ArrowLeft className="h-4 w-4" />
+                        {currentStep === 'welcome' ? 'كمّل التجهيز' : step.complete ? 'التالي' : 'تخطي مؤقتًا'} <ArrowLeft className="h-4 w-4" />
                       </Link>
                     ) : <Link href="/operations" className="inline-flex items-center gap-2 rounded-full bg-cyan-300 px-6 py-3 text-sm font-black text-slate-950">ابدأ الاستخدام <ArrowLeft className="h-4 w-4" /></Link>}
                   </div>
