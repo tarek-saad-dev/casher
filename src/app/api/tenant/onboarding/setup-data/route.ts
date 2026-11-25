@@ -6,6 +6,7 @@ import { updateBranchSetupFields } from '@/lib/branch/updateBranchSetup';
 import { assertLegacyBranchInTenant } from '@/platform/tenant/tenantContext';
 import { getTenantInstalledAppsForGate } from '@/platform/commercial/tenantAccessGate';
 import { runServicesStage, runTeamStage, type OnboardingSetupContext } from '@/platform/onboarding/wizard/setupStages';
+import { isPublicSalonSetupTenant } from '@/platform/onboarding/selfServiceEligibility';
 import { parseSetupAction, SetupInputError } from '@/platform/onboarding/selfServiceInput';
 
 export const runtime = 'nodejs';
@@ -18,16 +19,8 @@ function reply(body: object, status = 200) {
 
 /** Public registration membership is checked in SQL, not by a client flag or a code prefix. */
 async function setupTarget(auth: AuthResult) {
-  if (auth.tenant.tenantCode === 'CASHER_BOOT') return null;
+  if (!(await isPublicSalonSetupTenant(auth.tenantId, auth.tenant.tenantCode))) return null;
   const pool = await getPool();
-  const registration = await pool.request()
-    .input('tenantId', sql.UniqueIdentifier, auth.tenantId)
-    .query(`
-      SELECT TOP 1 TenantId
-      FROM dbo.PublicSignupRegistration
-      WHERE TenantId = @tenantId AND IndustryCode = N'salon' AND Status = N'provisioned';
-    `);
-  if (!registration.recordset.length) return null;
   await assertLegacyBranchInTenant(auth.tenantId, auth.activeBranchId);
   const branch = await getBranchById(auth.activeBranchId);
   if (!branch) return null;
