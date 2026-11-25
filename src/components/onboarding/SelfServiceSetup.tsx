@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import InlineSetupForm from './InlineSetupForm';
+import LaunchSetup from './LaunchSetup';
 import {
   ArrowLeft, ArrowRight, BadgeCheck, CalendarDays, Check, CheckCircle2,
   ChevronLeft, CircleHelp, Clock3, CreditCard, ExternalLink, Loader2,
@@ -253,6 +254,7 @@ export default function SelfServiceSetup({ currentStep }: Props) {
                       </div>
                     )}
 
+                    {currentStep === 'launch' && <LaunchSetup onSaved={() => refresh(true)} />}
                     {inlineStep && <InlineSetupForm key={inlineStep} step={inlineStep} onSaved={() => refresh(true)} />}
 
                     {actions.length > 0 && (
