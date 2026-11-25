@@ -100,9 +100,9 @@ export const runBranchesStage: OnboardingStageExecutor = async (ctx, req) => {
 };
 
 /** Tenant-owned services in the tenant's own categories (default: the seeded "خدمات"). */
-export const runServicesStage = async (ctx: OnboardingSetupContext, req: Pick<OnboardingRequest, 'services'>): Promise<StageOutcome> => {
+export const runServicesStage = async (ctx: OnboardingSetupContext, req: Pick<OnboardingRequest, 'services'>, tx?: sql.Transaction): Promise<StageOutcome> => {
   const tenantId = requireMasterDataTenantId(ctx.tenantId, 'onboarding services');
-  const pool = await getPool();
+  const pool = tx ?? await getPool();
   const categoryIds = new Map<string, number>();
   const categoryFor = async (name: string): Promise<number> => {
     const cached = categoryIds.get(name);
@@ -149,14 +149,14 @@ export const runServicesStage = async (ctx: OnboardingSetupContext, req: Pick<On
       `);
     created += 1;
   }
-  if (created) invalidatePublicBookingServicesCache();
+  if (created && !tx) invalidatePublicBookingServicesCache();
   return { created, existing };
 };
 
 /** Tenant employees with a home-branch assignment; payroll/schedule detail stays in HR setup. */
-export const runTeamStage = async (ctx: OnboardingSetupContext, req: Pick<OnboardingRequest, 'employees'>): Promise<StageOutcome> => {
+export const runTeamStage = async (ctx: OnboardingSetupContext, req: Pick<OnboardingRequest, 'employees'>, tx?: sql.Transaction): Promise<StageOutcome> => {
   const tenantId = requireMasterDataTenantId(ctx.tenantId, 'onboarding team');
-  const pool = await getPool();
+  const pool = tx ?? await getPool();
   const bookingInstalled = ctx.apps.includes('booking');
   const payrollRelevant = ctx.apps.includes('payroll') || ctx.apps.includes('attendance');
   let created = 0;
@@ -186,7 +186,7 @@ export const runTeamStage = async (ctx: OnboardingSetupContext, req: Pick<Onboar
                   : { monthlySalary: e.payRate ?? null }),
             }
           : undefined;
-      ({ empId } = await createTenantEmployee({ tenantId, name, job: e.job, isActive: e.active, hr }));
+      ({ empId } = await createTenantEmployee({ tenantId, name, job: e.job, isActive: e.active, hr }, tx));
       created += 1;
     }
     await ensureEmployeeBranchAssignment({
@@ -195,9 +195,9 @@ export const runTeamStage = async (ctx: OnboardingSetupContext, req: Pick<Onboar
       effectiveFrom: today(),
       canReceiveBookings: bookingInstalled && (e.acceptsBookings ?? defaultAcceptsBookings(e.job)),
       isHomeBranch: true,
-    });
+    }, tx);
   }
-  if (created) invalidatePublicBookingBarbersCache();
+  if (created && !tx) invalidatePublicBookingBarbersCache();
   return { created, existing };
 };
 
