@@ -2,9 +2,11 @@ import { NextResponse } from 'next/server';
 import { getPool, sql } from '@/lib/db';
 import { createSession } from '@/lib/session';
 import { BRANCH_SESSION_VERSION } from '@/lib/session-types';
+import { signupOtpRequired, enforceSignupOtpRate, verifySignupOtp, SignupOtpError } from '@/platform/publicSignup/otp';
 import {
   PublicSignupError,
   provisionPublicSignup,
+  parsePublicSignupInput,
 } from '@/platform/publicSignup/service';
 
 export const runtime = 'nodejs';
@@ -27,6 +29,13 @@ export async function POST(req: Request) {
   }
 
   try {
+    if (signupOtpRequired()) {
+      if (req.headers.get('sec-fetch-site') === 'cross-site' || !req.headers.get('content-type')?.startsWith('application/json'))
+        return NextResponse.json({ code: 'BODY_INVALID' }, { status: 400 });
+      enforceSignupOtpRate(req, 'verify');
+      const input = parsePublicSignupInput(body);
+      await verifySignupOtp(input.phone, (body as Record<string, unknown>).otp);
+    }
     const result = await provisionPublicSignup(body, { ip: requestIp(req) });
 
     const pool = await getPool();
@@ -92,7 +101,7 @@ export async function POST(req: Request) {
       { status: 201 },
     );
   } catch (err) {
-    if (err instanceof PublicSignupError) {
+    if (err instanceof PublicSignupError || err instanceof SignupOtpError) {
       return NextResponse.json(
         { error: err.message, code: err.code },
         { status: err.status },

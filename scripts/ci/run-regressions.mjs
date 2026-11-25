@@ -8,6 +8,7 @@ import { GROUPS, readChangedPaths } from './select-checks.mjs';
 export const REGRESSIONS = Object.freeze({
   "onboarding": [
     "src/platform/__tests__/publicSignup.test.ts",
+    "src/platform/__tests__/publicSignupOtp.test.ts",
     "src/platform/__tests__/publicSignupAppSelection.test.ts",
     "src/platform/__tests__/tenantOnboarding.test.ts",
     "src/platform/__tests__/onboardingWizard.test.ts",
