@@ -64,7 +64,7 @@ export default function PublicSignupFlow() {
   const [form, setForm] = useState<FormState>(initial);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState<{ tenantCode: string; nextPath: string } | null>(null);
+  const [done, setDone] = useState<{ tenantCode: string; ownerLoginName: string; nextPath: string } | null>(null);
 
   const choices = form.industry ? getPublicSignupAppChoices(form.industry) : null;
   const selectionError = useMemo(() => {
@@ -134,11 +134,12 @@ export default function PublicSignupFlow() {
       const data = (await res.json().catch(() => ({}))) as {
         error?: string;
         tenantCode?: string;
+        ownerLoginName?: string;
         nextPath?: string;
       };
       if (!res.ok) throw new Error(data.error || 'تعذر إنشاء الحساب.');
       const nextPath = data.nextPath || '/operations';
-      setDone({ tenantCode: data.tenantCode || '', nextPath });
+      setDone({ tenantCode: data.tenantCode || '', ownerLoginName: data.ownerLoginName || '', nextPath });
       setTimeout(() => window.location.assign(nextPath), 1600);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'تعذر إنشاء الحساب.');
@@ -157,8 +158,14 @@ export default function PublicSignupFlow() {
         <p className="mt-2 text-sm text-slate-300">
           DRVO جهّز بيزنسك وبدأت الـ14 يوم التجريبية. بندخلك على النظام دلوقتي.
         </p>
-        <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 font-mono text-xs text-slate-300">
-          {done.tenantCode}
+        <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 px-4 py-4 text-right">
+          <div className="text-xs text-slate-400">اسم الدخول المخصص لحسابك</div>
+          <div dir="ltr" className="mt-2 break-all font-mono text-lg font-black text-cyan-300">{done.ownerLoginName}</div>
+          <p className="mt-2 text-xs leading-6 text-slate-400">احتفظ باسم الدخول ده، هتحتاجه مع كلمة المرور اللي اخترتها عشان تدخل تاني.</p>
+          <button type="button" onClick={() => void navigator.clipboard?.writeText(done.ownerLoginName)}
+            className="mt-3 rounded-xl border border-white/15 px-3 py-2 text-xs font-bold hover:bg-white/10">
+            انسخ اسم الدخول
+          </button>
         </div>
         <button
           type="button"
