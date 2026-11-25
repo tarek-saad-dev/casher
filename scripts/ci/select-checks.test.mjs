@@ -89,3 +89,16 @@ test('git comparison includes deletions, old and new rename paths and spaces', (
     assert.throws(() => readChangedPaths('bad', dir));
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+
+test('Node runner CI tests never enter the Vitest changed-file filters', () => {
+  const changed = ['scripts/ci/select-checks.test.mjs', 'scripts/ci/another.test.mjs',
+    'scripts/drvo/__tests__/migration.test.ts', 'src/platform/__tests__/new.test.ts'];
+  for (const groups of [[], ['onboarding'], GROUPS]) {
+    const filters = selectedFilters(groups, () => true, changed);
+    assert.ok(!filters.includes(changed[0]));
+    assert.ok(!filters.includes(changed[1]));
+    assert.ok(filters.includes(changed[2]));
+    assert.ok(filters.includes(changed[3]));
+  }
+});

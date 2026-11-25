@@ -99,7 +99,9 @@ export function selectedFilters(groups, exists = existsSync, changed = []) {
   if (groups.includes('onboarding') && exists(selfService)) result.add(selfService);
   // New or edited unit tests must run too, even before their group inventory
   // is updated. DB integration tests are intentionally never opted in here.
+  // CI's Node test suites run independently via node --test, not Vitest.
   for (const path of changed) {
+    if (/^scripts\/ci\/[^/]+\.test\.mjs$/.test(path)) continue;
     if (/^(?:src|scripts)\/.*\.(?:test|spec)\.[cm]?[jt]sx?$/.test(path)
         && !/\.integration\.test\./.test(path) && exists(path)) result.add(path);
   }
