@@ -191,6 +191,14 @@ export default function SelfServiceSetup({ currentStep }: Props) {
                       </div>
                     )}
 
+                    {currentStep === 'welcome' && journey.ownerLoginName && (
+                      <div className="mt-5 rounded-2xl border border-cyan-300/20 bg-cyan-300/[0.06] p-5">
+                        <div className="text-xs font-bold text-slate-300">احتفظ باسم الدخول بتاعك</div>
+                        <div dir="ltr" className="mt-2 text-left font-mono text-lg font-black text-cyan-300">{journey.ownerLoginName}</div>
+                        <p className="mt-2 text-xs leading-6 text-slate-400">هتستخدمه مع كلمة المرور اللي عملتها وقت التسجيل في أي دخول جديد.</p>
+                      </div>
+                    )}
+
                     {currentStep === 'branch' && (
                       <div className="mt-7 flex items-start gap-3 rounded-2xl border border-white/10 bg-white/[0.035] p-5">
                         <MapPin className="mt-0.5 h-5 w-5 shrink-0 text-cyan-300" />
