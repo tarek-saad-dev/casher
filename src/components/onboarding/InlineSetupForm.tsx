@@ -19,7 +19,7 @@ const inputClass = 'w-full rounded-xl border border-white/15 bg-[#071018] px-3 p
 const buttonClass = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-cyan-300 px-5 py-2.5 text-sm font-black text-slate-950 hover:bg-cyan-200 disabled:opacity-50';
 const emptyBranch: Branch = { name: '', address: '', phone: '', defaultOpenTime: '', defaultCloseTime: '' };
 
-export default function InlineSetupForm({ step, onSaved }: { step: Step; onSaved: () => Promise<void> }) {
+export default function InlineSetupForm({ step, onSaved, onContinue }: { step: Step; onSaved: () => Promise<void>; onContinue?: () => void }) {
   const [data, setData] = useState<SetupData | null>(null);
   const [branch, setBranch] = useState(emptyBranch);
   const [name, setName] = useState('');
@@ -70,6 +70,7 @@ export default function InlineSetupForm({ step, onSaved }: { step: Step; onSaved
       if (step !== 'branch') { setName(''); setPrice(''); }
       try { await load(); } catch { setError('تم الحفظ لكن تعذر تحديث القائمة. حدّث الصفحة قبل إضافة بيانات أخرى.'); }
       await onSaved();
+      if (step === 'branch' && onContinue) onContinue();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'تعذر الحفظ.');
     } finally {
@@ -79,7 +80,7 @@ export default function InlineSetupForm({ step, onSaved }: { step: Step; onSaved
   }
 
   if (loading) return <p role="status" className="mt-7 flex items-center gap-2 text-sm text-slate-300"><Loader2 className="h-4 w-4 animate-spin" /> تحميل البيانات...</p>;
-  if (!data?.editable) return error ? <p role="alert" className="mt-6 text-sm text-rose-300">{error} — تقدر تستخدم صفحة الإدارة.</p> : null;
+  if (!data?.editable) return error ? <div className="mt-6 rounded-xl border border-rose-400/20 p-4"><p role="alert" className="text-sm text-rose-300">{error}</p><button type="button" onClick={async () => { setLoading(true); setError(''); try { await load(); } catch (err) { setError(err instanceof Error ? err.message : 'تعذر تحميل البيانات.'); } finally { setLoading(false); } }} className="mt-3 rounded-lg border border-white/15 px-4 py-2 text-sm">إعادة المحاولة</button></div> : null;
 
   return (
     <div className="mt-7 space-y-4">
@@ -96,7 +97,7 @@ export default function InlineSetupForm({ step, onSaved }: { step: Step; onSaved
           </> : <>
             <h2 className="font-bold">{step === 'services' ? 'أضف خدمة جديدة' : 'أضف موظف جديد'}</h2>
             {step === 'services' && <div className="flex flex-wrap gap-2">
-              {['حلاقة شعر', 'حلاقة ذقن', 'تنظيف بشرة', 'تصفيف شعر'].map(item => <button key={item} type="button" onClick={() => setName(item)} className="rounded-full border border-white/15 px-3 py-1.5 text-xs hover:bg-white/10">{item}</button>)}
+              {['حلاقة شعر', 'حلاقة ذقن', 'تنظيف بشرة', 'تصفيف شعر'].map(item => <button key={item} type="button" onClick={() => { setName(item); setSuccess(''); }} className="rounded-full border border-white/15 px-3 py-1.5 text-xs hover:bg-white/10">{item}</button>)}
             </div>}
             <label className="block space-y-1.5 text-sm"><span>{step === 'services' ? 'اسم الخدمة' : 'اسم الموظف'}</span><input required maxLength={200} value={name} onChange={e => setName(e.target.value)} className={inputClass} /></label>
             {step === 'services' ? <div className="grid grid-cols-2 gap-3">
@@ -104,7 +105,7 @@ export default function InlineSetupForm({ step, onSaved }: { step: Step; onSaved
               <label className="block space-y-1.5 text-sm"><span>المدة بالدقائق</span><input required type="number" min="5" max="600" step="1" value={duration} onChange={e => setDuration(e.target.value)} className={inputClass} /></label>
             </div> : <label className="block space-y-1.5 text-sm"><span>الوظيفة</span><select value={job} onChange={e => setJob(e.target.value)} className={inputClass}>{SETUP_JOBS.map(item => <option key={item} value={item}>{item}</option>)}</select><span className="block text-xs leading-6 text-slate-400">هيتم ربط الموظف بالفرع الحالي. جداول العمل والرواتب وحسابات الدخول تتظبط من الإدارة.</span></label>}
           </>}
-          <button type="submit" className={buttonClass}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}{busy ? 'جاري الحفظ...' : step === 'branch' ? 'حفظ بيانات الفرع' : 'حفظ وإضافة'}</button>
+          <button type="submit" className={buttonClass}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}{busy ? 'جاري الحفظ...' : step === 'branch' ? (onContinue ? 'حفظ ومتابعة' : 'حفظ بيانات الفرع') : 'حفظ وإضافة'}</button>
         </fieldset>
         {success && <p role="status" className="flex items-center gap-2 text-xs text-emerald-300"><CheckCircle2 className="h-4 w-4 shrink-0" />{success}</p>}
         {error && <p role="alert" className="text-sm text-rose-300">{error}</p>}

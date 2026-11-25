@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import InlineSetupForm from './InlineSetupForm';
 import LaunchSetup from './LaunchSetup';
 import {
@@ -72,6 +73,7 @@ const GUIDANCE: Record<SelfServiceStepId, string[]> = {
 };
 
 export default function SelfServiceSetup({ currentStep }: Props) {
+  const router = useRouter();
   const [journey, setJourney] = useState<Journey | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -106,6 +108,8 @@ export default function SelfServiceSetup({ currentStep }: Props) {
   const step = journey?.steps[index];
   const next = currentStep === 'welcome' ? journey?.steps.slice(1, 5).find(item => !item.complete) ?? journey?.steps[5] : journey?.steps[index + 1];
   const previous = journey?.steps[index - 1];
+  const nextIncomplete = journey?.steps.slice(1, 5).find(item => !item.complete);
+  const [copied, setCopied] = useState(false);
   const Icon = ICONS[currentStep];
   const actions = SCREEN_ACTIONS[currentStep] ?? [];
   const inlineStep = currentStep === 'branch' || currentStep === 'services' || currentStep === 'team' ? currentStep : null;
@@ -126,7 +130,7 @@ export default function SelfServiceSetup({ currentStep }: Props) {
             <span className="hidden border-r border-white/10 pr-3 text-xs font-normal text-slate-400 sm:inline">تجهيز المنشأة</span>
           </Link>
           <Link href="/operations" className="rounded-full border border-white/15 px-4 py-2 text-xs font-bold text-slate-300 transition hover:bg-white/10 hover:text-white">
-            الدخول للنظام <ArrowLeft className="mr-1 inline h-3.5 w-3.5" />
+            كمّل لاحقًا <ArrowLeft className="mr-1 inline h-3.5 w-3.5" />
           </Link>
         </header>
 
@@ -144,7 +148,14 @@ export default function SelfServiceSetup({ currentStep }: Props) {
           </div>
         ) : journey && step ? (
           <>
-            <div className="mt-7 grid gap-6 lg:grid-cols-[minmax(0,1fr)_290px] lg:gap-9">
+            <div className="mt-5 rounded-2xl border border-white/10 bg-white/[0.035] p-4 lg:hidden">
+              <div className="flex items-center justify-between gap-2 text-xs"><span className="font-bold">{step.label} · {index + 1}/{journey.steps.length}</span><span className="font-bold text-cyan-200">{journey.progressPercent}% مكتمل</span></div>
+              <div role="progressbar" aria-label="اكتمال التجهيز" aria-valuemin={0} aria-valuemax={100} aria-valuenow={journey.progressPercent} className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-cyan-300 motion-safe:transition-all" style={{ width: journey.progressPercent + '%' }} /></div>
+              <nav aria-label="خطوات التجهيز على الموبايل" className="mt-3 flex flex-wrap gap-1">
+                {journey.steps.map(item => <Link key={item.id} href={item.href} aria-current={item.id === currentStep ? 'step' : undefined} className={'inline-flex min-h-9 items-center gap-1 rounded-lg px-2 text-[11px] ' + (item.id === currentStep ? 'bg-cyan-300/15 font-bold text-cyan-200' : 'text-slate-400 hover:bg-white/10')}>{item.complete && <Check className="h-3 w-3 text-emerald-300" />}{item.label}</Link>)}
+              </nav>
+            </div>
+            <div className="mt-5 grid gap-6 lg:mt-7 lg:grid-cols-[minmax(0,1fr)_290px] lg:gap-9">
               <section className="min-w-0">
                 <div className="mb-7 flex flex-wrap items-center justify-between gap-3">
                   <div>
@@ -156,7 +167,7 @@ export default function SelfServiceSetup({ currentStep }: Props) {
                   </button>
                 </div>
 
-                <div className="overflow-hidden rounded-[2rem] border border-white/10 bg-[#101C29]/95 shadow-2xl shadow-black/20">
+                <div key={currentStep} className="overflow-hidden rounded-[1.5rem] border border-white/10 bg-[#101C29]/95 shadow-2xl shadow-black/20 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-300">
                   <div className="p-6 sm:p-9">
                     <div className="flex items-center justify-between gap-4">
                       <span className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-1.5 text-xs font-bold text-cyan-200">
@@ -169,18 +180,18 @@ export default function SelfServiceSetup({ currentStep }: Props) {
                         </span>
                       )}
                     </div>
-                    <div className="mt-9 grid h-16 w-16 place-items-center rounded-[1.4rem] border border-cyan-300/20 bg-cyan-300/10 text-cyan-300">
+                    <div className="mt-5 grid h-12 w-12 sm:mt-7 sm:h-16 sm:w-16 place-items-center rounded-[1.4rem] border border-cyan-300/20 bg-cyan-300/10 text-cyan-300">
                       <Icon className="h-8 w-8" />
                     </div>
-                    <h1 className="mt-6 max-w-2xl text-3xl font-black leading-tight tracking-tight sm:text-4xl">{step.title}</h1>
-                    <p className="mt-4 max-w-2xl text-sm leading-8 text-slate-400 sm:text-base">{step.description}</p>
+                    <h1 className="mt-4 max-w-2xl text-2xl font-black leading-tight tracking-tight sm:text-4xl">{step.title}</h1>
+                    <p className="mt-2 max-w-2xl text-sm leading-7 text-slate-400 sm:text-base">{step.description}</p>
 
                     {currentStep === 'welcome' && (
                       <div className="mt-8 grid gap-3 sm:grid-cols-3">
                         {[
                           { icon: Store, value: journey.branchName, name: 'أول فرع' },
                           { icon: ShieldCheck, value: 'بيانات مستقلة', name: 'حساب منشأتك' },
-                          { icon: CalendarDays, value: 'حساب المنشأة', name: 'اشتراكك' },
+                          { icon: CalendarDays, value: 'تجهيز مرن', name: 'كمّل في أي وقت' },
                         ].map((item) => {
                           const CardIcon = item.icon;
                           return (
@@ -199,8 +210,11 @@ export default function SelfServiceSetup({ currentStep }: Props) {
                         <div className="text-xs font-bold text-slate-300">احتفظ باسم دخول المالك</div>
                         <div dir="ltr" className="mt-2 text-left font-mono text-lg font-black text-cyan-300">{journey.ownerLoginName}</div>
                         <p className="mt-2 text-xs leading-6 text-slate-400">هتستخدمه مع كلمة المرور اللي عملتها وقت التسجيل في أي دخول جديد.</p>
+                        <button type="button" onClick={async () => { try { await navigator.clipboard.writeText(journey.ownerLoginName!); setCopied(true); } catch { setCopied(false); } }} className="mt-3 rounded-xl border border-white/15 px-3 py-2 text-xs font-bold hover:bg-white/10">{copied ? 'تم النسخ' : 'انسخ اسم الدخول'}</button>
                       </div>
                     )}
+
+                    {currentStep === 'welcome' && nextIncomplete && <div className="mt-5 flex items-center justify-between gap-3 rounded-2xl border border-cyan-300/20 bg-cyan-300/5 p-4"><div><p className="text-xs text-slate-400">خطوتك التالية</p><p className="mt-1 font-bold">{nextIncomplete.title}</p></div><Link href={nextIncomplete.href} className="rounded-xl bg-cyan-300 px-3 py-2 text-xs font-black text-slate-950">ابدأ <ArrowLeft className="inline h-3 w-3" /></Link></div>}
 
                     {currentStep === 'branch' && (
                       <div className="mt-7 flex items-start gap-3 rounded-2xl border border-white/10 bg-white/[0.035] p-5">
@@ -258,10 +272,10 @@ export default function SelfServiceSetup({ currentStep }: Props) {
                     )}
 
                     {currentStep === 'launch' && <LaunchSetup onSaved={() => refresh(true)} />}
-                    {inlineStep && <InlineSetupForm key={inlineStep} step={inlineStep} onSaved={() => refresh(true)} />}
+                    {inlineStep && <InlineSetupForm key={inlineStep} step={inlineStep} onSaved={() => refresh(true)} onContinue={inlineStep === 'branch' && next ? () => router.push(next.href) : undefined} />}
 
                     {actions.length > 0 && (
-                      <div className="mt-8 grid gap-3">
+                      <details className="mt-5 rounded-2xl border border-white/10 p-4" open={currentStep === 'launch'}><summary className="cursor-pointer text-sm font-bold text-slate-300">إعدادات متقدمة</summary><div className="mt-3 grid gap-3">
                         {actions.map((action) => (
                           <Link key={action.href} href={action.href} className="group flex items-center gap-4 rounded-2xl border border-cyan-300/20 bg-cyan-300/[0.07] p-4 transition hover:bg-cyan-300/[0.12]">
                             <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-cyan-300 text-slate-950"><ExternalLink className="h-4 w-4" /></span>
@@ -272,10 +286,10 @@ export default function SelfServiceSetup({ currentStep }: Props) {
                             <ChevronLeft className="h-5 w-5 shrink-0 text-cyan-300 transition group-hover:-translate-x-1" />
                           </Link>
                         ))}
-                      </div>
+                      </div></details>
                     )}
 
-                    <div className="mt-8 border-t border-white/10 pt-6">
+                    <div className="mt-6 border-t border-white/10 pt-6">
                       <h2 className="text-sm font-black">نصائح قبل ما تكمل</h2>
                       <ul className="mt-4 space-y-3">
                         {GUIDANCE[currentStep].map((item) => (
@@ -304,14 +318,14 @@ export default function SelfServiceSetup({ currentStep }: Props) {
                 <p className="mt-4 text-center text-xs text-slate-500">تقدر تسيب التجهيز وتكمله بعدين من /setup — حالة كل خطوة بتتحدث من النظام.</p>
               </section>
 
-              <aside className="lg:pt-2">
+              <aside className="hidden lg:block lg:pt-2">
                 <div className="rounded-[1.7rem] border border-white/10 bg-white/[0.045] p-5 lg:sticky lg:top-7">
                   <div className="flex items-center justify-between">
                     <h2 className="font-black">رحلة التجهيز</h2>
                     <span className="text-xs font-bold text-cyan-300">{journey.progressPercent}%</span>
                   </div>
                   <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/10">
-                    <div className="h-full rounded-full bg-cyan-300 transition-all duration-500" style={{ width: journey.progressPercent + '%' }} />
+                    <div className="h-full rounded-full bg-cyan-300 motion-safe:transition-all motion-safe:duration-500" style={{ width: journey.progressPercent + '%' }} />
                   </div>
                   <p className="mt-2 text-xs leading-5 text-slate-500">
                     {journey.completeCount} من {journey.totalCount} خطوات أساسية مكتملة
