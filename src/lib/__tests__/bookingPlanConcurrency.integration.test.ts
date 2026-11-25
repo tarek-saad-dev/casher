@@ -1,12 +1,16 @@
 /**
- * Cloud integration: /create vs /plan write-guard concurrency after shared applock.
- * Uses CLOUD last132 only. Fixtures tagged AUDIT_FIX_CONC and deleted after run.
+ * Staging/isolated integration: /create vs /plan write-guard concurrency after shared applock.
+ * HARD DENY production last132. Requires APPROVED_TEST_DB=1 + approved staging/test DB.
+ * Fixtures tagged AUDIT_FIX_CONC and deleted after run.
  *
- * Run: npx vitest run src/lib/__tests__/bookingPlanConcurrency.integration.test.ts
+ * Run (staging only):
+ *   APPROVED_TEST_DB=1 INCLUDE_DB_INTEGRATION_TESTS=1 npx vitest run src/lib/__tests__/bookingPlanConcurrency.integration.test.ts
  */
 import path from 'path';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import dotenv from 'dotenv';
+import { prepareIntegrationDatabaseGate } from '@/lib/db/integrationTestGuard';
+import { PRODUCTION_DATABASE } from '@/lib/db/assertApprovedTestDatabase';
 
 dotenv.config({ path: path.join(process.cwd(), '.env') });
 dotenv.config({ path: path.join(process.cwd(), '.env.local'), override: true });
@@ -55,15 +59,21 @@ describe('booking plan shared write-guard concurrency (cloud)', () => {
 
   beforeAll(async () => {
     try {
-      const dbMod = await import('@/lib/db');
-      sql = dbMod.sql;
-      await dbMod.setDbTarget('cloud');
-      pool = await dbMod.getPool();
-      const name = (await pool.request().query(`SELECT DB_NAME() AS n`)).recordset[0].n;
-      if (String(name).toLowerCase() !== 'last132') {
-        skipReason = `expected cloud last132, got ${name}`;
+      const gate = await prepareIntegrationDatabaseGate();
+      if (!gate.available) {
+        skipReason = gate.reason;
         return;
       }
+      if (
+        gate.identity &&
+        String(gate.identity.databaseName).toLowerCase() === PRODUCTION_DATABASE
+      ) {
+        skipReason = `HARD DENY: refused production ${PRODUCTION_DATABASE}`;
+        return;
+      }
+      const dbMod = await import('@/lib/db');
+      sql = dbMod.sql;
+      pool = await dbMod.getPool();
       const si = await import('@/lib/scheduleIntegrity');
       assertEmployeeIntervalAvailable = si.assertEmployeeIntervalAvailable;
       ScheduleConflictError = si.ScheduleConflictError;
