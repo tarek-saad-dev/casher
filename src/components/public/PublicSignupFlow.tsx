@@ -155,7 +155,7 @@ export default function PublicSignupFlow() {
         </div>
         <h2 className="mt-5 text-3xl font-black">جاهز 🎉</h2>
         <p className="mt-2 text-sm text-slate-300">
-          DRVO جهّز بيزنسك وبدأت الـ14 يوم التجريبية. بندخلك على النظام دلوقتي.
+          DRVO جهّز بيزنسك وبدأت الـ14 يوم التجريبية. احتفظ باسم الدخول وبعدها افتح خطوات تجهيز بيزنسك.
         </p>
         <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 px-4 py-4 text-right">
           <div className="text-xs text-slate-400">اسم الدخول المخصص لحسابك</div>
