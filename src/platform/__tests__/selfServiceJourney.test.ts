@@ -174,3 +174,22 @@ describe('inline setup input and tenant boundaries', () => {
     expect(layout).toContain('isPublicSalonSetupTenant(auth.tenantId, auth.tenant.tenantCode)');
   });
 });
+
+describe('inline setup atomic writes', () => {
+  it('serializes concurrent saves per tenant and commits employee creation with branch assignment', () => {
+    const read = (rel: string) => fs.readFileSync(path.join(process.cwd(), rel), 'utf8');
+    const route = read('src/app/api/tenant/onboarding/setup-data/route.ts');
+    const stages = read('src/platform/onboarding/wizard/setupStages.ts');
+    const employee = read('src/lib/hr/tenantEmployeeCreate.ts');
+    const assignment = read('src/lib/branch/assignmentIntegrity.ts');
+    expect(route).toContain("acquireTenantApplock(tx, auth.tenantId, ['onboarding', 'setup-data']");
+    expect(route).toContain('runServicesStage(ctx, { services: [action.service] }, tx)');
+    expect(route).toContain('primaryBranchCode: auth.activeBranchCode }] }, tx)');
+    expect(route).toContain('await tx.commit()');
+    expect(route).toContain('await tx.rollback()');
+    expect(stages).toContain('createTenantEmployee({ tenantId, name, job: e.job, isActive: e.active, hr }, tx)');
+    expect(stages).toContain('isHomeBranch: true,\n    }, tx)');
+    expect(employee).toContain('if (!externalTransaction) await tx.commit()');
+    expect(assignment).toContain('const db = externalTransaction ?? await getPool()');
+  });
+});
