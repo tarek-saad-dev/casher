@@ -193,3 +193,15 @@ describe('inline setup atomic writes', () => {
     expect(assignment).toContain('const db = externalTransaction ?? await getPool()');
   });
 });
+
+describe('active branch staffing readiness', () => {
+  it('does not count employees of another branch as ready for the current branch', () => {
+    const report = example(['commercial_access', 'active_branch', 'catalog', 'team', 'users', 'business_day', 'first_shift']);
+    const incomplete = buildSelfServiceJourney(report, { name: 'الفرع الحالي', complete: true, assignedTeamCount: 0 });
+    expect(incomplete.steps.find(s => s.id === 'team')?.complete).toBe(false);
+    expect(incomplete.steps.find(s => s.id === 'team')?.count).toBe(0);
+    expect(incomplete.ready).toBe(false);
+    const ready = buildSelfServiceJourney(report, { name: 'الفرع الحالي', complete: true, assignedTeamCount: 2 });
+    expect(ready.ready).toBe(true);
+  });
+});
