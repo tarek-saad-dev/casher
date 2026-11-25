@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
+import InlineSetupForm from './InlineSetupForm';
 import {
   ArrowLeft, ArrowRight, BadgeCheck, CalendarDays, Check, CheckCircle2,
   ChevronLeft, CircleHelp, Clock3, CreditCard, ExternalLink, Loader2,
@@ -39,7 +40,7 @@ const SCREEN_ACTIONS: Partial<Record<SelfServiceStepId, Action[]>> = {
 const GUIDANCE: Record<SelfServiceStepId, string[]> = {
   welcome: [
     'جهزنا حساب مالك مستقل وفرع أولي باسم نشاطك.',
-    'الخطوات الجاية بتستخدم إعدادات نظامك الحقيقية؛ مفيش حاجة بتتسجل بالضغط على التالي.',
+    'ضيف بياناتك واحفظها من كل خطوة. التقدم بيتحدث من النظام تلقائيًا.',
     'تقدر ترجع هنا في أي وقت من نفس الرابط وتكمل اللي ناقصك.',
   ],
   branch: [
@@ -106,9 +107,10 @@ export default function SelfServiceSetup({ currentStep }: Props) {
   const previous = journey?.steps[index - 1];
   const Icon = ICONS[currentStep];
   const actions = SCREEN_ACTIONS[currentStep] ?? [];
+  const inlineStep = currentStep === 'branch' || currentStep === 'services' || currentStep === 'team' ? currentStep : null;
 
   return (
-    <main dir="rtl" className="relative min-h-[100dvh] overflow-x-hidden bg-[#071018] text-right text-white">
+    <main dir="rtl" className="relative flex-1 min-h-0 overflow-y-auto overflow-x-hidden bg-[#071018] text-right text-white">
       <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
         <div className="absolute -right-44 -top-40 h-[35rem] w-[35rem] rounded-full bg-cyan-400/[0.09] blur-3xl" />
         <div className="absolute -bottom-60 left-0 h-[35rem] w-[35rem] rounded-full bg-blue-500/[0.08] blur-3xl" />
@@ -177,7 +179,7 @@ export default function SelfServiceSetup({ currentStep }: Props) {
                         {[
                           { icon: Store, value: journey.branchName, name: 'أول فرع' },
                           { icon: ShieldCheck, value: 'بيانات مستقلة', name: 'حساب منشأتك' },
-                          { icon: CalendarDays, value: 'تجربة Starter', name: 'اشتراكك' },
+                          { icon: CalendarDays, value: 'حساب المنشأة', name: 'اشتراكك' },
                         ].map((item) => {
                           const CardIcon = item.icon;
                           return (
@@ -193,7 +195,7 @@ export default function SelfServiceSetup({ currentStep }: Props) {
 
                     {currentStep === 'welcome' && journey.ownerLoginName && (
                       <div className="mt-5 rounded-2xl border border-cyan-300/20 bg-cyan-300/[0.06] p-5">
-                        <div className="text-xs font-bold text-slate-300">احتفظ باسم الدخول بتاعك</div>
+                        <div className="text-xs font-bold text-slate-300">احتفظ باسم دخول المالك</div>
                         <div dir="ltr" className="mt-2 text-left font-mono text-lg font-black text-cyan-300">{journey.ownerLoginName}</div>
                         <p className="mt-2 text-xs leading-6 text-slate-400">هتستخدمه مع كلمة المرور اللي عملتها وقت التسجيل في أي دخول جديد.</p>
                       </div>
@@ -210,7 +212,7 @@ export default function SelfServiceSetup({ currentStep }: Props) {
                       <div className="mt-7 rounded-2xl border border-white/10 bg-white/[0.035] p-5">
                         <div className="text-xs text-slate-400">{currentStep === 'services' ? 'الخدمات المسجلة' : 'أفراد الفريق المسجلين'}</div>
                         <div className="mt-2 text-4xl font-black text-cyan-300">{step.count ?? '—'}</div>
-                        <p className="mt-2 text-xs leading-6 text-slate-500">ده العدد الحالي داخل منشأتك، مش بيانات CUT Salon.</p>
+                        <p className="mt-2 text-xs leading-6 text-slate-500">ده العدد الحالي داخل منشأتك.</p>
                       </div>
                     )}
 
@@ -251,6 +253,8 @@ export default function SelfServiceSetup({ currentStep }: Props) {
                       </div>
                     )}
 
+                    {inlineStep && <InlineSetupForm key={inlineStep} step={inlineStep} onSaved={() => refresh(true)} />}
+
                     {actions.length > 0 && (
                       <div className="mt-8 grid gap-3">
                         {actions.map((action) => (
@@ -286,7 +290,7 @@ export default function SelfServiceSetup({ currentStep }: Props) {
                     {previous ? <Link href={previous.href} className="inline-flex items-center gap-2 text-sm font-bold text-slate-300 hover:text-white"><ArrowRight className="h-4 w-4" /> السابق</Link> : <span />}
                     {next ? (
                       <Link href={next.href} className="inline-flex items-center gap-2 rounded-full bg-cyan-300 px-6 py-3 text-sm font-black text-slate-950 transition hover:bg-cyan-200">
-                        {step.complete || currentStep === 'welcome' ? 'التالي' : 'كمل الخطوة الجاية'} <ArrowLeft className="h-4 w-4" />
+                        {step.complete || currentStep === 'welcome' ? 'التالي' : 'تخطي مؤقتًا'} <ArrowLeft className="h-4 w-4" />
                       </Link>
                     ) : <Link href="/operations" className="inline-flex items-center gap-2 rounded-full bg-cyan-300 px-6 py-3 text-sm font-black text-slate-950">ابدأ الاستخدام <ArrowLeft className="h-4 w-4" /></Link>}
                   </div>
