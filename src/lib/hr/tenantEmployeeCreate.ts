@@ -25,7 +25,7 @@ export async function createTenantEmployee(input: {
   job: string;
   isActive: boolean;
   hr?: Omit<EmployeeHrPayload, 'empName' | 'isActive'>;
-}): Promise<{ empId: number }> {
+}, externalTransaction?: sql.Transaction): Promise<{ empId: number }> {
   const tenantId = requireMasterDataTenantId(input.tenantId, 'createTenantEmployee');
   const name = input.name.trim();
   const payload: EmployeeHrPayload = { ...(input.hr ?? {}), empName: name, isActive: input.isActive };
@@ -35,9 +35,8 @@ export async function createTenantEmployee(input: {
     throw new TenantEmployeeValidationError(`${name}: ${validation.errors[0]}`);
   }
 
-  const db = await getPool();
-  const tx = new sql.Transaction(db);
-  await tx.begin();
+  const tx = externalTransaction ?? new sql.Transaction(await getPool());
+  if (!externalTransaction) await tx.begin();
   try {
     let empId: number;
     if (isHrPayload && validation.normalized) {
@@ -74,13 +73,11 @@ export async function createTenantEmployee(input: {
       .query(`UPDATE dbo.TblEmp SET Job = @job WHERE EmpID = @empId AND TenantId = @tenantId;`);
 
     await ensureEmployeeAdvanceMapping(tx, tenantId, empId, name);
-    await tx.commit();
+    if (!externalTransaction) await tx.commit();
     return { empId };
   } catch (err) {
-    try {
-      await tx.rollback();
-    } catch {
-      /* already rolled back */
+    if (!externalTransaction) {
+      try { await tx.rollback(); } catch { /* already rolled back */ }
     }
     throw err;
   }
