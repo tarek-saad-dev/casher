@@ -26,12 +26,13 @@ const REQUIRED: readonly GoLiveMilestoneId[] = [
   'active_branch', 'catalog', 'team', 'business_day', 'first_shift',
 ];
 
-export function buildSelfServiceJourney(report: TenantGoLiveReport, branchDetails?: { name: string; complete: boolean }) {
+export function buildSelfServiceJourney(report: TenantGoLiveReport, branchDetails?: { name: string; complete: boolean; assignedTeamCount?: number }) {
   const evidence = new Map(report.milestones.map((item) => [item.id, item]));
   const done = (id: GoLiveMilestoneId) => evidence.get(id)?.status === 'done';
   const count = (id: GoLiveMilestoneId) => evidence.get(id)?.count ?? null;
   const branchComplete = done('active_branch') && (branchDetails?.complete ?? true);
-  const ready = REQUIRED.every(done) && branchComplete && done('commercial_access') && done('users');
+  const teamComplete = done('team') && (branchDetails?.assignedTeamCount === undefined || branchDetails.assignedTeamCount > 0);
+  const ready = REQUIRED.every(done) && branchComplete && teamComplete && done('commercial_access') && done('users');
 
   const steps: SelfServiceStep[] = [
     {
@@ -52,7 +53,7 @@ export function buildSelfServiceJourney(report: TenantGoLiveReport, branchDetail
     {
       id: 'team', href: '/setup/team', label: 'فريقك', title: 'ضيف أول فرد في فريقك',
       description: 'ضيف الحلاقين وحدد وظائفهم. الجداول والرواتب متاحة في الإدارة.',
-      complete: done('team'), count: count('team'),
+      complete: teamComplete, count: branchDetails?.assignedTeamCount ?? count('team'),
     },
     {
       id: 'launch', href: '/setup/launch', label: 'التشغيل', title: 'جهّز أول يوم شغل',
@@ -76,7 +77,7 @@ export function buildSelfServiceJourney(report: TenantGoLiveReport, branchDetail
     completeCount,
     totalCount: 4,
     progressPercent: Math.round((completeCount / 4) * 100),
-    pendingMilestones: REQUIRED.filter((id) => !done(id) || (id === 'active_branch' && !branchComplete)),
+    pendingMilestones: REQUIRED.filter((id) => !done(id) || (id === 'active_branch' && !branchComplete) || (id === 'team' && !teamComplete)),
     branchName: branchDetails?.name || report.primaryBranch?.branchName || 'الفرع الرئيسي',
     tenantName: report.tenantName,
     ownerLoginName: report.ownerLoginName,
