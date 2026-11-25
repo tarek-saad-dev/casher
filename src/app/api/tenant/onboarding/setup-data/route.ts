@@ -18,6 +18,7 @@ function reply(body: object, status = 200) {
 
 /** Public registration membership is checked in SQL, not by a client flag or a code prefix. */
 async function setupTarget(auth: AuthResult) {
+  if (auth.tenant.tenantCode === 'CASHER_BOOT') return null;
   const pool = await getPool();
   const registration = await pool.request()
     .input('tenantId', sql.UniqueIdentifier, auth.tenantId)
@@ -26,7 +27,7 @@ async function setupTarget(auth: AuthResult) {
       FROM dbo.PublicSignupRegistration
       WHERE TenantId = @tenantId AND IndustryCode = N'salon' AND Status = N'provisioned';
     `);
-  if (auth.tenant.tenantCode === 'CASHER_BOOT' || !registration.recordset.length) return null;
+  if (!registration.recordset.length) return null;
   await assertLegacyBranchInTenant(auth.tenantId, auth.activeBranchId);
   const branch = await getBranchById(auth.activeBranchId);
   if (!branch) return null;
@@ -95,6 +96,39 @@ export async function POST(req: Request) {
         requireSetupLifecycle: false, actorUserId: auth.userId, reason: 'self-service salon setup',
       });
       return reply({ ok: true, created: 0, existing: 0 });
+    }
+
+    // Existing names must not silently reactivate deleted records or move an employee
+    // from a different branch. A previously unassigned employee can be recovered on retry.
+    if (action.action === 'service') {
+      const sameName = await target.pool.request().input('tenantId', sql.UniqueIdentifier, auth.tenantId)
+        .input('name', sql.NVarChar(200), action.service.name)
+        .query(`SELECT TOP 1 ProID, isDeleted FROM dbo.TblPro WHERE TenantId = @tenantId AND ProName = @name;`);
+      if (sameName.recordset.length) {
+        if (Number(sameName.recordset[0].isDeleted) === 1) return reply({ error: 'الخدمة موجودة وغير نشطة. راجع إدارة الخدمات.' }, 409);
+        return reply({ ok: true, created: 0, existing: 1 });
+      }
+    } else {
+      const sameName = await target.pool.request().input('tenantId', sql.UniqueIdentifier, auth.tenantId)
+        .input('name', sql.NVarChar(200), action.employee.name)
+        .input('branchId', sql.Int, auth.activeBranchId)
+        .query(`
+          SELECT TOP 1 e.EmpID, ISNULL(e.isActive, 1) AS Active,
+            CASE WHEN EXISTS (SELECT 1 FROM dbo.TblEmpBranchAssignment a
+              WHERE a.EmpID = e.EmpID AND a.BranchID = @branchId AND a.IsActive = 1
+                AND a.EffectiveFrom <= CAST(GETUTCDATE() AS date)
+                AND (a.EffectiveTo IS NULL OR a.EffectiveTo >= CAST(GETUTCDATE() AS date))) THEN 1 ELSE 0 END AS HereNow,
+            CASE WHEN EXISTS (SELECT 1 FROM dbo.TblEmpBranchAssignment a
+              WHERE a.EmpID = e.EmpID AND a.IsActive = 1
+                AND (a.EffectiveTo IS NULL OR a.EffectiveTo >= CAST(GETUTCDATE() AS date))) THEN 1 ELSE 0 END AS HasAssignment
+          FROM dbo.TblEmp e WHERE e.TenantId = @tenantId AND e.EmpName = @name;
+        `);
+      const existing = sameName.recordset[0];
+      if (existing) {
+        if (!Number(existing.Active)) return reply({ error: 'الموظف موجود وغير نشط. راجع إدارة الموظفين.' }, 409);
+        if (Number(existing.HereNow)) return reply({ ok: true, created: 0, existing: 1 });
+        if (Number(existing.HasAssignment)) return reply({ error: 'الموظف له ربط بفرع أو جدول آخر. راجع الإدارة.' }, 409);
+      }
     }
 
     const ctx: OnboardingSetupContext = {
