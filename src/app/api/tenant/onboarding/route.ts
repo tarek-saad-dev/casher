@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { isAuthResult, requireAdmin } from '@/lib/api-auth';
+import { getBranchById } from '@/lib/branch/repository';
 import { evaluateTenantGoLive } from '@/platform/onboarding/goLiveReadiness';
 import { buildSelfServiceJourney } from '@/platform/onboarding/selfServiceJourney';
 
@@ -20,8 +21,13 @@ export async function GET() {
       );
     }
 
+    const branch = await getBranchById(auth.activeBranchId);
+    const branchDetails = branch ? {
+      name: branch.branchName,
+      complete: Boolean(branch.isActive && branch.address?.trim() && branch.phone?.trim() && branch.defaultOpenTime && branch.defaultCloseTime && branch.defaultOpenTime !== branch.defaultCloseTime),
+    } : { name: 'الفرع الحالي', complete: false };
     return NextResponse.json(
-      { ok: true, journey: buildSelfServiceJourney(report) },
+      { ok: true, journey: buildSelfServiceJourney(report, branchDetails) },
       { headers: { 'Cache-Control': 'no-store' } },
     );
   } catch (error) {
