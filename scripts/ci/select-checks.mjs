@@ -10,9 +10,11 @@ export const GROUPS = Object.freeze([
 // Narrow allowlist. Never silently skip a file we have not classified.
 // Multiple matches deliberately select the union of their dependency groups.
 const rules = [
-  { paths: [/^src\/platform\/(?:onboarding|publicSignup)\//, /^src\/app\/(?:setup|start)\//,
+  { paths: [/^src\/app\/(?:setup|start)\//, /^src\/components\/onboarding\//,
+    /^src\/components\/public\/PublicSignup/],
+    groups: ['onboarding', 'commercial'] },
+  { paths: [/^src\/platform\/(?:onboarding|publicSignup)\//,
     /^src\/app\/api\/(?:tenant\/onboarding|public\/signup)\//,
-    /^src\/components\/onboarding\//, /^src\/components\/public\/PublicSignup/,
     /^src\/platform\/__tests__\/(?:onboardingWizard|selfServiceJourney|tenantOnboarding|goLiveReadiness|publicSignup)/],
     groups: ['onboarding', 'commercial', 'booking', 'queue', 'payroll', 'pos'] },
   { paths: [/^src\/(?:platform\/(?:commercial|apps|packs|registry)|packs)\//,
