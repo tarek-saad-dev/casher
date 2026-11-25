@@ -1,0 +1,9 @@
+# Platform signup OTP — backend phase (#350)
+
+Existing DRVO AutoResponse API supports SIGNUP and scopes challenges to the paired integration. This backend uses dedicated PUBLIC_SIGNUP_OTP_BASE_URL, PUBLIC_SIGNUP_OTP_API_KEY, PUBLIC_SIGNUP_OTP_SIGNING_KEY; never use CUT CLUB credentials. Do not enable PUBLIC_SIGNUP_OTP_REQUIRED until the V2 frontend sends otp.ticket and otp.code to /api/public/signup/complete. Default is off.
+
+POST /api/public/signup/otp/send accepts phone only; returns signed short-lived ticket, expiry, resend delay only on confirmed SENT. The complete endpoint, when enabled, validates input, verifies the signed phone-bound ticket and consumes the OTP via the provider before provisioning. No independent reusable verified token. On provider ambiguity, failure or consumed challenge, request another code after cooldown. Do not log request bodies or codes.
+
+Deployment prerequisites: dedicated platform sender pairing and key, independent signing key, secure HTTPS endpoint, trusted reverse proxy which overwrites client IP and enforces durable/shared IP rate limits for both endpoints (the app limiter is per-process only), PUBLIC_SIGNUP_OTP_EDGE_RATE_LIMIT_READY=true only after verifying that configuration. The provider already has durable per-phone/business limits and atomic consumption of confirmed SENT challenges. UNKNOWN sends are rejected deliberately because provider currently has an inconsistent UNKNOWN verification state transition; separate provider hardening is advisable.
+
+Next: merge #349 after UI/staging review, integrate OTP field into V2 in a follow-up, run dedicated staging with a controlled test phone, valid/invalid/expired/replay/race tests and verify no provisioning bypass. Never enable flag on production without all prerequisites. No DB migration required for this direct provider consumption architecture.
