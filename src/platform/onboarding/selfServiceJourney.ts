@@ -78,6 +78,7 @@ export function buildSelfServiceJourney(report: TenantGoLiveReport) {
     pendingMilestones: REQUIRED.filter((id) => !done(id)),
     branchName: report.primaryBranch?.branchName || 'الفرع الرئيسي',
     tenantName: report.tenantName,
+    ownerLoginName: report.ownerLoginName,
     bookingInstalled: report.bookingInstalled,
   };
 }
