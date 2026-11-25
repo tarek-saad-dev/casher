@@ -140,7 +140,6 @@ export default function PublicSignupFlow() {
       if (!res.ok) throw new Error(data.error || 'تعذر إنشاء الحساب.');
       const nextPath = data.nextPath || '/operations';
       setDone({ tenantCode: data.tenantCode || '', ownerLoginName: data.ownerLoginName || '', nextPath });
-      setTimeout(() => window.location.assign(nextPath), 1600);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'تعذر إنشاء الحساب.');
     } finally {
