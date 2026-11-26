@@ -205,3 +205,43 @@ describe('active branch staffing readiness', () => {
     expect(ready.ready).toBe(true);
   });
 });
+
+import { newTraining, nextTrainingStep, applyTrainingAction, trainingCash } from '@/platform/onboarding/trainingModel';
+describe('isolated interactive training',()=>{
+  it('uses installed apps and enforces the step sequence',()=>{
+    expect(newTraining(['booking']).steps).toEqual(['customer','booking']);
+    const initial=newTraining(['pos','booking','queue','treasury']);
+    expect(initial.steps).toEqual(['customer','sale','booking','queue','treasury','close']);
+    expect(()=>applyTrainingAction(initial,{step:'close'})).toThrow();
+    const customer=applyTrainingAction(initial,{step:'customer'});
+    expect(initial.completed).toEqual([]);
+    expect(()=>applyTrainingAction(customer,{step:'customer'})).toThrow();
+    expect(()=>applyTrainingAction(customer,{step:'sale',serviceId:'unknown',payment:'cash'})).toThrow();
+    let state=applyTrainingAction(customer,{step:'sale',serviceId:'haircut',payment:'cash'});
+    state=applyTrainingAction(state,{step:'booking'});
+    state=applyTrainingAction(state,{step:'queue'});
+    expect(trainingCash(state)).toBe(20000);
+    expect(()=>applyTrainingAction(state,{step:'treasury',countedPiastres:10000})).toThrow();
+    state=applyTrainingAction(state,{step:'treasury',countedPiastres:20000});
+    state=applyTrainingAction(state,{step:'close'});
+    expect(nextTrainingStep(state)).toBeNull();
+    expect(state.closed).toBe(true);
+    expect(newTraining(['pos']).sale).toBeNull();
+  });
+  it('keeps card sales out of cash and handles no-sale reconciliation',()=>{
+    let state=applyTrainingAction(newTraining(['pos','treasury']),{step:'customer'});
+    state=applyTrainingAction(state,{step:'sale',serviceId:'beard',payment:'card'});
+    expect(state.sale?.piastres).toBe(10000);
+    expect(trainingCash(state)).toBe(0);
+    expect(applyTrainingAction(state,{step:'treasury',countedPiastres:0}).reconciled).toBe(true);
+    const noSale=applyTrainingAction(newTraining(['treasury']),{step:'customer'});
+    expect(applyTrainingAction(noSale,{step:'treasury',countedPiastres:0}).reconciled).toBe(true);
+  });
+  it('has no operational network or persistence dependencies',()=>{
+    const sources=['src/components/onboarding/TrainingExperience.tsx','src/platform/onboarding/trainingModel.ts'].map(p=>fs.readFileSync(path.join(process.cwd(),p),'utf8')).join('\n');
+    expect(sources).not.toMatch(/\bfetch\s*\(|\/api\/|localStorage|sessionStorage|indexedDB|XMLHttpRequest|useSession|@\/lib\/db|window\.print|sendBeacon/);
+    const page=fs.readFileSync(path.join(process.cwd(),'src/app/setup/training/page.tsx'),'utf8');
+    expect(page).toContain('requireAdmin()');
+    expect(page).toContain('getTenantInstalledAppsForGate(auth.tenantId)');
+  });
+});
