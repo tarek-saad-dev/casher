@@ -51,3 +51,28 @@ describe('platform signup OTP', () => {
     await expect(verifySignupOtp(phone, { ticket, code: '123456' }, config)).rejects.toThrow();
   });
 });
+
+import { operatorOtpConfig, operatorOtpStatus } from '@/platform/publicSignup/otpOperator';
+import { readFileSync } from 'node:fs';
+
+describe('platform operator OTP diagnostics', () => {
+  const env = { PUBLIC_SIGNUP_OTP_BASE_URL: 'https://otp.example.test', PUBLIC_SIGNUP_OTP_API_KEY: 'a'.repeat(40), PUBLIC_SIGNUP_OTP_SIGNING_KEY: 'b'.repeat(40), PUBLIC_SIGNUP_OTP_EDGE_RATE_LIMIT_READY: 'true' };
+  it('reports only booleans and does not infer live connectivity', () => {
+    expect(operatorOtpStatus(env)).toEqual({ required:false, configured:true, senderKeyPresent:true, independentSigningKeyPresent:true, edgeRateLimitDeclared:true, providerUrlPresent:true });
+    expect(operatorOtpStatus({})).toMatchObject({ required:false, configured:false, senderKeyPresent:false });
+    expect(JSON.stringify(operatorOtpStatus(env))).not.toContain(env.PUBLIC_SIGNUP_OTP_API_KEY);
+  });
+  it('separates operator test signatures from public signup signatures', () => {
+    const cfg = operatorOtpConfig(env);
+    const phone = '201012345678';
+    const ticket = signSignupChallenge({phone,challengeId:'f39cbb94-8500-4358-a64e-2ecceaf63343',expiresAt:Date.now()+60000,purpose:'SIGNUP'},cfg.signingKey);
+    expect(() => readSignupChallenge(ticket,phone,env.PUBLIC_SIGNUP_OTP_SIGNING_KEY)).toThrow();
+    expect(readSignupChallenge(ticket,phone,cfg.signingKey).phone).toBe(phone);
+  });
+  it('gates both endpoints and never provisions a tenant', () => {
+    const source=readFileSync('src/app/api/admin/platform/authentication/otp/route.ts','utf8');
+    expect(source.match(/await requirePlatformOperator\(\)/g)).toHaveLength(2);
+    expect(source).not.toContain('provisionPublicSignup');
+    expect(source).toContain('operatorOtpConfig()');
+  });
+});
