@@ -1,0 +1,5 @@
+# Platform OTP control center (#354)
+
+/platform/authentication is restricted by the platform layout and page gate. The GET and POST API both enforce requirePlatformOperator. It shows non-secret configuration booleans only; it does not claim a live connection. An operator can explicitly send and verify a real OTP to a controlled test phone, even while signup OTP is off, once the same dedicated provider and edge readiness configuration are present. Test tickets use a derived signing key and cannot authorize public signup. The route never provisions accounts. Existing provider limits apply.
+
+Set dedicated platform sender key, independent signing key, HTTPS provider URL and verified edge protection on the server as documented in PLATFORM-SIGNUP-OTP.md. Do not reuse CUT CLUB/tenant keys. Do not enable mandatory signup until V3 is merged and staging has passed. No key writing, pairing, activation toggle, production requests, or database changes in this PR. Config readiness is not runtime verification. Staging smoke: operator and tenant access, missing config, send, wrong/expired/replayed code, correct verification and public-ticket rejection. Human merge only.

@@ -1,0 +1,9 @@
+# Premium onboarding V3 — incremental release (#352)
+
+Implemented: phone-first registration, owner account, existing supported industry choices, apps, review; clean light RTL design with a dark progress rail and mobile navigation. OTP UI uses server flag and existing backend: request the code on the final step and consume it atomically at provider before provisioning. This intentionally differs from the approved early verification prototype; the current short-lived challenge cannot safely be turned into a verified session without a new proof store. No fake verification. OTP remains off until dedicated sender, signing key, edge rate limits and staging are verified. No secrets stored in browser persistence. Real account only in V3 registration; training is not an isolated environment yet.
+
+Setup uses existing tenant authorization and progress; salon service template picker sends selected rows individually to the existing route, reports failures, skips existing names and does not overwrite prices. Partial success is possible by design. Setup finish uses real readiness data, not fake first sale. Existing branch/team/day/shift operations retained.
+
+Deferred: privileged OTP admin provisioning, branding/logo upload, payroll and permissions, Excel import, operating settings, isolated training and activation analytics. No unsupported industry presets, no new schema, no direct deploy.
+
+Verification: CI plus browser smoke in staging: phone-first signup with OTP off and on; failure/expiry/retry/duplicate, two tenants, branch/team, service partial save, mobile and desktop, existing CUT isolation. No production data access.

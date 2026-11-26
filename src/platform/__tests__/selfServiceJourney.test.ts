@@ -205,3 +205,108 @@ describe('active branch staffing readiness', () => {
     expect(ready.ready).toBe(true);
   });
 });
+
+import { identityDraft, identityPayload } from '@/platform/branding/onboardingIdentity';
+import type { TenantBrandProfile } from '@/platform/branding/brandProfile';
+describe('onboarding identity', () => {
+  const p: TenantBrandProfile={tenantId:'tenant-a',displayName:'Salon',logoUrl:'/existing.png',phone:'01000000000',address:'address',primaryColor:null,accentColor:null,receiptFooter:null,timezone:'Africa/Cairo',publicBookingOrigins:['https://booking.example.com'],revision:0,updatedAt:null};
+  it('preserves unrelated fields and revision including revision zero',()=>{
+    const payload=identityPayload(p,{...identityDraft(p),displayName:' New Salon ',primaryColor:'#087e7a'});
+    expect(payload).toMatchObject({displayName:'New Salon',primaryColor:'#087E7A',phone:p.phone,address:p.address,timezone:p.timezone,publicBookingOrigins:p.publicBookingOrigins,expectedRevision:0,logoUrl:p.logoUrl});
+    expect(payload).not.toHaveProperty('tenantId');
+  });
+  it('does not accept arbitrary new local paths, unsafe URL schemes or invalid colors',()=>{
+    for(const logoUrl of ['/api/private','//elsewhere.test/logo.png','javascript:alert(1)','http://example.com/a.png','https://u:p@example.com/a.png'])expect(()=>identityPayload(p,{...identityDraft(p),logoUrl})).toThrow();
+    expect(identityPayload(p,{...identityDraft(p),logoUrl:'https://example.com/logo.png'}).logoUrl).toBe('https://example.com/logo.png');
+    expect(()=>identityPayload(p,{...identityDraft(p),primaryColor:'red'})).toThrow();
+  });
+});
+
+describe('smart team setup payroll and booking', () => {
+  const employee = { action: 'employee', name: 'Ahmed', job: SETUP_JOBS[0] };
+  it('passes initial HR and booking options through the existing employee create contract', () => {
+    expect(parseSetupAction({...employee,employmentType:'full_time',payrollMethod:'monthly',payRate:6000,acceptsBookings:false})).toMatchObject({action:'employee',employee:{employmentType:'full_time',payrollMethod:'monthly',payRate:6000,acceptsBookings:false}});
+    expect(parseSetupAction({...employee,employmentType:'freelance',payrollMethod:'daily',payRate:150.25})).toMatchObject({employee:{payRate:150.25}});
+  });
+  it('rejects incomplete, unsupported or malformed HR inputs', () => {
+    for(const p of [{employmentType:'full_time'},{employmentType:'freelance',payrollMethod:'monthly',payRate:6000},{employmentType:'unknown',payrollMethod:'daily',payRate:100},{employmentType:'full_time',payrollMethod:'hourly',payRate:-1},{employmentType:'full_time',payrollMethod:'daily',payRate:1.234},{employmentType:'full_time',payrollMethod:'daily',payRate:'100'},{acceptsBookings:'yes'},{empId:5},{commissionPercent:50}])expect(()=>parseSetupAction({...employee,...p})).toThrow(SetupInputError);
+  });
+  it('requires installed apps and preserves existing employee payroll', () => {
+    const route=fs.readFileSync(path.join(process.cwd(),'src/app/api/tenant/onboarding/setup-data/route.ts'),'utf8');
+    expect(route).toContain("!ctx.apps.includes('payroll')");
+    expect(route).toContain("!ctx.apps.includes('booking')");
+    expect(route).toContain('if (Number(existing.HereNow)) return reply({ ok: true, created: 0, existing: 1 });');
+    expect(route).toContain('runTeamStage(ctx');
+  });
+});
+
+import { parseOperatingBookingPreferences } from '@/platform/onboarding/operatingPreferences';
+describe('operating settings allowlist',()=>{
+  const valid={slotIntervalMinutes:15,minNoticeMinutes:30,maxBookingDaysAhead:14};
+  it('accepts only valid booking preferences',()=>{
+    expect(parseOperatingBookingPreferences(valid)).toEqual(valid);
+    for(const body of [{...valid,bookingEnabled:true},{...valid,publicBookingEnabled:true},{...valid,branchId:42},{...valid,tenantId:'foreign'},{...valid,slotIntervalMinutes:9},{...valid,minNoticeMinutes:'30'},{...valid,maxBookingDaysAhead:61},{slotIntervalMinutes:15}])expect(()=>parseOperatingBookingPreferences(body)).toThrow();
+  });
+  it('keeps the operating route gated and never changes payment or booking activation',()=>{
+    const source=fs.readFileSync(path.join(process.cwd(),'src/app/api/tenant/onboarding/operating/route.ts'),'utf8');
+    expect(source).toContain('requireAdmin()');
+    expect(source).toContain('isPublicSalonSetupTenant');
+    expect(source).toContain('assertLegacyBranchInTenant');
+    expect(source).toContain("!c.apps.includes('booking')");
+    expect(source).toContain('l.TenantId=@tenantId');
+    expect(source).not.toMatch(/INSERT INTO|\b(?:SET|,)\s*(?:Public)?BookingEnabled\s*=(?!=)|TblCashMove|TblPaymentMethods/i);
+  });
+});
+
+import { newTraining, nextTrainingStep, applyTrainingAction, trainingCash } from '@/platform/onboarding/trainingModel';
+describe('isolated interactive training',()=>{
+  it('uses installed apps and enforces the step sequence',()=>{
+    expect(newTraining(['booking']).steps).toEqual(['customer','booking']);
+    const initial=newTraining(['pos','booking','queue','treasury']);
+    expect(initial.steps).toEqual(['customer','sale','booking','queue','treasury','close']);
+    expect(()=>applyTrainingAction(initial,{step:'close'})).toThrow();
+    const customer=applyTrainingAction(initial,{step:'customer'});
+    expect(initial.completed).toEqual([]);
+    expect(()=>applyTrainingAction(customer,{step:'customer'})).toThrow();
+    expect(()=>applyTrainingAction(customer,{step:'sale',serviceId:'unknown',payment:'cash'})).toThrow();
+    let state=applyTrainingAction(customer,{step:'sale',serviceId:'haircut',payment:'cash'});
+    state=applyTrainingAction(state,{step:'booking'});
+    state=applyTrainingAction(state,{step:'queue'});
+    expect(trainingCash(state)).toBe(20000);
+    expect(()=>applyTrainingAction(state,{step:'treasury',countedPiastres:10000})).toThrow();
+    state=applyTrainingAction(state,{step:'treasury',countedPiastres:20000});
+    state=applyTrainingAction(state,{step:'close'});
+    expect(nextTrainingStep(state)).toBeNull();
+    expect(state.closed).toBe(true);
+    expect(newTraining(['pos']).sale).toBeNull();
+  });
+  it('keeps card sales out of cash and handles no-sale reconciliation',()=>{
+    let state=applyTrainingAction(newTraining(['pos','treasury']),{step:'customer'});
+    state=applyTrainingAction(state,{step:'sale',serviceId:'beard',payment:'card'});
+    expect(state.sale?.piastres).toBe(10000);
+    expect(trainingCash(state)).toBe(0);
+    expect(applyTrainingAction(state,{step:'treasury',countedPiastres:0}).reconciled).toBe(true);
+    const noSale=applyTrainingAction(newTraining(['treasury']),{step:'customer'});
+    expect(applyTrainingAction(noSale,{step:'treasury',countedPiastres:0}).reconciled).toBe(true);
+  });
+  it('has no operational network or persistence dependencies',()=>{
+    const sources=['src/components/onboarding/TrainingExperience.tsx','src/platform/onboarding/trainingModel.ts'].map(p=>fs.readFileSync(path.join(process.cwd(),p),'utf8')).join('\n');
+    expect(sources).not.toMatch(/\bfetch\s*\(|\/api\/|localStorage|sessionStorage|indexedDB|XMLHttpRequest|useSession|@\/lib\/db|window\.print|sendBeacon/);
+    const page=fs.readFileSync(path.join(process.cwd(),'src/app/setup/training/page.tsx'),'utf8');
+    expect(page).toContain('requireAdmin()');
+    expect(page).toContain('getTenantInstalledAppsForGate(auth.tenantId)');
+  });
+});
+
+ describe('integrated V3 entry points', () => {
+  it('keeps all setup and platform navigation in the guarded shells', () => {
+    const read=(p:string)=>fs.readFileSync(path.join(process.cwd(),p),'utf8');
+    const setup=read('src/app/setup/layout.tsx');
+    for(const href of ['/setup/identity','/setup/operating','/setup/training']) expect(setup).toContain(href);
+    const platform=read('src/app/platform/layout.tsx');
+    for(const href of ['/platform/authentication','/platform/onboarding-analytics']) expect(platform).toContain(href);
+    const inline=read('src/components/onboarding/InlineSetupForm.tsx');
+    expect(inline).toContain('<ServiceTemplatePicker');
+    expect(inline).toContain('<SmartTeamSetup');
+  });
+});

@@ -22,7 +22,7 @@ export default async function PlatformLayout({ children }: { children: React.Rea
           <h1 className="text-xl font-bold">لوحة مشغل المنصة</h1>
           <p className="text-xs text-muted-foreground">DRVOERP — إدارة المنشآت والاشتراكات والتطبيقات</p>
         </div>
-        <nav className="flex gap-2 text-sm">
+        <nav className="flex flex-wrap gap-2 text-sm">
           <Link href="/platform" className="rounded-lg border border-border px-3 py-1.5 hover:bg-muted">
             المنشآت
           </Link>
@@ -35,6 +35,8 @@ export default async function PlatformLayout({ children }: { children: React.Rea
           <Link href="/platform/tariff-research" className="rounded-lg border border-border px-3 py-1.5 hover:bg-muted">
             بحث أسعار التطبيقات
           </Link>
+          <Link href="/platform/authentication" className="rounded-lg border border-border px-3 py-1.5 hover:bg-muted">التحقق والأمان</Link>
+          <Link href="/platform/onboarding-analytics" className="rounded-lg border border-border px-3 py-1.5 hover:bg-muted">تحليلات التسجيل</Link>
           <Link href="/platform/pricing" className="rounded-lg border border-border px-3 py-1.5 hover:bg-muted">
             الأسعار والباقات
           </Link>
