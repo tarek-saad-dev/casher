@@ -214,7 +214,7 @@ export default function SelfServiceSetup({ currentStep }: Props) {
                       </div>
                     )}
 
-                    {currentStep === 'welcome' && nextIncomplete && <div className="mt-5 flex items-center justify-between gap-3 rounded-2xl border border-teal-600/20 bg-teal-50 p-4"><div><p className="text-xs text-slate-600">خطوتك التالية</p><p className="mt-1 font-bold">{nextIncomplete.title}</p></div><Link href={nextIncomplete.href} className="rounded-xl bg-[#087e7a] px-3 py-2 text-xs font-black text-[#102433]">ابدأ <ArrowLeft className="inline h-3 w-3" /></Link></div>}
+                    {currentStep === 'welcome' && nextIncomplete && <div className="mt-5 flex items-center justify-between gap-3 rounded-2xl border border-teal-600/20 bg-teal-50 p-4"><div><p className="text-xs text-slate-600">خطوتك التالية</p><p className="mt-1 font-bold">{nextIncomplete.title}</p></div><Link href={nextIncomplete.href} className="rounded-xl bg-[#087e7a] px-3 py-2 text-xs font-black text-white">ابدأ <ArrowLeft className="inline h-3 w-3" /></Link></div>}
 
                     {currentStep === 'branch' && (
                       <div className="mt-7 flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-5">
@@ -264,10 +264,7 @@ export default function SelfServiceSetup({ currentStep }: Props) {
                         </p>
                         <div className="mt-4 rounded-xl bg-[#102433] p-4 text-white"><div className="text-xs text-[#66e0da]">مساحة عملك</div><div className="mt-1 break-words text-xl font-black">{journey.tenantName}</div><div className="mt-1 text-xs text-slate-300">{journey.branchName}</div><div className="mt-4 flex justify-between text-xs"><span>اكتمال التجهيز الأساسي</span><b>{journey.progressPercent}%</b></div><div className="mt-2 h-2 rounded-full bg-white/15"><div className="h-full rounded-full bg-[#66e0da]" style={{width:journey.progressPercent+'%'}}/></div></div>
                         <div className="mt-4 space-y-2">{journey.steps.slice(1,5).map(item=><Link key={item.id} href={item.href} className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 text-sm"><span className={item.complete?'text-emerald-700':'text-slate-500'}>{item.complete?<CheckCircle2 className="h-5 w-5"/>:<Clock3 className="h-5 w-5"/>}</span><span className="flex-1 font-bold">{item.label}</span><span className="text-xs text-slate-600">{item.complete?'مكتمل':'كمّل الإعداد'}</span></Link>)}</div>
-                        {!journey.ready && <div className="mt-4 space-y-2">
-                          {journey.steps.slice(1, 5).filter(item => !item.complete).map(item => <Link key={item.id} href={item.href} className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 hover:bg-slate-100"><span>{item.label} — لسه محتاجة تجهيز</span><ChevronLeft className="h-4 w-4 text-[#087e7a]" /></Link>)}
-                        </div>}
-                        <Link href="/operations" className="mt-5 inline-flex items-center gap-2 rounded-full bg-[#087e7a] px-5 py-3 text-sm font-black text-[#102433] hover:bg-[#076865]">
+                        <Link href="/operations" className="mt-5 inline-flex items-center gap-2 rounded-full bg-[#087e7a] px-5 py-3 text-sm font-black text-white hover:bg-[#076865]">
                           افتح لوحة التشغيل <ArrowLeft className="h-4 w-4" />
                         </Link>
                       </div>
@@ -310,10 +307,10 @@ export default function SelfServiceSetup({ currentStep }: Props) {
                   <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 px-6 py-5 sm:px-9">
                     {previous ? <Link href={previous.href} className="inline-flex items-center gap-2 text-sm font-bold text-slate-700 hover:text-[#102433]"><ArrowRight className="h-4 w-4" /> السابق</Link> : <span />}
                     {next ? (
-                      <Link href={next.href} className="inline-flex items-center gap-2 rounded-full bg-[#087e7a] px-6 py-3 text-sm font-black text-[#102433] transition hover:bg-[#076865]">
+                      <Link href={next.href} className="inline-flex items-center gap-2 rounded-full bg-[#087e7a] px-6 py-3 text-sm font-black text-white transition hover:bg-[#076865]">
                         {currentStep === 'welcome' ? 'كمّل التجهيز' : step.complete ? 'التالي' : 'تخطي مؤقتًا'} <ArrowLeft className="h-4 w-4" />
                       </Link>
-                    ) : <Link href="/operations" className="inline-flex items-center gap-2 rounded-full bg-[#087e7a] px-6 py-3 text-sm font-black text-[#102433]">ابدأ الاستخدام <ArrowLeft className="h-4 w-4" /></Link>}
+                    ) : <Link href="/operations" className="inline-flex items-center gap-2 rounded-full bg-[#087e7a] px-6 py-3 text-sm font-black text-white">ابدأ الاستخدام <ArrowLeft className="h-4 w-4" /></Link>}
                   </div>
                 </div>
                 {error && <p role="alert" className="mt-3 rounded-2xl border border-rose-400/20 bg-rose-400/10 p-4 text-sm text-rose-800">{error}</p>}
