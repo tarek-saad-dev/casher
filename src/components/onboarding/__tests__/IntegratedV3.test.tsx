@@ -81,3 +81,17 @@ describe('V3 training interface',()=>{
     expect(screen.getByRole('button',{name:'حفظ العميل التدريبي'})).toBeInTheDocument();
   });
 });
+
+ describe('signup layout structure',()=>{
+  it('keeps the form and navigation available on every viewport',()=>{
+    render(<PublicSignupFlow/>);
+    expect(screen.getByRole('navigation',{name:'خطوات التسجيل'})).toBeInTheDocument();
+    expect(screen.getByRole('progressbar',{name:'تقدم التسجيل'})).toHaveAttribute('aria-valuenow','1');
+    expect(screen.getByLabelText('رقم الموبايل')).toBeVisible();
+    expect(screen.getByRole('button',{name:'متابعة'})).toBeEnabled();
+    expect(screen.getByRole('button',{name:'السابق'})).toBeDisabled();
+    advanceSignup();
+    expect(screen.getByRole('progressbar',{name:'تقدم التسجيل'})).toHaveAttribute('aria-valuenow','5');
+    expect(screen.getByRole('button',{name:'إنشاء الحساب'})).toBeVisible();
+  });
+});
