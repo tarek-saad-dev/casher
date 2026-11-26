@@ -67,10 +67,12 @@ describe('V3 training interface',()=>{
     click('إضافة للطابور التدريبي');
     const amount=screen.getByLabelText('النقد الذي عدّيته (ج.م)');
     fireEvent.change(amount,{target:{value:'200'}});
-    click('مطابقة الخزنة');
+    const treasuryForm = amount.closest('form');
+    expect(treasuryForm).not.toBeNull();
+    fireEvent.submit(treasuryForm!);
     expect(screen.getByRole('alert')).toHaveTextContent('راجع النقد الموجود');
     fireEvent.change(amount,{target:{value:'0'}});
-    click('مطابقة الخزنة');
+    fireEvent.submit(treasuryForm!);
     click('قفل الوردية التدريبية');
     expect(screen.getByText('خلصت التدريب!')).toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalled();
