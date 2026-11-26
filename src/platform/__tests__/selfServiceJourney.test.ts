@@ -205,3 +205,19 @@ describe('active branch staffing readiness', () => {
     expect(ready.ready).toBe(true);
   });
 });
+
+import { identityDraft, identityPayload } from '@/platform/branding/onboardingIdentity';
+import type { TenantBrandProfile } from '@/platform/branding/brandProfile';
+describe('onboarding identity', () => {
+  const p: TenantBrandProfile={tenantId:'tenant-a',displayName:'Salon',logoUrl:'/existing.png',phone:'01000000000',address:'address',primaryColor:null,accentColor:null,receiptFooter:null,timezone:'Africa/Cairo',publicBookingOrigins:['https://booking.example.com'],revision:0,updatedAt:null};
+  it('preserves unrelated fields and revision including revision zero',()=>{
+    const payload=identityPayload(p,{...identityDraft(p),displayName:' New Salon ',primaryColor:'#087e7a'});
+    expect(payload).toMatchObject({displayName:'New Salon',primaryColor:'#087E7A',phone:p.phone,address:p.address,timezone:p.timezone,publicBookingOrigins:p.publicBookingOrigins,expectedRevision:0,logoUrl:p.logoUrl});
+    expect(payload).not.toHaveProperty('tenantId');
+  });
+  it('does not accept arbitrary new local paths, unsafe URL schemes or invalid colors',()=>{
+    for(const logoUrl of ['/api/private','//elsewhere.test/logo.png','javascript:alert(1)','http://example.com/a.png','https://u:p@example.com/a.png'])expect(()=>identityPayload(p,{...identityDraft(p),logoUrl})).toThrow();
+    expect(identityPayload(p,{...identityDraft(p),logoUrl:'https://example.com/logo.png'}).logoUrl).toBe('https://example.com/logo.png');
+    expect(()=>identityPayload(p,{...identityDraft(p),primaryColor:'red'})).toThrow();
+  });
+});
