@@ -30,6 +30,9 @@ export async function PUT(req: NextRequest) {
   const auth = await requireAdmin();
   if (!isAuthResult(auth)) return auth;
 
+  if (req.headers.get('sec-fetch-site') === 'cross-site' || !req.headers.get('content-type')?.toLowerCase().startsWith('application/json')) {
+    return NextResponse.json({ error: 'طلب غير صالح' }, { status: 415 });
+  }
   let body: Record<string, unknown>;
   try {
     const parsed = (await req.json()) as unknown;
