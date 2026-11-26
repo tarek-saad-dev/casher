@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { CheckCircle2, Loader2, Plus } from 'lucide-react';
+import SmartTeamSetup, { type TeamEmployee } from './SmartTeamSetup';
 import { SETUP_JOBS } from '@/platform/onboarding/selfServiceInput';
 
 type Step = 'branch' | 'services' | 'team';
@@ -10,7 +11,9 @@ type SetupData = {
   editable: boolean;
   branch?: Branch;
   services?: { ProID: number; ProName: string; SPrice1: number; DurationMinutes: number | null }[];
-  employees?: { EmpID: number; EmpName: string; Job: string }[];
+  employees?: TeamEmployee[];
+  payrollAvailable?: boolean;
+  bookingAvailable?: boolean;
   error?: string;
 };
 
@@ -81,6 +84,8 @@ export default function InlineSetupForm({ step, onSaved, onContinue }: { step: S
 
   if (loading) return <p role="status" className="mt-7 flex items-center gap-2 text-sm text-slate-300"><Loader2 className="h-4 w-4 animate-spin" /> تحميل البيانات...</p>;
   if (!data?.editable) return error ? <div className="mt-6 rounded-xl border border-rose-400/20 p-4"><p role="alert" className="text-sm text-rose-300">{error}</p><button type="button" onClick={async () => { setLoading(true); setError(''); try { await load(); } catch (err) { setError(err instanceof Error ? err.message : 'تعذر تحميل البيانات.'); } finally { setLoading(false); } }} className="mt-3 rounded-lg border border-white/15 px-4 py-2 text-sm">إعادة المحاولة</button></div> : null;
+
+  if (String(step) === 'team') return <SmartTeamSetup employees={data.employees ?? []} payrollAvailable={data.payrollAvailable === true} bookingAvailable={data.bookingAvailable === true} onSaved={async () => { await load(); await onSaved(); }} />;
 
   return (
     <div className="mt-7 space-y-4">

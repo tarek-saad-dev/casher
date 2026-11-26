@@ -1,4 +1,5 @@
 import { JobType } from '@/lib/types';
+import { EMPLOYMENT_TYPES, PAYROLL_METHODS, isFreelanceMonthlyBlocked } from '@/lib/hr/employee-hr-model';
 import type { OnboardingEmployeeInput, OnboardingServiceInput } from './wizard/types';
 
 export class SetupInputError extends Error {}
@@ -47,11 +48,24 @@ export function parseSetupAction(raw: unknown): SetupAction {
       return { action: 'service', service: { name, arabicName: name, price, durationMinutes, active: true } };
     }
     case 'employee': {
-      keys(['action', 'name', 'job']);
+      keys(['action', 'name', 'job', 'employmentType', 'payrollMethod', 'payRate', 'acceptsBookings']);
       const name = field(data.name, 200, 'اكتب اسم الموظف.');
       const job = SETUP_JOBS.find((item) => item === data.job);
       if (!job) return invalid('اختر وظيفة متاحة.');
-      return { action: 'employee', employee: { name, job, active: true } };
+      const employee: Omit<OnboardingEmployeeInput, 'primaryBranchCode'> = { name, job, active: true };
+      if (data.acceptsBookings !== undefined) {
+        if (typeof data.acceptsBookings !== 'boolean') return invalid('اختيار الحجوزات غير صحيح.');
+        employee.acceptsBookings = data.acceptsBookings;
+      }
+      if (data.employmentType !== undefined || data.payrollMethod !== undefined || data.payRate !== undefined) {
+        const employmentType = EMPLOYMENT_TYPES.find(item => item === data.employmentType);
+        const payrollMethod = PAYROLL_METHODS.find(item => item === data.payrollMethod);
+        const payRate = data.payRate;
+        if (!employmentType || !payrollMethod || isFreelanceMonthlyBlocked(employmentType, payrollMethod)) return invalid('راجع نوع التوظيف وطريقة حساب المرتب.');
+        if (typeof payRate !== 'number' || !Number.isFinite(payRate) || payRate <= 0 || payRate > 1000000 || Math.abs(payRate * 100 - Math.round(payRate * 100)) > 1e-6) return invalid('اكتب قيمة صحيحة للمرتب أكبر من صفر حتى منزلتين عشريتين.');
+        Object.assign(employee, { employmentType, payrollMethod, payRate });
+      }
+      return { action: 'employee', employee };
     }
     default: return invalid('خطوة غير متاحة.');
   }

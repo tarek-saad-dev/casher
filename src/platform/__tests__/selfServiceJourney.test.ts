@@ -205,3 +205,21 @@ describe('active branch staffing readiness', () => {
     expect(ready.ready).toBe(true);
   });
 });
+
+describe('smart team setup payroll and booking', () => {
+  const employee = { action: 'employee', name: 'Ahmed', job: SETUP_JOBS[0] };
+  it('passes initial HR and booking options through the existing employee create contract', () => {
+    expect(parseSetupAction({...employee,employmentType:'full_time',payrollMethod:'monthly',payRate:6000,acceptsBookings:false})).toMatchObject({action:'employee',employee:{employmentType:'full_time',payrollMethod:'monthly',payRate:6000,acceptsBookings:false}});
+    expect(parseSetupAction({...employee,employmentType:'freelance',payrollMethod:'daily',payRate:150.25})).toMatchObject({employee:{payRate:150.25}});
+  });
+  it('rejects incomplete, unsupported or malformed HR inputs', () => {
+    for(const p of [{employmentType:'full_time'},{employmentType:'freelance',payrollMethod:'monthly',payRate:6000},{employmentType:'unknown',payrollMethod:'daily',payRate:100},{employmentType:'full_time',payrollMethod:'hourly',payRate:-1},{employmentType:'full_time',payrollMethod:'daily',payRate:1.234},{employmentType:'full_time',payrollMethod:'daily',payRate:'100'},{acceptsBookings:'yes'},{empId:5},{commissionPercent:50}])expect(()=>parseSetupAction({...employee,...p})).toThrow(SetupInputError);
+  });
+  it('requires installed apps and preserves existing employee payroll', () => {
+    const route=fs.readFileSync(path.join(process.cwd(),'src/app/api/tenant/onboarding/setup-data/route.ts'),'utf8');
+    expect(route).toContain("!ctx.apps.includes('payroll')");
+    expect(route).toContain("!ctx.apps.includes('booking')");
+    expect(route).toContain('if (Number(existing.HereNow)) return reply({ ok: true, created: 0, existing: 1 });');
+    expect(route).toContain('runTeamStage(ctx');
+  });
+});
