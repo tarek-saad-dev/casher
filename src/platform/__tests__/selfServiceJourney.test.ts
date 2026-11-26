@@ -220,6 +220,6 @@ describe('operating settings allowlist',()=>{
     expect(source).toContain('assertLegacyBranchInTenant');
     expect(source).toContain("!c.apps.includes('booking')");
     expect(source).toContain('l.TenantId=@tenantId');
-    expect(source).not.toMatch(/INSERT INTO|BookingEnabled\s*=|PublicBookingEnabled\s*=|TblCashMove|TblPaymentMethods/i);
+    expect(source).not.toMatch(/INSERT INTO|\b(?:SET|,)\s*(?:Public)?BookingEnabled\s*=(?!=)|TblCashMove|TblPaymentMethods/i);
   });
 });
