@@ -233,3 +233,25 @@ describe('signup V2 presentation', () => {
     }
   });
 });
+
+
+describe('V3 registration and setup contract', () => {
+  const read = (rel: string) => fs.readFileSync(path.join(process.cwd(), rel), 'utf8');
+  it('uses server-side OTP configuration and consumes the proof during signup', () => {
+    expect(read('src/app/start/page.tsx')).toContain('otpRequired={signupOtpRequired()}');
+    const client = read('src/components/public/PublicSignupFlow.tsx');
+    expect(client).toContain('/api/public/signup/otp/send');
+    expect(client).toContain('otp:{ticket:ticket.ticket,code}');
+    expect(client).not.toMatch(/localStorage|sessionStorage/);
+    const route = read('src/app/api/public/signup/complete/route.ts');
+    expect(route.indexOf('await verifySignupOtp(')).toBeGreaterThan(0);
+    expect(route.indexOf('await verifySignupOtp(')).toBeLessThan(route.indexOf('await provisionPublicSignup('));
+  });
+  it('uses the authorized existing service write route and reports partial failures', () => {
+    const picker = read('src/components/onboarding/ServiceTemplatePicker.tsx');
+    expect(picker).toContain('/api/tenant/onboarding/setup-data');
+    expect(picker).toContain("action:'service'");
+    expect(picker).toContain('failures++');
+    expect(picker).not.toMatch(/tenantId|branchId|INSERT INTO/);
+  });
+});
