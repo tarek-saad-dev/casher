@@ -205,3 +205,21 @@ describe('active branch staffing readiness', () => {
     expect(ready.ready).toBe(true);
   });
 });
+
+import { parseOperatingBookingPreferences } from '@/platform/onboarding/operatingPreferences';
+describe('operating settings allowlist',()=>{
+  const valid={slotIntervalMinutes:15,minNoticeMinutes:30,maxBookingDaysAhead:14};
+  it('accepts only valid booking preferences',()=>{
+    expect(parseOperatingBookingPreferences(valid)).toEqual(valid);
+    for(const body of [{...valid,bookingEnabled:true},{...valid,publicBookingEnabled:true},{...valid,branchId:42},{...valid,tenantId:'foreign'},{...valid,slotIntervalMinutes:9},{...valid,minNoticeMinutes:'30'},{...valid,maxBookingDaysAhead:61},{slotIntervalMinutes:15}])expect(()=>parseOperatingBookingPreferences(body)).toThrow();
+  });
+  it('keeps the operating route gated and never changes payment or booking activation',()=>{
+    const source=fs.readFileSync(path.join(process.cwd(),'src/app/api/tenant/onboarding/operating/route.ts'),'utf8');
+    expect(source).toContain('requireAdmin()');
+    expect(source).toContain('isPublicSalonSetupTenant');
+    expect(source).toContain('assertLegacyBranchInTenant');
+    expect(source).toContain("!c.apps.includes('booking')");
+    expect(source).toContain('l.TenantId=@tenantId');
+    expect(source).not.toMatch(/INSERT INTO|BookingEnabled\s*=|PublicBookingEnabled\s*=|TblCashMove|TblPaymentMethods/i);
+  });
+});
