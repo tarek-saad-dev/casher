@@ -37,6 +37,9 @@ export async function GET() {
     const target = await setupTarget(auth);
     if (!target) return reply({ ok: true, editable: false });
     const { pool, branch } = target;
+    const apps = await getTenantInstalledAppsForGate(auth.tenantId);
+    const payrollAvailable = apps.includes('payroll');
+    const bookingAvailable = apps.includes('booking');
     const [services, employees] = await Promise.all([
       pool.request().input('tenantId', sql.UniqueIdentifier, auth.tenantId).query(`
         SELECT ProID, ProName, SPrice1, DurationMinutes FROM dbo.TblPro
@@ -45,7 +48,9 @@ export async function GET() {
       `),
       pool.request().input('tenantId', sql.UniqueIdentifier, auth.tenantId)
         .input('branchId', sql.Int, auth.activeBranchId).query(`
-        SELECT e.EmpID, e.EmpName, e.Job FROM dbo.TblEmp e
+        SELECT e.EmpID, e.EmpName, e.Job
+          ${payrollAvailable ? ', e.EmploymentType, e.PayrollMethod, e.BaseSalary, e.DailyRate, e.ManualHourlyRate, e.IsPayrollEnabled' : ''}
+        FROM dbo.TblEmp e
         WHERE e.TenantId = @tenantId AND ISNULL(e.isActive, 1) = 1
         AND EXISTS (
           SELECT 1 FROM dbo.TblEmpBranchAssignment a
@@ -57,7 +62,7 @@ export async function GET() {
       `),
     ]);
     return reply({
-      ok: true, editable: true,
+      ok: true, editable: true, payrollAvailable, bookingAvailable,
       branch: {
         name: branch.branchName, address: branch.address ?? '', phone: branch.phone ?? '',
         defaultOpenTime: branch.defaultOpenTime?.slice(0, 5) ?? '',
@@ -101,6 +106,10 @@ export async function POST(req: Request) {
       ownerUserId: auth.userId, actorUserId: auth.userId,
       branchIds: new Map([[auth.activeBranchCode.toUpperCase(), auth.activeBranchId]]),
     };
+    if (action.action === 'employee') {
+      if (action.employee.payrollMethod !== undefined && !ctx.apps.includes('payroll')) return reply({ error: 'تطبيق الرواتب غير متاح للمنشأة.' }, 403);
+      if (action.employee.acceptsBookings !== undefined && !ctx.apps.includes('booking')) return reply({ error: 'تطبيق الحجوزات غير متاح للمنشأة.' }, 403);
+    }
     const tx = new sql.Transaction(target.pool);
     await tx.begin();
     try {
@@ -136,6 +145,7 @@ export async function POST(req: Request) {
           if (existing) {
             if (!Number(existing.Active)) return reply({ error: 'الموظف موجود وغير نشط. راجع إدارة الموظفين.' }, 409);
             if (Number(existing.HereNow)) return reply({ ok: true, created: 0, existing: 1 });
+            if (action.employee.payrollMethod !== undefined || action.employee.acceptsBookings !== undefined) return reply({ error: 'الموظف موجود بالفعل. راجع بياناته من الإدارة قبل تعديل المرتب أو الحجوزات.' }, 409);
             if (Number(existing.HasAssignment)) return reply({ error: 'الموظف له ربط بفرع أو جدول آخر. راجع الإدارة.' }, 409);
           }
         }

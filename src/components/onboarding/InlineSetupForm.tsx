@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { CheckCircle2, Loader2, Plus } from 'lucide-react';
+import ServiceTemplatePicker from './ServiceTemplatePicker';
+import SmartTeamSetup, { type TeamEmployee } from './SmartTeamSetup';
 import { SETUP_JOBS } from '@/platform/onboarding/selfServiceInput';
 
 type Step = 'branch' | 'services' | 'team';
@@ -10,13 +12,15 @@ type SetupData = {
   editable: boolean;
   branch?: Branch;
   services?: { ProID: number; ProName: string; SPrice1: number; DurationMinutes: number | null }[];
-  employees?: { EmpID: number; EmpName: string; Job: string }[];
+  employees?: TeamEmployee[];
+  payrollAvailable?: boolean;
+  bookingAvailable?: boolean;
   error?: string;
 };
 
 const endpoint = '/api/tenant/onboarding/setup-data';
-const inputClass = 'w-full rounded-xl border border-white/15 bg-[#071018] px-3 py-3 text-sm text-white outline-none focus:border-cyan-300';
-const buttonClass = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-cyan-300 px-5 py-2.5 text-sm font-black text-slate-950 hover:bg-cyan-200 disabled:opacity-50';
+const inputClass = 'w-full rounded-xl border border-slate-300 bg-[#eef2f5] px-3 py-3 text-sm text-[#102433] outline-none focus:border-teal-600';
+const buttonClass = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#087e7a] px-5 py-2.5 text-sm font-black text-white hover:bg-[#076865] disabled:opacity-50';
 const emptyBranch: Branch = { name: '', address: '', phone: '', defaultOpenTime: '', defaultCloseTime: '' };
 
 export default function InlineSetupForm({ step, onSaved, onContinue }: { step: Step; onSaved: () => Promise<void>; onContinue?: () => void }) {
@@ -79,12 +83,15 @@ export default function InlineSetupForm({ step, onSaved, onContinue }: { step: S
     }
   }
 
-  if (loading) return <p role="status" className="mt-7 flex items-center gap-2 text-sm text-slate-300"><Loader2 className="h-4 w-4 animate-spin" /> تحميل البيانات...</p>;
-  if (!data?.editable) return error ? <div className="mt-6 rounded-xl border border-rose-400/20 p-4"><p role="alert" className="text-sm text-rose-300">{error}</p><button type="button" onClick={async () => { setLoading(true); setError(''); try { await load(); } catch (err) { setError(err instanceof Error ? err.message : 'تعذر تحميل البيانات.'); } finally { setLoading(false); } }} className="mt-3 rounded-lg border border-white/15 px-4 py-2 text-sm">إعادة المحاولة</button></div> : null;
+  if (loading) return <p role="status" className="mt-7 flex items-center gap-2 text-sm text-slate-700"><Loader2 className="h-4 w-4 animate-spin" /> تحميل البيانات...</p>;
+  if (!data?.editable) return error ? <div className="mt-6 rounded-xl border border-rose-400/20 p-4"><p role="alert" className="text-sm text-rose-700">{error}</p><button type="button" onClick={async () => { setLoading(true); setError(''); try { await load(); } catch (err) { setError(err instanceof Error ? err.message : 'تعذر تحميل البيانات.'); } finally { setLoading(false); } }} className="mt-3 rounded-lg border border-slate-300 px-4 py-2 text-sm">إعادة المحاولة</button></div> : null;
+
+  if (String(step) === 'team') return <SmartTeamSetup employees={data.employees ?? []} payrollAvailable={data.payrollAvailable === true} bookingAvailable={data.bookingAvailable === true} onSaved={async () => { await load(); await onSaved(); }} />;
 
   return (
     <div className="mt-7 space-y-4">
-      <form onSubmit={save} className="space-y-4 rounded-2xl border border-white/10 bg-white/[0.035] p-4 sm:p-5">
+      {step === 'services' && <ServiceTemplatePicker existingNames={(data.services ?? []).map(s=>s.ProName)} onSaved={async()=>{await load();await onSaved();}} />}
+      <form onSubmit={save} className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:p-5">
         <fieldset disabled={busy} className="space-y-4 disabled:opacity-70">
           {step === 'branch' ? <>
             <h2 className="font-bold">بيانات فرعك — {branch.name}</h2>
@@ -97,26 +104,26 @@ export default function InlineSetupForm({ step, onSaved, onContinue }: { step: S
           </> : <>
             <h2 className="font-bold">{step === 'services' ? 'أضف خدمة جديدة' : 'أضف موظف جديد'}</h2>
             {step === 'services' && <div className="flex flex-wrap gap-2">
-              {['حلاقة شعر', 'حلاقة ذقن', 'تنظيف بشرة', 'تصفيف شعر'].map(item => <button key={item} type="button" onClick={() => { setName(item); setSuccess(''); }} className="rounded-full border border-white/15 px-3 py-1.5 text-xs hover:bg-white/10">{item}</button>)}
+              {['حلاقة شعر', 'حلاقة ذقن', 'تنظيف بشرة', 'تصفيف شعر'].map(item => <button key={item} type="button" onClick={() => { setName(item); setSuccess(''); }} className="rounded-full border border-slate-300 px-3 py-1.5 text-xs hover:bg-slate-200">{item}</button>)}
             </div>}
             <label className="block space-y-1.5 text-sm"><span>{step === 'services' ? 'اسم الخدمة' : 'اسم الموظف'}</span><input required maxLength={200} value={name} onChange={e => setName(e.target.value)} className={inputClass} /></label>
             {step === 'services' ? <div className="grid grid-cols-2 gap-3">
               <label className="block space-y-1.5 text-sm"><span>السعر (ج.م)</span><input required type="number" min="0.01" max="1000000" step="0.01" value={price} onChange={e => setPrice(e.target.value)} className={inputClass} /></label>
               <label className="block space-y-1.5 text-sm"><span>المدة بالدقائق</span><input required type="number" min="5" max="600" step="1" value={duration} onChange={e => setDuration(e.target.value)} className={inputClass} /></label>
-            </div> : <label className="block space-y-1.5 text-sm"><span>الوظيفة</span><select value={job} onChange={e => setJob(e.target.value)} className={inputClass}>{SETUP_JOBS.map(item => <option key={item} value={item}>{item}</option>)}</select><span className="block text-xs leading-6 text-slate-400">هيتم ربط الموظف بالفرع الحالي. جداول العمل والرواتب وحسابات الدخول تتظبط من الإدارة.</span></label>}
+            </div> : <label className="block space-y-1.5 text-sm"><span>الوظيفة</span><select value={job} onChange={e => setJob(e.target.value)} className={inputClass}>{SETUP_JOBS.map(item => <option key={item} value={item}>{item}</option>)}</select><span className="block text-xs leading-6 text-slate-600">هيتم ربط الموظف بالفرع الحالي. جداول العمل والرواتب وحسابات الدخول تتظبط من الإدارة.</span></label>}
           </>}
           <button type="submit" className={buttonClass}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}{busy ? 'جاري الحفظ...' : step === 'branch' ? (onContinue ? 'حفظ ومتابعة' : 'حفظ بيانات الفرع') : 'حفظ وإضافة'}</button>
         </fieldset>
-        {success && <p role="status" className="flex items-center gap-2 text-xs text-emerald-300"><CheckCircle2 className="h-4 w-4 shrink-0" />{success}</p>}
-        {error && <p role="alert" className="text-sm text-rose-300">{error}</p>}
+        {success && <p role="status" className="flex items-center gap-2 text-xs text-emerald-700"><CheckCircle2 className="h-4 w-4 shrink-0" />{success}</p>}
+        {error && <p role="alert" className="text-sm text-rose-700">{error}</p>}
       </form>
-      {step === 'services' && !!data.services?.length && <div className="rounded-2xl border border-white/10 p-4">
+      {step === 'services' && !!data.services?.length && <div className="rounded-2xl border border-slate-200 p-4">
         <h3 className="mb-2 text-sm font-bold">الخدمات المحفوظة</h3>
-        {data.services.map(s => <div key={s.ProID} className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 py-3 text-sm last:border-0"><span>{s.ProName}</span><span className="text-xs text-slate-400">{s.SPrice1} ج.م · {s.DurationMinutes ?? '—'} دقيقة</span></div>)}
+        {data.services.map(s => <div key={s.ProID} className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 py-3 text-sm last:border-0"><span>{s.ProName}</span><span className="text-xs text-slate-600">{s.SPrice1} ج.م · {s.DurationMinutes ?? '—'} دقيقة</span></div>)}
       </div>}
-      {step === 'team' && !!data.employees?.length && <div className="rounded-2xl border border-white/10 p-4">
+      {step === 'team' && !!data.employees?.length && <div className="rounded-2xl border border-slate-200 p-4">
         <h3 className="mb-2 text-sm font-bold">فريق الفرع الحالي</h3>
-        {data.employees.map(e => <div key={e.EmpID} className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 py-3 text-sm last:border-0"><span>{e.EmpName}</span><span className="text-xs text-slate-400">{e.Job}</span></div>)}
+        {data.employees.map(e => <div key={e.EmpID} className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 py-3 text-sm last:border-0"><span>{e.EmpName}</span><span className="text-xs text-slate-600">{e.Job}</span></div>)}
       </div>}
     </div>
   );
