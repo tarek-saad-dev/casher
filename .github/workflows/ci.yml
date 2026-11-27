@@ -157,6 +157,9 @@ jobs:
       - name: Database integration safety guard (never last132)
         run: npx vitest run src/lib/__tests__/assertApprovedTestDatabase.test.ts --reporter=default
 
+      - name: CUT Pulse automation validation
+        run: npx vitest run src/modules/messaging/automation/draftRules.test.ts --reporter=default
+
       - name: Production build
         run: npm run build
 
