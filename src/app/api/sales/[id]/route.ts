@@ -1,3 +1,4 @@
+import { guardDecemberInvoiceMutation } from '@/lib/campaigns/december-exam/stagingInvoiceReferral';
 import { NextRequest, NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/db";
 import { executeAuditedAction, isAuditedActionError } from '@/lib/sensitiveActionAudit';
@@ -212,6 +213,7 @@ export async function PUT(
         return snapshot as unknown as Record<string, unknown> | null;
       },
       execute: async (transaction) => {
+        await guardDecemberInvoiceMutation(transaction, invID);
         const updateInput = {
         clientId: body.clientId,
         subTotal: body.subTotal,
@@ -356,10 +358,12 @@ export async function DELETE(
           : await getInvoiceSnapshot(transaction, invID);
         return snapshot as unknown as Record<string, unknown> | null;
       },
-      execute: async (transaction) =>
-        isPosPortEnabled()
+      execute: async (transaction) => {
+        await guardDecemberInvoiceMutation(transaction, invID);
+        return isPosPortEnabled()
           ? deleteSale(transaction, invID, loaded.ownership.branchId, session.UserID)
-          : deleteInvoice(transaction, invID, loaded.ownership.branchId),
+          : deleteInvoice(transaction, invID, loaded.ownership.branchId);
+      },
       loadNewData: async () => null,
       beforeCommit: async ({ transaction, oldData }) => {
         const { enqueueTargetRecalcFromInvoiceSnapshots } = await import(
