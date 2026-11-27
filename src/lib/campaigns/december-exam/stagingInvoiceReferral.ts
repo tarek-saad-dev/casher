@@ -60,17 +60,35 @@ export async function confirmStagingDecemberReferral(tx:Transaction, input:{invo
  if(updated.rowsAffected[0]!==1)throw Error('DECEMBER_REFERRAL_CONFLICT');
 }
 
-/** Refuse mutation of a campaign-linked invoice until audited reversal is implemented.
- * Guard remains effective on staging even if the confirmation switch is off. */
-export async function guardDecemberInvoiceMutation(tx:Transaction,invoiceId:number){
+/** Audit-transaction guard: void unconsumed referrals on delete, block edits
+ * and redeemed dependencies pending financial review. Effective even with confirmation off. */
+export async function guardDecemberInvoiceMutation(tx:Transaction,invoiceId:number,mode:'edit'|'delete'='edit'){
  const probe=await new sql.Request(tx).query<{ok:number}>(`
  SELECT CASE WHEN DB_NAME()=N'last132_agent' AND SUSER_SNAME()=N'drvo_agent'
  AND OBJECT_ID(N'dbo.CutOfferReferral',N'U') IS NOT NULL AND OBJECT_ID(N'dbo.CutOfferRedemption',N'U') IS NOT NULL THEN 1 ELSE 0 END AS ok
  `);
  if(probe.recordset[0]?.ok!==1)return;
- const linked=await new sql.Request(tx).input('invoice',sql.Int,invoiceId).query(`
+ const request=()=>new sql.Request(tx).input('invoice',sql.Int,invoiceId);
+ const redeemed=await request().query(`
+ SELECT TOP(1) d.InvoiceId FROM dbo.CutOfferRedemption d WITH(UPDLOCK,HOLDLOCK)
+ WHERE d.InvoiceId=@invoice OR EXISTS(
+  SELECT 1 FROM dbo.CutOfferReferral r WITH(UPDLOCK,HOLDLOCK)
+  JOIN dbo.CutOfferParticipant p ON p.TenantId=r.TenantId AND p.CampaignId=r.CampaignId AND p.ParticipantId=r.InviterId
+  WHERE r.InvoiceId=@invoice AND r.Status='CONFIRMED' AND d.TenantId=r.TenantId
+   AND d.CampaignId=r.CampaignId AND d.ClientId=p.ClientId)
+ `);
+ if(redeemed.recordset.length)throw Error('DECEMBER_INVOICE_MUTATION_REVIEW_REQUIRED');
+ if(mode==='delete'){
+  // If no inviter redemption exists, reverse the referral before the actual
+  // invoice deletion. The outer audited transaction rolls both back on failure.
+  await request().query(`
+   UPDATE dbo.CutOfferReferral SET Status='VOIDED'
+   WHERE InvoiceId=@invoice AND Status='CONFIRMED'
+  `);
+  return;
+ }
+ const linked=await request().query(`
  SELECT TOP(1) InvoiceId FROM dbo.CutOfferReferral WITH(UPDLOCK,HOLDLOCK) WHERE InvoiceId=@invoice AND Status='CONFIRMED'
- UNION ALL SELECT InvoiceId FROM dbo.CutOfferRedemption WITH(UPDLOCK,HOLDLOCK) WHERE InvoiceId=@invoice
  `);
  if(linked.recordset.length)throw Error('DECEMBER_INVOICE_MUTATION_REVIEW_REQUIRED');
 }
