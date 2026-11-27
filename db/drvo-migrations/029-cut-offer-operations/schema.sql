@@ -1,0 +1,15 @@
+SET XACT_ABORT ON;
+IF DB_NAME() NOT IN(N'last132_agent',N'last132') THROW 51430,'CUT_OFFER_UNEXPECTED_DB',1;
+BEGIN TRANSACTION;
+IF OBJECT_ID(N'dbo.CutOfferOperationAudit',N'U') IS NULL
+CREATE TABLE dbo.CutOfferOperationAudit(
+ AuditId UNIQUEIDENTIFIER NOT NULL DEFAULT NEWID() PRIMARY KEY,
+ TenantId UNIQUEIDENTIFIER NOT NULL, CampaignId UNIQUEIDENTIFIER NOT NULL,
+ ParticipantId UNIQUEIDENTIFIER NULL, ActorUserId INT NOT NULL,
+ ActionCode VARCHAR(32) NOT NULL, Reason NVARCHAR(300) NOT NULL,
+ CreatedAtUtc DATETIME2(3) NOT NULL DEFAULT SYSUTCDATETIME(),
+ CONSTRAINT FK_CutOfferOperationAudit_Campaign FOREIGN KEY(TenantId,CampaignId) REFERENCES dbo.CutOfferCampaign(TenantId,CampaignId),
+ CONSTRAINT FK_CutOfferOperationAudit_Participant FOREIGN KEY(TenantId,CampaignId,ParticipantId) REFERENCES dbo.CutOfferParticipant(TenantId,CampaignId,ParticipantId),
+ CONSTRAINT CK_CutOfferOperationAudit_Action CHECK(ActionCode IN('ACTIVATE','PAUSE','RESUME','END','RECOVER_SESSION'))
+);
+COMMIT;
