@@ -186,8 +186,11 @@ async function main() {
   const { verifyPlatformBootstrap } = await import('./platformBootstrap');
 
   const pool = await sql.connect(config);
+  let stagingVerified = false;
+  let cleanupVerified = false;
   try {
     await assertLiveDatabase(pool);
+    stagingVerified = true;
 
     // Rollout preflight: authoritative TenantContext fails closed for any CASHER_BOOT user or
     // branch lacking TenantMembership / Location, so those rows must be reconciled first.
@@ -419,18 +422,43 @@ async function main() {
     const baseline = await verifyPlatformBootstrap(pool);
     check(baseline.ok, `CASHER_BOOT bootstrap verify (${baseline.failures.join('; ') || 'clean'})`);
 
+    cleanupVerified = true;
     console.log('DRVO-013 smoke PASS');
   } finally {
-    try {
-      await cleanupAll(pool);
-    } catch {
-      /* best effort */
+    // Never attempt cleanup on a connection whose staging identity was not proven.
+    // The successful path has already removed both synthetic tenants and checked residue.
+    if (stagingVerified && !cleanupVerified) {
+      try {
+        await cleanupAll(pool);
+      } catch (err) {
+        console.error('DRVO-013 failure cleanup warning:', err instanceof Error ? err.message : String(err));
+      }
     }
-    await pool.close();
+    // Libraries may retain other SQL handles even after all assertions and cleanup
+    // have passed. Bound pool shutdown; the CLI exits explicitly below.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        pool.close(),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error('SQL pool close timed out')), 12000);
+        }),
+      ]);
+    } catch (err) {
+      console.warn('DRVO-013 pool shutdown warning:', err instanceof Error ? err.message : String(err));
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   }
 }
 
-main().catch((err) => {
-  console.error('DRVO-013 smoke FAIL:', err instanceof Error ? err.message : err);
-  process.exit(1);
-});
+void main().then(
+  () => {
+    console.log('DRVO-013 smoke EXIT_OK');
+    process.exit(0);
+  },
+  (err: unknown) => {
+    console.error('DRVO-013 smoke FAIL:', err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  },
+);
