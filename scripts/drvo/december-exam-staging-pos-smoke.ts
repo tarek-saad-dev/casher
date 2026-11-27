@@ -75,22 +75,24 @@ async function main(){
   `);
   return id;
  }
- const item={proId:svc.ProID,empId:emp.recordset[0].EmpID,sPrice:Number(svc.SPrice1),qty:1,bonus:0,dis:0,disVal:0,notes:'DECEMBER_ROLLBACK_FIXTURE'};
+ const item={proId:svc.ProID,empId:emp.recordset[0].EmpID,sPrice:Number(svc.SPrice1),qty:1,bonus:99,dis:0,disVal:0,notes:'DECEMBER_ROLLBACK_FIXTURE'};
  async function sale(clientId:number,method:number,expectedPercent:number){
   const quote=await quoteDecemberInTransaction(tx,{tenantId:tenant,branchId:op.BranchID,clientId,items:[item]});
   check(quote.percent===expectedPercent,'UNEXPECTED_FIXTURE_DISCOUNT');
-  const computed=computeInvoiceItemsTotals([{sPrice:item.sPrice,qty:1,bonus:0}],{discountPercent:quote.percent,discountValue:quote.discountPiasters/100});
+  const computed=computeInvoiceItemsTotals([{sPrice:item.sPrice,qty:1,bonus:item.bonus}],{discountPercent:quote.percent,discountValue:quote.discountPiasters/100});
   const amount=quote.payablePiasters/100,allocations=amount?[{paymentMethodId:method,amount}]:[];
   const result=await executeLegacySaleCreateTransaction(tx,{items:[item],clientId,notes:'DECEMBER_ROLLBACK_FIXTURE',payCash:0,payVisa:0,paymentAllocations:allocations,computed,decemberClaim:{tenantId:tenant,expectedDiscountMinor:quote.discountPiasters},branchId:op.BranchID,businessDayId:op.DayID,shiftMoveID:op.ShiftID,invDate:op.InvDate,userID:op.UserID,splitCfg,activeAllocations:allocations,isSplitPayment:false,headerPaymentMethodId:method});
   ids.push(result.invID);
-  const facts=await rq().input('invoice',sql.Int,result.invID).query<{paymentCount:number;paymentSum:number;cashCount:number;cashSum:number;redeemed:number}>(`
+  const facts=await rq().input('invoice',sql.Int,result.invID).query<{paymentCount:number;paymentSum:number;cashCount:number;cashSum:number;redeemed:number;headerBonus:number;detailBonus:number}>(`
    SELECT (SELECT COUNT(*) FROM dbo.TblinvServPayment WHERE invID=@invoice AND invType=N'مبيعات') paymentCount,
    (SELECT COALESCE(SUM(PayValue),0) FROM dbo.TblinvServPayment WHERE invID=@invoice AND invType=N'مبيعات') paymentSum,
    (SELECT COUNT(*) FROM dbo.TblCashMove WHERE invID=@invoice AND invType=N'مبيعات') cashCount,
    (SELECT COALESCE(SUM(GrandTolal),0) FROM dbo.TblCashMove WHERE invID=@invoice AND invType=N'مبيعات') cashSum,
-   (SELECT COUNT(*) FROM dbo.CutOfferRedemption WHERE InvoiceId=@invoice) redeemed
+   (SELECT COUNT(*) FROM dbo.CutOfferRedemption WHERE InvoiceId=@invoice) redeemed,
+   (SELECT TotalBonus FROM dbo.TblinvServHead WHERE invID=@invoice AND invType=N'مبيعات') headerBonus,
+   (SELECT COALESCE(SUM(ABS(Bonus)),0) FROM dbo.TblinvServDetail WHERE invID=@invoice AND invType=N'مبيعات') detailBonus
   `);
-  const f=facts.recordset[0];check(f.redeemed===1&&f.paymentCount===(amount?1:0)&&f.cashCount===(amount?1:0)&&Math.round(Number(f.paymentSum)*100)===quote.payablePiasters&&Math.round(Number(f.cashSum)*100)===quote.payablePiasters,'STAGING_FINANCIAL_INVARIANT_FAILED');
+  const f=facts.recordset[0];check(Number(f.headerBonus)===0&&Number(f.detailBonus)===0,'DECEMBER_COMMISSION_MUST_BE_ZERO');check(f.redeemed===1&&f.paymentCount===(amount?1:0)&&f.cashCount===(amount?1:0)&&Math.round(Number(f.paymentSum)*100)===quote.payablePiasters&&Math.round(Number(f.cashSum)*100)===quote.payablePiasters,'STAGING_FINANCIAL_INVARIANT_FAILED');
  }
  await sale(await makeClient(),payment.recordset[0].PaymentID,10);
  console.log('REAL_POS_ADAPTER_POSITIVE_PAYMENT_PASS');
@@ -106,7 +108,7 @@ async function main(){
  `);
  const groupMember=(clientId:number,percent:number)=>{
   const discountMinor=Math.round(Math.round(item.sPrice*100)*percent/100);
-  const computed=computeInvoiceItemsTotals([{sPrice:item.sPrice,qty:1,bonus:0}],{discountPercent:percent,discountValue:discountMinor/100});
+  const computed=computeInvoiceItemsTotals([{sPrice:item.sPrice,qty:1,bonus:item.bonus}],{discountPercent:percent,discountValue:discountMinor/100});
   const method=payment.recordset[0].PaymentID,allocations=[{paymentMethodId:method,amount:computed.grandTotal}];
   return {items:[item],clientId,notes:'DECEMBER_GROUP_ROLLBACK_FIXTURE',payCash:0,payVisa:0,paymentAllocations:allocations,computed,decemberClaim:{tenantId:tenant,expectedDiscountMinor:discountMinor},branchId:op.BranchID,businessDayId:op.DayID,shiftMoveID:op.ShiftID,invDate:op.InvDate,userID:op.UserID,splitCfg,activeAllocations:allocations,isSplitPayment:false,headerPaymentMethodId:method};
  };
@@ -138,6 +140,7 @@ async function main(){
  await q().input('campaign',sql.UniqueIdentifier,campaignId).query('UPDATE dbo.CutOfferCampaign SET FirstVisitPct=100 WHERE TenantId=@tenant AND CampaignId=@campaign');
  await sale(await makeClient(),method.recordset[0].PaymentID,100);
  console.log('REAL_POS_ADAPTER_ZERO_PAYMENT_PASS');
+ console.log('REAL_POS_ADAPTER_NO_COMMISSION_PASS');
  }finally{await tx.rollback();rolledBack=true;}
  check(rolledBack,'STAGING_ROLLBACK_REQUIRED');
  const proof=await pool.request().input('campaign',sql.UniqueIdentifier,campaignId).query('SELECT COUNT(*) n FROM dbo.CutOfferCampaign WHERE CampaignId=@campaign');

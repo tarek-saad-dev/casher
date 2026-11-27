@@ -105,7 +105,8 @@ export async function persistDecemberRedemption(tx:Transaction,quote:DecemberQuo
  INSERT dbo.CutOfferRedemption(TenantId,CampaignId,ClientId,ParticipantId,InvoiceId,PercentApplied,EligibleSubtotalMinor,DiscountMinor)
  SELECT @tenant,@campaign,@client,@participant,@invoice,@percent,@subtotal,@discount
  WHERE EXISTS(SELECT 1 FROM dbo.TblinvServHead h WHERE h.invID=@invoice AND h.invType=N'مبيعات' AND h.ClientID=@client
- AND h.SubTotal=@subtotal/100.0 AND h.DisVal=@discount/100.0 AND h.GrandTotal=(@subtotal-@discount)/100.0 AND h.PayDue=0)
+ AND h.SubTotal=@subtotal/100.0 AND h.DisVal=@discount/100.0 AND h.GrandTotal=(@subtotal-@discount)/100.0 AND h.PayDue=0 AND ISNULL(h.TotalBonus,0)=0)
+ AND NOT EXISTS(SELECT 1 FROM dbo.TblinvServDetail d WHERE d.invID=@invoice AND d.invType=N'مبيعات' AND ISNULL(d.Bonus,0)<>0)
  `);
  if(r.rowsAffected[0]!==1)deny('DECEMBER_REDEMPTION_CONFLICT');
 }

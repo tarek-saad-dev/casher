@@ -21,7 +21,7 @@ const input=(clientId:number,branchId=1)=>({tenantId:tenant,branchId,clientId,it
 async function atomic<T>(fn:(tx:mssql.Transaction)=>Promise<T>){const tx=new mssql.Transaction(pool!);await tx.begin(mssql.ISOLATION_LEVEL.SERIALIZABLE);try{const r=await fn(tx);await tx.commit();return r;}catch(e){await tx.rollback().catch(()=>null);throw e;}}
 async function register(id:number,referralCode?:string){return registerDecemberParticipant(tenant,{name:'Synthetic '+id,phone:'01000000'+id,student:false,...(referralCode?{referralCode}:{})});}
 async function approve(id:number){await pool!.request().input('client',mssql.Int,id).input('phone',mssql.VarChar(16),'+201000000'+id).query("UPDATE dbo.CutOfferParticipant SET ClientId=@client,IdentityVerifiedAtUtc=SYSUTCDATETIME(),IdentityVerifiedBy=1 WHERE PhoneNormalized=@phone");}
-async function invoice(tx:mssql.Transaction,id:number,client:number,branch:number,discount:number){await new mssql.Request(tx).input('id',mssql.Int,id).input('client',mssql.Int,client).input('branch',mssql.Int,branch).input('discount',mssql.Decimal(10,2),discount).query("INSERT dbo.TblinvServHead VALUES(@id,N'مبيعات',@client,@branch,200,@discount,200-@discount,0,N'no'); INSERT dbo.TblinvServDetail VALUES(@id,N'مبيعات',9,200);");}
+async function invoice(tx:mssql.Transaction,id:number,client:number,branch:number,discount:number){await new mssql.Request(tx).input('id',mssql.Int,id).input('client',mssql.Int,client).input('branch',mssql.Int,branch).input('discount',mssql.Decimal(10,2),discount).query("INSERT dbo.TblinvServHead VALUES(@id,N'مبيعات',@client,@branch,200,@discount,200-@discount,0,N'no',0); INSERT dbo.TblinvServDetail VALUES(@id,N'مبيعات',9,200,0);");}
 describe.skipIf(!enabled)('December actual SQL domain integration on disposable minimal fixture',()=>{
  beforeAll(async()=>{
   const password=process.env.CUT_CLUB_EPHEMERAL_AGENT_PASSWORD;if(!password)throw Error('FIXTURE_PASSWORD_REQUIRED');
@@ -112,6 +112,12 @@ describe.skipIf(!enabled)('December actual SQL domain integration on disposable 
   }finally{await pool!.request().query("UPDATE dbo.TblClient SET Mobile='01000000105' WHERE ClientID=105");}
  });
 
+ it('rejects any commission on a December redemption and rolls back',async()=>{
+  await register(101);await approve(101);
+  for(const statement of ['UPDATE dbo.TblinvServHead SET TotalBonus=99 WHERE invID=5050','UPDATE dbo.TblinvServDetail SET Bonus=99 WHERE invID=5050']){
+   await expect(atomic(async tx=>{const q=await quoteDecemberInTransaction(tx,input(101));await invoice(tx,5050,101,1,q.discountPiasters/100);await new mssql.Request(tx).query(statement);await persistDecemberRedemption(tx,q,5050);})).rejects.toThrow('DECEMBER_REDEMPTION_CONFLICT');
+  }
+ });
  it('closes old invitation links after inviter redemption without blocking independent registration',async()=>{
   const owner=await register(101);await approve(101);
   await register(102,owner.referralCode);
