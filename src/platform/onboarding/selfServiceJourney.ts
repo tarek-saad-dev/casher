@@ -82,5 +82,7 @@ export function buildSelfServiceJourney(report: TenantGoLiveReport, branchDetail
     tenantName: report.tenantName,
     ownerLoginName: report.ownerLoginName,
     bookingInstalled: report.bookingInstalled,
+    firstSaleStatus: evidence.get('first_sale')?.status ?? null,
+    firstSaleCount: count('first_sale'),
   };
 }

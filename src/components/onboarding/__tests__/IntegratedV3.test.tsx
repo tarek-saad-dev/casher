@@ -4,11 +4,13 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import '@testing-library/jest-dom/vitest';
 import PublicSignupFlow from '@/components/public/PublicSignupFlow';
 import TrainingExperience from '@/components/onboarding/TrainingExperience';
+import ServiceTemplatePicker from '@/components/onboarding/ServiceTemplatePicker';
+import SmartTeamSetup from '@/components/onboarding/SmartTeamSetup';
 
 afterEach(()=>{cleanup();vi.unstubAllGlobals();vi.restoreAllMocks();});
 
 function advanceSignup(){
-  fireEvent.change(screen.getByLabelText('رقم الموبايل'),{target:{value:'01012345678'}});
+  fireEvent.change(screen.getByRole('textbox',{name:'رقم الموبايل'}),{target:{value:'01012345678'}});
   fireEvent.click(screen.getByRole('button',{name:'متابعة'}));
   fireEvent.change(screen.getByLabelText('الاسم بالكامل'),{target:{value:'Test Owner'}});
   fireEvent.change(screen.getByPlaceholderText('10 أحرف على الأقل'),{target:{value:'test-password-123'}});
@@ -45,13 +47,37 @@ describe('V3 registration interface',()=>{
     expect(body).not.toHaveProperty('confirmation');
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
-  it('does not require an OTP or request one when the server flag is off',()=>{
-    const fetchMock=vi.fn();vi.stubGlobal('fetch',fetchMock);
+  it('preserves custom app choices when the owner revisits the same industry',()=>{
+    render(<PublicSignupFlow otpRequired={false}/>);
+    advanceSignup();
+    fireEvent.click(screen.getByRole('button',{name:'التطبيقات'}));
+    const option=screen.getAllByRole('button',{name:/اختياري/}).find(b=>!b.hasAttribute('disabled'));
+    expect(option).toBeDefined();
+    const name=option!.textContent!;
+    const selected=option!.getAttribute('aria-pressed');
+    fireEvent.click(option!);
+    fireEvent.click(screen.getByRole('button',{name:'نوع النشاط'}));
+    fireEvent.click(screen.getByRole('button',{name:/صالون \/ Barbershop/}));
+    fireEvent.click(screen.getByRole('button',{name:'متابعة'}));
+    const revisited=screen.getAllByRole('button',{name:/اختياري/}).find(b=>b.textContent===name);
+    expect(revisited).toBeDefined();
+    expect(revisited).toHaveAttribute('aria-pressed',selected==='true'?'false':'true');
+  });
+  it('submits account creation without requesting or sending an OTP when the server flag is off',async()=>{
+    const fetchMock=vi.fn(async (_url:string,_opts?:RequestInit)=>new Response(JSON.stringify({ok:true,ownerLoginName:'owner-no-otp',nextPath:'/setup'}),{status:201}));vi.stubGlobal('fetch',fetchMock);
     render(<PublicSignupFlow otpRequired={false}/>);
     advanceSignup();
     expect(screen.queryByRole('button',{name:'إرسال رمز التحقق'})).not.toBeInTheDocument();
-    expect(screen.getByRole('button',{name:'إنشاء الحساب'})).toBeEnabled();
+    const submit=screen.getByRole('button',{name:'إنشاء الحساب'});
+    expect(submit).toBeEnabled();
     expect(fetchMock).not.toHaveBeenCalled();
+    fireEvent.click(submit);
+    await waitFor(()=>expect(screen.getByText('owner-no-otp')).toBeInTheDocument());
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/public/signup/complete');
+    const body=JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
+    expect(body).toMatchObject({industry:'salon',phone:'01012345678'});
+    expect(body).not.toHaveProperty('otp');
   });
 });
 describe('V3 training interface',()=>{
@@ -79,5 +105,52 @@ describe('V3 training interface',()=>{
     expect(storage).not.toHaveBeenCalled();
     click('إعادة التدريب');
     expect(screen.getByRole('button',{name:'حفظ العميل التدريبي'})).toBeInTheDocument();
+  });
+});
+
+describe('V3 service template picker',()=>{
+  it('excludes existing services from bulk selection and waits for valid prices before saving',async()=>{
+    const onSaved=vi.fn(async()=>{});
+    const request=vi.fn(async (_url:string,_opts?:RequestInit)=>new Response(JSON.stringify({ok:true}),{status:200}));
+    vi.stubGlobal('fetch',request);
+    render(<ServiceTemplatePicker existingNames={['حلاقة شعر']} onSaved={onSaved}/>);
+    const existing=screen.getByRole('checkbox',{name:/حلاقة شعر/});
+    expect(existing).toBeDisabled();
+    fireEvent.click(screen.getByRole('button',{name:'تحديد كل الخدمات المتاحة'}));
+    expect(existing).not.toBeChecked();
+    expect(screen.getByRole('button',{name:'حفظ 5 خدمات مختارة'})).toBeDisabled();
+    for(const name of ['حلاقة ذقن','تصفيف شعر','تنظيف بشرة','حمام زيت','بروتين شعر']){
+      fireEvent.change(screen.getByLabelText('سعر '+name),{target:{value:'100'}});
+    }
+    const save=screen.getByRole('button',{name:'حفظ 5 خدمات مختارة'});
+    const price=screen.getByLabelText('سعر حلاقة ذقن');
+    fireEvent.change(price,{target:{value:'100.123'}});
+    expect(save).toBeDisabled();
+    expect(request).not.toHaveBeenCalled();
+    fireEvent.change(price,{target:{value:'100'}});
+    expect(save).toBeEnabled();
+    fireEvent.click(save);
+    await waitFor(()=>expect(onSaved).toHaveBeenCalledTimes(1));
+    expect(request).toHaveBeenCalledTimes(5);
+    const payloads=request.mock.calls.map(call=>JSON.parse(String(call[1]?.body)));
+    expect(payloads.every(row=>row.action==='service'&&row.price===100&&row.name!=='حلاقة شعر')).toBe(true);
+  });
+});
+
+describe('V3 smart team setup',()=>{
+  it('filters the current branch roster without sending requests or changing staff',()=>{
+    const request=vi.fn();vi.stubGlobal('fetch',request);
+    render(<SmartTeamSetup employees={[{EmpID:1,EmpName:'Ahmed Hassan',Job:'Barber'},{EmpID:2,EmpName:'Mona Ali',Job:'Reception'}]} payrollAvailable={false} bookingAvailable={false} onSaved={async()=>{}}/>);
+    expect(screen.getByText('Ahmed Hassan')).toBeInTheDocument();
+    expect(screen.getByText('Mona Ali')).toBeInTheDocument();
+    const search=screen.getByRole('searchbox',{name:'بحث في الفريق'});
+    fireEvent.change(search,{target:{value:'reception'}});
+    expect(screen.queryByText('Ahmed Hassan')).not.toBeInTheDocument();
+    expect(screen.getByText('Mona Ali')).toBeInTheDocument();
+    fireEvent.change(search,{target:{value:'unknown'}});
+    expect(screen.getByText('مفيش موظفين مطابقين للبحث.')).toBeInTheDocument();
+    fireEvent.change(search,{target:{value:''}});
+    expect(screen.getByText('Ahmed Hassan')).toBeInTheDocument();
+    expect(request).not.toHaveBeenCalled();
   });
 });
