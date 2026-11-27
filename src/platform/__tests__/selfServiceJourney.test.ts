@@ -68,6 +68,22 @@ describe('self-service salon onboarding', () => {
     expect(journey.bookingInstalled).toBe(true);
   });
 
+  it('reports real tenant first-sale evidence without changing setup completion', () => {
+    const completed: GoLiveMilestoneId[] = ['commercial_access', 'active_branch', 'catalog', 'team', 'users', 'business_day', 'first_shift'];
+    const pending = buildSelfServiceJourney(example(completed));
+    const sold = buildSelfServiceJourney(example([...completed, 'first_sale']));
+    expect(pending.firstSaleStatus).toBe('pending');
+    expect(pending.firstSaleCount).toBe(0);
+    expect(sold.firstSaleStatus).toBe('done');
+    expect(sold.firstSaleCount).toBe(1);
+    expect(pending.ready).toBe(true);
+    expect(sold.ready).toBe(true);
+    expect(sold.progressPercent).toBe(pending.progressPercent);
+    const report=example(completed);
+    report.milestones=report.milestones.filter(item=>item.id!=='first_sale');
+    expect(buildSelfServiceJourney(report).firstSaleStatus).toBeNull();
+  });
+
   it('does not call an uninstalled booking app a required setup step', () => {
     const journey = buildSelfServiceJourney(example([
       'commercial_access', 'active_branch', 'catalog', 'team', 'users',
