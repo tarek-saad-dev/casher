@@ -19,7 +19,7 @@ describe.skipIf(!enabled)('membership issuance real SQL (disposable)',()=>{
  const c=await pool.request().query('SELECT DB_NAME() AS Db,SUSER_SNAME() AS LoginName');
  if(c.recordset[0]?.Db!=='last132_agent'||c.recordset[0]?.LoginName!=='drvo_agent')throw Error('WRONG_DB');
  });
- afterAll(async()=>{await pool?.close();});
+ afterAll(async()=>{if(pool){try{await pool.request().query('DELETE dbo.CutClubMembershipTrial');}finally{await pool.close();}}});
  beforeEach(async()=>{
  process.env.CUT_CLUB_STAGING_MEMBERSHIP_DRAFT_ENABLED='true';
  process.env.CUT_CLUB_STAGING_MEMBERSHIP_PROOF_ENABLED='true';
