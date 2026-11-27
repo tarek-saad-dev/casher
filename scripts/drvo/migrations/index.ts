@@ -23,6 +23,7 @@ import { bookingCashierHandoffMigration } from './021-booking-cashier-handoff';
 import { retailProductCatalogMigration } from './022-retail-product-catalog';
 import { cutClubMemberWalletMigration } from './026-cut-club-member-wallet';
 import { customerEducationOccupationProfileMigration } from './025-customer-education-occupation-profile';
+import { cutEducationCatalogMigration } from './028-cut-education-catalog';
 import { cutOfferCampaignMigration } from './027-cut-offer-campaign';
 import { drvoModuleRequiredMigrationsFromManifest } from '../../../src/platform/drvo/moduleManifest';
 
@@ -53,6 +54,7 @@ export const DRVO_MIGRATIONS: DrvoMigrationDefinition[] = [
   customerEducationOccupationProfileMigration,
   cutClubMemberWalletMigration,
   cutOfferCampaignMigration,
+  cutEducationCatalogMigration,
 ];
 
 export function assertDrvoMigrationManifestValid(): void {
