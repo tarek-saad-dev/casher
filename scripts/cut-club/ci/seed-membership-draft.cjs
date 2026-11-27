@@ -29,7 +29,7 @@ async function run(){
  ('22222222-2222-4222-8222-222222222222','413d433e-f36b-1410-8820-009ec495c7e1','201000000000',7,'ACTIVE','ENABLED'),
  ('33333333-3333-4333-8333-333333333333','11111111-1111-4111-8111-111111111111','201000000001',9,'ACTIVE','ENABLED');`);}finally{await db.close();}
  const local=await connect(cfg('drvo_agent',agent,'last132_agent'));
- try{await local.request().query(fs.readFileSync('docs/cut-club/sql/membership-draft-staging-only.sql','utf8'));await local.request().query(fs.readFileSync('docs/cut-club/sql/membership-proof-staging-only.sql','utf8'));await local.request().query(fs.readFileSync('docs/cut-club/sql/membership-trial-staging-only.sql','utf8'));for(const phase of ['publication','application','application-fulfillment'])await local.request().query(fs.readFileSync('docs/cut-club/sql/membership-'+phase+'-staging-only.sql','utf8'));}finally{await local.close();}
+ try{await local.request().query(fs.readFileSync('docs/cut-club/sql/membership-draft-staging-only.sql','utf8'));await local.request().query(fs.readFileSync('docs/cut-club/sql/membership-proof-staging-only.sql','utf8'));await local.request().query(fs.readFileSync('docs/cut-club/sql/membership-trial-staging-only.sql','utf8'));for(const phase of ['publication','application','application-fulfillment','benefit-draft'])await local.request().query(fs.readFileSync('docs/cut-club/sql/membership-'+phase+'-staging-only.sql','utf8'));}finally{await local.close();}
  console.log('Disposable membership draft schema ready');
 }
 run().catch(e=>{console.error(e.message);process.exitCode=1;});
