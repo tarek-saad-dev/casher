@@ -213,14 +213,13 @@ export default function ServiceCatalog({ services, selectedBarber, onAddItem }: 
       <div className="scrollbar-none md:scrollbar-luxury -mx-1 mb-4 flex items-center gap-2 overflow-x-auto px-1 pb-2">
         {categoryTabs.map((tab) => {
           const isActive = activeTab === tab.id;
-          // For special tabs (hot/all) use gold, for category tabs use their theme color
-          const isSpecial = tab.id === 'hot' || tab.id === 'all';
-          const catId = isSpecial ? null : parseInt(tab.id);
-          const theme = isSpecial ? null : getCategoryTheme(tab.name, catId);
-
-          const activeStyle = isSpecial
-            ? { backgroundColor: 'var(--primary)', color: 'var(--primary-foreground)', borderColor: 'var(--primary)', border: '1px solid' }
-            : (theme ? { ...theme.badgeStyle, padding: undefined } : {});
+          // DRVO: one consistent selected state (Plum = navigation context).
+          const activeStyle = {
+            backgroundColor: 'var(--brand)',
+            color: 'var(--brand-foreground)',
+            borderColor: 'var(--brand)',
+            border: '1px solid',
+          };
 
           const inactiveStyle = {
             backgroundColor: 'var(--surface)',
@@ -235,7 +234,7 @@ export default function ServiceCatalog({ services, selectedBarber, onAddItem }: 
               type="button"
               onClick={() => setActiveTab(tab.id)}
               style={isActive ? activeStyle : inactiveStyle}
-              className="flex min-h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-4 py-2 text-sm font-medium transition-all"
+              className="flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3 text-[0.8125rem] font-semibold transition-colors"
             >
               {tab.icon}
               <span>{tab.name}</span>
@@ -264,15 +263,15 @@ export default function ServiceCatalog({ services, selectedBarber, onAddItem }: 
               key={svc.ProID}
               className={cn(
                 'group relative overflow-hidden rounded-xl border border-border bg-surface transition-all duration-300',
-                !isDisabled && 'hover:border-primary/50 hover:shadow-lg hover:shadow-primary/10',
+                !isDisabled && 'hover:border-primary/40 hover:shadow-md',
                 isDisabled && 'cursor-not-allowed opacity-60'
               )}
             >
               {/* Hot Badge */}
               {isHot && (
-                <div className="absolute top-2 left-2 z-10">
-                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-orange-400 to-red-500 shadow-lg">
-                    <Flame className="h-3.5 w-3.5 text-primary-foreground" />
+                <div className="absolute end-2 top-2 z-10" title="الأكثر طلباً">
+                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-warning text-warning-foreground shadow-sm">
+                    <Flame className="h-3.5 w-3.5" aria-label="الأكثر طلباً" />
                   </div>
                 </div>
               )}
@@ -282,7 +281,7 @@ export default function ServiceCatalog({ services, selectedBarber, onAddItem }: 
                 <img
                   src={imageUrl}
                   alt={svc.ProName}
-                  className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
+                  className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-[var(--surface)] via-transparent to-transparent" />
               </div>
@@ -303,7 +302,7 @@ export default function ServiceCatalog({ services, selectedBarber, onAddItem }: 
 
                 {/* Price & Duration */}
                 <div className="mb-2 flex items-center justify-between gap-1">
-                  <span className="text-base font-bold text-primary">
+                  <span className="num text-base font-bold text-foreground">
                     {svc.SPrice1} <span className="text-xs">ج.م</span>
                   </span>
                   <div className="flex shrink-0 items-center gap-1 text-muted-foreground">
