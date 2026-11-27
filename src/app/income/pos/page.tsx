@@ -1202,9 +1202,9 @@ export default function PosPage() {
       </div>
 
       {/* ═══════ DESKTOP / TABLET LAYOUT (≥ md) ═══════ */}
-      <div className="relative hidden h-full flex-1 flex-col overflow-hidden md:flex lg:flex-row">
+      <div className="relative hidden min-h-0 flex-1 flex-col overflow-y-auto md:flex xl:flex-row xl:overflow-hidden">
         {/* ═══════ RIGHT PANEL: Customer + History ═══════ */}
-        <aside aria-label="العميل" className="order-1 flex w-full shrink-0 flex-col gap-3 overflow-y-auto border-e border-border bg-card p-3 scrollbar-luxury-v lg:order-1 lg:w-72 xl:w-80">
+        <aside aria-label="العميل" className="order-1 flex w-full shrink-0 flex-col gap-3 border-b border-border bg-card p-3 scrollbar-luxury-v xl:w-64 xl:overflow-y-auto xl:border-b-0 xl:border-e 2xl:w-80">
           <div className="flex flex-wrap justify-end gap-2">
             <AddonTransferInbox enabled={Boolean(shift?.ID)} />
             <BarberHandoffInbox
@@ -1260,7 +1260,7 @@ export default function PosPage() {
         </aside>
 
         {/* ═══════ CENTER PANEL: Barbers + Services ═══════ */}
-        <section aria-label="الحلاق والخدمات" className="order-3 min-h-[40vh] min-w-0 flex-1 space-y-3 overflow-y-auto bg-background p-3 scrollbar-luxury-v lg:order-2 lg:space-y-4 lg:p-4">
+        <section aria-label="الحلاق والخدمات" className="order-2 min-h-[40vh] min-w-0 shrink-0 space-y-3 bg-background p-3 scrollbar-luxury-v xl:min-h-0 xl:flex-1 xl:overflow-y-auto xl:space-y-4 xl:p-4">
           <QuickActionsBar onAction={handleQuickAction} />
           <BarberCarousel
             barbers={barbers}
@@ -1275,13 +1275,15 @@ export default function PosPage() {
         </section>
 
         {/* ═══════ LEFT PANEL: Cart + Summary + Payment + Save ═══════ */}
-        <aside aria-label="الفاتورة" className="order-2 flex w-full shrink-0 flex-col gap-3 overflow-y-auto border-s border-border bg-card p-3 scrollbar-luxury-v lg:order-3 lg:w-80 xl:w-[22rem]">
+        <aside aria-label="الفاتورة" className="order-3 flex w-full shrink-0 flex-col gap-3 border-t border-border bg-card p-3 scrollbar-luxury-v xl:w-80 xl:overflow-y-auto xl:border-s xl:border-t-0 2xl:w-[22rem]">
           <PosInvoicePanel {...invoicePanelProps} />
-          <PosInvoiceSaveActions
-            saving={saving}
-            disabled={state.items.length === 0}
-            onSave={handleSave}
-          />
+          <div className="sticky bottom-0 z-10 mt-auto shrink-0 border-t border-border bg-card py-3">
+            <PosInvoiceSaveActions
+              saving={saving}
+              disabled={state.items.length === 0}
+              onSave={handleSave}
+            />
+          </div>
         </aside>
       </div>
 

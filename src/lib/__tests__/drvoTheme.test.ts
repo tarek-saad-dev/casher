@@ -1,8 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   DEFAULT_THEME_CONFIG,
+  applyThemeColors,
+  loadThemeConfig,
   DRVO_BRAND,
   THEME_TOKENS,
   parseThemeCookie,
@@ -84,6 +86,38 @@ describe('DRVO Light V1 theme tokens (ADR-024 / ADR-041)', () => {
     expect(parseThemeCookie('theme-mode=dark; theme-palette=cut-gold')).toEqual(DEFAULT_THEME_CONFIG);
     expect(parseThemeCookie('theme-mode=dark; theme-palette=drvo')).toEqual({ mode: 'dark', palette: 'drvo' });
     expect(parseThemeCookie(null)).toEqual(DEFAULT_THEME_CONFIG);
+  });
+
+  it('uses the server preference when localStorage is empty or unavailable', () => {
+    const fallback = { mode: 'dark', palette: 'drvo' } as const;
+    vi.stubGlobal('window', {});
+    vi.stubGlobal('localStorage', { getItem: () => null });
+    try {
+      expect(loadThemeConfig(fallback)).toEqual(fallback);
+      vi.stubGlobal('localStorage', { getItem: () => { throw new Error('unavailable'); } });
+      expect(loadThemeConfig(fallback)).toEqual(fallback);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('updates native colour scheme alongside semantic tokens at runtime', () => {
+    const root = {
+      style: { setProperty: vi.fn(), colorScheme: '' },
+      setAttribute: vi.fn(),
+      classList: { remove: vi.fn(), add: vi.fn() },
+    };
+    vi.stubGlobal('document', { documentElement: root });
+    try {
+      applyThemeColors('dark', 'drvo');
+      expect(root.style.colorScheme).toBe('dark');
+      expect(root.style.setProperty).toHaveBeenCalledWith('--background', THEME_TOKENS.dark['--background']);
+      applyThemeColors('light', 'drvo');
+      expect(root.style.colorScheme).toBe('light');
+      expect(root.classList.add).toHaveBeenLastCalledWith('light');
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('serialises tokens for first-paint CSS', () => {

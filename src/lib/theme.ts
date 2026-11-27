@@ -222,6 +222,7 @@ export function applyThemeColors(mode: ThemeMode, palette: ThemePalette, target?
     root.style.setProperty(key, value);
   }
 
+  root.style.colorScheme = resolvedMode;
   root.setAttribute('data-theme-mode', resolvedMode);
   root.setAttribute('data-theme-palette', palette);
   root.classList.remove('light', 'dark');
@@ -232,17 +233,17 @@ export function applyThemeColorsToStyle(mode: ThemeMode, palette: ThemePalette):
   return { ...getThemeTokens(mode, palette) } as CSSProperties;
 }
 
-export function loadThemeConfig(): ThemeConfig {
-  if (typeof window === 'undefined') return DEFAULT_THEME_CONFIG;
+export function loadThemeConfig(fallback: ThemeConfig = DEFAULT_THEME_CONFIG): ThemeConfig {
+  if (typeof window === 'undefined') return fallback;
   try {
     const raw = localStorage.getItem(THEME_STORAGE_KEY);
-    if (!raw) return DEFAULT_THEME_CONFIG;
+    if (!raw) return fallback;
     const parsed = JSON.parse(raw) as Partial<ThemeConfig>;
     const mode: ThemeMode = isValidThemeMode(parsed.mode ?? '') ? (parsed.mode as ThemeMode) : DEFAULT_THEME_CONFIG.mode;
     const palette: ThemePalette = isValidThemePalette(parsed.palette ?? '') ? (parsed.palette as ThemePalette) : DEFAULT_THEME_CONFIG.palette;
     return { mode, palette };
   } catch {
-    return DEFAULT_THEME_CONFIG;
+    return fallback;
   }
 }
 

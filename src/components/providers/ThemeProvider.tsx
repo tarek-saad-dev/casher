@@ -31,7 +31,7 @@ interface ThemeContextValue extends ThemeConfig {
 
 export const ThemeContext = createContext<ThemeContextValue>({
   ...DEFAULT_THEME_CONFIG,
-  resolvedMode: 'dark',
+  resolvedMode: 'light',
   setMode: () => {},
   setPalette: () => {},
   setTheme: () => {},
@@ -47,18 +47,22 @@ interface ThemeProviderProps {
 export default function ThemeProvider({ children, initialConfig }: ThemeProviderProps) {
   const [config, setConfig] = useState<ThemeConfig>(initialConfig ?? DEFAULT_THEME_CONFIG);
   const [isReady, setIsReady] = useState(false);
+  const [resolvedMode, setResolvedMode] = useState<'light' | 'dark'>(
+    initialConfig?.mode === 'dark' ? 'dark' : 'light',
+  );
 
   const apply = useCallback((next: ThemeConfig) => {
     applyThemeColors(next.mode, next.palette);
+    setResolvedMode(resolveThemeMode(next.mode));
   }, []);
 
   // On mount, load persisted config from localStorage and apply it.
   useEffect(() => {
-    const persisted = loadThemeConfig();
+    const persisted = loadThemeConfig(initialConfig ?? DEFAULT_THEME_CONFIG);
     setConfig(persisted);
     apply(persisted);
     setIsReady(true);
-  }, [apply]);
+  }, [apply, initialConfig]);
 
   // Keep colors in sync when config changes (covers initial server config too).
   useEffect(() => {
@@ -110,8 +114,6 @@ export default function ThemeProvider({ children, initialConfig }: ThemeProvider
     setCookie(next);
     setConfig(next);
   }, [setCookie]);
-
-  const resolvedMode = resolveThemeMode(config.mode);
 
   const value = useMemo(
     () => ({
