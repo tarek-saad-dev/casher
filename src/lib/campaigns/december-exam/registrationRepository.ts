@@ -36,6 +36,22 @@ export async function registerDecemberParticipant(tenantId:string, input:unknown
     const campaignId=campaign.recordset[0]?.CampaignId;
     if(!campaignId)throw new DecemberRegistrationError('CAMPAIGN_UNAVAILABLE',503);
     const request=()=>new sql.Request(tx).input('tenant',sql.UniqueIdentifier,tenantId).input('campaign',sql.UniqueIdentifier,campaignId);
+    // Serialize campaign registrations across app instances and bound successful writes.
+    // This is a circuit breaker, not a replacement for trusted ingress anti-bot/IP limits.
+    const quota=Number(process.env.DECEMBER_EXAM_REGISTRATION_MAX_PER_MINUTE||'60');
+    if(!Number.isSafeInteger(quota)||quota<1||quota>300)throw new DecemberRegistrationError('CAMPAIGN_UNAVAILABLE',503);
+    const lock=await request().query<{result:number}>(`
+      DECLARE @resource NVARCHAR(255)=N'cut-offer-register:'+CONVERT(NVARCHAR(36),@tenant)+N':'+CONVERT(NVARCHAR(36),@campaign);
+      DECLARE @result INT;
+      EXEC @result=sys.sp_getapplock @Resource=@resource,@LockMode='Exclusive',@LockOwner='Transaction',@LockTimeout=3000;
+      SELECT @result result;
+    `);
+    if((lock.recordset[0]?.result??-1)<0)throw new DecemberRegistrationError('REGISTRATION_BUSY',429);
+    const recent=await request().query<{n:number}>(`
+      SELECT COUNT(*) n FROM dbo.CutOfferParticipant
+      WHERE TenantId=@tenant AND CampaignId=@campaign AND CreatedAtUtc>DATEADD(minute,-1,SYSUTCDATETIME())
+    `);
+    if(Number(recent.recordset[0]?.n??quota)>=quota)throw new DecemberRegistrationError('REGISTRATION_BUSY',429);
     const existing=await request().input('phone',sql.VarChar(16),registration.phone).query(`
       SELECT TOP (1) ParticipantId FROM dbo.CutOfferParticipant WITH (UPDLOCK,HOLDLOCK)
       WHERE TenantId=@tenant AND CampaignId=@campaign AND PhoneNormalized=@phone
