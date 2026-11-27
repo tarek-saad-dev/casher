@@ -1,6 +1,6 @@
 import 'server-only';
 import type {Transaction} from 'mssql';
-import {sql} from '@/lib/db';
+import {getPool,sql} from '@/lib/db';
 import {DecemberCheckoutError} from './stagingCheckout';
 
 /** Free invoices are a distinct staging financial path, not a zero cash sale.
@@ -26,4 +26,10 @@ export async function assertNoZeroInvoiceCash(tx:Transaction,invoiceId:number){
  THEN 1 ELSE 0 END AS ok
  `);
  if(r.recordset[0]?.ok!==1)throw new DecemberCheckoutError('DECEMBER_ZERO_PAYMENT_SIDE_EFFECT');
+}
+
+export async function getStagingZeroPaymentMethod(){
+ const tx=new sql.Transaction(await getPool());await tx.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
+ try{const id=await requireStagingZeroPayment(tx);await tx.commit();return id;}
+ catch(e){await tx.rollback().catch(()=>null);throw e;}
 }
