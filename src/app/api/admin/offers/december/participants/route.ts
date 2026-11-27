@@ -100,6 +100,16 @@ export async function POST(req:NextRequest){
         WHERE p.TenantId=@tenant AND c.Code=@campaign AND p.ParticipantId=@participant
       `);
       if(updated.rowsAffected[0]!==1)throw Error('REVIEW_CONFLICT');
+      // Once linked, prior completed sales across all branches permanently disqualify
+      // an outstanding first-visit invitation. Keep the referral row for history.
+      await rq().input('client',sql.Int,body.clientId).query(`
+        UPDATE r SET Status='REJECTED'
+        FROM dbo.CutOfferReferral r
+        JOIN dbo.CutOfferCampaign c ON c.TenantId=r.TenantId AND c.CampaignId=r.CampaignId
+        WHERE r.TenantId=@tenant AND c.Code=@campaign AND r.InviteeId=@participant AND r.Status='PENDING'
+        AND EXISTS(SELECT 1 FROM dbo.TblinvServHead h WITH(HOLDLOCK)
+          WHERE h.ClientID=@client AND h.invType=N'مبيعات' AND ISNULL(h.isActive,N'no')=N'no')
+      `);
       await tx.commit();
       return reply({ok:true,identityVerified:true,studentCardChecked:body.studentCardChecked});
     }catch(e){await tx.rollback().catch(()=>null);throw e;}
