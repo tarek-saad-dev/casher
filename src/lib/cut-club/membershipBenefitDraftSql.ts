@@ -1,6 +1,8 @@
 import 'server-only';
 import sql from 'mssql';
 import {pilotTenant} from './membershipDraft';
+import {evaluateServiceEligibility,type PublicBookingServiceRow} from '@/lib/booking/publicBookingServicePolicy';
+import type {BenefitCatalogService} from './membershipBenefitPreview';
 import {parseBenefitDraft,type BenefitDraft} from './membershipBenefitDraft';
 export class BenefitDraftError extends Error{constructor(public code:string,public status:number){super(code);}}
 type Scope={tenantId:string;staffId:number};
@@ -47,4 +49,22 @@ export async function saveBenefitDraft(pool:sql.ConnectionPool,s:Scope,raw:unkno
  if(w.recordset.length!==1)throw new BenefitDraftError('BENEFIT_SAVE_FAILED',503);
  const result=project(w.recordset[0]);await tx.commit();return result;
  }catch(e){await tx.rollback().catch(()=>{});throw e;}
+}
+
+/** Strict tenant catalog; global SPrice1, NOT branch price or POS entitlement. No schema ensures/writes. */
+export async function listBenefitCatalog(pool:sql.ConnectionPool,s:Scope):Promise<BenefitCatalogService[]>{
+ await gate(pool.request(),s);
+ const r=await pool.request().input('tenant',sql.UniqueIdentifier,s.tenantId).query<PublicBookingServiceRow>(`
+ SELECT TOP(1001) p.ProID,p.ProName,p.ProNameAr,p.SPrice1,p.DurationMinutes,p.isDeleted,p.ProType,p.CatID,c.CatName,c.CatType
+ FROM dbo.TblPro p JOIN dbo.TblCat c ON c.TenantId=p.TenantId AND c.CatID=p.CatID
+ WHERE p.TenantId=@tenant AND ISNULL(p.isDeleted,0)=0 AND LOWER(LTRIM(RTRIM(c.CatType)))='serv' ORDER BY p.ProID`);
+ if(r.recordset.length>1000)throw new BenefitDraftError('CATALOG_LIMIT',503);
+ const ids=new Set<number>();const items:BenefitCatalogService[]=[];
+ for(const row of r.recordset){
+ const e=evaluateServiceEligibility(row);const name=row.ProNameAr?.trim()||row.ProName?.trim();const price=e.price===null?0:Math.round(e.price*100);
+ if(!e.eligible||!name||!Number.isSafeInteger(price)||price<1||price>100000000||Math.abs((e.price??0)*100-price)>0.000001||!Number.isSafeInteger(row.ProID)||row.ProID<1)continue;
+ if(ids.has(row.ProID))throw new BenefitDraftError('CATALOG_DUPLICATE',503);
+ ids.add(row.ProID);items.push({id:row.ProID,name,priceMinor:price});
+ }
+ return items;
 }
