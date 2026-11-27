@@ -25,6 +25,7 @@ interface StoreStats {
 }
 
 const quickLinks = [
+  { label: 'اعتماد مزايا العضويات', href: '/admin/cut-club/membership-benefit-approvals', icon: Gift, color: 'text-yellow-400' },
   { label: 'إعداد مزايا العضويات', href: '/admin/cut-club/membership-benefit-drafts', icon: Gift, color: 'text-yellow-400' },
   { label: 'طلبات الانضمام للعضويات', href: '/admin/cut-club/membership-applications', icon: Users, color: 'text-yellow-400' },
   { label: 'نشر برامج العضويات', href: '/admin/cut-club/membership-publication', icon: Crown, color: 'text-yellow-400' },
