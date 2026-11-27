@@ -27,6 +27,7 @@ interface PosInvoicePanelProps {
   onPaymentMethodSelect: (id: number) => void;
   onPaymentAllocationsChange: (allocations: SaleState['paymentAllocations']) => void;
   onSave: (forcePrint?: boolean, source?: string) => void;
+  decemberCheckout?: {active:boolean;busy:boolean;canApply:boolean;onApply:()=>void;onClear:()=>void};
   showKeyboardHints?: boolean;
 }
 
@@ -47,6 +48,7 @@ export default function PosInvoicePanel({
   onPaymentMethodSelect,
   onPaymentAllocationsChange,
   onSave: _onSave,
+  decemberCheckout,
   showKeyboardHints = true,
 }: PosInvoicePanelProps) {
   const hasSplitAllocations = state.paymentAllocations.some(
@@ -56,6 +58,11 @@ export default function PosInvoicePanel({
   return (
     <div className="flex flex-col gap-3 lg:gap-4">
       {process.env.NEXT_PUBLIC_DECEMBER_EXAM_POS_PREVIEW_ENABLED === "true" && state.customer && <DecemberEligibilityPreview key={state.customer.ClientID} clientId={state.customer.ClientID} />}
+      {decemberCheckout && <div className="rounded-lg border p-3 text-sm space-y-2" dir="rtl">
+        <strong>خصم امتحان ديسمبر — اختبار Staging</strong>
+        {decemberCheckout.active ? <button type="button" disabled={_saving} onClick={decemberCheckout.onClear} className="block underline">إلغاء خصم الحملة</button> : <button type="button" disabled={!decemberCheckout.canApply||decemberCheckout.busy} onClick={decemberCheckout.onApply} className="block rounded bg-[#CF252B] px-3 py-2 text-white disabled:opacity-50">{decemberCheckout.busy?'جاري حساب الاستحقاق…':'احسب وطبّق الخصم'}</button>}
+        <p className="text-muted-foreground text-xs">يتحقق السيرفر مرة أخرى قبل الحفظ. الفاتورة المجانية غير متاحة بعد.</p>
+      </div>}
       <CartPanel
         items={state.items}
         barbers={barbers}
