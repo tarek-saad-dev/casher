@@ -3,7 +3,7 @@ import sql from 'mssql';
 vi.mock('server-only',()=>({}));
 import {pilotTenant} from '@/lib/cut-club/membershipDraft';
 import {saveMembershipDraft} from '@/lib/cut-club/membershipDraftSql';
-import {saveBenefitDraft,listBenefitDrafts} from '@/lib/cut-club/membershipBenefitDraftSql';
+import {saveBenefitDraft,listBenefitDrafts,listBenefitCatalog} from '@/lib/cut-club/membershipBenefitDraftSql';
 const enabled=process.env.CI==='true'&&process.env.MEMBERSHIP_EPHEMERAL_SQL==='1'&&process.env.MEMBERSHIP_EPHEMERAL_HOST==='127.0.0.1'&&!process.env.DB_SERVER&&!process.env.CLOUD_DB_SERVER;
 const scope={tenantId:pilotTenant,staffId:71};
 const program={code:'BENEFITS_SQL',expectedRevision:0,title:'Synthetic benefits',kind:'GENERAL',minimumVisits:0,allowedBranchIds:[1],partnerCode:null,reason:'fixture only'};
@@ -20,6 +20,10 @@ describe.skipIf(!enabled)('benefit draft revision lifecycle, disposable SQL only
  process.env.CUT_CLUB_STAGING_MEMBERSHIP_BENEFIT_DRAFT_ENABLED='true';
  });
  afterAll(async()=>{await pool?.close();});
+ it('loads only eligible tenant services and authoritative minor units',async()=>{
+ expect(await listBenefitCatalog(pool,scope)).toEqual([{id:9,name:'حلاقة',priceMinor:20001}]);
+ await expect(listBenefitCatalog(pool,{...scope,tenantId:'11111111-1111-4111-8111-111111111111'})).rejects.toMatchObject({code:'BENEFITS_NOT_RELEASED'});
+ });
  it('enforces branch scope, records immutable revisions, rejects concurrent replay and hides stale versions',async()=>{
  await saveMembershipDraft(pool,scope,program);
  await expect(saveBenefitDraft(pool,scope,{...input,rules:[{...rule,branchIds:[3]}]})).rejects.toMatchObject({code:'BENEFIT_BRANCH_OUTSIDE_PROGRAM'});
