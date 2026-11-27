@@ -25,9 +25,9 @@ jobs:
     environment: drvo-staging
     timeout-minutes: 30
     env:
-      DRVO_STAGING_SSH_HOST: ${{ secrets.DRVO_STAGING_SSH_HOST }}
+      DRVO_STAGING_SSH_HOST: ${{ secrets.DRVO_STAGING_SSH_HOST || secrets.STAGING_HOST }}
       DRVO_STAGING_SSH_KEY: ${{ secrets.DRVO_STAGING_SSH_KEY }}
-      DRVO_STAGING_KNOWN_HOSTS: ${{ secrets.STAGING_KNOWN_HOSTS }}
+      DRVO_STAGING_KNOWN_HOSTS: ${{ secrets.DRVO_STAGING_KNOWN_HOSTS || secrets.STAGING_KNOWN_HOSTS }}
       DRVO_STAGING_DB_PASSWORD: ${{ secrets.DRVO_STAGING_DB_PASSWORD }}
       DRVO_STAGING_DB_SERVER: 127.0.0.1
       DRVO_STAGING_DB_PORT: '14330'
@@ -44,9 +44,14 @@ jobs:
           for f in .env .env.local .env.production .env.production.local; do
             if [[ -f "$f" ]]; then echo "Unsafe environment file: $f" >&2; exit 10; fi
           done
+          missing=0
           for k in DRVO_STAGING_SSH_HOST DRVO_STAGING_SSH_KEY DRVO_STAGING_KNOWN_HOSTS DRVO_STAGING_DB_PASSWORD; do
-            if [[ -z "${!k:-}" ]]; then echo "Missing staging configuration: $k" >&2; exit 11; fi
+            if [[ -z "${!k:-}" ]]; then echo "Missing staging configuration: $k" >&2; missing=1; fi
           done
+          if [[ "$missing" != 0 ]]; then
+            echo "Configure missing values in the drvo-staging environment; no production fallback is allowed." >&2
+            exit 11
+          fi
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
