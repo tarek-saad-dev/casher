@@ -89,7 +89,8 @@ async function main(){
         const nav=await page.goto(base+path,{waitUntil:'load',timeout:120000});
         assert.equal(nav?.status(),200,'Setup response '+path);
         assert.equal(new URL(page.url()).pathname,path,'Unexpected setup redirect');
-        await page.getByRole('heading',{name:heading,exact:true}).waitFor();
+        await page.waitForFunction(expected=>[...document.querySelectorAll('h1,h2')].filter(el=>el.textContent?.trim()===expected&&el.getClientRects().length>0&&(el as HTMLElement).checkVisibility({visibilityProperty:true})).length===1,heading,{timeout:90000});
+        assert.equal(await page.getByRole('heading',{name:heading,exact:true}).count(),1);
         await page.evaluate(()=>document.fonts.ready);
         const overflow=await page.evaluate(()=>Math.max(document.documentElement.scrollWidth,document.body.scrollWidth)-document.documentElement.clientWidth);
         assert.ok(overflow<=2,'Horizontal overflow '+path+' / '+i);
@@ -114,12 +115,17 @@ async function main(){
     console.log('PASS two independent public salon signups, authenticated routes, service isolation and anonymous denial');
   }finally{
     try{if(browser)await browser.close();}finally{
+      // Stop this runner's isolated app before cleanup, including an interrupted signup.
+      const pid=Number(process.env.ONBOARDING_QA_APP_PID);
+      if(Number.isInteger(pid)&&pid>1){
+        try{process.kill(-pid,'SIGTERM');}catch(err:any){if(err.code!=='ESRCH')throw err;}
+      }
       try{
         if(verified){
           await assertDb(pool);
           for(const a of accounts.filter(x=>x.attempted)){
             const result=await pool.request().input('phone',sql.NVarChar(32),a.normalized).input('code',sql.NVarChar(64),a.tenantCode).query(`
-              SELECT r.BusinessName AS registeredName,r.TenantId AS registeredId,t.TenantId AS actualId,t.DisplayName AS actualName
+              SELECT r.BusinessName AS registeredName,r.TenantId AS registeredId,t.TenantId AS actualId,t.Name AS actualName
               FROM (SELECT 1 AS n) seed
               LEFT JOIN dbo.PublicSignupRegistration r ON r.PhoneNormalized=@phone
               LEFT JOIN dbo.Tenant t ON t.Code=@code;
