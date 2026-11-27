@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
+import { quoteDecember, DecemberCheckoutError, type DecemberClaim } from "@/lib/campaigns/december-exam/stagingCheckout";
+import { requirePageAccess, isAuthResult } from "@/lib/api-auth";
 import { getSession } from "@/lib/session";
 import type { CreateSalePayload } from "@/lib/types";
 import { resolveSplitPaymentConfig } from "@/lib/clearingMethod";
@@ -135,6 +137,26 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    let decemberClaim: DecemberClaim | undefined;
+    let decemberQuote: Awaited<ReturnType<typeof quoteDecember>> | undefined;
+    const requested = (body as CreateSalePayload & {decemberExam?: unknown}).decemberExam;
+    if (requested !== undefined) {
+      const auth = await requirePageAccess('/income/pos');
+      if (!isAuthResult(auth)) return auth;
+      if (auth.tenantId !== sessionUser.TenantId || auth.activeBranchId !== branchId)
+        throw new DecemberCheckoutError('DECEMBER_IDENTITY_REVIEW',403);
+      if (!requested || typeof requested !== 'object' || !('expectedDiscountMinor' in requested) ||
+        typeof requested.expectedDiscountMinor !== 'number' || !Number.isSafeInteger(requested.expectedDiscountMinor) ||
+        requested.expectedDiscountMinor <= 0 || Number(body.dis ?? 0) !== 0 || Number(body.disVal ?? 0) !== 0 ||
+        String(body.notes2 ?? '').includes('[groomPackage]'))
+        throw new DecemberCheckoutError('DECEMBER_INVALID_CART',400);
+      decemberQuote = await quoteDecember({tenantId:auth.tenantId,branchId,clientId:body.clientId,items:body.items});
+      if (decemberQuote.discountPiasters !== requested.expectedDiscountMinor)
+        throw new DecemberCheckoutError('DECEMBER_QUOTE_CHANGED');
+      if (decemberQuote.payablePiasters === 0)
+        throw new DecemberCheckoutError('DECEMBER_ZERO_PAYMENT_NOT_READY');
+      decemberClaim = {tenantId:auth.tenantId,expectedDiscountMinor:requested.expectedDiscountMinor};
+    }
     // ──── Server-side totals from line items + optional header discount ────
     const computed = computeInvoiceItemsTotals(
       body.items.map((item) => ({
@@ -145,8 +167,8 @@ export async function POST(req: NextRequest) {
         bonus: item.bonus,
       })),
       {
-        discountPercent: body.dis,
-        discountValue: body.disVal,
+        discountPercent: decemberQuote?.percent ?? body.dis,
+        discountValue: decemberQuote ? decemberQuote.discountPiasters / 100 : body.disVal,
       },
     );
     const subTotal = computed.subTotal;
@@ -276,6 +298,7 @@ export async function POST(req: NextRequest) {
       payVisa,
       paymentAllocations: body.paymentAllocations,
       computed,
+      decemberClaim,
       branchId,
       businessDayId,
       shiftMoveID,
@@ -317,6 +340,8 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ invID: result.invID, invType: result.invType, handoffSync }, { status: 201 });
   } catch (err: unknown) {
+    if (err instanceof DecemberCheckoutError)
+      return NextResponse.json({error:'تعذر اعتماد خصم ديسمبر. راجع الاستحقاق وأعد حساب الفاتورة.',code:err.code},{status:err.status});
     const { InventoryDomainError } = await import(
       '@/lib/inventory/inventoryMutation.service'
     );
