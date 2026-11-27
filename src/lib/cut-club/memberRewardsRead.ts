@@ -1,0 +1,90 @@
+import 'server-only';
+import {getPool,sql} from '@/lib/db';
+import {getCutClubSession} from './memberOtp';
+
+/**
+ * Read-only member storefront projection. No clientId/phone query parameters,
+ * no purchase side effects, and no exposing another tenant's branch stock.
+ * The pilot lists only approved global reward IDs; branch-specific inventory
+ * requires separately reviewed tenant-owned branch mapping.
+ */
+const approved:Readonly<Record<number,number>>=Object.freeze({
+  15:39, // Face Mask
+  16:22, // Oil Bath
+  17:11, // Basic SkinCare
+  18:9,  // Hair Cut
+});
+export type CutClubReward={
+  id:number;nameAr:string;nameEn:string;description:string;
+  priceCoins:number;serviceId:number|null;
+  stockState:'available'|'out_of_stock';
+  expiresAfterDays:number|null;canAfford:boolean|null;
+  serviceMappingReady:boolean;purchaseAvailable:false;
+};
+export type CutClubCatalog={
+  balance:number|null;purchaseEnabled:false;items:CutClubReward[];
+};
+
+function safeCoins(v:unknown):number|null{
+  if(v===null||v===undefined)return null;
+  const n=Number(v);
+  return Number.isFinite(n)&&n>=0&&n<=Number.MAX_SAFE_INTEGER&&Math.round(n*100)/100===n?n:null;
+}
+
+export async function loadMemberRewardCatalog(token:unknown):Promise<CutClubCatalog|null>{
+  const member=await getCutClubSession(token);
+  if(!member||!['ACTIVE','UNLINKED','REVIEW_REQUIRED'].includes(member.linkStatus))return null;
+  let balance:number|null=null;
+  const db=await getPool();
+  if(member.linkStatus==='ACTIVE'&&member.legacyClientId){
+    const b=await db.request()
+      .input('tenant',sql.UniqueIdentifier,member.tenantId)
+      .input('clientId',sql.Int,member.legacyClientId)
+      .query<{PointsBalance:number|null}>(`
+        SELECT TOP(2) l.PointsBalance
+        FROM dbo.TblClient c
+        INNER JOIN dbo.TblClientLoyalty l ON l.ClientID=c.ClientID AND l.IsActive=1
+        WHERE c.TenantId=@tenant AND c.ClientID=@clientId
+      `);
+    if(b.recordset.length===1)balance=safeCoins(b.recordset[0].PointsBalance);
+  }
+  const found=await db.request().input('tenant',sql.UniqueIdentifier,member.tenantId).query<{
+    ItemID:number;NameAr:string|null;NameEn:string|null;DescriptionAr:string|null;
+    PriceCoins:number;ServiceID:number|null;StockQuantity:number|null;
+    UnlimitedStock:boolean;ExpiresAfterDays:number|null;ActiveTenantServiceCount:number;
+  }>(`
+    SELECT TOP(4) s.ItemID,s.NameAr,s.NameEn,s.DescriptionAr,s.PriceCoins,s.ServiceID,
+      s.StockQuantity,s.UnlimitedStock,s.ExpiresAfterDays,
+      (SELECT COUNT(*) FROM dbo.TblPro p
+       WHERE p.TenantId=@tenant AND p.ProID=s.ServiceID AND p.isDeleted=0) AS ActiveTenantServiceCount
+    FROM dbo.TblLoyaltyStoreItem s
+    WHERE s.ItemID IN (15,16,17,18)
+      AND s.SalonID IS NULL AND s.IsActive=1 AND s.ItemType='FREE_SERVICE'
+      AND s.PriceCoins>=0
+    ORDER BY s.SortOrder,s.ItemID
+  `);
+  const items:CutClubReward[]=found.recordset.flatMap(row=>{
+    if(!(row.ItemID in approved))return [];
+    const price=safeCoins(row.PriceCoins);
+    if(price===null)return [];
+    const stockState=row.UnlimitedStock||Number(row.StockQuantity)>0?'available':'out_of_stock';
+    const desc=(row.DescriptionAr||'').trim().slice(0,350);
+    // An approved numeric mapping alone does not prove the linked service is
+    // still active or belongs to this tenant. Never advertise readiness without both.
+    const serviceMappingReady=row.ServiceID===approved[row.ItemID]&&row.ActiveTenantServiceCount===1;
+    return [{
+      id:row.ItemID,
+      nameAr:String(row.NameAr||'مكافأة CUT CLUB').slice(0,100),
+      nameEn:String(row.NameEn||'CUT CLUB Reward').slice(0,100),
+      description:desc,
+      priceCoins:price,
+      serviceId:serviceMappingReady?row.ServiceID:null,
+      stockState,
+      expiresAfterDays:Number.isSafeInteger(row.ExpiresAfterDays)&&Number(row.ExpiresAfterDays)>0?row.ExpiresAfterDays:null,
+      canAfford:balance===null?null:balance>=price,
+      serviceMappingReady,
+      purchaseAvailable:false as const,
+    }];
+  });
+  return {balance,purchaseEnabled:false,items};
+}
