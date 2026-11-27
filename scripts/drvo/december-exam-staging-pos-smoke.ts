@@ -94,6 +94,38 @@ async function main(){
  }
  await sale(await makeClient(),payment.recordset[0].PaymentID,10);
  console.log('REAL_POS_ADAPTER_POSITIVE_PAYMENT_PASS');
+ // Group checkout: fail the final owner's stale quote after saving a friend,
+ // roll back the complete group savepoint, then retry with correct amounts.
+ const {executeStagingDecemberGroup}=await import('../../src/lib/campaigns/december-exam/stagingGroupCheckout');
+ process.env.DECEMBER_EXAM_STAGING_GROUP_ENABLED='true';
+ const groupOwner=await makeClient(),groupFriend=await makeClient();
+ await q().input('campaign',sql.UniqueIdentifier,campaignId).input('owner',sql.Int,groupOwner).input('friend',sql.Int,groupFriend).query(`
+ INSERT dbo.CutOfferReferral(TenantId,CampaignId,InviteeId,InviterId)
+ SELECT @tenant,@campaign,i.ParticipantId,p.ParticipantId FROM dbo.CutOfferParticipant p JOIN dbo.CutOfferParticipant i ON i.TenantId=p.TenantId AND i.CampaignId=p.CampaignId
+ WHERE p.TenantId=@tenant AND p.CampaignId=@campaign AND p.ClientId=@owner AND i.ClientId=@friend
+ `);
+ const groupMember=(clientId:number,percent:number)=>{
+  const discountMinor=Math.round(Math.round(item.sPrice*100)*percent/100);
+  const computed=computeInvoiceItemsTotals([{sPrice:item.sPrice,qty:1,bonus:0}],{discountPercent:percent,discountValue:discountMinor/100});
+  const method=payment.recordset[0].PaymentID,allocations=[{paymentMethodId:method,amount:computed.grandTotal}];
+  return {items:[item],clientId,notes:'DECEMBER_GROUP_ROLLBACK_FIXTURE',payCash:0,payVisa:0,paymentAllocations:allocations,computed,decemberClaim:{tenantId:tenant,expectedDiscountMinor:discountMinor},branchId:op.BranchID,businessDayId:op.DayID,shiftMoveID:op.ShiftID,invDate:op.InvDate,userID:op.UserID,splitCfg,activeAllocations:allocations,isSplitPayment:false,headerPaymentMethodId:method};
+ };
+ await rq().query('SAVE TRANSACTION DecemberGroupFixture');
+ let groupFailed=false;
+ try{await executeStagingDecemberGroup(tx,{tenantId:tenant,owner:groupMember(groupOwner,10),friends:[groupMember(groupFriend,10)]});}
+ catch(e){if(!(e instanceof Error)||e.message!=='DECEMBER_GROUP_QUOTE_CHANGED')throw e;groupFailed=true;}
+ check(groupFailed,'GROUP_STALE_OWNER_MUST_FAIL');
+ await rq().query('ROLLBACK TRANSACTION DecemberGroupFixture');
+ const groupState=await q().input('campaign',sql.UniqueIdentifier,campaignId).input('owner',sql.Int,groupOwner).input('friend',sql.Int,groupFriend).query(`
+ SELECT (SELECT COUNT(*) FROM dbo.TblinvServHead WHERE ClientID IN(@owner,@friend) AND invType=N'مبيعات') invoices,
+ (SELECT COUNT(*) FROM dbo.CutOfferRedemption WHERE TenantId=@tenant AND CampaignId=@campaign AND ClientId IN(@owner,@friend)) redemptions,
+ (SELECT COUNT(*) FROM dbo.CutOfferReferral r JOIN dbo.CutOfferParticipant p ON p.TenantId=r.TenantId AND p.CampaignId=r.CampaignId AND p.ParticipantId=r.InviteeId WHERE r.TenantId=@tenant AND r.CampaignId=@campaign AND p.ClientId=@friend AND r.Status='PENDING') pending
+ `);
+ check(groupState.recordset[0]?.invoices===0&&groupState.recordset[0]?.redemptions===0&&groupState.recordset[0]?.pending===1,'GROUP_ROLLBACK_FAILED');
+ console.log('REAL_POS_GROUP_STALE_QUOTE_ROLLBACK_PASS');
+ const group=await executeStagingDecemberGroup(tx,{tenantId:tenant,owner:groupMember(groupOwner,30),friends:[groupMember(groupFriend,10)]});
+ check(group.length===2,'GROUP_RESULT_INVALID');ids.push(...group.map(x=>x.invID));
+ console.log('REAL_POS_GROUP_TWO_INVOICES_PASS');
  // Prepare the dedicated method and trigger only INSIDE this rollback transaction.
  const method=await q().query<{PaymentID:number}>(`
  IF NOT EXISTS(SELECT 1 FROM dbo.TblPaymentMethods WHERE TenantId=@tenant AND PaymentMethod=N'بدون تحصيل - عرض ديسمبر')
