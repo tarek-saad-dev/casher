@@ -67,12 +67,12 @@ const MONTHS = [
 ];
 
 const BADGE_CLASSES: Record<string, string> = {
-  success: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
-  warning: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
-  danger: 'bg-red-500/15 text-red-300 border-red-500/30',
-  muted: 'bg-zinc-500/15 text-zinc-400 border-zinc-500/30',
-  info: 'bg-blue-500/15 text-blue-300 border-blue-500/30',
-  neutral: 'bg-zinc-600/15 text-zinc-300 border-zinc-600/30',
+  success: 'bg-success-soft text-success border-success/30',
+  warning: 'bg-warning-soft text-warning border-warning/30',
+  danger: 'bg-destructive-soft text-destructive border-destructive/30',
+  muted: 'bg-muted text-muted-foreground border-border',
+  info: 'bg-info-soft text-info border-info/30',
+  neutral: 'bg-muted text-foreground border-border',
 };
 
 function StatusBadge({ label, variant }: { label: string; variant: string }) {
@@ -203,12 +203,12 @@ export default function EmployeeMonthlyWorkRevenuePage() {
       />
 
       {/* Filters */}
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 space-y-4">
+      <div className="rounded-xl border border-border bg-card p-4 space-y-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <div className="space-y-1.5">
-            <label className="text-xs text-zinc-400">الموظف</label>
+            <label className="text-xs text-muted-foreground">الموظف</label>
             <Select value={employeeId || undefined} onValueChange={setEmployeeId} disabled={employeesLoading}>
-              <SelectTrigger className="bg-zinc-950 border-zinc-700">
+              <SelectTrigger className="bg-background border-border">
                 <SelectValue placeholder={employeesLoading ? 'جاري التحميل...' : 'اختر موظفًا'} />
               </SelectTrigger>
               <SelectContent>
@@ -226,9 +226,9 @@ export default function EmployeeMonthlyWorkRevenuePage() {
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-xs text-zinc-400">الشهر</label>
+            <label className="text-xs text-muted-foreground">الشهر</label>
             <Select value={String(month)} onValueChange={(v) => setMonth(Number(v))}>
-              <SelectTrigger className="bg-zinc-950 border-zinc-700">
+              <SelectTrigger className="bg-background border-border">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -240,9 +240,9 @@ export default function EmployeeMonthlyWorkRevenuePage() {
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-xs text-zinc-400">السنة</label>
+            <label className="text-xs text-muted-foreground">السنة</label>
             <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
-              <SelectTrigger className="bg-zinc-950 border-zinc-700">
+              <SelectTrigger className="bg-background border-border">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -260,7 +260,7 @@ export default function EmployeeMonthlyWorkRevenuePage() {
             <Button variant="outline" size="icon" onClick={() => shiftMonth(1)} title="الشهر التالي">
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <Button onClick={handleApply} disabled={!employeeId || loading} className="flex-1 min-w-[120px] bg-[#D6A84F] hover:bg-[#c4983f] text-black">
+            <Button onClick={handleApply} disabled={!employeeId || loading} className="flex-1 min-w-[120px] bg-primary hover:bg-primary-hover text-primary-foreground">
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4 ml-1" />}
               عرض التقرير
             </Button>
@@ -273,19 +273,19 @@ export default function EmployeeMonthlyWorkRevenuePage() {
       </div>
 
       {!employeeId && (
-        <div className="rounded-xl border border-dashed border-zinc-700 bg-zinc-900/40 p-10 text-center text-zinc-400">
+        <div className="rounded-xl border border-dashed border-border bg-card p-10 text-center text-muted-foreground">
           <User className="h-10 w-10 mx-auto mb-3 opacity-50" />
           <p>اختر موظفًا ثم اضغط «عرض التقرير» لعرض جدول الشهر.</p>
         </div>
       )}
 
       {error && (
-        <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 flex items-start gap-3 text-red-300">
+        <div className="rounded-xl border border-destructive/30 bg-destructive-soft p-4 flex items-start gap-3 text-destructive">
           <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
           <div className="flex-1">
             <p>{error}</p>
             {employeeId && (
-              <Button variant="link" className="text-red-200 p-0 h-auto mt-2" onClick={handleApply}>
+              <Button variant="link" className="text-destructive p-0 h-auto mt-2" onClick={handleApply}>
                 إعادة المحاولة
               </Button>
             )}
@@ -294,7 +294,7 @@ export default function EmployeeMonthlyWorkRevenuePage() {
       )}
 
       {loading && employeeId && (
-        <div className="flex items-center justify-center py-16 text-zinc-400">
+        <div className="flex items-center justify-center py-16 text-muted-foreground">
           <Loader2 className="h-8 w-8 animate-spin ml-3" />
           جاري تحميل التقرير...
         </div>
@@ -302,24 +302,24 @@ export default function EmployeeMonthlyWorkRevenuePage() {
 
       {report && !loading && (
         <>
-          <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 flex flex-wrap gap-4 items-center justify-between">
+          <div className="rounded-xl border border-border bg-card p-4 flex flex-wrap gap-4 items-center justify-between">
             <div>
-              <h2 className="text-lg font-semibold text-zinc-100">{report.employee.name}</h2>
-              <p className="text-sm text-zinc-400">
+              <h2 className="text-lg font-semibold text-foreground">{report.employee.name}</h2>
+              <p className="text-sm text-muted-foreground">
                 {report.employee.job || '—'} · {report.period.monthLabelAr}
                 {!report.employee.isActive && (
-                  <span className="mr-2 text-amber-400">(موظف غير نشط)</span>
+                  <span className="mr-2 text-warning">(موظف غير نشط)</span>
                 )}
               </p>
             </div>
-            <div className="text-sm text-zinc-500 flex items-center gap-1">
+            <div className="text-sm text-muted-foreground flex items-center gap-1">
               <Calendar className="h-4 w-4" />
               {report.period.startDate} — {report.period.endDate}
             </div>
           </div>
 
           {/* Primary summary */}
-          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-3 2xl:grid-cols-6">
             <KpiCard title="إجمالي الإيراد" value={formatCurrencyAr(report.summary.totalRevenue)} icon={<TrendingUp className="h-5 w-5" />} variant="primary" />
             <KpiCard title="أيام العمل المجدولة" value={String(report.summary.scheduledDays)} icon={<Calendar className="h-5 w-5" />} />
             <KpiCard title="أيام الحضور" value={String(report.summary.attendanceDays)} icon={<User className="h-5 w-5" />} />
@@ -338,19 +338,19 @@ export default function EmployeeMonthlyWorkRevenuePage() {
               ['إجمالي الخدمات', String(report.summary.totalServiceLines)],
               ['إجمالي الفواتير', String(report.summary.totalInvoices)],
             ].map(([label, val]) => (
-              <div key={label} className="rounded-lg border border-zinc-800 bg-zinc-950/50 px-3 py-2">
-                <div className="text-zinc-500 text-xs">{label}</div>
-                <div className="text-zinc-200 font-medium">{val}</div>
+              <div key={label} className="rounded-lg border border-border bg-background px-3 py-2">
+                <div className="text-muted-foreground text-xs">{label}</div>
+                <div className="text-foreground font-medium">{val}</div>
               </div>
             ))}
           </div>
 
           {/* Daily table */}
-          <div className="rounded-xl border border-zinc-800 overflow-hidden">
+          <div className="rounded-xl border border-border overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full min-w-[1100px] text-sm">
-                <thead className="sticky top-0 z-10 bg-zinc-900 border-b border-zinc-800">
-                  <tr className="text-zinc-400 text-xs">
+                <thead className="sticky top-0 z-10 bg-card border-b border-border">
+                  <tr className="text-muted-foreground text-xs">
                     <th className="px-3 py-3 text-right font-medium">اليوم</th>
                     <th className="px-3 py-3 text-right font-medium">التاريخ</th>
                     <th className="px-3 py-3 text-right font-medium">موعد العمل المخطط</th>
@@ -369,17 +369,17 @@ export default function EmployeeMonthlyWorkRevenuePage() {
                   {report.days.map((day) => {
                     const weekend = isWeekendDate(day.date);
                     const rowClass = [
-                      'border-b border-zinc-800/80',
-                      day.isDayOff ? 'bg-zinc-900/30 opacity-80' : '',
-                      day.statusCode === 'incomplete_checkout' ? 'bg-amber-500/5' : '',
-                      weekend ? 'bg-zinc-950/40' : '',
+                      'border-b border-border',
+                      day.isDayOff ? 'bg-card opacity-80' : '',
+                      day.statusCode === 'incomplete_checkout' ? 'bg-warning-soft' : '',
+                      weekend ? 'bg-background' : '',
                     ].filter(Boolean).join(' ');
 
                     return (
                       <tr key={day.date} className={rowClass}>
-                        <td className="px-3 py-2.5 text-zinc-300 whitespace-nowrap">{day.dayNameAr}</td>
-                        <td className="px-3 py-2.5 text-zinc-400 whitespace-nowrap font-mono text-xs">{day.date}</td>
-                        <td className="px-3 py-2.5 text-zinc-300 whitespace-nowrap">
+                        <td className="px-3 py-2.5 text-foreground whitespace-nowrap">{day.dayNameAr}</td>
+                        <td className="px-3 py-2.5 text-muted-foreground whitespace-nowrap font-mono text-xs">{day.date}</td>
+                        <td className="px-3 py-2.5 text-foreground whitespace-nowrap">
                           {day.scheduledStart && day.scheduledEnd
                             ? formatScheduleRangeAr(day.scheduledStart, day.scheduledEnd)
                             : '—'}
@@ -396,7 +396,7 @@ export default function EmployeeMonthlyWorkRevenuePage() {
                         </td>
                         <td className="px-3 py-2.5 text-center">{day.serviceCount}</td>
                         <td className="px-3 py-2.5 text-center">{day.invoiceCount}</td>
-                        <td className="px-3 py-2.5 font-semibold text-[#D6A84F] whitespace-nowrap">
+                        <td className="px-3 py-2.5 font-semibold text-brand whitespace-nowrap">
                           {formatCurrencyAr(day.revenue)}
                         </td>
                       </tr>

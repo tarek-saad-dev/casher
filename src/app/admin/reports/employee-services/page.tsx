@@ -460,7 +460,7 @@ export default function EmployeeServicesReportPage() {
             treasuryComparableRevenue: data.summary.treasuryComparableRevenue ?? data.summary.totalAmount,
           }, fromDate, toDate)}
           disabled={!data || loading}
-          className="border-zinc-700 text-zinc-300 hover:bg-zinc-800 h-10 gap-2"
+          className="border-border text-foreground hover:bg-surface-muted h-10 gap-2"
         >
           <Download className="w-4 h-4" />
           تصدير CSV
@@ -469,48 +469,48 @@ export default function EmployeeServicesReportPage() {
           variant="outline"
           onClick={() => fetchReport(fromDate, toDate, employeeId)}
           disabled={loading}
-          className="border-zinc-700 text-zinc-300 hover:bg-zinc-800 h-10"
+          className="border-border text-foreground hover:bg-surface-muted h-10"
         >
           {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
         </Button>
       </PageHeader>
 
       {/* ── Filters ── */}
-      <div className="bg-zinc-900/50 border border-zinc-800/50 rounded-xl p-4">
+      <div className="bg-card border border-border rounded-xl p-4">
         <div className="flex flex-wrap items-end gap-3">
           {/* From Date */}
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs text-zinc-400 font-medium">من تاريخ</label>
+            <label className="text-xs text-muted-foreground font-medium">من تاريخ</label>
             <Input
               type="date"
               value={fromDate}
               onChange={e => setFromDate(e.target.value)}
-              className="bg-zinc-800 border-zinc-700 text-white h-10 w-44"
+              className="bg-muted border-border text-foreground h-10 w-44"
             />
           </div>
 
           {/* To Date */}
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs text-zinc-400 font-medium">إلى تاريخ</label>
+            <label className="text-xs text-muted-foreground font-medium">إلى تاريخ</label>
             <Input
               type="date"
               value={toDate}
               onChange={e => setToDate(e.target.value)}
-              className="bg-zinc-800 border-zinc-700 text-white h-10 w-44"
+              className="bg-muted border-border text-foreground h-10 w-44"
             />
           </div>
 
           {/* Employee */}
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs text-zinc-400 font-medium">الموظف</label>
+            <label className="text-xs text-muted-foreground font-medium">الموظف</label>
             <Select value={employeeId} onValueChange={setEmployeeId}>
-              <SelectTrigger className="bg-zinc-800 border-zinc-700 text-white h-10 w-52">
+              <SelectTrigger className="bg-muted border-border text-foreground h-10 w-52">
                 <SelectValue placeholder="الكل" />
               </SelectTrigger>
-              <SelectContent className="bg-zinc-900 border-zinc-700">
-                <SelectItem value="all" className="text-white text-sm">كل الموظفين</SelectItem>
+              <SelectContent className="bg-card border-border">
+                <SelectItem value="all" className="text-foreground text-sm">كل الموظفين</SelectItem>
                 {empList.map(e => (
-                  <SelectItem key={e.EmpID} value={String(e.EmpID)} className="text-white text-sm">
+                  <SelectItem key={e.EmpID} value={String(e.EmpID)} className="text-foreground text-sm">
                     {e.EmpName}
                   </SelectItem>
                 ))}
@@ -523,7 +523,7 @@ export default function EmployeeServicesReportPage() {
             <Button
               onClick={handleApply}
               disabled={loading}
-              className="h-10 px-5 bg-[#D6A84F] hover:bg-[#c49640] text-black font-bold rounded-xl"
+              className="h-10 px-5 bg-primary hover:bg-primary-hover text-primary-foreground font-bold rounded-xl"
             >
               {loading ? <Loader2 className="w-4 h-4 animate-spin ml-1" /> : <Search className="w-4 h-4 ml-1" />}
               عرض التقرير
@@ -531,14 +531,14 @@ export default function EmployeeServicesReportPage() {
             <Button
               variant="outline"
               onClick={handleReset}
-              className="h-10 px-4 border-zinc-700 text-zinc-300 hover:bg-zinc-800 rounded-xl"
+              className="h-10 px-4 border-border text-foreground hover:bg-surface-muted rounded-xl"
             >
               إعادة ضبط
             </Button>
             <Button
               variant="ghost"
               onClick={() => { setFromDate(today); setToDate(today); fetchReport(today, today, employeeId); }}
-              className="h-10 px-3 text-zinc-400 hover:text-zinc-200 text-xs"
+              className="h-10 px-3 text-muted-foreground hover:text-foreground text-xs"
             >
               <Calendar className="w-3.5 h-3.5 ml-1" />
               اليوم
@@ -549,7 +549,7 @@ export default function EmployeeServicesReportPage() {
 
       {/* ── Error State ── */}
       {error && (
-        <div className="flex items-center gap-3 p-4 bg-rose-500/10 border border-rose-500/30 rounded-xl text-rose-400">
+        <div className="flex items-center gap-3 p-4 bg-destructive-soft border border-destructive/30 rounded-xl text-destructive">
           <AlertCircle className="w-5 h-5 flex-shrink-0" />
           <span className="font-medium text-sm">{error}</span>
         </div>
@@ -559,8 +559,8 @@ export default function EmployeeServicesReportPage() {
       {loading && (
         <div className="flex items-center justify-center py-20">
           <div className="text-center">
-            <Loader2 className="w-10 h-10 animate-spin mx-auto text-[#D6A84F]" />
-            <p className="mt-3 text-zinc-400 text-sm">جاري تحميل التقرير...</p>
+            <Loader2 className="w-10 h-10 animate-spin mx-auto text-brand" />
+            <p className="mt-3 text-muted-foreground text-sm">جاري تحميل التقرير...</p>
           </div>
         </div>
       )}
@@ -595,7 +595,7 @@ export default function EmployeeServicesReportPage() {
           </div>
 
           {/* ── Summary Cards ── */}
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-3 2xl:grid-cols-6">
             <KpiCard
               title="قيمة الخدمات قبل خصم الفاتورة"
               value={formatCurrency(data.summary.totalAmount)}
@@ -642,46 +642,46 @@ export default function EmployeeServicesReportPage() {
 
           {/* ── Service Category Breakdown ── */}
           {breakdownRows.length > 0 && (
-            <div className="bg-zinc-900/50 border border-zinc-800/50 rounded-xl overflow-hidden">
-              <div className="px-5 py-3 border-b border-zinc-800/50 flex items-center justify-between">
-                <h2 className="text-sm font-bold text-white">تفصيل شغل الصنايعية حسب نوع الخدمة</h2>
-                <span className="text-xs text-zinc-500">{breakdownRows.length} صنايعي</span>
+            <div className="bg-card border border-border rounded-xl overflow-hidden">
+              <div className="px-5 py-3 border-b border-border flex items-center justify-between">
+                <h2 className="text-sm font-bold text-foreground">تفصيل شغل الصنايعية حسب نوع الخدمة</h2>
+                <span className="text-xs text-muted-foreground">{breakdownRows.length} صنايعي</span>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full border-collapse text-sm">
                   <thead>
-                    <tr className="border-b border-zinc-800">
-                      <th className="text-right p-3 text-zinc-400 font-semibold whitespace-nowrap">الصنايعي</th>
-                      <th className="text-center p-3 text-zinc-400 font-semibold whitespace-nowrap">شعر / شعر ودقن / دقن</th>
-                      <th className="text-center p-3 text-zinc-400 font-semibold whitespace-nowrap">الخدمات الأخرى</th>
-                      <th className="text-center p-3 text-zinc-400 font-semibold whitespace-nowrap">إجمالي قيمة الخدمات</th>
-                      <th className="text-center p-3 text-zinc-400 font-semibold whitespace-nowrap">الخصومات</th>
-                      <th className="text-center p-3 text-zinc-400 font-semibold whitespace-nowrap">الفعلي بعد الخصم</th>
+                    <tr className="border-b border-border">
+                      <th className="text-right p-3 text-muted-foreground font-semibold whitespace-nowrap">الصنايعي</th>
+                      <th className="text-center p-3 text-muted-foreground font-semibold whitespace-nowrap">شعر / شعر ودقن / دقن</th>
+                      <th className="text-center p-3 text-muted-foreground font-semibold whitespace-nowrap">الخدمات الأخرى</th>
+                      <th className="text-center p-3 text-muted-foreground font-semibold whitespace-nowrap">إجمالي قيمة الخدمات</th>
+                      <th className="text-center p-3 text-muted-foreground font-semibold whitespace-nowrap">الخصومات</th>
+                      <th className="text-center p-3 text-muted-foreground font-semibold whitespace-nowrap">الفعلي بعد الخصم</th>
                     </tr>
                   </thead>
                   <tbody>
                     {breakdownRows.map((row) => (
                       <tr
                         key={row.employeeId}
-                        className="border-b border-zinc-800/50 hover:bg-zinc-800/20 transition-colors"
+                        className="border-b border-border hover:bg-surface-muted transition-colors"
                       >
-                        <td className="p-3 font-semibold text-white whitespace-nowrap">{row.employeeName}</td>
-                        <td className="text-center p-3 font-bold text-emerald-400 whitespace-nowrap">{formatCurrency(resolveBarberRevenue(row))}</td>
-                        <td className="text-center p-3 text-zinc-300 whitespace-nowrap">{formatCurrency(row.otherRevenue)}</td>
-                        <td className="text-center p-3 text-white whitespace-nowrap">{formatCurrency(row.grossServiceRevenue ?? row.totalRevenue)}</td>
-                        <td className="text-center p-3 text-amber-400 whitespace-nowrap">-{formatCurrency(row.allocatedInvoiceDiscount ?? 0)}</td>
-                        <td className="text-center p-3 font-bold text-emerald-400 whitespace-nowrap">{formatCurrency(row.actualInvoiceRevenue ?? row.totalRevenue)}</td>
+                        <td className="p-3 font-semibold text-foreground whitespace-nowrap">{row.employeeName}</td>
+                        <td className="text-center p-3 font-bold text-success whitespace-nowrap">{formatCurrency(resolveBarberRevenue(row))}</td>
+                        <td className="text-center p-3 text-foreground whitespace-nowrap">{formatCurrency(row.otherRevenue)}</td>
+                        <td className="text-center p-3 text-foreground whitespace-nowrap">{formatCurrency(row.grossServiceRevenue ?? row.totalRevenue)}</td>
+                        <td className="text-center p-3 text-warning whitespace-nowrap">-{formatCurrency(row.allocatedInvoiceDiscount ?? 0)}</td>
+                        <td className="text-center p-3 font-bold text-success whitespace-nowrap">{formatCurrency(row.actualInvoiceRevenue ?? row.totalRevenue)}</td>
                       </tr>
                     ))}
                   </tbody>
                   <tfoot>
-                    <tr className="bg-zinc-900/80 border-t-2 border-zinc-700">
-                      <td className="px-3 py-3 font-bold text-white text-sm whitespace-nowrap">الإجمالي</td>
-                      <td className="text-center px-3 py-3 font-bold text-[#D6A84F] whitespace-nowrap">{formatCurrency(breakdownTotals.barberRevenue)}</td>
-                      <td className="text-center px-3 py-3 font-bold text-[#D6A84F] whitespace-nowrap">{formatCurrency(breakdownTotals.otherRevenue)}</td>
-                      <td className="text-center px-3 py-3 font-bold text-white whitespace-nowrap">{formatCurrency(breakdownTotals.grossServiceRevenue)}</td>
-                      <td className="text-center px-3 py-3 font-bold text-amber-400 whitespace-nowrap">-{formatCurrency(breakdownTotals.allocatedInvoiceDiscount)}</td>
-                      <td className="text-center px-3 py-3 font-bold text-emerald-400 whitespace-nowrap">{formatCurrency(breakdownTotals.actualInvoiceRevenue)}</td>
+                    <tr className="bg-card border-t-2 border-border">
+                      <td className="px-3 py-3 font-bold text-foreground text-sm whitespace-nowrap">الإجمالي</td>
+                      <td className="text-center px-3 py-3 font-bold text-brand whitespace-nowrap">{formatCurrency(breakdownTotals.barberRevenue)}</td>
+                      <td className="text-center px-3 py-3 font-bold text-brand whitespace-nowrap">{formatCurrency(breakdownTotals.otherRevenue)}</td>
+                      <td className="text-center px-3 py-3 font-bold text-foreground whitespace-nowrap">{formatCurrency(breakdownTotals.grossServiceRevenue)}</td>
+                      <td className="text-center px-3 py-3 font-bold text-warning whitespace-nowrap">-{formatCurrency(breakdownTotals.allocatedInvoiceDiscount)}</td>
+                      <td className="text-center px-3 py-3 font-bold text-success whitespace-nowrap">{formatCurrency(breakdownTotals.actualInvoiceRevenue)}</td>
                     </tr>
                   </tfoot>
                 </table>
@@ -692,19 +692,19 @@ export default function EmployeeServicesReportPage() {
           {/* ── Empty State ── */}
           {data.employees.length === 0 && (
             <div className="flex flex-col items-center justify-center py-20 text-center">
-              <BarChart3 className="w-14 h-14 text-zinc-700 mb-4" />
-              <p className="text-zinc-400 text-base font-medium">لا توجد بيانات في هذه الفترة</p>
-              <p className="text-zinc-600 text-sm mt-1">جرّب تغيير نطاق التاريخ أو الموظف المحدد</p>
+              <BarChart3 className="w-14 h-14 text-muted-foreground mb-4" />
+              <p className="text-muted-foreground text-base font-medium">لا توجد بيانات في هذه الفترة</p>
+              <p className="text-muted-foreground text-sm mt-1">جرّب تغيير نطاق التاريخ أو الموظف المحدد</p>
             </div>
           )}
 
           {/* ── Employee Summary Table ── */}
           {data.employees.length > 0 && (
-            <div className="bg-zinc-900/50 border border-zinc-800/50 rounded-xl overflow-hidden">
-              <div className="px-5 py-3 border-b border-zinc-800/50 flex flex-wrap items-center justify-between gap-3">
-                <h2 className="text-sm font-bold text-white">ملخص الموظفين</h2>
+            <div className="bg-card border border-border rounded-xl overflow-hidden">
+              <div className="px-5 py-3 border-b border-border flex flex-wrap items-center justify-between gap-3">
+                <h2 className="text-sm font-bold text-foreground">ملخص الموظفين</h2>
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-xs text-zinc-500 ml-2">تصفية التفاصيل:</span>
+                  <span className="text-xs text-muted-foreground ml-2">تصفية التفاصيل:</span>
                   {DETAIL_FILTER_CHIPS.map((chip) => (
                     <button
                       key={chip.value}
@@ -712,30 +712,30 @@ export default function EmployeeServicesReportPage() {
                       onClick={() => setDetailCategoryFilter(chip.value)}
                       className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
                         detailCategoryFilter === chip.value
-                          ? 'bg-[#D6A84F] text-black'
-                          : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700'
+                          ? 'bg-primary text-primary-foreground'
+                          : 'bg-muted text-muted-foreground hover:text-foreground hover:bg-surface-muted'
                       }`}
                     >
                       {chip.label}
                     </button>
                   ))}
                 </div>
-                <span className="text-xs text-zinc-500">{data.employees.length} موظف</span>
+                <span className="text-xs text-muted-foreground">{data.employees.length} موظف</span>
               </div>
 
               <div className="overflow-x-auto">
                 <table className="w-full border-collapse text-sm">
                   <thead>
-                    <tr className="border-b border-zinc-800">
-                      <th className="text-right p-3 text-zinc-400 font-semibold whitespace-nowrap">الموظف</th>
-                      <th className="text-center p-3 text-zinc-400 font-semibold whitespace-nowrap">عدد الخدمات</th>
-                      <th className="text-center p-3 text-zinc-400 font-semibold whitespace-nowrap">عدد الفواتير</th>
-                      <th className="text-center p-3 text-zinc-400 font-semibold whitespace-nowrap">قيمة الشغل قبل الخصم</th>
-                      <th className="text-center p-3 text-zinc-400 font-semibold whitespace-nowrap">خصومات الفواتير</th>
-                      <th className="text-center p-3 text-zinc-400 font-semibold whitespace-nowrap">الإيراد الفعلي</th>
-                      <th className="text-center p-3 text-zinc-400 font-semibold whitespace-nowrap">متوسط الخدمة</th>
-                      <th className="text-center p-3 text-zinc-400 font-semibold whitespace-nowrap">آخر عملية</th>
-                      <th className="text-center p-3 text-zinc-400 font-semibold whitespace-nowrap">التفاصيل</th>
+                    <tr className="border-b border-border">
+                      <th className="text-right p-3 text-muted-foreground font-semibold whitespace-nowrap">الموظف</th>
+                      <th className="text-center p-3 text-muted-foreground font-semibold whitespace-nowrap">عدد الخدمات</th>
+                      <th className="text-center p-3 text-muted-foreground font-semibold whitespace-nowrap">عدد الفواتير</th>
+                      <th className="text-center p-3 text-muted-foreground font-semibold whitespace-nowrap">قيمة الشغل قبل الخصم</th>
+                      <th className="text-center p-3 text-muted-foreground font-semibold whitespace-nowrap">خصومات الفواتير</th>
+                      <th className="text-center p-3 text-muted-foreground font-semibold whitespace-nowrap">الإيراد الفعلي</th>
+                      <th className="text-center p-3 text-muted-foreground font-semibold whitespace-nowrap">متوسط الخدمة</th>
+                      <th className="text-center p-3 text-muted-foreground font-semibold whitespace-nowrap">آخر عملية</th>
+                      <th className="text-center p-3 text-muted-foreground font-semibold whitespace-nowrap">التفاصيل</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -748,18 +748,18 @@ export default function EmployeeServicesReportPage() {
                         <>
                           <tr
                             key={emp.empId}
-                            className={`border-b border-zinc-800/50 hover:bg-zinc-800/20 transition-colors ${isExpanded ? 'bg-[#D6A84F]/5' : ''}`}
+                            className={`border-b border-border hover:bg-surface-muted transition-colors ${isExpanded ? 'bg-brand-soft' : ''}`}
                           >
                             {/* Employee Name */}
                             <td className="p-3">
                               <div className="flex items-center gap-2.5">
-                                <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${isTop ? 'bg-[#D6A84F]/20 text-[#D6A84F]' : 'bg-zinc-800 text-zinc-400'}`}>
+                                <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${isTop ? 'bg-brand-soft text-brand' : 'bg-muted text-muted-foreground'}`}>
                                   {isTop ? '🥇' : emp.empName?.charAt(0)}
                                 </div>
                                 <div>
-                                  <div className="font-semibold text-white text-sm">{emp.empName}</div>
+                                  <div className="font-semibold text-foreground text-sm">{emp.empName}</div>
                                   {isTop && (
-                                    <div className="text-[10px] text-[#D6A84F] font-medium">الأفضل أداءً</div>
+                                    <div className="text-[10px] text-brand font-medium">الأفضل أداءً</div>
                                   )}
                                 </div>
                               </div>
@@ -767,43 +767,43 @@ export default function EmployeeServicesReportPage() {
 
                             {/* Services Count */}
                             <td className="text-center p-3">
-                              <span className="text-white font-bold">{emp.servicesCount.toLocaleString('ar-EG')}</span>
+                              <span className="text-foreground font-bold">{emp.servicesCount.toLocaleString('ar-EG')}</span>
                             </td>
 
                             {/* Invoices Count */}
                             <td className="text-center p-3">
-                              <span className="text-zinc-300">{emp.invoicesCount.toLocaleString('ar-EG')}</span>
+                              <span className="text-foreground">{emp.invoicesCount.toLocaleString('ar-EG')}</span>
                             </td>
 
                             {/* Gross before invoice discount */}
                             <td className="text-center p-3">
-                              <span className={`font-bold ${isTop ? 'text-white' : 'text-zinc-200'}`}>
+                              <span className={`font-bold ${isTop ? 'text-foreground' : 'text-foreground'}`}>
                                 {formatCurrency(emp.grossServiceRevenue ?? emp.totalAmount)}
                               </span>
                             </td>
 
                             {/* Invoice discounts */}
                             <td className="text-center p-3">
-                              <span className="font-bold text-amber-400">
+                              <span className="font-bold text-warning">
                                 -{formatCurrency(emp.allocatedInvoiceDiscount ?? 0)}
                               </span>
                             </td>
 
                             {/* Actual revenue */}
                             <td className="text-center p-3">
-                              <span className={`font-bold ${isTop ? 'text-emerald-400' : 'text-emerald-400'}`}>
+                              <span className={`font-bold ${isTop ? 'text-success' : 'text-success'}`}>
                                 {formatCurrency(emp.actualInvoiceRevenue ?? emp.totalAmount)}
                               </span>
                             </td>
 
                             {/* Avg Service */}
                             <td className="text-center p-3">
-                              <span className="text-zinc-300 text-xs">{formatCurrency(emp.avgServiceValue)}</span>
+                              <span className="text-foreground text-xs">{formatCurrency(emp.avgServiceValue)}</span>
                             </td>
 
                             {/* Last Op Date */}
                             <td className="text-center p-3">
-                              <span className="text-zinc-400 text-xs">{formatDate(emp.lastOperationDate)}</span>
+                              <span className="text-muted-foreground text-xs">{formatDate(emp.lastOperationDate)}</span>
                             </td>
 
                             {/* Toggle Details */}
@@ -812,7 +812,7 @@ export default function EmployeeServicesReportPage() {
                                 size="sm"
                                 variant="ghost"
                                 onClick={() => setExpandedEmp(isExpanded ? null : emp.empId)}
-                                className={`h-8 px-3 text-xs gap-1 ${isExpanded ? 'text-[#D6A84F] bg-[#D6A84F]/10' : 'text-zinc-400 hover:text-zinc-200'}`}
+                                className={`h-8 px-3 text-xs gap-1 ${isExpanded ? 'text-brand bg-brand-soft' : 'text-muted-foreground hover:text-foreground'}`}
                               >
                                 {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                                 {isExpanded ? 'إخفاء' : 'التفاصيل'}
@@ -822,82 +822,82 @@ export default function EmployeeServicesReportPage() {
 
                           {/* ── Expanded Details Sub-Table ── */}
                           {isExpanded && (
-                            <tr key={`details-${emp.empId}`} className="bg-zinc-950/60">
+                            <tr key={`details-${emp.empId}`} className="bg-background">
                               <td colSpan={9} className="p-0">
-                                <div className="border-t border-[#D6A84F]/20 px-4 pb-4 pt-3">
-                                  <div className="text-xs font-bold text-[#D6A84F] mb-2 flex items-center gap-1.5">
+                                <div className="border-t border-brand/20 px-4 pb-4 pt-3">
+                                  <div className="text-xs font-bold text-brand mb-2 flex items-center gap-1.5">
                                     <Scissors className="w-3.5 h-3.5" />
                                     تفاصيل خدمات {emp.empName} ({details.length} خدمة)
                                   </div>
                                   {details.length === 0 ? (
-                                    <p className="text-zinc-500 text-xs py-2">
+                                    <p className="text-muted-foreground text-xs py-2">
                                       {detailCategoryFilter === 'all'
                                         ? 'لا توجد تفاصيل'
                                         : 'لا توجد خدمات في هذا التصنيف'}
                                     </p>
                                   ) : (
-                                    <div className="overflow-x-auto rounded-lg border border-zinc-800/50">
+                                    <div className="overflow-x-auto rounded-lg border border-border">
                                       <table className="w-full text-xs border-collapse">
                                         <thead>
-                                          <tr className="bg-zinc-900 border-b border-zinc-800">
-                                            <th className="text-right px-3 py-2 text-zinc-500 font-semibold whitespace-nowrap">التاريخ</th>
-                                            <th className="text-right px-3 py-2 text-zinc-500 font-semibold whitespace-nowrap">الوقت</th>
-                                            <th className="text-right px-3 py-2 text-zinc-500 font-semibold whitespace-nowrap">رقم الفاتورة</th>
-                                            <th className="text-right px-3 py-2 text-zinc-500 font-semibold whitespace-nowrap">اسم الخدمة</th>
-                                            <th className="text-center px-3 py-2 text-zinc-500 font-semibold whitespace-nowrap">الكمية</th>
-                                            <th className="text-center px-3 py-2 text-zinc-500 font-semibold whitespace-nowrap">قيمة الخدمة قبل خصم الفاتورة</th>
-                                            <th className="text-center px-3 py-2 text-zinc-500 font-semibold whitespace-nowrap">نصيب خصم الفاتورة</th>
-                                            <th className="text-center px-3 py-2 text-zinc-500 font-semibold whitespace-nowrap">الفعلي بعد الخصم</th>
-                                            <th className="text-center px-3 py-2 text-zinc-500 font-semibold whitespace-nowrap">إجمالي الفاتورة</th>
-                                            <th className="text-right px-3 py-2 text-zinc-500 font-semibold whitespace-nowrap">موظفون آخرون</th>
-                                            <th className="text-right px-3 py-2 text-zinc-500 font-semibold whitespace-nowrap">العميل</th>
-                                            <th className="text-right px-3 py-2 text-zinc-500 font-semibold whitespace-nowrap">ملاحظات</th>
-                                            <th className="text-center px-3 py-2 text-zinc-500 font-semibold whitespace-nowrap">إجراءات</th>
+                                          <tr className="bg-card border-b border-border">
+                                            <th className="text-right px-3 py-2 text-muted-foreground font-semibold whitespace-nowrap">التاريخ</th>
+                                            <th className="text-right px-3 py-2 text-muted-foreground font-semibold whitespace-nowrap">الوقت</th>
+                                            <th className="text-right px-3 py-2 text-muted-foreground font-semibold whitespace-nowrap">رقم الفاتورة</th>
+                                            <th className="text-right px-3 py-2 text-muted-foreground font-semibold whitespace-nowrap">اسم الخدمة</th>
+                                            <th className="text-center px-3 py-2 text-muted-foreground font-semibold whitespace-nowrap">الكمية</th>
+                                            <th className="text-center px-3 py-2 text-muted-foreground font-semibold whitespace-nowrap">قيمة الخدمة قبل خصم الفاتورة</th>
+                                            <th className="text-center px-3 py-2 text-muted-foreground font-semibold whitespace-nowrap">نصيب خصم الفاتورة</th>
+                                            <th className="text-center px-3 py-2 text-muted-foreground font-semibold whitespace-nowrap">الفعلي بعد الخصم</th>
+                                            <th className="text-center px-3 py-2 text-muted-foreground font-semibold whitespace-nowrap">إجمالي الفاتورة</th>
+                                            <th className="text-right px-3 py-2 text-muted-foreground font-semibold whitespace-nowrap">موظفون آخرون</th>
+                                            <th className="text-right px-3 py-2 text-muted-foreground font-semibold whitespace-nowrap">العميل</th>
+                                            <th className="text-right px-3 py-2 text-muted-foreground font-semibold whitespace-nowrap">ملاحظات</th>
+                                            <th className="text-center px-3 py-2 text-muted-foreground font-semibold whitespace-nowrap">إجراءات</th>
                                           </tr>
                                         </thead>
                                         <tbody>
                                           {details.map((d, di) => (
                                             <tr
                                               key={`${d.invoiceId}-${d.serviceId}-${di}`}
-                                              className="border-b border-zinc-800/30 hover:bg-zinc-800/20 transition-colors"
+                                              className="border-b border-border hover:bg-surface-muted transition-colors"
                                             >
-                                              <td className="px-3 py-2 text-zinc-300 whitespace-nowrap">{formatDate(d.operationDate)}</td>
-                                              <td className="px-3 py-2 text-zinc-500 whitespace-nowrap">{d.operationTime || '—'}</td>
+                                              <td className="px-3 py-2 text-foreground whitespace-nowrap">{formatDate(d.operationDate)}</td>
+                                              <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">{d.operationTime || '—'}</td>
                                               <td className="px-3 py-2">
-                                                <span className="bg-zinc-800 text-zinc-300 px-1.5 py-0.5 rounded text-[11px] font-mono">
+                                                <span className="bg-muted text-foreground px-1.5 py-0.5 rounded text-[11px] font-mono">
                                                   #{d.invoiceId}
                                                 </span>
-                                                <span className="text-zinc-600 text-[10px] mr-1">{d.invoiceType}</span>
+                                                <span className="text-muted-foreground text-[10px] mr-1">{d.invoiceType}</span>
                                               </td>
-                                              <td className="px-3 py-2 text-white font-medium whitespace-nowrap">{d.serviceName || '—'}</td>
-                                              <td className="px-3 py-2 text-center text-zinc-300">{d.qty}</td>
-                                              <td className="px-3 py-2 text-center text-white whitespace-nowrap">
+                                              <td className="px-3 py-2 text-foreground font-medium whitespace-nowrap">{d.serviceName || '—'}</td>
+                                              <td className="px-3 py-2 text-center text-foreground">{d.qty}</td>
+                                              <td className="px-3 py-2 text-center text-foreground whitespace-nowrap">
                                                 {formatCurrency(d.grossServiceValue ?? d.lineTotal)}
                                               </td>
                                               <td className="px-3 py-2 text-center">
                                                 {(d.allocatedInvoiceDiscount ?? 0) > 0 ? (
-                                                  <span className="text-amber-400">-{formatCurrency(d.allocatedInvoiceDiscount ?? 0)}</span>
+                                                  <span className="text-warning">-{formatCurrency(d.allocatedInvoiceDiscount ?? 0)}</span>
                                                 ) : (
-                                                  <span className="text-zinc-600">—</span>
+                                                  <span className="text-muted-foreground">—</span>
                                                 )}
                                               </td>
-                                              <td className="px-3 py-2 text-center font-bold text-emerald-400 whitespace-nowrap">
+                                              <td className="px-3 py-2 text-center font-bold text-success whitespace-nowrap">
                                                 {formatCurrency(d.actualInvoiceRevenue ?? d.lineTotal)}
                                               </td>
-                                              <td className="px-3 py-2 text-center text-zinc-300 whitespace-nowrap">
+                                              <td className="px-3 py-2 text-center text-foreground whitespace-nowrap">
                                                 {formatCurrency(d.invoiceGrandTotal ?? 0)}
                                               </td>
-                                              <td className="px-3 py-2 text-zinc-400 whitespace-nowrap">
+                                              <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">
                                                 {(d.otherEmployeesOnInvoice ?? []).length > 0
                                                   ? (d.otherEmployeesOnInvoice ?? []).map((e) => e.empName).join('، ')
                                                   : '—'}
                                               </td>
-                                              <td className="px-3 py-2 text-zinc-400 whitespace-nowrap">{d.clientName || '—'}</td>
-                                              <td className="px-3 py-2 text-zinc-500 max-w-[150px] truncate">{d.notes || '—'}</td>
+                                              <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">{d.clientName || '—'}</td>
+                                              <td className="px-3 py-2 text-muted-foreground max-w-[150px] truncate">{d.notes || '—'}</td>
                                               <td className="px-3 py-2 text-center">
                                                 <button
                                                   onClick={() => openReassignModal(d)}
-                                                  className="p-1.5 rounded-lg hover:bg-[#D6A84F]/10 text-zinc-400 hover:text-[#D6A84F] transition-colors" 
+                                                  className="p-1.5 rounded-lg hover:bg-brand-soft text-muted-foreground hover:text-brand transition-colors" 
                                                   title="نقل لموظف آخر"
                                                 >
                                                   <Edit2 className="w-3.5 h-3.5" />
@@ -907,17 +907,17 @@ export default function EmployeeServicesReportPage() {
                                           ))}
                                         </tbody>
                                         <tfoot>
-                                          <tr className="bg-zinc-900/80 border-t border-zinc-700">
-                                            <td colSpan={5} className="px-3 py-2 text-left text-zinc-400 text-xs font-semibold">
+                                          <tr className="bg-card border-t border-border">
+                                            <td colSpan={5} className="px-3 py-2 text-left text-muted-foreground text-xs font-semibold">
                                               {detailCategoryFilter === 'all' ? 'الإجمالي' : 'إجمالي المعروض'}
                                             </td>
-                                            <td className="px-3 py-2 text-center text-white font-bold whitespace-nowrap">
+                                            <td className="px-3 py-2 text-center text-foreground font-bold whitespace-nowrap">
                                               {formatCurrency(details.reduce((sum, d) => sum + (d.grossServiceValue ?? d.lineTotal), 0))}
                                             </td>
-                                            <td className="px-3 py-2 text-center text-amber-400 font-bold whitespace-nowrap">
+                                            <td className="px-3 py-2 text-center text-warning font-bold whitespace-nowrap">
                                               -{formatCurrency(details.reduce((sum, d) => sum + (d.allocatedInvoiceDiscount ?? 0), 0))}
                                             </td>
-                                            <td className="px-3 py-2 text-center font-bold text-emerald-400 whitespace-nowrap">
+                                            <td className="px-3 py-2 text-center font-bold text-success whitespace-nowrap">
                                               {formatCurrency(details.reduce((sum, d) => sum + (d.actualInvoiceRevenue ?? d.lineTotal), 0))}
                                             </td>
                                             <td colSpan={4} />
@@ -937,21 +937,21 @@ export default function EmployeeServicesReportPage() {
 
                   {/* Table Footer — Grand Total */}
                   <tfoot>
-                    <tr className="bg-zinc-900/80 border-t-2 border-zinc-700">
-                      <td className="px-3 py-3 font-bold text-white text-sm">الإجمالي الكلي</td>
-                      <td className="text-center px-3 py-3 font-bold text-white">
+                    <tr className="bg-card border-t-2 border-border">
+                      <td className="px-3 py-3 font-bold text-foreground text-sm">الإجمالي الكلي</td>
+                      <td className="text-center px-3 py-3 font-bold text-foreground">
                         {data.summary.totalServices.toLocaleString('ar-EG')}
                       </td>
-                      <td className="text-center px-3 py-3 font-bold text-white">
+                      <td className="text-center px-3 py-3 font-bold text-foreground">
                         {data.summary.totalInvoices.toLocaleString('ar-EG')}
                       </td>
-                      <td className="text-center px-3 py-3 font-bold text-white whitespace-nowrap">
+                      <td className="text-center px-3 py-3 font-bold text-foreground whitespace-nowrap">
                         {formatCurrency(data.employees.reduce((sum, e) => sum + (e.grossServiceRevenue ?? e.totalAmount), 0))}
                       </td>
-                      <td className="text-center px-3 py-3 font-bold text-amber-400 whitespace-nowrap">
+                      <td className="text-center px-3 py-3 font-bold text-warning whitespace-nowrap">
                         -{formatCurrency(data.employees.reduce((sum, e) => sum + (e.allocatedInvoiceDiscount ?? 0), 0))}
                       </td>
-                      <td className="text-center px-3 py-3 font-bold text-emerald-400 text-base whitespace-nowrap">
+                      <td className="text-center px-3 py-3 font-bold text-success text-base whitespace-nowrap">
                         {formatCurrency(data.employees.reduce((sum, e) => sum + (e.actualInvoiceRevenue ?? e.totalAmount), 0))}
                       </td>
                       <td colSpan={3} />
@@ -967,23 +967,23 @@ export default function EmployeeServicesReportPage() {
       {reassignTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => !reassignLoading && setReassignTarget(null)}>
           <div
-            className="bg-zinc-900 border border-zinc-700/50 rounded-2xl w-full max-w-md mx-4 shadow-2xl"
+            className="bg-card border border-border rounded-2xl w-full max-w-md mx-4 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
-            <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border">
               <div className="flex items-center gap-2.5">
-                <div className="p-2 bg-[#D6A84F]/10 rounded-xl">
-                  <ArrowLeftRight className="w-5 h-5 text-[#D6A84F]" />
+                <div className="p-2 bg-brand-soft rounded-xl">
+                  <ArrowLeftRight className="w-5 h-5 text-brand" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-white">نقل فاتورة لموظف آخر</h3>
-                  <p className="text-[11px] text-zinc-500 mt-0.5">فاتورة #{reassignTarget.invoiceId}</p>
+                  <h3 className="text-sm font-bold text-foreground">نقل فاتورة لموظف آخر</h3>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">فاتورة #{reassignTarget.invoiceId}</p>
                 </div>
               </div>
               <button
                 onClick={() => !reassignLoading && setReassignTarget(null)}
-                className="p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors"
+                className="p-1.5 rounded-lg hover:bg-surface-muted text-muted-foreground hover:text-foreground transition-colors"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -992,32 +992,32 @@ export default function EmployeeServicesReportPage() {
             {/* Body */}
             <div className="px-5 py-4 space-y-4">
               {/* Current info */}
-              <div className="bg-zinc-800/50 rounded-xl p-3 space-y-1.5">
+              <div className="bg-muted rounded-xl p-3 space-y-1.5">
                 <div className="flex justify-between text-xs">
-                  <span className="text-zinc-500">الموظف الحالي</span>
-                  <span className="text-white font-semibold">{reassignTarget.empName}</span>
+                  <span className="text-muted-foreground">الموظف الحالي</span>
+                  <span className="text-foreground font-semibold">{reassignTarget.empName}</span>
                 </div>
                 <div className="flex justify-between text-xs">
-                  <span className="text-zinc-500">الخدمة</span>
-                  <span className="text-zinc-300">{reassignTarget.serviceName || '—'}</span>
+                  <span className="text-muted-foreground">الخدمة</span>
+                  <span className="text-foreground">{reassignTarget.serviceName || '—'}</span>
                 </div>
                 <div className="flex justify-between text-xs">
-                  <span className="text-zinc-500">القيمة</span>
-                  <span className="text-emerald-400 font-bold">{formatCurrency(reassignTarget.lineTotal)}</span>
+                  <span className="text-muted-foreground">القيمة</span>
+                  <span className="text-success font-bold">{formatCurrency(reassignTarget.lineTotal)}</span>
                 </div>
                 <div className="flex justify-between text-xs">
-                  <span className="text-zinc-500">التاريخ</span>
-                  <span className="text-zinc-300">{formatDate(reassignTarget.operationDate)}</span>
+                  <span className="text-muted-foreground">التاريخ</span>
+                  <span className="text-foreground">{formatDate(reassignTarget.operationDate)}</span>
                 </div>
               </div>
 
               {/* New employee select */}
               <div>
-                <label className="block text-xs text-zinc-400 font-medium mb-1.5">نقل إلى موظف</label>
+                <label className="block text-xs text-muted-foreground font-medium mb-1.5">نقل إلى موظف</label>
                 <select
                   value={reassignNewEmpId}
                   onChange={(e) => { setReassignNewEmpId(e.target.value); setReassignError(''); }}
-                  className="w-full bg-zinc-800 border border-zinc-700 text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-[#D6A84F]/50 transition-colors"
+                  className="w-full bg-muted border border-border text-foreground rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-brand/50 transition-colors"
                 >
                   <option value="">اختر الموظف الجديد...</option>
                   {empList
@@ -1031,7 +1031,7 @@ export default function EmployeeServicesReportPage() {
 
               {/* Error */}
               {reassignError && (
-                <div className="flex items-center gap-2 text-xs text-rose-400 bg-rose-500/10 rounded-lg p-2.5">
+                <div className="flex items-center gap-2 text-xs text-destructive bg-destructive-soft rounded-lg p-2.5">
                   <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                   {reassignError}
                 </div>
@@ -1039,7 +1039,7 @@ export default function EmployeeServicesReportPage() {
 
               {/* Success */}
               {reassignSuccess && (
-                <div className="flex items-center gap-2 text-xs text-emerald-400 bg-emerald-500/10 rounded-lg p-2.5">
+                <div className="flex items-center gap-2 text-xs text-success bg-success-soft rounded-lg p-2.5">
                   <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
                   {reassignSuccess}
                 </div>
@@ -1047,11 +1047,11 @@ export default function EmployeeServicesReportPage() {
             </div>
 
             {/* Footer */}
-            <div className="flex items-center gap-2 px-5 py-4 border-t border-zinc-800">
+            <div className="flex items-center gap-2 px-5 py-4 border-t border-border">
               <Button
                 onClick={handleReassign}
                 disabled={!reassignNewEmpId || reassignLoading || !!reassignSuccess}
-                className="flex-1 bg-[#D6A84F] hover:bg-[#c49640] text-black font-bold rounded-xl h-10 gap-2"
+                className="flex-1 bg-primary hover:bg-primary-hover text-primary-foreground font-bold rounded-xl h-10 gap-2"
               >
                 {reassignLoading ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
@@ -1064,7 +1064,7 @@ export default function EmployeeServicesReportPage() {
                 variant="outline"
                 onClick={() => setReassignTarget(null)}
                 disabled={reassignLoading}
-                className="border-zinc-700 text-zinc-300 hover:bg-zinc-800 rounded-xl h-10"
+                className="border-border text-foreground hover:bg-surface-muted rounded-xl h-10"
               >
                 إلغاء
               </Button>
