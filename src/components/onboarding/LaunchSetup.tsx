@@ -62,7 +62,7 @@ export default function LaunchSetup({ onSaved }: { onSaved: () => Promise<void> 
   const buttonClass = 'inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-black text-primary-foreground disabled:opacity-50';
   return <div className="mt-7 space-y-4 rounded-2xl border border-border bg-card p-4 sm:p-6">
     <div className="rounded-xl bg-brand-soft p-4 text-foreground"><div className="flex items-center gap-2 text-xs font-bold text-brand"><Rocket className="h-4 w-4"/> التشغيل الفعلي</div><h2 className="mt-2 text-lg font-black">تشغيل الفرع الحالي الآن</h2><p className="mt-2 text-xs leading-6 text-muted-foreground">افتح يوم ووردية فقط لو جاهز تبدأ التشغيل الفعلي. مفيش فاتورة أو حركة مالية تلقائية.</p><div className="mt-4 flex items-center justify-between text-xs"><span>حالة يوم العمل والوردية</span><b>{Number(!!hasActiveDay)+Number(!!hasActiveShift)} / 2</b></div><div className="mt-2 h-2 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-primary motion-safe:transition-all" style={{width:(Number(!!hasActiveDay)+Number(!!hasActiveShift))*50+'%'}}/></div></div>
-    <Link href="/setup/training" className="flex items-center gap-2 rounded-xl border border-primary/30 bg-primary-soft p-3 text-xs font-bold text-primary"><GraduationCap className="h-5 w-5 shrink-0"/> جرّب العمليات في التدريب قبل التشغيل <ArrowLeft className="ms-auto h-4 w-4 shrink-0"/></Link>
+    <Link href="/setup/training" className="flex items-center gap-2 rounded-xl border border-primary/30 bg-primary-soft p-3 text-xs font-bold text-foreground"><GraduationCap className="h-5 w-5 shrink-0"/> جرّب العمليات في التدريب قبل التشغيل <ArrowLeft className="ms-auto h-4 w-4 shrink-0"/></Link>
     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border py-3">
       <span className="flex items-center gap-2 text-sm"><Store className="h-4 w-4 text-primary" /> يوم العمل</span>
       {hasActiveDay ? <span className="flex items-center gap-1 text-xs text-success"><CheckCircle2 className="h-4 w-4" /> مفتوح</span> : <button type="button" disabled={busy} onClick={() => void run('day')} className={buttonClass}>{running==='day' && <Loader2 className="h-4 w-4 animate-spin" />} {running==='day'?'جاري فتح اليوم…':'فتح يوم العمل'}</button>}
@@ -75,7 +75,7 @@ export default function LaunchSetup({ onSaved }: { onSaved: () => Promise<void> 
       </>}
     </div>
     {hasActiveDay && !hasOpenShift && !defaultShiftId && shifts.length === 0 && <p className="text-xs text-muted-foreground">لو مفيش ورديات متاحة، راجع إعدادات الورديات في الإدارة.</p>}
-    {message && <p role="status" className="rounded-xl bg-primary-soft p-3 text-xs font-bold text-primary">{message}</p>}
+    {message && <p role="status" className="rounded-xl bg-primary-soft p-3 text-xs font-bold text-foreground">{message}</p>}
     {hasActiveDay && hasActiveShift && <div className="rounded-xl border border-primary/30 bg-primary-soft p-4"><div className="flex items-center gap-2 font-bold text-primary"><ShieldCheck className="h-5 w-5"/> اليوم وورديتك مفتوحان</div><p className="mt-2 text-xs leading-6 text-foreground">راجع باقي التجهيز قبل تسجيل أول فاتورة فعلية.</p><Link href="/setup/finish" className={buttonClass+' mt-3'}>مراجعة الانطلاق <ArrowLeft className="h-4 w-4"/></Link></div>}
     {error && <p role="alert" className="rounded-xl bg-destructive-soft p-3 text-sm text-destructive">{error}</p>}
   </div>;
