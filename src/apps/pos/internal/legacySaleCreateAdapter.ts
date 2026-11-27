@@ -1,4 +1,5 @@
 import 'server-only';
+import { confirmStagingDecemberReferral } from '@/lib/campaigns/december-exam/stagingInvoiceReferral';
 
 import type { Transaction } from 'mssql';
 import { sql, allocateInvID } from '@/lib/db';
@@ -355,5 +356,6 @@ export async function executeLegacySaleCreateTransaction(
     throw enqueueErr;
   }
 
+  await confirmStagingDecemberReferral(transaction, { invoiceId: newInvID, clientId, branchId });
   return { invID: newInvID, invType, targetRecalcScopes };
 }
