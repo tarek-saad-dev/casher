@@ -1,4 +1,5 @@
 import 'server-only';
+import {stageVoucherOnNewSale} from '@/lib/cut-club/stagingInvoiceClaim';
 
 /**
  * Pre-extraction POST /api/sales transaction.
@@ -34,6 +35,8 @@ type LegacySaleCreateItemInput = {
 };
 
 type LegacySaleCreateTransactionInput = {
+  tenantId: string;
+  cutClubVoucherCode?: unknown;
   items: LegacySaleCreateItemInput[];
   clientId: number | null;
   notes: string;
@@ -337,6 +340,15 @@ async function executeInRouteSaleCreateTransaction(
     throw enqueueErr;
   }
 
+  // Stage-only: voucher claim must share this exact invoice transaction.
+  // No voucher code = NO SQL probe and unchanged legacy POS sale.
+  await stageVoucherOnNewSale(transaction, {
+    trustedTenantId: input.tenantId,
+    trustedBranchId: branchId,
+    trustedClientId: clientId,
+    invoiceId: newInvID,
+    voucherCode: input.cutClubVoucherCode,
+  });
   return { invID: newInvID, invType, targetRecalcScopes };
 }
 

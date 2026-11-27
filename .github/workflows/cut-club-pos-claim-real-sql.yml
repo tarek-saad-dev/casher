@@ -1,0 +1,52 @@
+name: CUT CLUB POS Claim Financial Real SQL — Disposable
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/lib/cut-club/stagingInvoiceClaim.ts'
+      - 'src/lib/cut-club/cashierProductionBranchPolicy.ts'
+      - 'src/lib/cut-club/reviewedServiceEntitlements.ts'
+      - 'src/lib/__tests__/cutClubClaimFinancialRealSql.test.ts'
+      - 'scripts/cut-club/ci/seed-claim-financial-ephemeral.cjs'
+      - 'docs/cut-club/sql/cashier-invoice-claim-staging-only.sql'
+      - '.github/workflows/cut-club-pos-claim-real-sql.yml'
+permissions:
+  contents: read
+jobs:
+  sql-claim:
+    name: Isolated SQL Server 2022 / invoice voucher+reversal
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        ports:
+          - 1433:1433
+        env:
+          ACCEPT_EULA: "Y"
+          MSSQL_SA_PASSWORD: "Disposable-SQL-Claim-2026-Only!"
+    env:
+      CI: "true"
+      CUT_CLUB_CLAIM_EPHEMERAL_SQL: "1"
+      CUT_CLUB_CLAIM_EPHEMERAL_HOST: "127.0.0.1"
+      CUT_CLUB_CLAIM_EPHEMERAL_SA_PASSWORD: "Disposable-SQL-Claim-2026-Only!"
+      CUT_CLUB_CLAIM_EPHEMERAL_AGENT_PASSWORD: "Disposable-Agent-Claim-2026!"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Require isolated ephemeral SQL and no production DB credentials
+        run: |
+          test "$CI" = "true"
+          test "$CUT_CLUB_CLAIM_EPHEMERAL_HOST" = "127.0.0.1"
+          test "$CUT_CLUB_CLAIM_EPHEMERAL_SQL" = "1"
+          test -z "${CLOUD_DB_SERVER:-}"
+          test -z "${DB_SERVER:-}"
+      - name: Seed disposable invoice, voucher, customer and stage claim schema
+        run: node scripts/cut-club/ci/seed-claim-financial-ephemeral.cjs
+      - name: Concurrent claim, invoice rollback, restore and owner isolation tests
+        run: npx vitest run src/lib/__tests__/cutClubClaimFinancialRealSql.test.ts
