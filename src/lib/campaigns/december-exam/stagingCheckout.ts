@@ -1,3 +1,4 @@
+import {decemberPhoneSql,decemberCanonicalPhoneSql} from './phoneSql';
 import 'server-only';
 import type { Transaction } from 'mssql';
 import { getPool,sql } from '@/lib/db';
@@ -50,8 +51,8 @@ export async function quoteDecemberInTransaction(tx:Transaction,input:DecemberCh
  if(!matches)deny('DECEMBER_IDENTITY_REVIEW');
  const count=await q().input('phone',sql.VarChar(16),f.PhoneNormalized).query<{n:number}>(`
  SELECT COUNT(*) n FROM dbo.TblClient WITH(HOLDLOCK)
- CROSS APPLY(SELECT REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(LTRIM(RTRIM(Mobile)),N' ',N''),N'-',N''),N'+',N''),N'(',N''),N')',N'') clean) x
- WHERE TenantId=@tenant AND CASE WHEN LEN(x.clean)=11 THEN '+2'+x.clean WHEN LEN(x.clean)=14 AND LEFT(x.clean,2)='00' THEN '+'+SUBSTRING(x.clean,3,12) ELSE '+'+x.clean END=@phone
+ CROSS APPLY(SELECT ${decemberPhoneSql('Mobile')} AS clean) m
+ WHERE TenantId=@tenant AND ${decemberCanonicalPhoneSql}=@phone
  `);
  if(count.recordset[0]?.n!==1)deny('DECEMBER_IDENTITY_REVIEW');
  // An active verified member link AND active loyalty record are required.
