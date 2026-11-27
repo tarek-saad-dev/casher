@@ -48,18 +48,20 @@ export async function loadMemberRewardCatalog(token:unknown):Promise<CutClubCata
       `);
     if(b.recordset.length===1)balance=safeCoins(b.recordset[0].PointsBalance);
   }
-  const found=await db.request().query<{
+  const found=await db.request().input('tenant',sql.UniqueIdentifier,member.tenantId).query<{
     ItemID:number;NameAr:string|null;NameEn:string|null;DescriptionAr:string|null;
     PriceCoins:number;ServiceID:number|null;StockQuantity:number|null;
-    UnlimitedStock:boolean;ExpiresAfterDays:number|null;
+    UnlimitedStock:boolean;ExpiresAfterDays:number|null;ActiveTenantServiceCount:number;
   }>(`
-    SELECT TOP(4) ItemID,NameAr,NameEn,DescriptionAr,PriceCoins,ServiceID,
-      StockQuantity,UnlimitedStock,ExpiresAfterDays
-    FROM dbo.TblLoyaltyStoreItem
-    WHERE ItemID IN (15,16,17,18)
-      AND SalonID IS NULL AND IsActive=1 AND ItemType='FREE_SERVICE'
-      AND PriceCoins>=0
-    ORDER BY SortOrder,ItemID
+    SELECT TOP(4) s.ItemID,s.NameAr,s.NameEn,s.DescriptionAr,s.PriceCoins,s.ServiceID,
+      s.StockQuantity,s.UnlimitedStock,s.ExpiresAfterDays,
+      (SELECT COUNT(*) FROM dbo.TblPro p
+       WHERE p.TenantId=@tenant AND p.ProID=s.ServiceID AND p.isDeleted=0) AS ActiveTenantServiceCount
+    FROM dbo.TblLoyaltyStoreItem s
+    WHERE s.ItemID IN (15,16,17,18)
+      AND s.SalonID IS NULL AND s.IsActive=1 AND s.ItemType='FREE_SERVICE'
+      AND s.PriceCoins>=0
+    ORDER BY s.SortOrder,s.ItemID
   `);
   const items:CutClubReward[]=found.recordset.flatMap(row=>{
     if(!(row.ItemID in approved))return [];
@@ -67,17 +69,20 @@ export async function loadMemberRewardCatalog(token:unknown):Promise<CutClubCata
     if(price===null)return [];
     const stockState=row.UnlimitedStock||Number(row.StockQuantity)>0?'available':'out_of_stock';
     const desc=(row.DescriptionAr||'').trim().slice(0,350);
+    // An approved numeric mapping alone does not prove the linked service is
+    // still active or belongs to this tenant. Never advertise readiness without both.
+    const serviceMappingReady=row.ServiceID===approved[row.ItemID]&&row.ActiveTenantServiceCount===1;
     return [{
       id:row.ItemID,
       nameAr:String(row.NameAr||'مكافأة CUT CLUB').slice(0,100),
       nameEn:String(row.NameEn||'CUT CLUB Reward').slice(0,100),
       description:desc,
       priceCoins:price,
-      serviceId:row.ServiceID===approved[row.ItemID]?row.ServiceID:null,
+      serviceId:serviceMappingReady?row.ServiceID:null,
       stockState,
       expiresAfterDays:Number.isSafeInteger(row.ExpiresAfterDays)&&Number(row.ExpiresAfterDays)>0?row.ExpiresAfterDays:null,
       canAfford:balance===null?null:balance>=price,
-      serviceMappingReady:row.ServiceID===approved[row.ItemID],
+      serviceMappingReady,
       purchaseAvailable:false as const,
     }];
   });

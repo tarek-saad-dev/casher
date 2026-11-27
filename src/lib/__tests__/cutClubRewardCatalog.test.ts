@@ -4,9 +4,9 @@ const stub=vi.hoisted(()=>({
   balance:[{PointsBalance:250}] as Array<{PointsBalance:number|null}>,
   rewards:[
     {ItemID:15,NameAr:'ماسك وجه',NameEn:'Face Mask',DescriptionAr:'ماسك',
-      PriceCoins:90,ServiceID:null,StockQuantity:4,UnlimitedStock:false,ExpiresAfterDays:30},
+      PriceCoins:90,ServiceID:null,StockQuantity:4,UnlimitedStock:false,ExpiresAfterDays:30,ActiveTenantServiceCount:0},
     {ItemID:16,NameAr:'حمام زيت',NameEn:'Oil Bath',DescriptionAr:'',
-      PriceCoins:400,ServiceID:22,StockQuantity:0,UnlimitedStock:false,ExpiresAfterDays:null},
+      PriceCoins:400,ServiceID:22,StockQuantity:0,UnlimitedStock:false,ExpiresAfterDays:null,ActiveTenantServiceCount:1},
   ] as any[],
 }));
 vi.mock('server-only',()=>({}));
@@ -49,6 +49,9 @@ describe('CUT CLUB verified-session Rewards read model',()=>{
     expect(stub.queries[0].sql).toContain('c.TenantId=@tenant');
     expect(stub.queries[1].sql).toContain('SalonID IS NULL');
     expect(stub.queries[1].sql).toContain('ItemID IN (15,16,17,18)');
+    expect(stub.queries[1].params).toEqual({tenant});
+    expect(stub.queries[1].sql).toContain('p.TenantId=@tenant');
+    expect(stub.queries[1].sql).toContain('p.isDeleted=0');
     expect(stub.queries.some(q=>/INSERT|UPDATE|DELETE/i.test(q.sql))).toBe(false);
     expect(JSON.stringify(result)).not.toContain('ClientID');
   });
@@ -58,6 +61,18 @@ describe('CUT CLUB verified-session Rewards read model',()=>{
     expect(result?.balance).toBeNull();
     expect(result?.items[0].canAfford).toBeNull();
     expect(stub.queries).toHaveLength(1);
+  });
+  it('does not advertise a matching ServiceID as ready when inactive, absent, wrong-tenant or ambiguous',async()=>{
+    const original=stub.rewards;
+    try{
+      for(const count of [0,2]){
+        stub.rewards=[{...original[1],ActiveTenantServiceCount:count}];
+        const catalog=await loadMemberRewardCatalog('valid');
+        expect(catalog?.items[0]).toMatchObject({serviceId:null,serviceMappingReady:false,purchaseAvailable:false});
+      }
+      stub.rewards=[{...original[1],ServiceID:39,ActiveTenantServiceCount:1}];
+      expect((await loadMemberRewardCatalog('valid'))?.items[0]).toMatchObject({serviceId:null,serviceMappingReady:false,purchaseAvailable:false});
+    }finally{stub.rewards=original;}
   });
   it('fails wallet balance closed when multiple active loyalty records exist',async()=>{
     stub.balance=[{PointsBalance:250},{PointsBalance:500}];
