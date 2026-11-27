@@ -1,3 +1,4 @@
+import {decemberPhoneSql,decemberCanonicalPhoneSql} from './phoneSql';
 import 'server-only';
 import type { Transaction } from 'mssql';
 import { sql } from '@/lib/db';
@@ -35,8 +36,8 @@ export async function confirmStagingDecemberReferral(tx:Transaction, input:{invo
  const phoneCheck=await q().input('phone',sql.VarChar(16),row.PhoneNormalized).query<{Matches:number;Selected:number}>(`
  SELECT COUNT(*) AS Matches,COALESCE(SUM(CASE WHEN ClientID=@client THEN 1 ELSE 0 END),0) AS Selected
  FROM dbo.TblClient WITH(HOLDLOCK)
- CROSS APPLY(SELECT REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(LTRIM(RTRIM(Mobile)),N' ',N''),N'-',N''),N'+',N''),N'(',N''),N')',N'') AS clean) x
- WHERE TenantId=@tenant AND CASE WHEN LEN(x.clean)=11 THEN '+2'+x.clean WHEN LEN(x.clean)=14 AND LEFT(x.clean,2)='00' THEN '+'+SUBSTRING(x.clean,3,12) ELSE '+'+x.clean END=@phone
+ CROSS APPLY(SELECT ${decemberPhoneSql('Mobile')} AS clean) m
+ WHERE TenantId=@tenant AND ${decemberCanonicalPhoneSql}=@phone
  `);
  if(phoneCheck.recordset[0]?.Matches!==1||phoneCheck.recordset[0]?.Selected!==1)return;
  const paid=await q().query<{ok:number}>(`
