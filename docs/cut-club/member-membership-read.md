@@ -1,0 +1,3 @@
+# Member-facing membership trial read (staging only)
+
+Verified BFF credential and opaque persisted session, exact SQL staging database/login, pilot tenant and separate off-by-default flag. No caller-selected account, no raw proofs, partner codes, phone, staff notes or drafts not issued to the member. Recompute status against latest draft revision, current proof, visit aggregate and account; prior linked-client trials are hidden. Only nonfinancial trial records, not published programs. No enrollment, discounts, customer-facing production changes or production migration. Website BFF must validate strict trialOnly and benefits/enrollment disabled. Future publication and applications require their own reviewed policies and storage.

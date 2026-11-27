@@ -60,6 +60,8 @@ export async function startCutClubOtp(raw: unknown, purpose: unknown) {
     SELECT CASE WHEN OBJECT_ID(N'dbo.CutClubOtpPending',N'U') IS NOT NULL
       AND OBJECT_ID(N'dbo.CutClubCustomerSession',N'U') IS NOT NULL
       AND OBJECT_ID(N'dbo.CutClubMemberAccount',N'U') IS NOT NULL
+      AND COL_LENGTH(N'dbo.CutClubMemberAccount',N'AccessStatus') IS NOT NULL
+      AND OBJECT_ID(N'dbo.CutClubMemberAccessAudit',N'U') IS NOT NULL
       AND COL_LENGTH(N'dbo.TblClient',N'TenantId') IS NOT NULL
       AND EXISTS (SELECT 1 FROM dbo.Tenant
                   WHERE TenantId=@tenant AND Code=@tenantCode AND Status=N'active')
@@ -91,7 +93,7 @@ export async function startCutClubOtp(raw: unknown, purpose: unknown) {
 
 export type VerifiedMemberIdentity = {
   accountId: string; tenantId: string; legacyClientId: number | null;
-  linkStatus: 'ACTIVE' | 'UNLINKED' | 'REVIEW_REQUIRED';
+  linkStatus: 'ACTIVE' | 'UNLINKED' | 'REVIEW_REQUIRED' | 'SUSPENDED';
 };
 
 /** Only verified + consumed DRVO challenge may enter here. */
@@ -125,43 +127,81 @@ async function bindVerifiedPhone(tenantId: string, phone: string): Promise<Verif
     const knownAccount = await new sql.Request(tx)
       .input('tenant', sql.UniqueIdentifier, tenantId)
       .input('phone', sql.NVarChar(20), phone)
-      .query<{ AccountID: string; LegacyClientID: number | null; LinkStatus: VerifiedMemberIdentity['linkStatus'] }>(`
-        SELECT AccountID,LegacyClientID,LinkStatus
+      .query<{ AccountID: string; LegacyClientID: number | null; LinkStatus: VerifiedMemberIdentity['linkStatus']; AccessStatus: string }>(`
+        SELECT AccountID,LegacyClientID,LinkStatus,AccessStatus
         FROM dbo.CutClubMemberAccount WITH (UPDLOCK,HOLDLOCK)
         WHERE TenantId=@tenant AND PhoneNormalized=@phone
       `);
     if (knownAccount.recordset.length > 1) throw new ClubAuthError('ACCOUNT_REVIEW_REQUIRED',409);
     const current = knownAccount.recordset[0];
+    // Suspension wins over re-verification and automatic binding. Keep the
+    // authenticated identity for the status page, never return a wallet owner.
+    if (current?.AccessStatus === 'SUSPENDED') {
+      await tx.commit();
+      return {accountId:current.AccountID,tenantId,legacyClientId:null,linkStatus:'SUSPENDED'};
+    }
     if (current?.LinkStatus === 'ACTIVE') {
       // A trusted human review may pick the rightful account even when several
       // historic customers share a phone. Reject only if the approved record
       // no longer matches the verified tenant + phone.
       if (!current.LegacyClientID || !rows.some(row => row.ClientID === current.LegacyClientID)) {
-        // If phone record changes or duplicates arise, fail closed: no wallet.
-        throw new ClubAuthError('ACCOUNT_REVIEW_REQUIRED',409);
+        // OTP verified the account identity, not the historical wallet. Keep a
+        // status-only session so the member can see the review screen. Leave the
+        // historical binding for staff to resolve; never auto-claim another row.
+        await tx.commit();
+        return { accountId: current.AccountID, tenantId, legacyClientId: null, linkStatus: 'REVIEW_REQUIRED' };
       }
       await tx.commit();
       return { accountId: current.AccountID, tenantId, legacyClientId: current.LegacyClientID, linkStatus: 'ACTIVE' };
     }
-    const desired = rows.length > 0 ? 'REVIEW_REQUIRED' : 'UNLINKED';
-    const result = current
-      ? await new sql.Request(tx)
-        .input('tenant',sql.UniqueIdentifier,tenantId).input('phone',sql.NVarChar(20),phone)
-        .input('desired',sql.VarChar(24),desired).query<{ AccountID:string }>(`
-          UPDATE dbo.CutClubMemberAccount
-          SET LinkStatus=@desired, UpdatedAtUtc=SYSUTCDATETIME()
-          OUTPUT INSERTED.AccountID
-          WHERE TenantId=@tenant AND PhoneNormalized=@phone AND LinkStatus<>'ACTIVE'
-        `)
-      : await new sql.Request(tx)
-        .input('tenant',sql.UniqueIdentifier,tenantId).input('phone',sql.NVarChar(20),phone)
-        .input('desired',sql.VarChar(24),desired).query<{ AccountID:string }>(`
-          INSERT dbo.CutClubMemberAccount(TenantId,PhoneNormalized,LinkStatus)
-          OUTPUT INSERTED.AccountID VALUES(@tenant,@phone,@desired)
+    // OTP always activates a newly verified CUT CLUB identity. Automatic access
+    // to historical balances is a SEPARATE opt-in and only for one unique
+    // same-tenant matching Casher customer. Shared/recycled numbers remain
+    // reviewable; the flag defaults OFF until production acceptance.
+    const maybeClientId=process.env.CUT_CLUB_AUTO_LINK_UNIQUE_PHONE_ENABLED==='true' && rows.length===1
+      ? rows[0].ClientID : null;
+    let autoClientId:number|null=null;
+    if (maybeClientId) {
+      const linked=await new sql.Request(tx)
+        .input('tenant',sql.UniqueIdentifier,tenantId)
+        .input('clientId',sql.Int,maybeClientId)
+        .query<{AccountID:string}>(`
+          SELECT TOP(1) AccountID FROM dbo.CutClubMemberAccount WITH (UPDLOCK,HOLDLOCK)
+          WHERE TenantId=@tenant AND LegacyClientID=@clientId
         `);
-    if (result.recordset.length !== 1) throw new ClubAuthError('ACCOUNT_REVIEW_REQUIRED',409);
+      if(linked.recordset.length===0)autoClientId=maybeClientId;
+    }
+    const desired:VerifiedMemberIdentity['linkStatus']=autoClientId
+      ? 'ACTIVE' : rows.length>0 ? 'REVIEW_REQUIRED' : 'UNLINKED';
+    const write=(req:sql.Request)=>req
+      .input('tenant',sql.UniqueIdentifier,tenantId)
+      .input('phone',sql.NVarChar(20),phone)
+      .input('desired',sql.VarChar(24),desired)
+      .input('clientId',sql.Int,autoClientId);
+    const result=current
+      ? await write(new sql.Request(tx)).query<{AccountID:string}>(`
+          UPDATE dbo.CutClubMemberAccount
+          SET LinkStatus=@desired,LegacyClientID=@clientId,
+              LinkApprovedBy=NULL,
+              LinkApprovedAtUtc=CASE WHEN @clientId IS NULL THEN NULL ELSE SYSUTCDATETIME() END,
+              LinkProofType=CASE WHEN @clientId IS NULL THEN NULL ELSE 'VERIFIED_PHONE_UNIQUE' END,
+              UpdatedAtUtc=SYSUTCDATETIME()
+          OUTPUT INSERTED.AccountID
+          WHERE TenantId=@tenant AND PhoneNormalized=@phone
+            AND LinkStatus IN ('UNLINKED','REVIEW_REQUIRED') AND AccessStatus='ENABLED'
+        `)
+      : await write(new sql.Request(tx)).query<{AccountID:string}>(`
+          INSERT dbo.CutClubMemberAccount
+            (TenantId,PhoneNormalized,LinkStatus,LegacyClientID,LinkApprovedAtUtc,LinkProofType)
+          OUTPUT INSERTED.AccountID
+          VALUES(@tenant,@phone,@desired,@clientId,
+            CASE WHEN @clientId IS NULL THEN NULL ELSE SYSUTCDATETIME() END,
+            CASE WHEN @clientId IS NULL THEN NULL ELSE 'VERIFIED_PHONE_UNIQUE' END)
+        `);
+    if(result.recordset.length!==1)throw new ClubAuthError('ACCOUNT_REVIEW_REQUIRED',409);
     await tx.commit();
-    return { accountId: result.recordset[0].AccountID, tenantId, legacyClientId: null, linkStatus: desired };
+    return {accountId:result.recordset[0].AccountID,tenantId,
+      legacyClientId:autoClientId,linkStatus:desired};
   } catch (error) {
     await tx.rollback().catch(() => null);
     throw error;
@@ -234,8 +274,8 @@ export async function getCutClubSession(token: unknown): Promise<VerifiedMemberI
   const result=await db.request().input('digest',sql.Char(64),digestToken(token))
     .input('tenant',sql.UniqueIdentifier,tenantId)
     .input('tenantCode',sql.NVarChar(64),process.env.CUT_CLUB_AUTH_TENANT_CODE)
-    .query<{AccountID:string;TenantId:string;LegacyClientID:number|null;LinkStatus:VerifiedMemberIdentity['linkStatus'];ClientPhoneMatches:number|null}>(`
-      SELECT a.AccountID,a.TenantId,a.LegacyClientID,a.LinkStatus,
+    .query<{AccountID:string;TenantId:string;LegacyClientID:number|null;LinkStatus:VerifiedMemberIdentity['linkStatus'];AccessStatus:string;ClientPhoneMatches:number|null}>(`
+      SELECT a.AccountID,a.TenantId,a.LegacyClientID,a.LinkStatus,a.AccessStatus,
         CASE WHEN a.LinkStatus<>'ACTIVE' THEN NULL
              WHEN linked.Phone=a.PhoneNormalized THEN 1 ELSE 0 END AS ClientPhoneMatches
       FROM dbo.CutClubCustomerSession s
@@ -260,6 +300,7 @@ export async function getCutClubSession(token: unknown): Promise<VerifiedMemberI
     `);
   const a=result.recordset[0];
   if(!a)return null;
+  if(a.AccessStatus==='SUSPENDED')return {accountId:a.AccountID,tenantId:a.TenantId,legacyClientId:null,linkStatus:'SUSPENDED'};
   // Re-validated on EVERY request: if the linked Casher record was deleted or its
   // mobile changed after approval, an already-open session loses the wallet at
   // once (fail closed to review) instead of waiting for the next OTP login.

@@ -22,6 +22,7 @@ import { employeeLateDeductionMigration } from './020-employee-late-deduction';
 import { bookingCashierHandoffMigration } from './021-booking-cashier-handoff';
 import { retailProductCatalogMigration } from './022-retail-product-catalog';
 import { cutClubMemberWalletMigration } from './026-cut-club-member-wallet';
+import { cutClubMemberModerationMigration } from './027-cut-club-member-moderation';
 import { customerEducationOccupationProfileMigration } from './025-customer-education-occupation-profile';
 import { drvoModuleRequiredMigrationsFromManifest } from '../../../src/platform/drvo/moduleManifest';
 
@@ -51,6 +52,7 @@ export const DRVO_MIGRATIONS: DrvoMigrationDefinition[] = [
   retailProductCatalogMigration,
   customerEducationOccupationProfileMigration,
   cutClubMemberWalletMigration,
+  cutClubMemberModerationMigration,
 ];
 
 export function assertDrvoMigrationManifestValid(): void {

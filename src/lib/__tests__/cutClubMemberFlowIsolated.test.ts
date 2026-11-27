@@ -2,7 +2,7 @@ import { beforeEach,describe,it,expect,vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
 
 type Pending={digest:string;phone:string;purpose:string;challengeId:string;status:string;lease:string|null;expires:Date};
-type Account={AccountID:string;TenantId:string;PhoneNormalized:string;LegacyClientID:number|null;LinkStatus:'ACTIVE'|'UNLINKED'|'REVIEW_REQUIRED'};
+type Account={AccountID:string;TenantId:string;PhoneNormalized:string;LegacyClientID:number|null;LinkStatus:'ACTIVE'|'UNLINKED'|'REVIEW_REQUIRED';AccessStatus?:'ENABLED'|'SUSPENDED'};
 const fake=vi.hoisted(()=>({
   providerSend:vi.fn(),providerVerify:vi.fn(),db:null as any,upcoming:vi.fn(),
 }));
@@ -40,10 +40,11 @@ class FakeSql {
   sessions:{digest:string;account:string;revoked:boolean}[]=[];
   matches:{ClientID:number}[]=[];
   linkedPhoneChanged=false;
+  schemaReady=true;
   ledger:{LedgerID:number;ClientID:number;MovementType:string;PointsDelta:number;CreatedAt:Date}[]=[];
   async execute(q:string,p:Record<string,any>){
     const ok=(recordset:any[]=[],rowsAffected=[1])=>({recordset,rowsAffected});
-    if(q.includes(' AS Ready'))return ok([{Ready:1}]);
+    if(q.includes(' AS Ready'))return ok([{Ready:this.schemaReady?1:0}]);
     if(q.includes('INSERT dbo.CutClubOtpPending')){
       this.pending={digest:p.digest,phone:p.phone,purpose:p.purpose,challengeId:p.challenge,status:'READY',lease:null,expires:p.expires};return ok();
     }
@@ -60,9 +61,12 @@ class FakeSql {
       if(this.pending&&this.pending.lease===p.lease){this.pending.status='READY';this.pending.lease=null;}return ok();
     }
     if(q.includes('SELECT TOP (200) c.ClientID')&&!q.includes('ClientName'))return ok(this.matches);
-    if(q.includes('FROM dbo.CutClubMemberAccount WITH (UPDLOCK'))return ok(this.accounts.filter(a=>a.PhoneNormalized===p.phone));
+    if(q.includes('FROM dbo.CutClubMemberAccount WITH (UPDLOCK')&&p.clientId)
+      return ok(this.accounts.filter(a=>a.LegacyClientID===p.clientId).map(a=>({AccountID:a.AccountID})));
+    if(q.includes('FROM dbo.CutClubMemberAccount WITH (UPDLOCK'))
+      return ok(this.accounts.filter(a=>a.PhoneNormalized===p.phone));
     if(q.includes('INSERT dbo.CutClubMemberAccount')){
-      const a:Account={AccountID:randomUUID(),TenantId:p.tenant,PhoneNormalized:p.phone,LegacyClientID:null,LinkStatus:p.desired};
+      const a:Account={AccountID:randomUUID(),TenantId:p.tenant,PhoneNormalized:p.phone,LegacyClientID:p.clientId??null,LinkStatus:p.desired,AccessStatus:'ENABLED'};
       this.accounts.push(a);return ok([{AccountID:a.AccountID}]);
     }
     if(q.includes('UPDATE dbo.CutClubMemberAccount'))return ok([]);
@@ -74,7 +78,7 @@ class FakeSql {
       if(!sess)return ok([]);
       const a=this.accounts.find(x=>x.AccountID===sess.account)!;
       return ok([{AccountID:a.AccountID,TenantId:a.TenantId,LegacyClientID:a.LegacyClientID,LinkStatus:a.LinkStatus,
-        ClientPhoneMatches:a.LinkStatus!=='ACTIVE'?null:(this.linkedPhoneChanged?0:1)}]);
+        ClientPhoneMatches:a.LinkStatus!=='ACTIVE'?null:(this.linkedPhoneChanged?0:1),AccessStatus:a.AccessStatus||'ENABLED'}]);
     }
     if(q.includes('UPDATE dbo.CutClubCustomerSession SET RevokedAtUtc')&&p.accountId){
       const live=this.sessions.filter(x=>x.account===p.accountId&&!x.revoked);
@@ -113,6 +117,7 @@ describe('CUT CLUB OTP → binding → owned wallet state with isolated SQL adap
     process.env.CUT_CLUB_AUTH_TENANT_ID=tenant;
     process.env.CUT_CLUB_AUTH_TENANT_CODE='CUT_SALON_TEST';
     process.env.CUT_CLUB_MEMBER_WALLET_ENABLED='true';
+    process.env.CUT_CLUB_AUTO_LINK_UNIQUE_PHONE_ENABLED='false';
     fake.providerSend.mockImplementation(async()=>({
       challengeId:randomUUID(),status:'SENT',
       expiresAtUtc:new Date(Date.now()+240_000).toISOString(),
@@ -138,6 +143,22 @@ describe('CUT CLUB OTP → binding → owned wallet state with isolated SQL adap
     expect(await getCutClubSession('C'.repeat(43))).toBeNull();
     await logoutCutClubSession(authenticated.sessionToken);
     expect(await getCutClubSession(authenticated.sessionToken)).toBeNull();
+  });
+  it('missing moderation schema blocks OTP delivery before contacting DRVO',async()=>{
+    fake.db.schemaReady=false;
+    await expect(startCutClubOtp(phone,'LOGIN')).rejects.toThrow('CUT_CLUB_SCHEMA_NOT_READY');
+    expect(fake.providerSend).not.toHaveBeenCalled();
+    expect(fake.db.pending).toBeNull();
+  });
+  it('re-login after a linked phone change creates a review-only session, not a failed OTP',async()=>{
+    fake.db.accounts.push({AccountID:randomUUID(),TenantId:tenant,PhoneNormalized:phone,LegacyClientID:7,LinkStatus:'ACTIVE'});
+    fake.db.matches=[{ClientID:8}];
+    fake.db.linkedPhoneChanged=true;
+    const auth=await verifyCutClubOtp((await startCutClubOtp(phone,'LOGIN')).pendingToken,'123456');
+    expect(auth.status).toBe('REVIEW_REQUIRED');
+    expect(await getCutClubSession(auth.sessionToken)).toMatchObject({linkStatus:'REVIEW_REQUIRED',legacyClientId:null});
+    expect(await loadCutClubWallet(auth.sessionToken)).toMatchObject({coins:null,movements:null,ownedVouchers:null});
+    expect(fake.db.accounts[0].LegacyClientID).toBe(7);
   });
   it('matching old phone requires staff review; never infer ownership from OTP alone',async()=>{
     fake.db.matches=[{ClientID:7},{ClientID:8}];
@@ -257,6 +278,32 @@ describe('CUT CLUB OTP → binding → owned wallet state with isolated SQL adap
       purpose:'LOGIN',
     }));
     expect(fake.db.pending?.status).toBe('CONSUMED');
+  });
+  it('safely auto-links one verified phone only with operator opt-in, never shared numbers',async()=>{
+    process.env.CUT_CLUB_AUTO_LINK_UNIQUE_PHONE_ENABLED='true';
+    fake.db.matches=[{ClientID:7}];
+    const member=await verifyCutClubOtp((await startCutClubOtp(phone,'LOGIN')).pendingToken,'123456');
+    expect(member.status).toBe('ACTIVE');
+    expect(fake.db.accounts).toHaveLength(1);
+    expect(fake.db.accounts[0].LegacyClientID).toBe(7);
+    expect((await getCutClubSession(member.sessionToken))?.legacyClientId).toBe(7);
+    fake.db=new FakeSql();
+    fake.db.matches=[{ClientID:7},{ClientID:8}];
+    const shared=await verifyCutClubOtp((await startCutClubOtp(phone,'LOGIN')).pendingToken,'123456');
+    expect(shared.status).toBe('REVIEW_REQUIRED');
+    expect(fake.db.accounts[0].LegacyClientID).toBeNull();
+  });
+  it('suspended member keeps status-only authenticated session; wallet remains private',async()=>{
+    fake.db.matches=[{ClientID:7}];
+    fake.db.accounts.push({AccountID:randomUUID(),TenantId:tenant,PhoneNormalized:phone,
+      LegacyClientID:7,LinkStatus:'ACTIVE',AccessStatus:'SUSPENDED'});
+    const member=await verifyCutClubOtp((await startCutClubOtp(phone,'LOGIN')).pendingToken,'123456');
+    expect(member.status).toBe('SUSPENDED');
+    const session=await getCutClubSession(member.sessionToken);
+    expect(session).toMatchObject({linkStatus:'SUSPENDED',legacyClientId:null});
+    const wallet=await loadCutClubWallet(member.sessionToken);
+    expect(wallet).toMatchObject({linkStatus:'SUSPENDED',coins:null,movements:null,ownedVouchers:null});
+    expect(await loadCutClubActivity(member.sessionToken)).toBeNull();
   });
   it('wrong OTP releases local lease for next attempt but mints NO member session',async()=>{
     const issued=await startCutClubOtp('01557994946','LOGIN');
