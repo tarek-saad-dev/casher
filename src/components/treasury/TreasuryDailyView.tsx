@@ -10,6 +10,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Loader2, Lock, Calculator, ArrowRightLeft, TrendingUp, TrendingDown } from 'lucide-react';
+import PageHeader from '@/components/shared/PageHeader';
 import TreasuryFiltersBar from '@/components/treasury/TreasuryFiltersBar';
 import TreasuryKpiCards from '@/components/treasury/TreasuryKpiCards';
 import TreasuryHoldBreakdown from '@/components/treasury/TreasuryHoldBreakdown';
@@ -222,22 +223,18 @@ export default function TreasuryDailyView({
   // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen bg-zinc-950 p-6">
+    <div className="min-h-full bg-background p-3 sm:p-6">
       <div className="max-w-7xl mx-auto space-y-6">
 
         {/* ── Header ── */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-white mb-2">{pageTitle}</h1>
-            <p className="text-zinc-400 text-sm sm:text-base">{pageSubtitle}</p>
-          </div>
+        <PageHeader title={pageTitle} description={pageSubtitle} icon={<Calculator />} eyebrow="الإدارة المالية">
 
           {(hasAdminActions || canShowShiftClose) && (
             <div className="flex flex-wrap items-center gap-2 sm:gap-3">
               {canAddPastRevenue && (
                 <button
                   onClick={() => setShowPastIncomeModal(true)}
-                  className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-xl text-xs sm:text-sm font-medium hover:bg-emerald-500/30 transition-colors"
+                  className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 bg-success-soft text-success border border-success/30 rounded-xl text-xs sm:text-sm font-medium hover:bg-success/15 transition-colors"
                 >
                   <TrendingUp className="h-3.5 sm:h-4 w-3.5 sm:w-4" />
                   <span className="hidden sm:inline">اضافه ايراد في يوم سابق</span>
@@ -247,7 +244,7 @@ export default function TreasuryDailyView({
               {canAddPastExpense && (
                 <button
                   onClick={() => setShowPastExpenseModal(true)}
-                  className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded-xl text-xs sm:text-sm font-medium hover:bg-rose-500/30 transition-colors"
+                  className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 bg-destructive-soft text-destructive border border-destructive/30 rounded-xl text-xs sm:text-sm font-medium hover:bg-destructive/15 transition-colors"
                 >
                   <TrendingDown className="h-3.5 sm:h-4 w-3.5 sm:w-4" />
                   <span className="hidden sm:inline">اضافه مصروف في يوم سابق</span>
@@ -257,7 +254,7 @@ export default function TreasuryDailyView({
               {canTransfer && (
                 <button
                   onClick={() => setShowTransferModal(true)}
-                  className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 rounded-xl text-xs sm:text-sm font-medium hover:bg-cyan-500/30 transition-colors"
+                  className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 bg-info-soft text-info border border-info/30 rounded-xl text-xs sm:text-sm font-medium hover:bg-info/15 transition-colors"
                 >
                   <ArrowRightLeft className="h-3.5 sm:h-4 w-3.5 sm:w-4" />
                   <span className="hidden sm:inline">تحويل في يوم سابق</span>
@@ -267,7 +264,7 @@ export default function TreasuryDailyView({
               {canCloseDay && (
                 <button
                   onClick={() => setShowClosePanel(true)}
-                  className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-xl text-xs sm:text-sm font-medium hover:bg-amber-500/30 transition-colors"
+                  className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 bg-warning-soft text-warning border border-warning/30 rounded-xl text-xs sm:text-sm font-medium hover:bg-warning/15 transition-colors"
                 >
                   <Lock className="h-3.5 sm:h-4 w-3.5 sm:w-4" />
                   <span className="hidden sm:inline">قفل اليوم</span>
@@ -277,7 +274,7 @@ export default function TreasuryDailyView({
               {canShowShiftClose && (
                 <button
                   onClick={() => setShowShiftClosePanel(true)}
-                  className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-xl text-xs sm:text-sm font-medium hover:bg-amber-500/30 transition-colors"
+                  className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 bg-warning-soft text-warning border border-warning/30 rounded-xl text-xs sm:text-sm font-medium hover:bg-warning/15 transition-colors"
                 >
                   <Lock className="h-3.5 sm:h-4 w-3.5 sm:w-4" />
                   <span className="hidden sm:inline">تقفيل الوردية</span>
@@ -286,7 +283,7 @@ export default function TreasuryDailyView({
               )}
             </div>
           )}
-        </div>
+        </PageHeader>
 
         {/* ── Filters ── */}
         <TreasuryFiltersBar
@@ -297,17 +294,17 @@ export default function TreasuryDailyView({
 
         {/* ── Error ── */}
         {error && (
-          <div className="bg-gradient-to-br from-rose-950/20 to-red-950/10 border border-rose-500/20 rounded-2xl p-6">
-            <p className="text-rose-400">{error}</p>
+          <div className="bg-destructive-soft border border-destructive/20 rounded-2xl p-6">
+            <p className="text-destructive">{error}</p>
           </div>
         )}
 
         {/* ── Loading ── */}
         {loading && !treasuryData && (
-          <div className="bg-gradient-to-br from-zinc-900/90 to-zinc-900/50 backdrop-blur-sm border border-zinc-800/50 rounded-2xl p-12">
+          <div className="bg-card border border-border rounded-2xl p-12">
             <div className="flex flex-col items-center justify-center gap-4">
-              <Loader2 className="h-12 w-12 animate-spin text-amber-500/60" />
-              <p className="text-zinc-400">جاري تحميل بيانات الخزنة...</p>
+              <Loader2 className="h-12 w-12 animate-spin text-warning" />
+              <p className="text-muted-foreground">جاري تحميل بيانات الخزنة...</p>
             </div>
           </div>
         )}
@@ -320,33 +317,33 @@ export default function TreasuryDailyView({
               const totalNet = treasuryData.paymentMethods.reduce((s, p) => s + p.net, 0);
               return (
                 <div className={`rounded-xl sm:rounded-2xl border p-3 sm:p-5 shadow-lg ${totalNet >= 0
-                  ? 'bg-gradient-to-l from-emerald-950/40 to-emerald-900/20 border-emerald-500/20'
-                  : 'bg-gradient-to-l from-rose-950/40 to-rose-900/20 border-rose-500/20'}`}>
+                  ? 'bg-success-soft border-success/20'
+                  : 'bg-destructive-soft border-destructive/20'}`}>
                   <div className="flex flex-col gap-3 sm:gap-4">
                     <div className="flex items-center gap-2 sm:gap-3">
-                      <div className={`p-2 sm:p-3 rounded-xl ${totalNet >= 0 ? 'bg-emerald-500/15' : 'bg-rose-500/15'}`}>
-                        <Calculator className={`h-5 sm:h-6 w-5 sm:w-6 ${totalNet >= 0 ? 'text-emerald-400' : 'text-rose-400'}`} />
+                      <div className={`p-2 sm:p-3 rounded-xl ${totalNet >= 0 ? 'bg-success-soft' : 'bg-destructive-soft'}`}>
+                        <Calculator className={`h-5 sm:h-6 w-5 sm:w-6 ${totalNet >= 0 ? 'text-success' : 'text-destructive'}`} />
                       </div>
                       <div>
-                        <p className={`text-xs font-semibold tracking-wide ${totalNet >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        <p className={`text-xs font-semibold tracking-wide ${totalNet >= 0 ? 'text-success' : 'text-destructive'}`}>
                           إجمالي المبلغ في الخزنة
                         </p>
-                        <p className="text-[10px] sm:text-xs text-zinc-500 mt-0.5">جمع صافي كل طرق الدفع للفترة المحددة</p>
+                        <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5">جمع صافي كل طرق الدفع للفترة المحددة</p>
                       </div>
                     </div>
                     <div className="flex flex-wrap items-center justify-center sm:justify-end gap-3 sm:gap-5">
                       {treasuryData.paymentMethods.map((pm) => (
                         <div key={pm.paymentMethodId} className="text-center min-w-[50px] sm:min-w-[60px]">
-                          <p className="text-[10px] sm:text-[11px] text-zinc-500 mb-0.5 truncate max-w-[70px] sm:max-w-[80px]">{pm.paymentMethodName}</p>
-                          <p className={`text-xs sm:text-sm font-bold ${pm.net >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                          <p className="text-[10px] sm:text-[11px] text-muted-foreground mb-0.5 truncate max-w-[70px] sm:max-w-[80px]">{pm.paymentMethodName}</p>
+                          <p className={`text-xs sm:text-sm font-bold ${pm.net >= 0 ? 'text-success' : 'text-destructive'}`}>
                             {fmt(pm.net)}<span className="text-[9px] sm:text-[10px] font-normal mr-0.5">ج.م</span>
                           </p>
                         </div>
                       ))}
-                      <div className={`h-6 sm:h-8 w-px hidden sm:block ${totalNet >= 0 ? 'bg-emerald-500/20' : 'bg-rose-500/20'}`} />
-                      <div className="text-center w-full sm:w-auto mt-2 sm:mt-0 border-t sm:border-t-0 pt-2 sm:pt-0 border-zinc-700/30">
-                        <p className={`text-[10px] sm:text-[11px] font-medium mb-0.5 ${totalNet >= 0 ? 'text-emerald-400/70' : 'text-rose-400/70'}`}>الإجمالي</p>
-                        <p className={`text-xl sm:text-2xl font-bold ${totalNet >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                      <div className={`h-6 sm:h-8 w-px hidden sm:block ${totalNet >= 0 ? 'bg-success-soft' : 'bg-destructive-soft'}`} />
+                      <div className="text-center w-full sm:w-auto mt-2 sm:mt-0 border-t sm:border-t-0 pt-2 sm:pt-0 border-border">
+                        <p className={`text-[10px] sm:text-[11px] font-medium mb-0.5 ${totalNet >= 0 ? 'text-success' : 'text-destructive'}`}>الإجمالي</p>
+                        <p className={`text-xl sm:text-2xl font-bold ${totalNet >= 0 ? 'text-success' : 'text-destructive'}`}>
                           {fmt(totalNet)}<span className="text-xs sm:text-sm font-normal mr-1">ج.م</span>
                         </p>
                       </div>
@@ -386,14 +383,14 @@ export default function TreasuryDailyView({
 
         {/* ── Empty state ── */}
         {!loading && !error && !treasuryData && filters.newDay === null && (
-          <div className="bg-gradient-to-br from-zinc-900/90 to-zinc-900/50 backdrop-blur-sm border border-zinc-800/50 rounded-2xl p-12">
+          <div className="bg-card border border-border rounded-2xl p-12">
             <div className="flex flex-col items-center justify-center gap-4">
-              <div className="p-4 bg-zinc-800/40 rounded-full">
-                <Lock className="h-12 w-12 text-zinc-600" />
+              <div className="p-4 bg-muted rounded-full">
+                <Lock className="h-12 w-12 text-muted-foreground" />
               </div>
               <div className="text-center">
-                <h3 className="text-lg font-semibold mb-2 text-white">اختر يوم لعرض البيانات</h3>
-                <p className="text-sm text-zinc-400">استخدم الفلاتر أعلاه لاختيار اليوم أو الفترة المطلوبة</p>
+                <h3 className="text-lg font-semibold mb-2 text-foreground">اختر يوم لعرض البيانات</h3>
+                <p className="text-sm text-muted-foreground">استخدم الفلاتر أعلاه لاختيار اليوم أو الفترة المطلوبة</p>
               </div>
             </div>
           </div>

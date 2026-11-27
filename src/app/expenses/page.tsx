@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
-import { ScrollArea } from '@/components/ui/scroll-area';
+import PageHeader from '@/components/shared/PageHeader';
 import { useShiftOperationalGate } from '@/components/session/ShiftOperationalGateProvider';
 import EditExpenseModal from '@/components/expenses/EditExpenseModal';
 import ExpenseReceiptPopup from '@/components/expenses/ExpenseReceiptPopup';
@@ -406,14 +406,16 @@ export default function ExpensesPage() {
   };
 
   return (
-    <div className="flex flex-col lg:flex-row h-screen overflow-hidden relative" dir="rtl">
+    <div className="min-h-full min-w-0 bg-background p-3 sm:p-5" dir="rtl">
+      <PageHeader title="المصروفات" description="تسجيل مصروف جديد ومراجعة الحركات المسجلة" icon={<Receipt />} eyebrow="التشغيل اليومي" />
+      <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(340px,400px)] xl:items-start">
 
       {/* ═══════════ LEFT PANEL: History + Summary ═══════════ */}
-      <div className="flex-1 flex flex-col overflow-hidden bg-background order-1 lg:order-1 min-h-0">
+      <div className="order-2 min-w-0 overflow-hidden rounded-xl border border-border bg-card xl:order-1">
         {/* Summary Cards */}
-        <div className="p-2 sm:p-3 border-b border-border bg-gradient-to-br from-muted/30 to-muted/10 shrink-0">
-          <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
-            <div className="rounded-lg border border-border p-2 sm:p-2.5 bg-card/80 backdrop-blur-sm">
+        <div className="border-b border-border bg-card p-3 sm:p-4">
+          <div className="grid grid-cols-1 gap-2 min-[420px]:grid-cols-3">
+            <div className="rounded-lg border border-border p-2 sm:p-2.5 bg-background">
               <div className="flex items-center gap-1 sm:gap-1.5 text-muted-foreground mb-1">
                 <TrendingDown className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                 <span className="text-[9px] sm:text-[10px] font-medium">إجمالي</span>
@@ -421,14 +423,14 @@ export default function ExpensesPage() {
               <p className="text-sm sm:text-lg font-black truncate">{totalExpenses.toLocaleString('ar-EG')} ج.م</p>
               <p className="text-[9px] sm:text-[10px] text-muted-foreground">{expenses.length} عملية</p>
             </div>
-            <div className="rounded-lg border border-border p-2 sm:p-2.5 bg-card/80 backdrop-blur-sm">
+            <div className="rounded-lg border border-border p-2 sm:p-2.5 bg-background">
               <div className="flex items-center gap-1 sm:gap-1.5 text-muted-foreground mb-1">
                 <Banknote className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                 <span className="text-[9px] sm:text-[10px] font-medium">كاش</span>
               </div>
               <p className="text-sm sm:text-lg font-bold truncate">{totalCash.toLocaleString('ar-EG')} ج.م</p>
             </div>
-            <div className="rounded-lg border border-border p-2 sm:p-2.5 bg-card/80 backdrop-blur-sm">
+            <div className="rounded-lg border border-border p-2 sm:p-2.5 bg-background">
               <div className="flex items-center gap-1 sm:gap-1.5 text-muted-foreground mb-1">
                 <CreditCard className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                 <span className="text-[9px] sm:text-[10px] font-medium">فيزا</span>
@@ -439,11 +441,11 @@ export default function ExpensesPage() {
         </div>
 
         {/* ═══ Filters Bar ═══ */}
-        <div className="px-2 sm:px-3 pt-2 sm:pt-2.5 pb-2 border-b border-border bg-zinc-900/60 space-y-2 shrink-0">
+        <div className="px-2 sm:px-3 pt-2 sm:pt-2.5 pb-2 border-b border-border bg-card space-y-2 shrink-0">
 
           {/* Row 1: Preset buttons + category */}
           <div className="flex items-center gap-1 sm:gap-1.5 flex-wrap">
-            <Filter className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-zinc-500 shrink-0" />
+            <Filter className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-muted-foreground shrink-0" />
 
             {([
               { key: 'today', label: 'اليوم', fullLabel: 'اليوم' },
@@ -457,7 +459,7 @@ export default function ExpensesPage() {
                 onClick={() => applyPreset(key)}
                 className={`text-[10px] sm:text-[11px] px-2 sm:px-2.5 py-1 rounded-md border font-semibold transition-all ${activeDatePreset === key
                   ? 'border-primary bg-primary/15 text-primary shadow-sm shadow-primary/20'
-                  : 'border-border text-muted-foreground hover:border-zinc-500 hover:text-foreground hover:bg-accent'
+                  : 'border-border text-muted-foreground hover:border-border hover:text-foreground hover:bg-accent'
                   }`}
                 title={fullLabel}
               >
@@ -469,8 +471,8 @@ export default function ExpensesPage() {
             <button
               onClick={() => { setShowCustomRange(v => !v); if (activeDatePreset !== 'custom') setActiveDatePreset('custom'); }}
               className={`text-[10px] sm:text-[11px] px-2 sm:px-2.5 py-1 rounded-md border font-semibold transition-all flex items-center gap-1 ${activeDatePreset === 'custom'
-                ? 'border-amber-500/60 bg-amber-500/10 text-amber-400'
-                : 'border-border text-muted-foreground hover:border-zinc-500 hover:text-foreground hover:bg-accent'
+                ? 'border-warning/60 bg-warning-soft text-warning'
+                : 'border-border text-muted-foreground hover:border-border hover:text-foreground hover:bg-accent'
                 }`}
             >
               <span className="hidden sm:inline">فترة مخصصة</span>
@@ -484,7 +486,7 @@ export default function ExpensesPage() {
             <select
               value={filterCatId}
               onChange={(e) => setFilterCatId(e.target.value)}
-              className="text-[10px] sm:text-[11px] px-1.5 sm:px-2 py-1 rounded-md border border-border bg-zinc-800/60 text-foreground max-w-[100px] sm:max-w-[140px] truncate"
+              className="text-[10px] sm:text-[11px] px-1.5 sm:px-2 py-1 rounded-md border border-border bg-muted text-foreground max-w-[100px] sm:max-w-[140px] truncate"
             >
               <option value="">كل الفئات</option>
               {categories.map(c => (
@@ -496,7 +498,7 @@ export default function ExpensesPage() {
             <select
               value={filterPaymentMethodId}
               onChange={(e) => setFilterPaymentMethodId(e.target.value)}
-              className="text-[11px] px-2 py-1 rounded-md border border-border bg-zinc-800/60 text-foreground max-w-[140px] truncate"
+              className="text-[11px] px-2 py-1 rounded-md border border-border bg-muted text-foreground max-w-[140px] truncate"
             >
               <option value="">كل وسائل الدفع</option>
               {paymentMethods.map(pm => (
@@ -518,19 +520,19 @@ export default function ExpensesPage() {
           {/* Row 2: Custom date range (collapsible) */}
           {showCustomRange && (
             <div className="flex items-center gap-2 flex-wrap pt-0.5">
-              <span className="text-[10px] sm:text-[11px] text-zinc-500">من</span>
+              <span className="text-[10px] sm:text-[11px] text-muted-foreground">من</span>
               <input
                 type="date"
                 value={dateFrom}
                 onChange={(e) => handleCustomFrom(e.target.value)}
-                className="text-[10px] sm:text-[11px] px-1.5 sm:px-2 py-1 rounded-md border border-border bg-zinc-800/60 text-foreground"
+                className="text-[10px] sm:text-[11px] px-1.5 sm:px-2 py-1 rounded-md border border-border bg-muted text-foreground"
               />
-              <span className="text-[10px] sm:text-[11px] text-zinc-500">إلى</span>
+              <span className="text-[10px] sm:text-[11px] text-muted-foreground">إلى</span>
               <input
                 type="date"
                 value={dateTo}
                 onChange={(e) => handleCustomTo(e.target.value)}
-                className="text-[10px] sm:text-[11px] px-1.5 sm:px-2 py-1 rounded-md border border-border bg-zinc-800/60 text-foreground"
+                className="text-[10px] sm:text-[11px] px-1.5 sm:px-2 py-1 rounded-md border border-border bg-muted text-foreground"
               />
               {dateError && (
                 <span className="text-[9px] sm:text-[10px] text-destructive flex items-center gap-1">
@@ -542,16 +544,16 @@ export default function ExpensesPage() {
 
           {/* Period label */}
           <div className="flex items-center justify-between">
-            <p className="text-[10px] text-zinc-500">
-              <span className="text-zinc-400 font-medium">{periodLabel}</span>
+            <p className="text-[10px] text-muted-foreground">
+              <span className="text-muted-foreground font-medium">{periodLabel}</span>
               {expenses.length > 0 && !loadingHistory && (
-                <span className="mr-1.5 text-zinc-600">— {expenses.length} عملية</span>
+                <span className="mr-1.5 text-muted-foreground">— {expenses.length} عملية</span>
               )}
             </p>
             <button
               onClick={loadExpenses}
               disabled={!!dateError}
-              className="text-[10px] text-zinc-500 hover:text-zinc-300 flex items-center gap-1 transition-colors disabled:opacity-40"
+              className="text-[10px] text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors disabled:opacity-40"
             >
               <RotateCcw className="w-3 h-3" />
               تحديث
@@ -560,7 +562,7 @@ export default function ExpensesPage() {
         </div>
 
         {/* Expenses List */}
-        <div className="flex-1 min-h-0 overflow-y-auto">
+        <div className="min-w-0">
           <div className="p-3">
             {loadingHistory && (
               <div className="text-center py-8 text-muted-foreground">
@@ -602,8 +604,8 @@ export default function ExpensesPage() {
                 <button
                   onClick={() => setSortByAmountDesc(!sortByAmountDesc)}
                   className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-[11px] font-medium transition-all ${sortByAmountDesc
-                      ? 'bg-amber-500/10 border-amber-500/50 text-amber-400'
-                      : 'bg-zinc-800/50 border-zinc-700 text-zinc-400 hover:text-zinc-300'
+                      ? 'bg-warning-soft border-warning/50 text-warning'
+                      : 'bg-muted border-border text-muted-foreground hover:text-foreground'
                     }`}
                 >
                   <TrendingDown className="w-3.5 h-3.5" />
@@ -624,9 +626,9 @@ export default function ExpensesPage() {
                       style={{ scrollMarginTop: '10px' }}
                     >
                       <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                        <div className={`flex items-center justify-center w-10 h-10 rounded-full shrink-0 ${rank === 1 ? 'bg-amber-500 text-amber-950' :
-                            rank === 2 ? 'bg-zinc-300 text-zinc-900' :
-                              rank === 3 ? 'bg-orange-500 text-orange-950' :
+                        <div className={`flex items-center justify-center w-10 h-10 rounded-full shrink-0 ${rank === 1 ? 'bg-warning text-warning-foreground' :
+                            rank === 2 ? 'bg-muted text-muted-foreground' :
+                              rank === 3 ? 'bg-warning text-warning-foreground' :
                                 'bg-destructive/10 text-destructive'
                           }`}>
                           {rank && rank <= 3 ? (
@@ -644,9 +646,9 @@ export default function ExpensesPage() {
                             {sortByAmountDesc && rank && rank <= 3 && (
                               <Badge
                                 variant="outline"
-                                className={`text-[10px] h-5 px-2 font-bold ${rank === 1 ? 'bg-amber-500/20 border-amber-500 text-amber-400' :
-                                    rank === 2 ? 'bg-zinc-400/20 border-zinc-400 text-zinc-300' :
-                                      'bg-orange-500/20 border-orange-500 text-orange-400'
+                                className={`text-[10px] h-5 px-2 font-bold ${rank === 1 ? 'bg-warning-soft border-warning/30 text-warning' :
+                                    rank === 2 ? 'bg-muted border-border text-foreground' :
+                                      'bg-warning-soft border-warning/30 text-warning'
                                   }`}
                               >
                                 {rank === 1 ? '🥇 الأعلى' : rank === 2 ? '🥈' : '🥉'}
@@ -685,10 +687,10 @@ export default function ExpensesPage() {
                         </button>
                         <button
                           onClick={() => handleDelete(exp.ID, exp.invID)}
-                          className="p-1.5 hover:bg-red-100 rounded-lg transition-colors"
+                          className="p-1.5 hover:bg-destructive-soft rounded-lg transition-colors"
                           title="حذف"
                         >
-                          <Trash2 className="w-3.5 h-3.5 text-red-500 hover:text-red-600" />
+                          <Trash2 className="w-3.5 h-3.5 text-destructive hover:text-destructive" />
                         </button>
                         <span className="text-sm font-black text-destructive">
                           {exp.GrandTolal?.toLocaleString('ar-EG')} ج.م
@@ -704,7 +706,7 @@ export default function ExpensesPage() {
       </div>
 
       {/* ═══════════ RIGHT PANEL: New Expense Form ═══════════ */}
-      <aside className="w-full lg:w-[380px] border-r border-border flex flex-col shrink-0 bg-muted/5 order-2 lg:order-2 h-[45vh] lg:h-auto">
+      <aside className="order-1 min-w-0 rounded-xl border border-border bg-card xl:order-2">
         <div className="p-3 border-b border-border bg-muted/20">
           <h2 className="text-sm font-bold flex items-center gap-2">
             <Receipt className="w-4 h-4" />
@@ -712,7 +714,7 @@ export default function ExpensesPage() {
           </h2>
         </div>
 
-        <ScrollArea className="flex-1">
+        <div>
           <div className="p-3 space-y-3">
             {/* ──── Quick Picks ──── */}
             {quickPicks.length > 0 && (
@@ -835,7 +837,7 @@ export default function ExpensesPage() {
             {/* Payment Method */}
             <div>
               <h3 className="text-sm font-semibold text-muted-foreground mb-2">طريقة الدفع</h3>
-              <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-thin scrollbar-thumb-zinc-600 scrollbar-track-transparent">
+              <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent">
                 {paymentMethods.map((m) => {
                   const isSelected = paymentMethodId === m.ID;
                   const icon = PAYMENT_ICONS[m.Name] || <Wallet className="w-4 h-4" />;
@@ -874,7 +876,7 @@ export default function ExpensesPage() {
 
             {/* Error */}
             {saveError && (
-              <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 rounded-lg p-2.5 font-medium">
+              <div role="alert" className="flex items-center gap-2 text-sm text-destructive bg-destructive-soft rounded-lg p-2.5 font-medium">
                 <AlertTriangle className="w-4 h-4 shrink-0" />
                 {saveError}
               </div>
@@ -882,7 +884,7 @@ export default function ExpensesPage() {
 
             {/* Success */}
             {saveSuccess && (
-              <div className="flex items-center gap-2 text-sm text-emerald-400 bg-emerald-500/10 rounded-lg p-2.5 font-medium">
+              <div role="status" className="flex items-center gap-2 text-sm text-success bg-success-soft rounded-lg p-2.5 font-medium">
                 <CheckCircle2 className="w-4 h-4 shrink-0" />
                 {saveSuccess}
               </div>
@@ -891,7 +893,7 @@ export default function ExpensesPage() {
             {/* Save Button */}
             <Button
               size="lg"
-              className="w-full text-base font-bold py-6"
+              className="w-full text-base font-bold min-h-12"
               onClick={handleSave}
               disabled={saving}
             >
@@ -919,8 +921,9 @@ export default function ExpensesPage() {
               مسح النموذج
             </Button>
           </div>
-        </ScrollArea>
+        </div>
       </aside>
+      </div>
 
       {/* Edit Modal */}
       {editingExpense && (
@@ -944,16 +947,16 @@ export default function ExpensesPage() {
       />
 
       {/* Toast notifications */}
-      <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[80] flex flex-col gap-2 w-80" dir="rtl">
+      <div className="fixed bottom-4 start-4 z-[80] flex w-[min(20rem,calc(100vw-2rem))] flex-col gap-2" role="status" aria-live="polite" dir="rtl">
         {toasts.map(t => (
           <div key={t.id} className={`flex items-center gap-3 px-4 py-3 rounded-xl border shadow-xl text-sm font-medium
-            ${t.type === 'success' ? 'bg-emerald-950/90 border-emerald-500/40 text-emerald-300' : ''}
-            ${t.type === 'error'   ? 'bg-rose-950/90 border-rose-500/40 text-rose-300' : ''}
-            ${t.type === 'info'    ? 'bg-blue-950/90 border-blue-500/30 text-blue-300' : ''}
+            ${t.type === 'success' ? 'bg-success-soft border-success/40 text-success' : ''}
+            ${t.type === 'error'   ? 'bg-destructive-soft border-destructive/40 text-destructive' : ''}
+            ${t.type === 'info'    ? 'bg-info-soft border-info/30 text-info' : ''}
           `}>
             {t.type === 'success' && <CheckCircle2 className="w-4 h-4 shrink-0" />}
             {t.type === 'error'   && <AlertTriangle className="w-4 h-4 shrink-0" />}
-            {t.type === 'info'    && <AlertTriangle className="w-4 h-4 shrink-0 text-blue-400" />}
+            {t.type === 'info'    && <AlertTriangle className="w-4 h-4 shrink-0 text-info" />}
             <span className="flex-1">{t.message}</span>
           </div>
         ))}
