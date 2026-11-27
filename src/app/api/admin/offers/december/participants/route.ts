@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isAuthResult } from '@/lib/api-auth';
 import {requireDecemberReception} from '@/lib/campaigns/december-exam/receptionAuth';
 import { getPool,sql } from '@/lib/db';
+import {decemberPhoneSql,decemberCanonicalPhoneSql} from '@/lib/campaigns/december-exam/phoneSql';
 import { normalizeEgyptianMobile } from '@/lib/campaigns/december-exam/registration';
 import { DECEMBER_CAMPAIGN_CODE } from '@/lib/campaigns/december-exam/registrationRepository';
 export const runtime='nodejs';
@@ -72,6 +73,12 @@ export async function POST(req:NextRequest){
       let mobile:string|null=null;
       try{mobile=normalizeEgyptianMobile(customer.recordset[0]?.Mobile);}catch{/* no match */}
       if(customer.recordset.length!==1||mobile!==p.PhoneNormalized){await tx.rollback();return reply({ok:false,code:'IDENTITY_MISMATCH'},409);}
+      const matches=await rq().input('phone',sql.VarChar(16),p.PhoneNormalized).query<{n:number}>(`
+        SELECT COUNT(*) n FROM dbo.TblClient WITH(UPDLOCK,HOLDLOCK)
+        CROSS APPLY(SELECT ${decemberPhoneSql('Mobile')} AS clean) m
+        WHERE TenantId=@tenant AND ${decemberCanonicalPhoneSql}=@phone
+      `);
+      if(matches.recordset[0]?.n!==1){await tx.rollback();return reply({ok:false,code:'IDENTITY_DUPLICATE_REVIEW'},409);}
       const taken=await rq().input('client',sql.Int,body.clientId).query(`
         SELECT TOP(1) p.ParticipantId FROM dbo.CutOfferParticipant p WITH(UPDLOCK,HOLDLOCK)
         JOIN dbo.CutOfferCampaign c ON c.TenantId=p.TenantId AND c.CampaignId=p.CampaignId
