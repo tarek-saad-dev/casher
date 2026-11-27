@@ -25,6 +25,7 @@ interface StoreStats {
 }
 
 const quickLinks = [
+  { label: 'معاينة شروط العضويات', href: '/admin/cut-club/membership-preview', icon: Crown, color: 'text-yellow-400' },
   { label: 'إدارة المتجر', href: '/admin/cut-club/store', icon: Store, color: 'text-blue-400' },
   { label: 'المخزون', href: '/admin/cut-club/inventory', icon: Package, color: 'text-green-400' },
   { label: 'صناديق الغموض', href: '/admin/cut-club/mystery-boxes', icon: Gift, color: 'text-purple-400' },
