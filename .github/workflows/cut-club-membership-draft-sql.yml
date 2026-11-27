@@ -15,6 +15,7 @@ on:
       - 'docs/cut-club/sql/membership-publication-staging-only.sql'
       - 'docs/cut-club/sql/membership-application-staging-only.sql'
       - 'docs/cut-club/sql/membership-application-fulfillment-staging-only.sql'
+      - 'docs/cut-club/sql/membership-benefit-approval-staging-only.sql'
       - 'scripts/cut-club/ci/seed-membership-draft.cjs'
       - '.github/workflows/cut-club-membership-draft-sql.yml'
 permissions:
@@ -55,3 +56,4 @@ jobs:
       - run: npx vitest run src/lib/__tests__/cutClubMembershipPolicy.test.ts src/lib/__tests__/cutClubMembershipDraft.test.ts src/lib/__tests__/cutClubMembershipDraftRealSql.test.ts src/lib/__tests__/cutClubMembershipProof.test.ts src/lib/__tests__/cutClubMembershipProofRealSql.test.ts src/lib/__tests__/cutClubMembershipTrialRealSql.test.ts src/lib/__tests__/cutClubMembershipMemberReadRealSql.test.ts
       - run: npx vitest run src/lib/__tests__/cutClubMembershipApplicationTrial.test.ts src/lib/__tests__/cutClubMembershipApplicationLifecycleRealSql.test.ts
       - run: npx vitest run src/lib/__tests__/cutClubMembershipBenefitDraft.test.ts src/lib/__tests__/cutClubMembershipBenefitPreview.test.ts src/lib/__tests__/cutClubMembershipBenefitDraftRealSql.test.ts
+      - run: npx vitest run src/lib/__tests__/cutClubMembershipBenefitApproval.test.ts src/lib/__tests__/cutClubMembershipBenefitApprovalRealSql.test.ts
