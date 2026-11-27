@@ -56,6 +56,7 @@ async function main(){
     browser=await chromium.launch({headless:true});
     fs.mkdirSync('authenticated-evidence',{recursive:true});
     const contexts:any[]=[];
+    let allowLaunchWrites=false;
     for(const [i,a] of accounts.entries()){
       const context=await browser.newContext({viewport:{width:i===0?390:1440,height:900},locale:'ar-EG',serviceWorkers:'block'});
       contexts.push(context);
@@ -63,7 +64,10 @@ async function main(){
       await context.route('**/*',async (route:any)=>{
         const req=route.request();
         if(new URL(req.url()).origin!==base)return route.abort();
-        if(!['GET','HEAD','OPTIONS'].includes(req.method()))return route.abort();
+        if(!['GET','HEAD','OPTIONS'].includes(req.method())){
+          const pathname=new URL(req.url()).pathname;
+          if(!(i===0&&allowLaunchWrites&&req.method()==='POST'&&['/api/day/open','/api/shift/open'].includes(pathname)))return route.abort();
+        }
         return route.continue();
       });
       a.attempted=true;
@@ -108,6 +112,90 @@ async function main(){
       const body=await response.json();
       assert.equal(body.services.some((row:any)=>row.ProName===name),i===0,'Service must stay inside tenant A');
     }
+    const [ownerA,ownerB]=contexts;
+    async function read(context:any,path:string){
+      const res=await context.request.get(base+path,{timeout:120000});
+      assert.equal(res.status(),200,'GET '+path);return res.json();
+    }
+    async function write(context:any,path:string,method:string,data:any,expected=200){
+      const res=await context.request.fetch(base+path,{method,data,timeout:120000});
+      assert.equal(res.status(),expected,method+' '+path);return res.json();
+    }
+    // Registration duplicate protection is verified against the actual public endpoint.
+    const duplicate=await write(ownerA,'/api/public/signup/complete','POST',{industry:'salon',needs:[],contactName:accounts[0].businessName,businessName:accounts[0].businessName,phone:accounts[0].phone,email:null,password,startMode:'real'},409);
+    assert.equal(duplicate.code,'PHONE_ALREADY_REGISTERED');
+
+    const brandPath='/api/tenant/brand';
+    const brandA=(await read(ownerA,brandPath)).brand,brandB=(await read(ownerB,brandPath)).brand;
+    assert.notEqual(brandA.tenantId,brandB.tenantId);
+    const brandPayload={displayName:accounts[0].businessName+' Brand',logoUrl:'https://example.invalid/qa-logo.png',phone:brandA.phone,address:brandA.address,primaryColor:'#263E5C',accentColor:'#4269BC',receiptFooter:'QA receipt',timezone:brandA.timezone,publicBookingOrigins:brandA.publicBookingOrigins,expectedRevision:brandA.revision};
+    await write(ownerA,brandPath,'PUT',{...brandPayload,logoUrl:'http://example.invalid/qa.png'},400);
+    await write(ownerA,brandPath,'PUT',{...brandPayload,tenantId:brandB.tenantId},400);
+    const updated=(await write(ownerA,brandPath,'PUT',brandPayload)).brand;
+    assert.equal(updated.displayName,brandPayload.displayName);
+    assert.equal(updated.revision,brandA.revision+1);
+    assert.equal(updated.primaryColor,brandPayload.primaryColor);
+    await write(ownerA,brandPath,'PUT',brandPayload,409);
+    assert.deepEqual((await read(ownerB,brandPath)).brand,brandB,'Brand isolation');
+    assert.equal((await read(ownerA,brandPath)).brand.receiptFooter,'QA receipt');
+    console.log('PASS real identity validation, optimistic conflict and tenant isolation');
+
+    const operatingPath='/api/tenant/onboarding/operating';
+    const opA=await read(ownerA,operatingPath),opB=await read(ownerB,operatingPath);
+    assert.ok(opA.booking&&opB.booking,'Fresh salon booking settings must be seeded');
+    const preferences={slotIntervalMinutes:opA.booking.slotIntervalMinutes===30?15:30,minNoticeMinutes:60,maxBookingDaysAhead:21};
+    await write(ownerA,operatingPath,'PATCH',{...preferences,publicBookingEnabled:true},400);
+    await write(ownerA,operatingPath,'PATCH',preferences);
+    const current=await read(ownerA,operatingPath);
+    for(const key of Object.keys(preferences))assert.equal(current.booking[key],(preferences as any)[key]);
+    assert.equal(current.booking.enabled,opA.booking.enabled);
+    assert.equal(current.publicBookingEnabled,opA.publicBookingEnabled);
+    assert.equal(current.publicBookingEnabled,false);
+    assert.deepEqual(await read(ownerB,operatingPath),opB,'Booking preference isolation');
+    console.log('PASS real operating preference save without public activation');
+
+    const setupPath='/api/tenant/onboarding/setup-data';
+    await write(ownerA,setupPath,'POST',{action:'branch',address:'QA-only address',phone:accounts[0].phone,defaultOpenTime:'11:00',defaultCloseTime:'23:00'});
+    const employeeName=tag+'-EMPLOYEE';
+    await write(ownerA,setupPath,'POST',{action:'employee',name:employeeName,job:'حلاق'});
+    const aData=await read(ownerA,setupPath),bData=await read(ownerB,setupPath);
+    assert.equal(aData.branch.address,'QA-only address');
+    assert.notEqual(bData.branch.address,'QA-only address');
+    assert.ok(aData.employees.some((row:any)=>row.EmpName===employeeName));
+    assert.ok(!bData.employees.some((row:any)=>row.EmpName===employeeName));
+    console.log('PASS real branch and employee setup isolation');
+
+    const launchPage=ownerA.pages()[0];
+    await launchPage.goto(base+'/setup/launch',{waitUntil:'load',timeout:120000});
+    const day=launchPage.getByRole('button',{name:'فتح يوم العمل',exact:true});
+    await day.waitFor({timeout:90000});
+    const beforeB=(await read(ownerB,'/api/tenant/onboarding')).journey;
+    allowLaunchWrites=true;
+    try{
+      await day.click();
+      await launchPage.waitForFunction(()=>![...document.querySelectorAll('button')].some(b=>b.textContent?.trim()==='فتح يوم العمل'||b.textContent?.trim()==='جاري فتح اليوم…'),null,{timeout:120000});
+      const shift=launchPage.getByRole('button',{name:'فتح وردية',exact:true});
+      await shift.waitFor({timeout:90000});
+      const select=launchPage.getByRole('combobox',{name:'اختيار الوردية'});
+      // Some owners have a default shift, others need to choose an actual definition.
+      if(await shift.isDisabled()){
+        await select.waitFor({timeout:90000});
+        const value=await select.locator('option').evaluateAll((options:any[])=>options.map(o=>o.value).find(v=>v));
+        assert.ok(value,'At least one real shift definition is required');
+        await select.selectOption(value);
+      }
+      await shift.click();
+      await launchPage.getByText('اليوم وورديتك مفتوحان',{exact:true}).waitFor({timeout:120000});
+      assert.equal(await launchPage.getByRole('button',{name:'فتح يوم العمل',exact:true}).count(),0);
+      assert.equal(await launchPage.getByRole('button',{name:'فتح وردية',exact:true}).count(),0);
+      await launchPage.screenshot({path:'authenticated-evidence/0-launch-ready.png',fullPage:true});
+    }finally{allowLaunchWrites=false;}
+    const afterA=(await read(ownerA,'/api/tenant/onboarding')).journey,afterB=(await read(ownerB,'/api/tenant/onboarding')).journey;
+    assert.equal(afterA.steps.find((x:any)=>x.id==='launch').complete,true);
+    assert.notEqual(afterA.firstSaleStatus,'done','Launch must not create an invoice');
+    assert.equal(afterB.steps.find((x:any)=>x.id==='launch').complete,beforeB.steps.find((x:any)=>x.id==='launch').complete);
+    assert.equal(afterB.firstSaleStatus,beforeB.firstSaleStatus);
+    console.log('PASS real day and shift launch, no implicit first sale, tenant isolation');
     const anonymous=await browser.newContext();
     const denied=await anonymous.request.get(base+'/api/tenant/onboarding/setup-data');
     assert.equal(denied.status(),401);
