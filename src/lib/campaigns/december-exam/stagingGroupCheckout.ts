@@ -32,7 +32,7 @@ export async function executeStagingDecemberGroup(tx:Transaction,input:GroupInpu
  for(const member of all){
   const quote=await quoteDecemberInTransaction(tx,{tenantId,branchId:member.branchId,clientId:member.clientId,items:member.items});
   if(quote.discountPiasters!==member.decemberClaim!.expectedDiscountMinor)deny('DECEMBER_GROUP_QUOTE_CHANGED');
-  if(member!==owner&&(quote.payablePiasters<=0))deny('DECEMBER_GROUP_PAID_FIRST_VISIT_REQUIRED');
+  if(member!==owner&&(quote.payablePiasters<=0||!quote.rules.some(r=>r.code==='FIRST_VISIT')))deny('DECEMBER_GROUP_PAID_FIRST_VISIT_REQUIRED');
   const allocations=member.activeAllocations;
   if(member.isSplitPayment||member.payCash!==0||member.payVisa!==0||allocations.length!==(quote.payablePiasters?1:0))deny('DECEMBER_GROUP_PAYMENT_INVALID');
   if(allocations.length){
