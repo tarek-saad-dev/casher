@@ -8,7 +8,7 @@ import TrainingExperience from '@/components/onboarding/TrainingExperience';
 afterEach(()=>{cleanup();vi.unstubAllGlobals();vi.restoreAllMocks();});
 
 function advanceSignup(){
-  fireEvent.change(screen.getByLabelText('رقم الموبايل'),{target:{value:'01012345678'}});
+  fireEvent.change(screen.getByRole('textbox',{name:'رقم الموبايل'}),{target:{value:'01012345678'}});
   fireEvent.click(screen.getByRole('button',{name:'متابعة'}));
   fireEvent.change(screen.getByLabelText('الاسم بالكامل'),{target:{value:'Test Owner'}});
   fireEvent.change(screen.getByPlaceholderText('10 أحرف على الأقل'),{target:{value:'test-password-123'}});
@@ -48,13 +48,13 @@ describe('V3 registration interface',()=>{
   it('preserves custom app choices when the owner revisits the same industry',()=>{
     render(<PublicSignupFlow otpRequired={false}/>);
     advanceSignup();
-    fireEvent.click(screen.getByRole('button',{name:'التطبيقات',exact:true}));
+    fireEvent.click(screen.getByRole('button',{name:'التطبيقات'}));
     const option=screen.getAllByRole('button',{name:/اختياري/}).find(b=>!b.hasAttribute('disabled'));
     expect(option).toBeDefined();
     const name=option!.textContent!;
     const selected=option!.getAttribute('aria-pressed');
     fireEvent.click(option!);
-    fireEvent.click(screen.getByRole('button',{name:'نوع النشاط',exact:true}));
+    fireEvent.click(screen.getByRole('button',{name:'نوع النشاط'}));
     fireEvent.click(screen.getByRole('button',{name:/صالون \/ Barbershop/}));
     fireEvent.click(screen.getByRole('button',{name:'متابعة'}));
     const revisited=screen.getAllByRole('button',{name:/اختياري/}).find(b=>b.textContent===name);
