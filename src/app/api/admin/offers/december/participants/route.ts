@@ -14,10 +14,13 @@ export async function GET(req:NextRequest){
   if(!isAuthResult(staff))return staff;
   if(!enabled(staff.tenantId))return reply({ok:false,code:'CAMPAIGN_UNAVAILABLE'},503);
   const code=req.nextUrl.searchParams.get('code')?.trim().toUpperCase()||null;
-  if(code&&!/^CUT-[A-F0-9]{16}$/.test(code))return reply({ok:false,code:'INVALID_REQUEST'},400);
+  const rawPhone=req.nextUrl.searchParams.get('phone');
+  let phone:string|null=null;
+  try{if(rawPhone)phone=normalizeEgyptianMobile(rawPhone);}catch{return reply({ok:false,code:'INVALID_REQUEST'},400);}
+  if((code&&!/^CUT-[A-F0-9]{16}$/.test(code))||(code&&phone))return reply({ok:false,code:'INVALID_REQUEST'},400);
   try{
     const r=await (await getPool()).request().input('tenant',sql.UniqueIdentifier,staff.tenantId)
-      .input('campaign',sql.VarChar(48),DECEMBER_CAMPAIGN_CODE).input('code',sql.VarChar(32),code)
+      .input('campaign',sql.VarChar(48),DECEMBER_CAMPAIGN_CODE).input('code',sql.VarChar(32),code).input('phone',sql.VarChar(16),phone)
       .query(`
         SELECT TOP(100) p.ParticipantId,p.DisplayName,LEFT(p.PhoneNormalized,4)+'****'+RIGHT(p.PhoneNormalized,3) AS PhoneMasked,
           p.ReferralCode,p.ClientId,p.IsStudent,p.EducationType,p.Institution,p.FacultyOrSpecialization,p.AcademicYear,
@@ -25,7 +28,7 @@ export async function GET(req:NextRequest){
         FROM dbo.CutOfferParticipant p
         JOIN dbo.CutOfferCampaign c ON c.TenantId=p.TenantId AND c.CampaignId=p.CampaignId
         WHERE p.TenantId=@tenant AND c.Code=@campaign
-          AND ((@code IS NULL AND p.IdentityVerifiedAtUtc IS NULL) OR p.ReferralCode=@code)
+          AND ((@code IS NULL AND @phone IS NULL AND p.IdentityVerifiedAtUtc IS NULL) OR p.ReferralCode=@code OR p.PhoneNormalized=@phone)
         ORDER BY p.CreatedAtUtc DESC,p.ParticipantId
       `);
     return reply({ok:true,items:r.recordset});
