@@ -54,12 +54,12 @@ export async function membershipTrial(pool:sql.ConnectionPool,s:Scope,raw:unknow
  SELECT TOP(1) Revision,ProgramRevision,LegacyClientID,BranchID,ProofRevision,ExpiresAtUtc FROM dbo.CutClubMembershipTrial WITH(UPDLOCK,HOLDLOCK)
  WHERE TenantId=@tenant AND AccountID=@account AND ProgramCode=@code ORDER BY Revision DESC`);
  const prior=old.recordset[0],revision=prior?.Revision??0;
- const status:TrialResult['status']=!prior?'NONE':prior.ExpiresAtUtc<=now?'EXPIRED':!eligibility.eligible||prior.ProgramRevision!==d.Revision||prior.LegacyClientID!==a.LegacyClientID||prior.ProofRevision!==proofRevision||prior.BranchID!==v.branchId?'INVALIDATED':'CURRENT';
+ const status:TrialResult['status']=!prior?'NONE':prior.ExpiresAtUtc<=now?'EXPIRED':!eligibility.eligible||prior.ProgramRevision!==d.Revision||prior.LegacyClientID!==a.LegacyClientID||prior.ProofRevision!==proofRevision?'INVALIDATED':'CURRENT';
  const result:TrialResult={...eligibility,visits,proofRevision,trialRevision:revision,status,issued:false};
  if(v.action==='CHECK'){await tx.commit();return result;}
  if(revision!==v.expectedTrialRevision)throw new TrialError('TRIAL_REVISION_CONFLICT',409);
  if(!eligibility.eligible||!a.LegacyClientID)throw new TrialError('NOT_ELIGIBLE',409);
- if(status==='CURRENT')throw new TrialError('TRIAL_ALREADY_CURRENT',409);
+ if(status==='CURRENT'||(prior&&prior.ExpiresAtUtc>now&&prior.ProgramRevision===d.Revision&&prior.LegacyClientID===a.LegacyClientID&&prior.ProofRevision===proofRevision))throw new TrialError('TRIAL_ALREADY_CURRENT',409);
  // Cannot extend beyond evidence validity. General trial is also capped by validated input.
  if(proof&&(!proof.expiresAt||Date.parse(v.expiresAt)>Date.parse(proof.expiresAt)))throw new TrialError('TRIAL_EXCEEDS_PROOF',409);
  const written=await q().input('account',sql.UniqueIdentifier,v.accountId).input('code',sql.VarChar(40),v.programCode)

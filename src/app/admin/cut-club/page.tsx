@@ -25,6 +25,7 @@ interface StoreStats {
 }
 
 const quickLinks = [
+  { label: 'تشغيل العضويات تجريبيًا', href: '/admin/cut-club/membership-trials', icon: Crown, color: 'text-yellow-400' },
   { label: 'مراجعة إثباتات العضويات', href: '/admin/cut-club/membership-proofs', icon: Users, color: 'text-yellow-400' },
   { label: 'مسودات برامج العضويات', href: '/admin/cut-club/membership-drafts', icon: Crown, color: 'text-yellow-400' },
   { label: 'معاينة شروط العضويات', href: '/admin/cut-club/membership-preview', icon: Crown, color: 'text-yellow-400' },
