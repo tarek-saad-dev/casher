@@ -18,6 +18,22 @@ export interface SensitiveActionMetadata {
 }
 
 export const SENSITIVE_ACTIONS: Record<string, SensitiveActionMetadata> = {
+  edit_employee_ledger_entry: {
+    actionType: 'edit_employee_ledger_entry',
+    label: 'تعديل قيد دفتر موظف',
+    entityType: 'TblEmpLedgerEntry',
+    riskLevel: 'high',
+    requiresReason: true,
+    sensitiveFields: ['password', 'token', 'secret', 'cookie'],
+  },
+  delete_employee_ledger_entry: {
+    actionType: 'delete_employee_ledger_entry',
+    label: 'إلغاء قيد دفتر موظف',
+    entityType: 'TblEmpLedgerEntry',
+    riskLevel: 'critical',
+    requiresReason: true,
+    sensitiveFields: ['password', 'token', 'secret', 'cookie'],
+  },
   edit_expense: {
     actionType: 'edit_expense',
     label: 'تعديل مصروف',
