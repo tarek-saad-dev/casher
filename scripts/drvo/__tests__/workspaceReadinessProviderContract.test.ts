@@ -87,6 +87,31 @@ describe('Core Workspace app-readiness contract', () => {
     expect(appCodeState(unknown, 'inventory')?.status).toBe('installed_unverified');
   });
 
+  it('does not claim setup verified when usage evidence is unknown', () => {
+    const unknown = applyWorkspaceReadinessSignals(baseline(), A, [
+      signal('inventory', { usage: 'unknown' }),
+    ]);
+    expect(appCodeState(unknown, 'inventory')?.status).toBe('installed_unverified');
+
+    const explicitlyNotObserved = applyWorkspaceReadinessSignals(baseline(), A, [
+      signal('inventory', { usage: 'not_observed' }),
+    ]);
+    expect(appCodeState(explicitlyNotObserved, 'inventory')?.status).toBe('basics_present');
+  });
+
+  it('rejects duplicate evidence keys after whitespace normalization', () => {
+    const result = applyWorkspaceReadinessSignals(baseline(), A, [
+      signal('inventory', {
+        usage: 'observed',
+        checks: [
+          { key: ' payment_ready ', state: 'pass', detail: 'Ready' },
+          { key: 'payment_ready', state: 'pass', detail: 'Ready' },
+        ],
+      }),
+    ]);
+    expect(appCodeState(result, 'inventory')?.status).toBe('installed_unverified');
+  });
+
   it('will not trust a foreign tenant signal or duplicate providers', () => {
     const foreign = applyWorkspaceReadinessSignals(baseline(), A, [signal('inventory', { tenantId: B, usage: 'observed' })]);
     expect(appCodeState(foreign, 'inventory')?.status).toBe('installed_unverified');
