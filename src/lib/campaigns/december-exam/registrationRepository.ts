@@ -1,3 +1,4 @@
+import {decemberProductionLogin} from './releaseMode';
 import 'server-only';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { getPool, sql } from '@/lib/db';
@@ -26,11 +27,12 @@ export async function registerDecemberParticipant(tenantId:string, input:unknown
   await tx.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
   try{
     const campaign=await new sql.Request(tx).input('tenant',sql.UniqueIdentifier,tenantId)
-      .input('code',sql.VarChar(48),DECEMBER_CAMPAIGN_CODE)
+      .input('productionLogin',sql.NVarChar(128),decemberProductionLogin()).input('code',sql.VarChar(48),DECEMBER_CAMPAIGN_CODE)
       .query<{CampaignId:string}>(`
         SELECT c.CampaignId FROM dbo.CutOfferCampaign c WITH (HOLDLOCK)
         INNER JOIN dbo.Tenant t ON t.TenantId=c.TenantId
         WHERE c.TenantId=@tenant AND c.Code=@code AND c.Status='ACTIVE'
+          AND (DB_NAME()<>N'last132' OR (@productionLogin IS NOT NULL AND SUSER_SNAME()=@productionLogin))
           AND t.Status=N'active' AND c.StartsAtUtc<=SYSUTCDATETIME() AND c.EndsAtUtc>SYSUTCDATETIME()
       `);
     const campaignId=campaign.recordset[0]?.CampaignId;
