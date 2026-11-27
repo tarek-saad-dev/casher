@@ -1,0 +1,93 @@
+name: Premium Onboarding V3 — Staging SQL
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: premium-onboarding-v3-staging
+  cancel-in-progress: false
+
+jobs:
+  onboarding-staging:
+    if: >-
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.head.repo.full_name == github.repository &&
+       github.event.pull_request.head.ref == 'feat/onboarding-v3-premium-polish') ||
+      (github.event_name == 'workflow_dispatch' &&
+       github.ref == 'refs/heads/feat/onboarding-v3-premium-polish')
+    runs-on: ubuntu-latest
+    environment: drvo-staging
+    timeout-minutes: 30
+    env:
+      DRVO_STAGING_SSH_HOST: ${{ secrets.DRVO_STAGING_SSH_HOST }}
+      DRVO_STAGING_SSH_KEY: ${{ secrets.DRVO_STAGING_SSH_KEY }}
+      DRVO_STAGING_KNOWN_HOSTS: ${{ secrets.STAGING_KNOWN_HOSTS }}
+      DRVO_STAGING_DB_PASSWORD: ${{ secrets.DRVO_STAGING_DB_PASSWORD }}
+      DRVO_STAGING_DB_SERVER: 127.0.0.1
+      DRVO_STAGING_DB_PORT: '14330'
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Require dedicated staging configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          for f in .env .env.local .env.production .env.production.local; do
+            if [[ -f "$f" ]]; then echo "Unsafe environment file: $f" >&2; exit 10; fi
+          done
+          for k in DRVO_STAGING_SSH_HOST DRVO_STAGING_SSH_KEY DRVO_STAGING_KNOWN_HOSTS DRVO_STAGING_DB_PASSWORD; do
+            if [[ -z "${!k:-}" ]]; then echo "Missing staging configuration: $k" >&2; exit 11; fi
+          done
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Open staging-only SQL tunnel using pinned host identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$DRVO_STAGING_SSH_KEY" > ~/.ssh/drvo_onboarding_staging
+          chmod 600 ~/.ssh/drvo_onboarding_staging
+          printf '%s\n' "$DRVO_STAGING_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          ssh -i ~/.ssh/drvo_onboarding_staging -o BatchMode=yes -o StrictHostKeyChecking=yes -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -L 14330:127.0.0.1:1433 "drvo-tunnel@$DRVO_STAGING_SSH_HOST" -N &
+          echo $! > /tmp/drvo-onboarding-tunnel.pid
+          for i in {1..30}; do
+            if nc -z 127.0.0.1 14330; then exit 0; fi
+            sleep 1
+          done
+          echo "Staging SQL tunnel unavailable" >&2
+          exit 12
+      - name: Prove staging identity before any writes
+        run: npx tsx scripts/drvo/staging-gate-preflight.ts identity
+      - name: Provisioning and duplicate protection (synthetic tenant)
+        run: npm run drvo-011:smoke
+      - name: Two-tenant isolation and cleanup (synthetic tenants)
+        run: npm run drvo-013:smoke
+      - name: Salon service and booking lifecycle (synthetic tenant)
+        run: npx tsx scripts/drvo/salon-booking-e2e-staging.ts
+      - name: Verify staging identity again
+        run: npx tsx scripts/drvo/staging-gate-preflight.ts identity
+      - name: Record SQL smoke evidence
+        run: |
+          echo '## Onboarding staging SQL checks passed' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Provisioning, tenant isolation and salon lifecycle smoke passed. This is not a browser test or a production deployment.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Close tunnel
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f /tmp/drvo-onboarding-tunnel.pid ]]; then
+            kill "$(cat /tmp/drvo-onboarding-tunnel.pid)" || true
+          fi
+          rm -f ~/.ssh/drvo_onboarding_staging
