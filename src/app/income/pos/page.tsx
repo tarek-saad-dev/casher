@@ -1111,7 +1111,7 @@ export default function PosPage() {
       />
 
       {handoffRepair ? (
-        <div role="alert" className="mx-3 my-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-500/50 bg-amber-500/10 p-3 text-sm" dir="rtl">
+        <div role="alert" className="mx-3 my-2 flex shrink-0 flex-wrap items-center justify-between gap-2 rounded-xl border border-warning/25 bg-warning-soft p-3 text-sm text-warning" dir="rtl">
           <span>
             الفاتورة #{handoffRepair.invId} محفوظة ومدفوعة، لكن ربطها بالحجز لسه غير مؤكد.
             <strong className="ms-1">ممنوع تعمل فاتورة تانية لنفس الطلب.</strong>
@@ -1120,7 +1120,7 @@ export default function PosPage() {
             type="button"
             disabled={handoffRepairing}
             onClick={() => void repairPaidHandoff()}
-            className="min-h-10 rounded-lg bg-amber-400 px-3 font-bold text-zinc-950 disabled:opacity-50"
+            className="min-h-11 rounded-lg bg-warning px-3 font-bold text-warning-foreground disabled:opacity-50"
           >
             {handoffRepairing ? 'جاري التحقق…' : 'إصلاح الربط بالفاتورة الموجودة'}
           </button>
@@ -1128,7 +1128,7 @@ export default function PosPage() {
       ) : null}
 
       {/* ═══════ MOBILE LAYOUT (< md) ═══════ */}
-      <div className="pos-mobile-workspace flex h-full min-h-0 flex-col md:hidden">
+      <div className="pos-mobile-workspace flex min-h-0 flex-1 flex-col md:hidden">
         <MobilePosHeader
           invoiceLabel={invoiceLabel}
           shiftId={shift?.ID ?? null}
