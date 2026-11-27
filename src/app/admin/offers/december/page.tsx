@@ -25,6 +25,7 @@ export default function DecemberParticipants(){
  }
  return <main dir="rtl" className="mx-auto max-w-6xl p-5 space-y-6">
   <header><p className="text-sm font-bold text-red-600">CUT / DECEMBER EXAM</p><h1 className="text-3xl font-black">مراجعة المشاركين</h1><p className="text-sm text-muted-foreground mt-2">اعتماد الهوية وبيانات الطالب قبل استحقاق الخصم. شاشة الإدارة التجريبية.</p></header>
+  <nav className="flex gap-4 text-sm"><a href="/admin/offers/december/config" className="underline">الإعدادات</a><a href="/admin/offers/december/analytics" className="underline">نتائج الحملة</a></nav>
   <form className="flex flex-wrap gap-2" onSubmit={e=>{e.preventDefault();setSuccess('');void load(search.trim());}}>
    <input className="rounded-lg border bg-background p-3 flex-1" value={search} onChange={e=>setSearch(e.target.value)} placeholder="كود تسجيل العميل CUT-…" dir="ltr" aria-label="كود تسجيل العميل"/>
    <button disabled={busy} className="border rounded-lg px-4">بحث / تحديث</button></form>
