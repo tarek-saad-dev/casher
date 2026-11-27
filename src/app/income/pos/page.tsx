@@ -168,6 +168,29 @@ export default function PosPage() {
   const [printOpen, setPrintOpen] = useState(false);
   const [splitPaymentActive, setSplitPaymentActive] = useState(false);
   const [editingSaleId, setEditingSaleId] = useState<number | null>(null);
+  const [decemberQuote, setDecemberQuote] = useState<{key:string;percent:number;discountMinor:number}|null>(null);
+  const [decemberBusy,setDecemberBusy] = useState(false);
+  const decemberKey = JSON.stringify([state.customer?.ClientID,viewBranch,revision,editingSaleId,state.items.map(i=>[i.ProID,i.EmpID,i.SPrice,i.Qty,i.Dis,i.DisVal,!!i.packageMeta])]);
+  const decemberKeyRef=useRef(decemberKey);
+  decemberKeyRef.current=decemberKey;
+  const clearDecember=()=>{setDecemberQuote(null);setDiscountPercent(0);setSaveError('');};
+  const applyDecember=async()=>{
+    if(decemberBusy||editingSaleId!==null||!state.customer||!state.items.length||state.items.some(i=>i.packageMeta)||
+       state.discountPercent!==0||state.discountValue!==0)return;
+    setDecemberBusy(true);setSaveError('');
+    const key=decemberKey;
+    try{
+      const response=await fetch('/api/pos/offers/december/quote',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({clientId:state.customer.ClientID,items:state.items.map(i=>({proId:i.ProID,empId:i.EmpID,sPrice:i.SPrice,qty:i.Qty,dis:i.Dis,disVal:i.DisVal}))})});
+      const q=await response.json();
+      if(decemberKeyRef.current!==key)return;
+      if(!response.ok||q.ok!==true||q.checkoutAvailable!==true||!Number.isSafeInteger(q.discountMinor)||q.discountMinor<=0||!Number.isInteger(q.percent)||q.percent<=0||q.percent>=100){
+        setSaveError(q.ok===true&&!q.checkoutAvailable?'خصم 100% يحتاج تفعيل مسار الفاتورة المجانية أولًا.':'تعذر اعتماد خصم ديسمبر: '+(q.code||'راجع الشروط'));return;
+      }
+      setDecemberQuote({key,percent:q.percent,discountMinor:q.discountMinor});
+      setDiscountPercent(q.percent);
+    }catch{setSaveError('تعذر الاتصال بخدمة عرض ديسمبر.');}finally{setDecemberBusy(false);}
+  };
   const [vouchersOpen, setVouchersOpen] = useState(false);
   const [invoiceSheetOpen, setInvoiceSheetOpen] = useState(false);
   const [isPaymentTransferOpen, setIsPaymentTransferOpen] = useState(false);
@@ -598,6 +621,11 @@ export default function PosPage() {
     if (state.items.length === 0) { setSaveError('يجب إضافة خدمة واحدة على الأقل'); saveLockRef.current = false; setSaving(false); return; }
     if (state.paymentMethodId === null) { setSaveError('اختر طريقة الدفع'); saveLockRef.current = false; setSaving(false); return; }
 
+    if(decemberBusy || (decemberQuote && (editingSaleId!==null || decemberQuote.key!==decemberKey ||
+      state.discountPercent!==decemberQuote.percent || Math.round(totals.headerDiscountValue*100)!==decemberQuote.discountMinor))){
+      setSaveError('اتغيرت الفاتورة أو الخصم. ألغِ خصم ديسمبر وأعد احتسابه قبل الحفظ.');
+      saveLockRef.current=false;setSaving(false);return;
+    }
     // Validate split payment totals
     const totalAllocated = state.paymentAllocations.reduce((sum, pa) => sum + pa.amount, 0);
     const remaining = totals.grandTotal - totalAllocated;
@@ -652,8 +680,9 @@ export default function PosPage() {
           notes: i.ProName,
         })),
         subTotal: totals.subTotal,
-        dis: state.discountPercent,
-        disVal: state.discountValue,
+        dis: decemberQuote ? 0 : state.discountPercent,
+        disVal: decemberQuote ? 0 : state.discountValue,
+        ...(decemberQuote ? {decemberExam:{expectedDiscountMinor:decemberQuote.discountMinor}} : {}),
         grandTotal: totals.grandTotal,
         totalBonus: totals.totalBonus,
         totalQty: totals.totalQty,
@@ -694,6 +723,7 @@ export default function PosPage() {
 
       // Reset everything (customer, barber, items, discount, payment, edit mode)
       reset();
+      setDecemberQuote(null);
       setActiveHandoffId(null);
       setHandoffBanner(null);
       setEditingSaleId(null);
@@ -808,7 +838,7 @@ export default function PosPage() {
       setSaving(false);
       console.log('[POS SAVE] END', { requestId });
     }
-  }, [state, totals, reset, addToast, paymentMethods, editingSaleId, saveLockRef, ensureShiftWrite, loadRetailProducts]);
+  }, [state, totals, reset, addToast, paymentMethods, editingSaleId, saveLockRef, ensureShiftWrite, loadRetailProducts, decemberQuote, decemberKey, decemberBusy]);
 
   // ───────────────── Keyboard shortcuts ─────────────────
   useEffect(() => {
@@ -1035,6 +1065,10 @@ export default function PosPage() {
     onPaymentMethodSelect: handlePaymentMethodSelect,
     onPaymentAllocationsChange: setPaymentAllocations,
     onSave: handleSave,
+    decemberCheckout: process.env.NEXT_PUBLIC_DECEMBER_EXAM_STAGING_CHECKOUT_ENABLED==='true' && (editingSaleId===null||decemberQuote) ? {
+      active: !!decemberQuote, busy: decemberBusy, canApply: !!state.customer && state.items.length>0 && !state.items.some(i=>i.packageMeta) && state.discountPercent===0 && state.discountValue===0 && !saving,
+      onApply: ()=>void applyDecember(), onClear: clearDecember,
+    } : undefined,
   };
 
   const invoiceLabel = editingSaleId
