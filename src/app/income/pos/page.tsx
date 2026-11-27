@@ -47,14 +47,14 @@ interface Toast { id: number; type: 'success' | 'error' | 'info'; message: strin
 // ─── Toast Component ─────────────────────────────────────────────────────────
 function ToastList({ toasts, dismiss }: { toasts: Toast[]; dismiss: (id: number) => void }) {
   return (
-    <div className="fixed bottom-4 left-4 z-50 flex w-80 max-md:bottom-[calc(4.5rem+env(safe-area-inset-bottom))] flex-col gap-2" dir="rtl">
+    <div className="fixed bottom-4 end-4 z-50 flex w-80 max-md:bottom-[calc(4.5rem+env(safe-area-inset-bottom))] flex-col gap-2" dir="rtl" role="status" aria-live="polite">
       {toasts.map(t => (
         <div
           key={t.id}
-          className={`flex items-center gap-3 px-4 py-3 rounded-xl border shadow-xl text-sm font-medium transition-all
-            ${t.type === 'success' ? 'bg-success/10 border-success/40 text-success' : ''}
-            ${t.type === 'error' ? 'bg-destructive/10 border-destructive/40 text-destructive' : ''}
-            ${t.type === 'info' ? 'bg-muted/90 border-border/40 text-muted-foreground' : ''}
+          className={`flex items-center gap-3 rounded-xl border border-border border-s-4 bg-card px-4 py-3 text-sm font-medium shadow-lg transition-all
+            ${t.type === 'success' ? 'border-s-success text-success' : ''}
+            ${t.type === 'error' ? 'border-s-destructive text-destructive' : ''}
+            ${t.type === 'info' ? 'border-s-info text-foreground' : ''}
           `}
         >
           {t.type === 'success' && <CheckCircle className="w-4 h-4 shrink-0" />}
@@ -1045,7 +1045,7 @@ export default function PosPage() {
 
   const catalogArea = (
     <>
-      <div className="flex items-center gap-1 rounded-xl border border-border bg-muted/30 p-1" dir="rtl">
+      <div className="flex items-center gap-1 rounded-lg border border-border bg-muted p-1" dir="rtl" role="tablist" aria-label="الكتالوج">
         {([
           { key: 'services', label: 'الخدمات', sub: 'Services' },
           { key: 'packages', label: 'الباقات', sub: 'Packages' },
@@ -1054,17 +1054,19 @@ export default function PosPage() {
           <button
             key={tab.key}
             type="button"
+            role="tab"
+            aria-selected={catalogTab === tab.key}
             data-testid={`pos-catalog-tab-${tab.key}`}
             onClick={() => setCatalogTab(tab.key)}
             className={cn(
-              'flex-1 min-h-10 rounded-lg px-3 py-2 text-sm font-bold transition-colors',
+              'flex-1 h-9 rounded-md px-3 text-sm font-bold transition-colors',
               catalogTab === tab.key
-                ? 'bg-primary text-primary-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground hover:bg-muted/60',
+                ? 'bg-card text-brand-deep shadow-xs'
+                : 'text-muted-foreground hover:text-foreground',
             )}
           >
             {tab.label}
-            <span className="ms-1.5 text-[11px] font-medium opacity-75">{tab.sub}</span>
+            <span className="ms-1.5 text-[0.6875rem] font-medium opacity-60 max-lg:hidden">{tab.sub}</span>
           </button>
         ))}
       </div>
@@ -1135,7 +1137,7 @@ export default function PosPage() {
           onOpenRecentSales={() => setIsRecentInvoicesOpen(true)}
         />
 
-        <div className="sticky top-0 z-30 shrink-0 border-b border-border bg-background/95 px-3 py-2 backdrop-blur-sm">
+        <div className="sticky top-0 z-30 shrink-0 border-b border-border bg-card px-3 py-2">
           <div className="mb-2 flex flex-wrap justify-end gap-2">
             <AddonTransferInbox enabled={Boolean(shift?.ID)} />
             <BarberHandoffInbox
@@ -1153,7 +1155,7 @@ export default function PosPage() {
             updatedCustomer={lastUpdatedCustomer}
           />
           {handoffBanner ? (
-            <div className="mt-2 flex items-center justify-between gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs font-semibold text-amber-950 dark:text-amber-100">
+            <div className="mt-2 flex items-center justify-between gap-2 rounded-lg border border-warning/25 bg-warning-soft px-3 py-2 text-xs font-semibold text-warning">
               <span>{handoffBanner}</span>
               <button type="button" className="underline" onClick={clearHandoffLoad}>
                 إلغاء التحميل
@@ -1202,7 +1204,7 @@ export default function PosPage() {
       {/* ═══════ DESKTOP / TABLET LAYOUT (≥ md) ═══════ */}
       <div className="relative hidden h-full flex-1 flex-col overflow-hidden md:flex lg:flex-row">
         {/* ═══════ RIGHT PANEL: Customer + History ═══════ */}
-        <aside className="order-1 flex w-full shrink-0 flex-col gap-3 overflow-y-auto border-l border-border p-3 scrollbar-luxury-v lg:order-1 lg:w-80 lg:gap-4 lg:p-4">
+        <aside aria-label="العميل" className="order-1 flex w-full shrink-0 flex-col gap-3 overflow-y-auto border-e border-border bg-card p-3 scrollbar-luxury-v lg:order-1 lg:w-72 xl:w-80">
           <div className="flex flex-wrap justify-end gap-2">
             <AddonTransferInbox enabled={Boolean(shift?.ID)} />
             <BarberHandoffInbox
@@ -1220,7 +1222,7 @@ export default function PosPage() {
             updatedCustomer={lastUpdatedCustomer}
           />
           {handoffBanner ? (
-            <div className="flex items-center justify-between gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs font-semibold text-amber-950 dark:text-amber-100">
+            <div className="flex items-center justify-between gap-2 rounded-lg border border-warning/25 bg-warning-soft px-3 py-2 text-xs font-semibold text-warning">
               <span>{handoffBanner}</span>
               <button type="button" className="underline" onClick={clearHandoffLoad}>
                 إلغاء التحميل
@@ -1252,13 +1254,13 @@ export default function PosPage() {
 
           <Separator />
           <div className="text-xs text-muted-foreground space-y-1">
-            <p><kbd className="px-1.5 py-0.5 rounded bg-muted text-[10px] font-mono">F9</kbd> حفظ الفاتورة</p>
-            <p><kbd className="px-1.5 py-0.5 rounded bg-muted text-[10px] font-mono">+</kbd> حفظ (ضغطة) / حفظ وطباعة (ضغطتين)</p>
+            <p><kbd className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[0.6875rem]">F9</kbd> حفظ الفاتورة</p>
+            <p><kbd className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[0.6875rem]">+</kbd> حفظ (ضغطة) / حفظ وطباعة (ضغطتين)</p>
           </div>
         </aside>
 
         {/* ═══════ CENTER PANEL: Barbers + Services ═══════ */}
-        <main className="order-3 min-h-[40vh] min-w-0 flex-1 space-y-4 overflow-y-auto p-3 scrollbar-luxury-v lg:order-2 lg:space-y-5 lg:p-4">
+        <section aria-label="الحلاق والخدمات" className="order-3 min-h-[40vh] min-w-0 flex-1 space-y-3 overflow-y-auto bg-background p-3 scrollbar-luxury-v lg:order-2 lg:space-y-4 lg:p-4">
           <QuickActionsBar onAction={handleQuickAction} />
           <BarberCarousel
             barbers={barbers}
@@ -1270,10 +1272,10 @@ export default function PosPage() {
           />
           <Separator className="bg-border" />
           {catalogArea}
-        </main>
+        </section>
 
         {/* ═══════ LEFT PANEL: Cart + Summary + Payment + Save ═══════ */}
-        <aside className="order-2 flex w-full shrink-0 flex-col gap-3 overflow-y-auto border-r border-border p-3 scrollbar-luxury-v lg:order-3 lg:w-80 lg:gap-4 lg:p-4">
+        <aside aria-label="الفاتورة" className="order-2 flex w-full shrink-0 flex-col gap-3 overflow-y-auto border-s border-border bg-card p-3 scrollbar-luxury-v lg:order-3 lg:w-80 xl:w-[22rem]">
           <PosInvoicePanel {...invoicePanelProps} />
           <PosInvoiceSaveActions
             saving={saving}
