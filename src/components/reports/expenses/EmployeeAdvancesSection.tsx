@@ -47,10 +47,10 @@ export default function EmployeeAdvancesSection({ year, month }: EmployeeAdvance
 
   if (loading) {
     return (
-      <div className="bg-gradient-to-br from-zinc-900/90 to-zinc-900/50 backdrop-blur-sm border border-zinc-800/50 rounded-2xl p-12">
+      <div className="bg-card border border-border rounded-2xl p-12">
         <div className="flex flex-col items-center justify-center gap-4">
-          <Loader2 className="h-12 w-12 animate-spin text-amber-500/60" />
-          <p className="text-zinc-400">جاري تحميل بيانات سلف الموظفين...</p>
+          <Loader2 className="h-12 w-12 animate-spin text-warning" />
+          <p className="text-muted-foreground">جاري تحميل بيانات سلف الموظفين...</p>
         </div>
       </div>
     );
@@ -58,12 +58,12 @@ export default function EmployeeAdvancesSection({ year, month }: EmployeeAdvance
 
   if (error) {
     return (
-      <div className="bg-gradient-to-br from-rose-950/20 to-red-950/10 border border-rose-500/20 rounded-2xl p-6">
+      <div className="bg-destructive-soft border border-destructive/20 rounded-2xl p-6">
         <div className="flex items-center gap-3">
-          <AlertCircle className="h-6 w-6 text-rose-400" />
+          <AlertCircle className="h-6 w-6 text-destructive" />
           <div>
-            <h3 className="font-semibold text-rose-400">خطأ في تحميل البيانات</h3>
-            <p className="text-sm text-rose-300/70">{error}</p>
+            <h3 className="font-semibold text-destructive">خطأ في تحميل البيانات</h3>
+            <p className="text-sm text-destructive">{error}</p>
           </div>
         </div>
       </div>
@@ -72,14 +72,14 @@ export default function EmployeeAdvancesSection({ year, month }: EmployeeAdvance
 
   if (data.length === 0) {
     return (
-      <div className="bg-gradient-to-br from-zinc-900/90 to-zinc-900/50 backdrop-blur-sm border border-zinc-800/50 rounded-2xl p-12">
+      <div className="bg-card border border-border rounded-2xl p-12">
         <div className="flex flex-col items-center justify-center gap-4">
-          <div className="p-4 bg-zinc-800/40 rounded-full">
-            <Users className="h-12 w-12 text-zinc-600" />
+          <div className="p-4 bg-muted rounded-full">
+            <Users className="h-12 w-12 text-muted-foreground" />
           </div>
           <div className="text-center">
-            <h3 className="text-lg font-semibold mb-2 text-white">لا توجد بيانات سلف</h3>
-            <p className="text-sm text-zinc-400 max-w-md">
+            <h3 className="text-lg font-semibold mb-2 text-foreground">لا توجد بيانات سلف</h3>
+            <p className="text-sm text-muted-foreground max-w-md">
               لم يتم العثور على سلف موظفين في هذا الشهر.
               <br />
               تأكد من ربط فئات المصروفات بالموظفين في جدول TblExpCatEmpMap.
@@ -111,20 +111,20 @@ export default function EmployeeAdvancesSection({ year, month }: EmployeeAdvance
   return (
     <div className="space-y-6">
       {/* Premium Summary Header */}
-      <div className="bg-gradient-to-br from-zinc-900/90 to-zinc-900/50 backdrop-blur-sm border border-zinc-800/50 rounded-2xl p-6 shadow-xl shadow-black/10">
+      <div className="bg-card border border-border rounded-2xl p-6 shadow-xs">
         <div className="flex items-center justify-between gap-3 mb-6">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-amber-500/10 rounded-xl">
-              <Users className="h-5 w-5 text-amber-400" />
+            <div className="p-2 bg-warning-soft rounded-xl">
+              <Users className="h-5 w-5 text-warning" />
             </div>
-            <h3 className="text-2xl font-bold text-white tracking-tight">سلف الموظفين</h3>
+            <h3 className="text-2xl font-bold text-foreground tracking-tight">سلف الموظفين</h3>
           </div>
           <Button
             type="button"
             variant="outline"
             size="sm"
             onClick={() => setNumberScript((s) => (s === 'arab' ? 'latin' : 'arab'))}
-            className="gap-2 border-zinc-700 bg-zinc-800/50 text-zinc-200 hover:bg-zinc-700/50 hover:text-white shrink-0"
+            className="gap-2 border-border bg-muted text-foreground hover:bg-surface-muted hover:text-foreground shrink-0"
             title={numberScript === 'arab' ? 'التبديل إلى أرقام إنجليزية (0-9)' : 'التبديل إلى أرقام عربية (٠-٩)'}
           >
             <Languages className="h-4 w-4" />
@@ -134,53 +134,53 @@ export default function EmployeeAdvancesSection({ year, month }: EmployeeAdvance
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {/* Employee Count */}
-          <div className="bg-zinc-800/40 border border-zinc-700/30 rounded-xl p-4">
+          <div className="bg-muted border border-border rounded-xl p-4">
             <div className="flex items-center gap-2 mb-2">
-              <Users className="h-4 w-4 text-zinc-400" />
-              <p className="text-xs text-zinc-400 font-medium">عدد الموظفين</p>
+              <Users className="h-4 w-4 text-muted-foreground" />
+              <p className="text-xs text-muted-foreground font-medium">عدد الموظفين</p>
             </div>
-            <p className="text-3xl font-bold text-white tracking-tight">
+            <p className="text-3xl font-bold text-foreground tracking-tight">
               {formatNumberByScript(data.length, numberScript)}
             </p>
           </div>
 
           {/* Total Advances */}
-          <div className="bg-rose-500/5 border border-rose-500/10 rounded-xl p-4">
+          <div className="bg-destructive-soft border border-destructive/10 rounded-xl p-4">
             <div className="flex items-center gap-2 mb-2">
-              <TrendingDown className="h-4 w-4 text-rose-400" />
-              <p className="text-xs text-zinc-400 font-medium">إجمالي السلف</p>
+              <TrendingDown className="h-4 w-4 text-destructive" />
+              <p className="text-xs text-muted-foreground font-medium">إجمالي السلف</p>
             </div>
-            <p className="text-2xl font-bold text-rose-400 tracking-tight">****</p>
+            <p className="text-2xl font-bold text-destructive tracking-tight">****</p>
           </div>
 
           {/* Total Revenue */}
-          <div className="bg-emerald-500/5 border border-emerald-500/10 rounded-xl p-4">
+          <div className="bg-success-soft border border-success/10 rounded-xl p-4">
             <div className="flex items-center gap-2 mb-2">
-              <TrendingUp className="h-4 w-4 text-emerald-400" />
-              <p className="text-xs text-zinc-400 font-medium">إجمالي الإيرادات</p>
+              <TrendingUp className="h-4 w-4 text-success" />
+              <p className="text-xs text-muted-foreground font-medium">إجمالي الإيرادات</p>
             </div>
-            <p className="text-2xl font-bold text-emerald-400 tracking-tight">****</p>
+            <p className="text-2xl font-bold text-success tracking-tight">****</p>
           </div>
 
           {/* Risk Status */}
-          <div className="bg-zinc-800/40 border border-zinc-700/30 rounded-xl p-4">
+          <div className="bg-muted border border-border rounded-xl p-4">
             <div className="flex items-center gap-2 mb-2">
-              <ShieldAlert className="h-4 w-4 text-zinc-400" />
-              <p className="text-xs text-zinc-400 font-medium">حالات الخطر</p>
+              <ShieldAlert className="h-4 w-4 text-muted-foreground" />
+              <p className="text-xs text-muted-foreground font-medium">حالات الخطر</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               {criticalCount > 0 && (
-                <span className="px-2.5 py-1 bg-rose-500/10 text-rose-400 border border-rose-500/20 text-xs font-medium rounded-full">
+                <span className="px-2.5 py-1 bg-destructive-soft text-destructive border border-destructive/20 text-xs font-medium rounded-full">
                   حرج: {formatNumberByScript(criticalCount, numberScript)}
                 </span>
               )}
               {highRiskCount > 0 && (
-                <span className="px-2.5 py-1 bg-orange-500/10 text-orange-400 border border-orange-500/20 text-xs font-medium rounded-full">
+                <span className="px-2.5 py-1 bg-warning-soft text-warning border border-warning/20 text-xs font-medium rounded-full">
                   عالي: {formatNumberByScript(highRiskCount, numberScript)}
                 </span>
               )}
               {criticalCount === 0 && highRiskCount === 0 && (
-                <span className="px-2.5 py-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs font-medium rounded-full">
+                <span className="px-2.5 py-1 bg-success-soft text-success border border-success/20 text-xs font-medium rounded-full">
                   آمن
                 </span>
               )}
