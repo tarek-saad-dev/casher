@@ -18,7 +18,7 @@ export type MemberWalletPayload = {
   movements: Array<{id:string;title:string;occurredAtLabel:string;coinsDelta:number}> | null;
   upcomingBooking: MemberUpcomingBooking | null;
   completedVisits: number | null;
-  linkStatus: 'ACTIVE'|'UNLINKED'|'REVIEW_REQUIRED';
+  linkStatus: 'ACTIVE'|'UNLINKED'|'REVIEW_REQUIRED'|'SUSPENDED';
 };
 
 function nonnegative(n: unknown): number | null {
