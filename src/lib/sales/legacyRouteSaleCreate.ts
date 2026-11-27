@@ -1,4 +1,5 @@
 import 'server-only';
+import { confirmStagingDecemberReferral } from '@/lib/campaigns/december-exam/stagingInvoiceReferral';
 
 /**
  * Pre-extraction POST /api/sales transaction.
@@ -337,6 +338,7 @@ async function executeInRouteSaleCreateTransaction(
     throw enqueueErr;
   }
 
+  await confirmStagingDecemberReferral(transaction, { invoiceId: newInvID, clientId, branchId });
   return { invID: newInvID, invType, targetRecalcScopes };
 }
 
