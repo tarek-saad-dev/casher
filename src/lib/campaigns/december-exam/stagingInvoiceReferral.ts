@@ -1,3 +1,4 @@
+import {decemberProductionConfigured,decemberProductionLogin} from './releaseMode';
 import {decemberPhoneSql,decemberCanonicalPhoneSql} from './phoneSql';
 import 'server-only';
 import type { Transaction } from 'mssql';
@@ -8,20 +9,20 @@ import { DECEMBER_CAMPAIGN_CODE } from './registrationRepository';
  * sale transaction. No discount or redemption write. Allowlisted paid services
  * only; any other historical non-cancelled sale conservatively denies first visit. */
 export async function confirmStagingDecemberReferral(tx:Transaction, input:{invoiceId:number;clientId:number|null;branchId:number}){
- if(process.env.DECEMBER_EXAM_STAGING_REFERRAL_ENABLED!=='true'||!input.clientId)return;
+ if((process.env.DECEMBER_EXAM_STAGING_REFERRAL_ENABLED!=='true'&&!decemberProductionConfigured())||!input.clientId)return;
  const tenant=process.env.DECEMBER_EXAM_TENANT_ID;
  const ids=(process.env.DECEMBER_EXAM_ELIGIBLE_SERVICE_IDS||'').split(',').map(Number);
  if(!tenant||!ids.length||ids.length>100||ids.some(n=>!Number.isSafeInteger(n)||n<=0||n>2147483647))throw Error('DECEMBER_STAGE_CONFIG_REQUIRED');
  const q=()=>new sql.Request(tx).input('tenant',sql.UniqueIdentifier,tenant)
-  .input('code',sql.VarChar(48),DECEMBER_CAMPAIGN_CODE).input('client',sql.Int,input.clientId)
+  .input('productionLogin',sql.NVarChar(128),decemberProductionLogin()).input('code',sql.VarChar(48),DECEMBER_CAMPAIGN_CODE).input('client',sql.Int,input.clientId)
   .input('invoice',sql.Int,input.invoiceId).input('branch',sql.Int,input.branchId);
  const guard=await q().query<{ok:number}>(`
-  SELECT CASE WHEN DB_NAME()=N'last132_agent' AND SUSER_SNAME()=N'drvo_agent'
+  SELECT CASE WHEN ((DB_NAME()=N'last132_agent' AND SUSER_SNAME()=N'drvo_agent') OR (DB_NAME()=N'last132' AND @productionLogin IS NOT NULL AND SUSER_SNAME()=@productionLogin))
    AND EXISTS(SELECT 1 FROM dbo.Location WHERE TenantId=@tenant AND LegacyBranchId=@branch AND Status=N'active')
    AND EXISTS(SELECT 1 FROM dbo.Tenant WHERE TenantId=@tenant AND Code=N'CASHER_BOOT' AND Status=N'active')
    THEN 1 ELSE 0 END AS ok
  `);
- if(guard.recordset[0]?.ok!==1)throw Error('DECEMBER_STAGING_ONLY');
+ if(guard.recordset[0]?.ok!==1){if(decemberProductionConfigured())return;throw Error('DECEMBER_STAGING_ONLY');}
  const result=await q().query<{CampaignId:string;InviteeId:string;PhoneNormalized:string}>(`
  SELECT r.CampaignId,r.InviteeId,p.PhoneNormalized
  FROM dbo.CutOfferReferral r WITH(UPDLOCK,HOLDLOCK)
@@ -65,7 +66,7 @@ export async function confirmStagingDecemberReferral(tx:Transaction, input:{invo
  * and redeemed dependencies pending financial review. Effective even with confirmation off. */
 export async function guardDecemberInvoiceMutation(tx:Transaction,invoiceId:number,mode:'edit'|'delete'='edit'){
  const probe=await new sql.Request(tx).query<{ok:number}>(`
- SELECT CASE WHEN DB_NAME()=N'last132_agent' AND SUSER_SNAME()=N'drvo_agent'
+ SELECT CASE WHEN (DB_NAME()=N'last132' OR (DB_NAME()=N'last132_agent' AND SUSER_SNAME()=N'drvo_agent'))
  AND OBJECT_ID(N'dbo.CutOfferReferral',N'U') IS NOT NULL AND OBJECT_ID(N'dbo.CutOfferRedemption',N'U') IS NOT NULL THEN 1 ELSE 0 END AS ok
  `);
  if(probe.recordset[0]?.ok!==1)return;
