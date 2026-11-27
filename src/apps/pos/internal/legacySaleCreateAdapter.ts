@@ -153,7 +153,7 @@ export async function executeLegacySaleCreateTransaction(
     .input('TaxVal', sql.Decimal(10, 2), 0)
     .input('GrandTotal', sql.Decimal(10, 2), grandTotal)
     .input('invNotes', sql.NVarChar(50), notesText.substring(0, 50))
-    .input('TotalBonus', sql.Decimal(10, 2), totalBonus)
+    .input('TotalBonus', sql.Decimal(10, 2), decemberQuote ? 0 : totalBonus)
     .input('ShiftMoveID', sql.Int, shiftMoveID)
     .input('Notes', sql.NVarChar(100), notesText.substring(0, 100))
     .input('isActive', sql.NVarChar(5), 'no')
@@ -217,7 +217,7 @@ export async function executeLegacySaleCreateTransaction(
       .input('PValue', sql.Decimal(10, 2), unitCost * qty)
       .input('Qty', sql.Decimal(8, 2), qty)
       .input('Notes', sql.NVarChar(50), (item.notes || '').substring(0, 50))
-      .input('Bonus', sql.Decimal(8, 2), retailEmp ? 0 : item.bonus)
+      .input('Bonus', sql.Decimal(8, 2), decemberQuote || retailEmp ? 0 : item.bonus)
       .input('ReservDate', sql.Date, null)
       .input('unitCost', sql.Decimal(10, 2), unitCost)
       .query(`
