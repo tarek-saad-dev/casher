@@ -141,8 +141,8 @@ export function BarberLane({
   const [selectedHourLabel, setSelectedHourLabel] = useState<string>('');
 
   const getStatusColor = () => {
-    if (barber.status === 'day_off') return 'var(--destructive)';
-    if (barber.status === 'off') return 'var(--warning)';
+    if (barber.status === 'day_off' || barber.status === 'absent') return 'var(--destructive)';
+    if (barber.status === 'off' || barber.status === 'not_checked_in') return 'var(--warning)';
     return 'var(--success)';
   };
 
@@ -185,17 +185,17 @@ export function BarberLane({
     >
       {showLaneHeader && (
         <div
-          className="sticky top-0 z-20 border-b p-1 backdrop-blur-sm md:p-3"
+          className="sticky top-0 z-20 shrink-0 border-b p-1 md:p-2"
           style={{
             height: headerHeight,
             background: barberColor.bg,
             borderColor: barberColor.border,
           }}
         >
-          <div className="mb-0 flex items-center gap-1.5 md:mb-2 md:gap-2">
+          <div className="flex items-center gap-1.5 md:gap-2">
             <div
               className="flex size-5 shrink-0 items-center justify-center rounded-full border md:size-9"
-              style={{ background: barberColor.bg, borderColor: barberColor.border }}
+              style={{ background: 'var(--brand-soft)', borderColor: barberColor.border }}
             >
               <User className="size-3 md:size-4" style={{ color: barberColor.dot }} />
             </div>
@@ -230,7 +230,7 @@ export function BarberLane({
             )}
           </div>
 
-          <div className="hidden flex-wrap items-center gap-1.5 text-xs md:flex">
+          <div className="mt-0.5 hidden flex-wrap items-center gap-1 text-[11px] leading-tight md:flex">
             {barber.waitingCount > 0 && (
               <div className="flex items-center gap-1 rounded-md bg-surface-muted/60 px-1.5 py-0.5">
                 <Users className="size-3 text-muted-foreground" />
@@ -279,7 +279,7 @@ export function BarberLane({
                   onClick={() => onEmptyCellClick?.(hour, barber)}
                   className="group flex h-full w-full cursor-pointer items-center justify-center transition-colors hover:bg-foreground/[0.03]"
                 >
-                  <span className="rounded-md border border-dashed border-primary/25 bg-primary/5 px-2 py-1 text-[11px] text-primary/70 opacity-0 transition-opacity group-hover:opacity-100">
+                  <span className="rounded-md border border-dashed border-border bg-card px-2 py-1 text-[11px] text-primary opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
                     + حجز
                   </span>
                 </button>
@@ -297,24 +297,24 @@ export function BarberLane({
           const freeSegments = getFreeSegmentsInCell(cellStart, cellEnd, scheduledItems);
 
           return freeSegments.map((segment, idx) => {
-            const segTop =
-              getTimelineTopPx(segment.start)
-              + (segment.startMinutes / 60) * HOUR_CELL_HEIGHT;
+            // getTimelineTopPx already includes the minute offset.
+            const segTop = getTimelineTopPx(segment.start);
+            const segmentHeight = (segment.durationMinutes / 60) * HOUR_CELL_HEIGHT;
+            const showLabel = segmentHeight >= 24;
 
             return (
               <button
                 key={`${hour}-free-${idx}`}
                 type="button"
                 onClick={() => onFreeSegmentClick?.(segment, barber, hour)}
-                className="absolute inset-x-2 z-[5] flex items-center justify-center gap-1 rounded-md border border-dashed border-primary/25 bg-primary/5 px-2 text-[10px] text-primary/80 transition-colors hover:bg-primary/10"
+                className="absolute inset-x-2 z-[5] flex items-center justify-center gap-1 rounded-md border border-dashed border-border bg-surface-muted px-2 text-[11px] text-foreground transition-colors hover:border-primary hover:bg-primary-soft"
                 style={{
                   top: segTop,
-                  height: Math.max((segment.durationMinutes / 60) * HOUR_CELL_HEIGHT - 4, 24),
+                  height: Math.max(segmentHeight - 4, 0),
                 }}
                 title={`حجز من ${formatShortTime(segment.start)} إلى ${formatShortTime(segment.end)}`}
               >
-                <span>+ حجز</span>
-                <span className="opacity-70">{formatShortTime(segment.start)}</span>
+                {showLabel && <><span>+ حجز</span><span className="text-muted-foreground">{formatShortTime(segment.start)}</span></>}
               </button>
             );
           });
@@ -337,7 +337,7 @@ export function BarberLane({
             >
               <HourCellCard
                 item={item}
-                compact={height < 56}
+                compact={height < 64}
                 onClick={onItemClick}
                 voiceEnabled={voiceEnabled}
                 onReannounce={onReannounce}

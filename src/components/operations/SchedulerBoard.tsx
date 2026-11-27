@@ -67,15 +67,10 @@ interface Props {
   canCreateQueue?: boolean;
 }
 
+// Employee identity is conveyed by name, not arbitrary rainbow colours.
+// Keep the public colour shape for lane/card callers; use one DRVO treatment.
 export const BARBER_COLORS = [
-  { bg: 'color-mix(in srgb, #10B981 12%, var(--card))', border: 'color-mix(in srgb, #10B981 45%, var(--border))', text: 'var(--foreground)', dot: '#10B981', label: 'green' },
-  { bg: 'color-mix(in srgb, #3B82F6 12%, var(--card))', border: 'color-mix(in srgb, #3B82F6 45%, var(--border))', text: 'var(--foreground)', dot: '#3B82F6', label: 'blue' },
-  { bg: 'color-mix(in srgb, #A855F7 12%, var(--card))', border: 'color-mix(in srgb, #A855F7 45%, var(--border))', text: 'var(--foreground)', dot: '#A855F7', label: 'purple' },
-  { bg: 'color-mix(in srgb, #F59E0B 12%, var(--card))', border: 'color-mix(in srgb, #F59E0B 45%, var(--border))', text: 'var(--foreground)', dot: '#F59E0B', label: 'amber' },
-  { bg: 'color-mix(in srgb, #EC4899 12%, var(--card))', border: 'color-mix(in srgb, #EC4899 45%, var(--border))', text: 'var(--foreground)', dot: '#EC4899', label: 'pink' },
-  { bg: 'color-mix(in srgb, #14B8A6 12%, var(--card))', border: 'color-mix(in srgb, #14B8A6 45%, var(--border))', text: 'var(--foreground)', dot: '#14B8A6', label: 'teal' },
-  { bg: 'color-mix(in srgb, #EF4444 12%, var(--card))', border: 'color-mix(in srgb, #EF4444 45%, var(--border))', text: 'var(--foreground)', dot: '#EF4444', label: 'red' },
-  { bg: 'color-mix(in srgb, #6366F1 12%, var(--card))', border: 'color-mix(in srgb, #6366F1 45%, var(--border))', text: 'var(--foreground)', dot: '#6366F1', label: 'indigo' },
+  { bg: 'var(--card)', border: 'var(--border)', text: 'var(--muted-foreground)', dot: 'var(--brand)', label: 'brand' },
 ] as const;
 
 export type BarberColor = (typeof BARBER_COLORS)[number];
@@ -359,14 +354,14 @@ export function SchedulerBoard({
   return (
     <section
       className={cn(
-        'relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border/80 bg-card/30 shadow-sm max-md:rounded-none max-md:border-x-0',
+        'relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border/80 bg-card shadow-sm max-md:rounded-none max-md:border-x-0',
         className,
       )}
       dir="rtl"
     >
       {syncing && (
         <div
-          className="pointer-events-none absolute inset-0 z-50 flex items-start justify-center bg-background/25 pt-3 backdrop-blur-[1px]"
+          className="pointer-events-none absolute inset-0 z-50 flex items-start justify-center pt-3"
           aria-live="polite"
           aria-busy="true"
         >
@@ -449,16 +444,16 @@ export function SchedulerBoard({
               {displayBarbers.map((barber, index) => (
                 <div
                   key={`${barber.branchId ?? 'b'}-${barber.empId}`}
-                  className="overflow-hidden border-b border-border/70 bg-card/50"
+                  className="overflow-hidden border-b border-border/70 bg-card"
                 >
                   <BarberLane
                     barber={barber}
                     color={getBarberColor(barber.empId, index)}
                     fullWidth
-                    headerHeight={OPS_LAYOUT.HEADER_HEIGHT_MOBILE}
                     drag={dragHandlers}
                     cutPaste={getCutPasteForBarber(barber.empId)}
                     {...getQueueLaneProps(barber.empId)}
+                    headerHeight={OPS_LAYOUT.HEADER_HEIGHT_MOBILE}
                   />
                 </div>
               ))}
@@ -480,10 +475,10 @@ export function SchedulerBoard({
                     barber={barber}
                     color={getBarberColor(barber.empId, index)}
                     fullWidth
-                    headerHeight={OPS_LAYOUT.HEADER_HEIGHT_MOBILE}
                     drag={dragHandlers}
                     cutPaste={getCutPasteForBarber(barber.empId)}
                     {...getQueueLaneProps(barber.empId)}
+                    headerHeight={OPS_LAYOUT.HEADER_HEIGHT_MOBILE}
                   />
                 </div>
               </div>

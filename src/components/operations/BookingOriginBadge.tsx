@@ -7,9 +7,9 @@ import type { BookingOriginKind } from '@/lib/booking/bookingOriginDisplay';
 type BadgeSize = 'sm' | 'md';
 
 const KIND_CLASS: Record<BookingOriginKind, string> = {
-  website: 'bg-sky-500/18 text-sky-200 ring-1 ring-inset ring-sky-400/35',
-  user: 'bg-amber-500/18 text-amber-200 ring-1 ring-inset ring-amber-400/40',
-  system: 'bg-zinc-500/20 text-zinc-300 ring-1 ring-inset ring-zinc-400/30',
+  website: 'bg-info-soft text-info ring-1 ring-inset ring-info/30',
+  user: 'bg-brand-soft text-brand ring-1 ring-inset ring-brand/30',
+  system: 'bg-surface-muted text-muted-foreground ring-1 ring-inset ring-border',
 };
 
 function OriginIcon({

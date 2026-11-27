@@ -42,9 +42,9 @@ export function BookingPasteTargets({
             disabled={isCommitting}
             className={cn(
               'absolute inset-x-1 z-[6] rounded-lg border-2 border-dashed transition-colors',
-              'border-teal-500/40 bg-teal-500/10 hover:border-teal-400 hover:bg-teal-500/20',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-400',
-              isHovered && 'border-teal-400 bg-teal-500/25 ring-1 ring-teal-400/50',
+              'border-primary/40 bg-primary-soft hover:border-primary hover:bg-secondary',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
+              isHovered && 'border-primary bg-primary-soft ring-1 ring-primary/50',
               isCommitting && 'pointer-events-none opacity-60',
             )}
             style={{
@@ -73,7 +73,7 @@ export function BookingPasteTargets({
           >
             <span
               className={cn(
-                'pointer-events-none absolute inset-x-0 top-1 truncate px-1 text-center text-[10px] font-medium text-teal-100/90 opacity-0 transition-opacity',
+                'pointer-events-none absolute inset-x-0 top-1 truncate px-1 text-center text-[10px] font-medium text-foreground opacity-0 transition-opacity',
                 isHovered && 'opacity-100',
               )}
             >
@@ -83,7 +83,7 @@ export function BookingPasteTargets({
             </span>
             {isCommitting && isHovered && (
               <span className="absolute inset-0 flex items-center justify-center">
-                <Loader2 className="size-4 animate-spin text-teal-300" />
+                <Loader2 className="size-4 animate-spin text-primary" />
               </span>
             )}
           </button>

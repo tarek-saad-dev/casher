@@ -165,4 +165,49 @@ describe('DRVO Light V1 theme tokens (ADR-024 / ADR-041)', () => {
     }
   });
 
+  it('keeps operations scheduler surfaces and accents on central theme tokens', () => {
+    const files = [
+  "src/components/operations/SchedulerBoard.tsx",
+  "src/components/operations/HourCellCard.tsx",
+  "src/components/operations/BarberLane.tsx",
+  "src/components/operations/BookingOriginBadge.tsx",
+  "src/components/operations/BookingDragPreview.tsx",
+  "src/components/operations/BookingPasteTargets.tsx",
+  "src/components/operations/OperationsControlPanel.tsx",
+  "src/components/operations/MoreTimelineItemsModal.tsx"
+];
+    for (const path of files) {
+      const source = readFileSync(join(process.cwd(), path), 'utf8');
+      expect(source, path).not.toMatch(/#[0-9a-f]{6}\b|rgba?\(|linear-gradient\(/i);
+      expect(source, path).not.toMatch(/(?:bg|text|border|ring)-(?:slate|gray|zinc|neutral|stone|blue|cyan|teal|pink|rose|red|orange|amber|violet|purple|indigo|emerald|green|black|white|sky|yellow)(?:-\d+|\/\d+|\b)/);
+      for (const [, token] of source.matchAll(/var\((--[a-z-]+)\)/g)) {
+        expect(THEME_TOKENS.light, path).toHaveProperty(token);
+        expect(THEME_TOKENS.dark, path).toHaveProperty(token);
+      }
+    }
+    const card = readFileSync(join(process.cwd(), 'src/components/operations/HourCellCard.tsx'), 'utf8');
+    expect(card).toContain("background: 'var(--card)'");
+    expect(card).toContain("background: 'var(--surface-muted)'");
+    expect(card).toContain("background: 'var(--warning-soft)'");
+    const lane = readFileSync(join(process.cwd(), 'src/components/operations/BarberLane.tsx'), 'utf8');
+    expect(lane).toContain('const segTop = getTimelineTopPx(segment.start);');
+    expect(lane).not.toContain('segment.startMinutes / 60');
+  });
+
+  for (const mode of ['light', 'dark'] as const) {
+    it(`keeps scheduler card and badge text readable in ${mode} mode`, () => {
+      const t = THEME_TOKENS[mode];
+      const pairs = [
+        ['--foreground', '--surface-muted'],
+        ['--muted-foreground', '--surface-muted'],
+        ['--foreground', '--warning-soft'],
+        ['--muted-foreground', '--warning-soft'],
+        ['--foreground', '--primary-soft'],
+        ['--brand', '--surface-muted'],
+      ] as const;
+      for (const [fg, bg] of pairs) {
+        expect(contrast(t[fg], t[bg]), `${fg} on ${bg}`).toBeGreaterThanOrEqual(4.5);
+      }
+    });
+  }
 });
