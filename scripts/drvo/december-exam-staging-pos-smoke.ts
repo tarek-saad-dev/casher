@@ -23,6 +23,8 @@ async function main(){
  const {resolveSplitPaymentConfig}=await import('../../src/lib/clearingMethod');
  const {quoteDecemberInTransaction}=await import('../../src/lib/campaigns/december-exam/stagingCheckout');
  const {campaignSessionDigest}=await import('../../src/lib/campaigns/december-exam/registrationRepository');
+ const treasuryState=async()=>{const r=await pool.request().query("SELECT CONVERT(varchar(64),HASHBYTES('SHA2_256',OBJECT_DEFINITION(OBJECT_ID(N'dbo.InsCashMoveSales'))),2) triggerDigest,(SELECT COUNT(*) FROM dbo.TblPaymentMethods WHERE PaymentMethod=N'بدون تحصيل - عرض ديسمبر') methodCount");return r.recordset[0];};
+ const before=await treasuryState();check(before?.triggerDigest,'STAGING_TRIGGER_DEFINITION_REQUIRED');
  const tx=new sql.Transaction(pool);await tx.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
  let rolledBack=false;const ids:number[]=[];const clients:number[]=[];let campaignId='';
  try{
@@ -110,7 +112,9 @@ async function main(){
  check(proof.recordset[0]?.n===0,'STAGING_FIXTURE_LEAK');
  for(const id of clients){const r=await pool.request().input('id',sql.Int,id).query('SELECT COUNT(*) n FROM dbo.TblClient WHERE ClientID=@id');check(r.recordset[0]?.n===0,'STAGING_CUSTOMER_LEAK');}
  for(const id of ids){const r=await pool.request().input('id',sql.Int,id).query("SELECT COUNT(*) n FROM dbo.TblinvServHead WHERE invID=@id AND invType=N'مبيعات'");check(r.recordset[0]?.n===0,'STAGING_INVOICE_LEAK');}
+ const after=await treasuryState();check(before.triggerDigest===after.triggerDigest&&before.methodCount===after.methodCount,'STAGING_TREASURY_FIXTURE_LEAK');
  console.log('REAL_POS_ADAPTER_ROLLBACK_PASS — no public activation or post-commit effects');
- }finally{await pool.close();}
+ console.log('REAL_POS_ADAPTER_TRIGGER_AND_METHOD_RESTORED_PASS');
+ }finally{await pool.close();const {closePool}=await import('../../src/lib/db');await closePool();}
 }
-main().catch(e=>{console.error(e instanceof Error?e.message:'STAGING_POS_SMOKE_FAILED');process.exitCode=1;});
+main().then(()=>{process.stdout.write('STAGING_POS_SMOKE_COMPLETE\n',()=>process.exit(0));}).catch(e=>{console.error(e instanceof Error?e.message:'STAGING_POS_SMOKE_FAILED');process.exitCode=1;});
