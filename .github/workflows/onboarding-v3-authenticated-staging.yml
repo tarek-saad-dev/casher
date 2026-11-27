@@ -1,0 +1,128 @@
+name: Onboarding V3 — Authenticated Staging Browser
+
+on:
+  pull_request:
+    branches: [feat/onboarding-v3-premium-polish]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: premium-onboarding-v3-staging
+  cancel-in-progress: false
+
+jobs:
+  authenticated-staging:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'qa/onboarding-v3-browser'
+    environment: drvo-staging
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+      PUBLIC_SIGNUP_OTP_REQUIRED: 'false'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Refuse checkout environment files
+        shell: bash
+        run: |
+          set -euo pipefail
+          for f in .env .env.local .env.production .env.production.local; do
+            test ! -e "$f" || exit 10
+          done
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build
+      - name: Install Chromium
+        run: |
+          npm install --prefix "$RUNNER_TEMP/onboarding-browser" --no-audit --no-fund playwright@1.58.2
+          "$RUNNER_TEMP/onboarding-browser/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Open dedicated pinned staging tunnel
+        env:
+          DRVO_STAGING_SSH_HOST: ${{ secrets.DRVO_STAGING_SSH_HOST || secrets.STAGING_HOST }}
+          DRVO_STAGING_SSH_KEY: ${{ secrets.DRVO_STAGING_SSH_KEY }}
+          DRVO_STAGING_KNOWN_HOSTS: ${{ secrets.DRVO_STAGING_KNOWN_HOSTS || secrets.STAGING_KNOWN_HOSTS }}
+          DRVO_STAGING_DB_PASSWORD: ${{ secrets.DRVO_STAGING_DB_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for k in DRVO_STAGING_SSH_HOST DRVO_STAGING_SSH_KEY DRVO_STAGING_KNOWN_HOSTS DRVO_STAGING_DB_PASSWORD; do
+            if [[ -z "${!k:-}" ]]; then echo "Missing staging configuration: $k" >&2; exit 11; fi
+          done
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$DRVO_STAGING_SSH_KEY" > ~/.ssh/drvo_onboarding_browser
+          chmod 600 ~/.ssh/drvo_onboarding_browser
+          printf '%s\n' "$DRVO_STAGING_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          ssh -i ~/.ssh/drvo_onboarding_browser -o BatchMode=yes -o StrictHostKeyChecking=yes -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -L 14330:127.0.0.1:1433 "drvo-tunnel@$DRVO_STAGING_SSH_HOST" -N &
+          echo $! > "$RUNNER_TEMP/drvo-browser-tunnel.pid"
+          for i in {1..30}; do
+            if nc -z 127.0.0.1 14330; then exit 0; fi
+            sleep 1
+          done
+          exit 12
+      - name: Prove staging identity and run authenticated browser smoke
+        env:
+          DRVO_STAGING_DB_PASSWORD: ${{ secrets.DRVO_STAGING_DB_PASSWORD }}
+          DRVO_STAGING_DB_SERVER: 127.0.0.1
+          DRVO_STAGING_DB_PORT: '14330'
+          DB_SERVER: 127.0.0.1
+          DB_PORT: '14330'
+          DB_DATABASE: last132_agent
+          DB_USER: drvo_agent
+          DB_PASSWORD: ${{ secrets.DRVO_STAGING_DB_PASSWORD }}
+          DB_ENCRYPT: 'false'
+          DB_TRUST_SERVER_CERTIFICATE: 'true'
+          LOCAL_DB_SERVER: 127.0.0.1
+          LOCAL_DB_PORT: '14330'
+          LOCAL_DB_NAME: last132_agent
+          LOCAL_DB_USER: drvo_agent
+          LOCAL_DB_PASSWORD: ${{ secrets.DRVO_STAGING_DB_PASSWORD }}
+          CLOUD_DB_SERVER: 127.0.0.1
+          CLOUD_DB_PORT: '14330'
+          CLOUD_DB_NAME: last132_agent
+          CLOUD_DB_USER: drvo_agent
+          CLOUD_DB_PASSWORD: ${{ secrets.DRVO_STAGING_DB_PASSWORD }}
+          CLOUD_DB_ENCRYPT: 'false'
+          CLOUD_DB_TRUST_CERT: 'true'
+          HAWAI_DB_CLASS: isolated
+          SESSION_COOKIE_SECURE: 'false'
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx tsx scripts/drvo/staging-gate-preflight.ts identity
+          export SESSION_SECRET="$(node -e 'process.stdout.write(require("node:crypto").randomBytes(32).toString("hex"))')"
+          echo "::add-mask::$SESSION_SECRET"
+          setsid npm run start -- --hostname 127.0.0.1 --port 5500 > "$RUNNER_TEMP/onboarding-auth-next.log" 2>&1 &
+          export ONBOARDING_QA_APP_PID=$!
+          echo "$ONBOARDING_QA_APP_PID" > "$RUNNER_TEMP/onboarding-auth-next.pid"
+          for i in {1..60}; do
+            if curl --fail --silent --max-time 3 http://127.0.0.1:5500/start >/dev/null; then break; fi
+            sleep 1
+          done
+          curl --fail --silent --max-time 15 http://127.0.0.1:5500/start >/dev/null
+          npx tsx scripts/drvo/onboarding-v3-authenticated-browser-smoke.ts
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: onboarding-authenticated-staging-evidence
+          path: authenticated-evidence/
+          retention-days: 7
+          if-no-files-found: ignore
+      - name: Stop isolated app and tunnel
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f "$RUNNER_TEMP/onboarding-auth-next.pid" ]]; then
+            kill -- "-$(cat "$RUNNER_TEMP/onboarding-auth-next.pid")" || true
+          fi
+          if [[ -f "$RUNNER_TEMP/drvo-browser-tunnel.pid" ]]; then
+            kill "$(cat "$RUNNER_TEMP/drvo-browser-tunnel.pid")" || true
+          fi
+          rm -f ~/.ssh/drvo_onboarding_browser

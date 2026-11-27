@@ -1,0 +1,180 @@
+name: Onboarding V3 — Browser QA (isolated)
+
+on:
+  pull_request:
+    branches: [feat/onboarding-v3-premium-polish]
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [qa/onboarding-v3-browser]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  public-registration:
+    if: >-
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.head.repo.full_name == github.repository &&
+       github.event.pull_request.head.ref == 'qa/onboarding-v3-browser') ||
+      (github.event_name != 'pull_request' && github.ref == 'refs/heads/qa/onboarding-v3-browser')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      PUBLIC_SIGNUP_OTP_REQUIRED: 'false'
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Refuse database configuration
+        run: |
+          set -euo pipefail
+          for f in .env .env.local .env.production .env.production.local; do
+            test ! -e "$f" || exit 1
+          done
+          for k in DB_SERVER DB_DATABASE DB_PASSWORD CLOUD_DB_SERVER CLOUD_DB_NAME CLOUD_DB_PASSWORD; do
+            test -z "${!k:-}" || exit 1
+          done
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build
+      - name: Install Chromium runner without modifying lockfile
+        run: |
+          npm install --prefix "$RUNNER_TEMP/onboarding-browser" --no-audit --no-fund playwright@1.58.2
+          "$RUNNER_TEMP/onboarding-browser/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Start local app
+        run: |
+          npm run start -- --hostname 127.0.0.1 --port 5500 > "$RUNNER_TEMP/onboarding-next.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/onboarding-next.pid"
+          for i in {1..60}; do
+            if curl --fail --silent --max-time 3 http://127.0.0.1:5500/start >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/onboarding-next.log"
+          exit 1
+      - name: Exercise actual public registration UI at four widths
+        shell: bash
+        run: |
+          mkdir -p browser-evidence
+          export NODE_PATH="$RUNNER_TEMP/onboarding-browser/node_modules"
+          node <<'JS'
+          const { chromium } = require('playwright');
+          const assert = require('node:assert/strict');
+          (async () => {
+            const browser = await chromium.launch({headless:true});
+            try {
+              for (const width of [320,390,768,1440]) {
+                const context = await browser.newContext({viewport:{width,height:width<768?844:1000},locale:'ar-EG',serviceWorkers:'block'});
+                try {
+                  const page = await context.newPage();
+                  const submissions = [];
+                  const signupCalls = [];
+                  await page.route('**/*', async route => {
+                    const url = new URL(route.request().url());
+                    if(url.origin !== 'http://127.0.0.1:5500') return route.abort();
+                    if(url.pathname === '/api/public/signup/complete'){
+                      signupCalls.push(url.pathname);
+                      submissions.push(route.request().postDataJSON());
+                      return route.fulfill({status:201,contentType:'application/json',body:JSON.stringify({ok:true,ownerLoginName:'qa-browser-owner',nextPath:'/setup'})});
+                    }
+                    if(url.pathname.startsWith('/api/public/signup/')) signupCalls.push(url.pathname);
+                    if(url.pathname.startsWith('/api/')) return route.fulfill({status:401,contentType:'application/json',body:JSON.stringify({error:'isolated browser QA'})});
+                    return route.continue();
+                  });
+                  page.on('pageerror', error => console.error('Browser runtime error at '+width+'px:', error.message));
+                  const response = await page.goto('http://127.0.0.1:5500/start',{waitUntil:'load'});
+                  assert.equal(response.status(),200);
+                  const click = name => page.getByRole('button',{name,exact:true}).click();
+                  const headings = {
+                    '01-phone':'خلينا نبدأ برقم موبايلك.',
+                    '02-owner':'خلينا نتعرف عليك.',
+                    '03-industry':'إيه طبيعة شغلك؟',
+                    '04-apps':'اختار الأدوات المناسبة.',
+                    '05-review':'راجع بياناتك وابدأ.',
+                    '06-success':'حسابك اتعمل بنجاح!',
+                  };
+                  async function capture(step) {
+                    const expected = headings[step];
+                    // SSR streaming may briefly insert a hidden duplicate before hydration.
+                    // Wait for the actual visible step; never select the first of duplicates.
+                    // On the initial step the component's mount effect focuses its panel.
+                    try {
+                      await page.waitForFunction(({expected,initial}) => {
+                        const visible = [...document.querySelectorAll('h1')].filter(el =>
+                          el.getClientRects().length > 0 &&
+                          el.checkVisibility({visibilityProperty:true}));
+                        if (visible.length !== 1 || visible[0].textContent.trim() !== expected) return false;
+                        if (!visible[0].closest('main')) return false;
+                        return !initial || (document.activeElement?.getAttribute('tabindex') === '-1' &&
+                          document.activeElement.contains(visible[0]));
+                      }, {expected,initial:step==='01-phone'}, {timeout:15000});
+                    } catch (error) {
+                      const diagnostic = await page.locator('h1').evaluateAll(elements => elements.map(el => ({
+                        text:el.textContent.trim(), visible:el.getClientRects().length > 0 && el.checkVisibility({visibilityProperty:true}),
+                        inMain:!!el.closest('main'),
+                      })));
+                      console.error('Heading state at '+width+'px / '+step+':',JSON.stringify(diagnostic));
+                      await page.screenshot({path:'browser-evidence/'+width+'-'+step+'-failure.png',fullPage:true}).catch(()=>{});
+                      throw error;
+                    }
+                    assert.equal(await page.getByRole('heading',{level:1,name:expected,exact:true}).count(),1,
+                      'Expected one accessible heading at '+width+' / '+step);
+                    await page.evaluate(() => document.fonts.ready);
+                    const overflow = await page.evaluate(() => {
+                      const root = document.documentElement;
+                      return Math.max(root.scrollWidth,document.body.scrollWidth)-root.clientWidth;
+                    });
+                    assert.ok(overflow <= 2, 'Horizontal page overflow at '+width+' / '+step+': '+overflow);
+                    await page.screenshot({path:'browser-evidence/'+width+'-'+step+'.png',fullPage:true});
+                  }
+                  await capture('01-phone');
+                  await click('متابعة');
+                  await page.getByRole('alert').filter({hasText:'اكتب رقم موبايل مصري صحيح'}).waitFor();
+                  await page.getByRole('textbox',{name:'رقم الموبايل'}).fill('01012345678');
+                  await click('متابعة');
+                  await capture('02-owner');
+                  await page.getByLabel('الاسم بالكامل').fill('QA Browser Owner');
+                  await page.getByPlaceholder('10 أحرف على الأقل').fill('qa-password-123');
+                  await page.getByLabel('تأكيد كلمة المرور').fill('qa-password-123');
+                  await click('متابعة');
+                  await capture('03-industry');
+                  await page.getByRole('button',{name:/صالون \/ Barbershop/}).click();
+                  await page.getByLabel('اسم المنشأة').fill('QA Salon');
+                  await click('متابعة');
+                  await capture('04-apps');
+                  await click('متابعة');
+                  await capture('05-review');
+                  assert.equal(await page.getByRole('button',{name:'إرسال رمز التحقق'}).count(),0);
+                  assert.deepEqual(signupCalls,[]);
+                  await click('إنشاء الحساب');
+                  await page.getByText('qa-browser-owner',{exact:true}).waitFor();
+                  await capture('06-success');
+                  assert.equal(submissions.length,1);
+                  assert.deepEqual(signupCalls,['/api/public/signup/complete']);
+                  assert.equal(submissions[0].industry,'salon');
+                  assert.equal(submissions[0].phone,'01012345678');
+                  assert.ok(!Object.hasOwn(submissions[0],'otp'));
+                  console.log('PASS '+width+'px registration UI with mocked signup; no real account created');
+                } finally { await context.close(); }
+              }
+            } finally { await browser.close(); }
+          })().catch(error=>{console.error(error);process.exitCode=1});
+          JS
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: onboarding-registration-browser-evidence
+          retention-days: 7
+          path: browser-evidence/
+          if-no-files-found: ignore
+      - name: Stop isolated app
+        if: always()
+        run: |
+          if test -f "$RUNNER_TEMP/onboarding-next.pid"; then
+            kill "$(cat "$RUNNER_TEMP/onboarding-next.pid")" || true
+          fi
