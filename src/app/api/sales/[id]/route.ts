@@ -359,7 +359,7 @@ export async function DELETE(
         return snapshot as unknown as Record<string, unknown> | null;
       },
       execute: async (transaction) => {
-        await guardDecemberInvoiceMutation(transaction, invID);
+        await guardDecemberInvoiceMutation(transaction, invID, 'delete');
         return isPosPortEnabled()
           ? deleteSale(transaction, invID, loaded.ownership.branchId, session.UserID)
           : deleteInvoice(transaction, invID, loaded.ownership.branchId);
