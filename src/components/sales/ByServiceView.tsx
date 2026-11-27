@@ -18,7 +18,7 @@ export default function ByServiceView({ services }: ByServiceViewProps) {
 
   if (services.length === 0) {
     return (
-      <div className="text-center py-12 text-zinc-500">
+      <div className="text-center py-12 text-muted-foreground">
         <Package className="w-12 h-12 mx-auto mb-3 opacity-30" />
         <p className="text-sm">لا توجد بيانات للخدمات</p>
       </div>
@@ -26,45 +26,45 @@ export default function ByServiceView({ services }: ByServiceViewProps) {
   }
 
   return (
-    <div className="grid grid-cols-2 gap-3">
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
       {services.map((service, index) => (
         <div
           key={service.proId}
-          className="bg-zinc-900/60 border border-zinc-800/50 rounded-xl p-4 hover:border-zinc-700/50 transition-all"
+          className="bg-card border border-border rounded-xl p-4 hover:border-border transition-all"
         >
-          <div className="flex items-start justify-between mb-3">
+          <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
             <div className="flex-1">
               <div className="flex items-center gap-2 mb-1">
                 {index < 5 && (
-                  <div className="flex items-center justify-center w-6 h-6 rounded-full bg-amber-500/10 border border-amber-500/20">
-                    <span className="text-xs font-bold text-amber-400">#{index + 1}</span>
+                  <div className="flex items-center justify-center w-6 h-6 rounded-full bg-warning-soft border border-warning/20">
+                    <span className="text-xs font-bold text-warning">#{index + 1}</span>
                   </div>
                 )}
-                <h4 className="text-base font-bold text-white truncate">{service.proName}</h4>
+                <h4 className="text-base font-bold text-foreground truncate">{service.proName}</h4>
               </div>
-              <p className="text-xs text-zinc-400">{service.timesSold} مرة • كمية {service.quantitySold}</p>
+              <p className="text-xs text-muted-foreground">{service.timesSold} مرة • كمية {service.quantitySold}</p>
             </div>
             <div className="text-left ml-3">
-              <p className="text-lg font-black text-emerald-400">{formatCurrency(service.totalSales)}</p>
-              <p className="text-xs text-zinc-500">ج.م</p>
+              <p className="text-lg font-black text-success">{formatCurrency(service.totalSales)}</p>
+              <p className="text-xs text-muted-foreground">ج.م</p>
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-2 mb-3">
-            <div className="bg-zinc-800/40 rounded-lg p-2">
-              <p className="text-xs text-zinc-400 mb-0.5">متوسط السعر</p>
-              <p className="text-sm font-bold text-white">{formatCurrency(service.averagePrice)}</p>
+            <div className="bg-muted rounded-lg p-2">
+              <p className="text-xs text-muted-foreground mb-0.5">متوسط السعر</p>
+              <p className="text-sm font-bold text-foreground">{formatCurrency(service.averagePrice)}</p>
             </div>
-            <div className="bg-zinc-800/40 rounded-lg p-2">
-              <p className="text-xs text-zinc-400 mb-0.5">النسبة</p>
-              <p className="text-sm font-bold text-amber-400">{service.percentageOfTotal.toFixed(1)}%</p>
+            <div className="bg-muted rounded-lg p-2">
+              <p className="text-xs text-muted-foreground mb-0.5">النسبة</p>
+              <p className="text-sm font-bold text-warning">{service.percentageOfTotal.toFixed(1)}%</p>
             </div>
           </div>
 
           {/* Progress bar */}
-          <div className="relative w-full bg-zinc-800/50 rounded-full h-1.5 overflow-hidden">
+          <div className="relative w-full bg-muted rounded-full h-1.5 overflow-hidden">
             <div
-              className="h-full bg-gradient-to-r from-blue-500 to-cyan-500 transition-all duration-500"
+              className="h-full bg-info transition-all duration-500"
               style={{ width: `${Math.min(service.percentageOfTotal, 100)}%` }}
             />
           </div>

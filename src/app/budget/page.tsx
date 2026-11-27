@@ -18,8 +18,8 @@ const MONTH_NAMES = [
 ];
 
 const STATUS_MAP: Record<string, { label: string; color: string }> = {
-  draft:  { label: 'مسودة', color: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/30' },
-  active: { label: 'نشطة', color: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30' },
+  draft:  { label: 'مسودة', color: 'bg-warning-soft text-warning border-warning/30' },
+  active: { label: 'نشطة', color: 'bg-success-soft text-success border-success/30' },
   closed: { label: 'مغلقة', color: 'bg-muted text-muted-foreground border-border' },
 };
 
@@ -92,10 +92,10 @@ export default function BudgetListPage() {
   const activeBudgets = budgets.filter(b => b.Status === 'active').length;
 
   return (
-    <div className="flex flex-col h-full overflow-hidden" dir="rtl">
+    <div className="flex flex-col h-full min-h-0 min-w-0 overflow-hidden" dir="rtl">
       {/* Summary Bar */}
       <div className="p-4 border-b border-border bg-muted/10">
-        <div className="grid grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <div className="rounded-lg border border-border p-3 bg-card">
             <div className="flex items-center gap-2 text-muted-foreground mb-1">
               <CalendarDays className="w-4 h-4" />
@@ -124,8 +124,8 @@ export default function BudgetListPage() {
               <span className="text-xs font-medium">نسبة الإنجاز</span>
             </div>
             <p className={`text-xl font-bold ${
-              totalTargetNP > 0 && totalApproxNet >= totalTargetNP ? 'text-emerald-500' :
-              totalTargetNP > 0 && totalApproxNet >= totalTargetNP * 0.7 ? 'text-yellow-500' :
+              totalTargetNP > 0 && totalApproxNet >= totalTargetNP ? 'text-success' :
+              totalTargetNP > 0 && totalApproxNet >= totalTargetNP * 0.7 ? 'text-warning' :
               'text-muted-foreground'
             }`}>
               {totalTargetNP > 0 ? Math.round((totalApproxNet / totalTargetNP) * 100) : 0}%
@@ -146,7 +146,7 @@ export default function BudgetListPage() {
       {/* Create Form (collapsible) */}
       {showCreate && (
         <div className="px-4 py-4 border-b border-border bg-muted/10 space-y-3">
-          <div className="grid grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <div>
               <label className="text-xs font-semibold text-muted-foreground mb-1 block">السنة</label>
               <Input
@@ -233,7 +233,7 @@ export default function BudgetListPage() {
             return (
               <div
                 key={b.BudgetMonthID}
-                className="flex items-center justify-between p-4 rounded-lg border border-border bg-card hover:bg-accent/30 transition-colors cursor-pointer"
+                className="flex flex-wrap items-center justify-between gap-3 p-3 sm:p-4 rounded-lg border border-border bg-card hover:bg-accent/30 transition-colors cursor-pointer"
                 onClick={() => router.push(`/budget/${b.BudgetMonthID}`)}
               >
                 <div className="flex items-center gap-4 min-w-0 flex-1">
@@ -266,7 +266,7 @@ export default function BudgetListPage() {
                 </div>
 
                 {/* Net Profit Achievement */}
-                <div className="flex items-center gap-6 shrink-0">
+                <div className="flex flex-wrap items-center gap-3 sm:gap-6">
                   <div className="text-left">
                     <p className="text-[10px] text-muted-foreground mb-0.5">صافي الربح</p>
                     <p className="text-sm font-bold">{approxNet.toLocaleString('ar-EG')}</p>
@@ -281,13 +281,13 @@ export default function BudgetListPage() {
                       <div className="w-12 h-1.5 rounded-full bg-muted overflow-hidden">
                         <div
                           className={`h-full rounded-full transition-all ${
-                            achievementPct >= 100 ? 'bg-emerald-500' : achievementPct >= 70 ? 'bg-yellow-500' : 'bg-destructive'
+                            achievementPct >= 100 ? 'bg-success' : achievementPct >= 70 ? 'bg-warning' : 'bg-destructive'
                           }`}
                           style={{ width: `${Math.min(Math.max(achievementPct, 0), 100)}%` }}
                         />
                       </div>
                       <span className={`text-xs font-bold ${
-                        achievementPct >= 100 ? 'text-emerald-500' : achievementPct >= 70 ? 'text-yellow-500' : 'text-destructive'
+                        achievementPct >= 100 ? 'text-success' : achievementPct >= 70 ? 'text-warning' : 'text-destructive'
                       }`}>
                         {achievementPct}%
                       </span>
