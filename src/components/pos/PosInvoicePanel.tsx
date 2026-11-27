@@ -3,6 +3,7 @@
 import { Save, Loader2, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
+import DecemberGroupLookup from '@/components/pos/DecemberGroupLookup';
 import DecemberEligibilityPreview from '@/components/pos/DecemberEligibilityPreview';
 import CartPanel from '@/components/pos/CartPanel';
 import InvoiceSummary from '@/components/pos/InvoiceSummary';
@@ -63,6 +64,7 @@ export default function PosInvoicePanel({
         {decemberCheckout.active ? <button type="button" disabled={_saving} onClick={decemberCheckout.onClear} className="block underline">إلغاء خصم الحملة</button> : <button type="button" disabled={!decemberCheckout.canApply||decemberCheckout.busy} onClick={decemberCheckout.onApply} className="block rounded bg-[#CF252B] px-3 py-2 text-white disabled:opacity-50">{decemberCheckout.busy?'جاري حساب الاستحقاق…':'احسب وطبّق الخصم'}</button>}
         <p className="text-muted-foreground text-xs">يتحقق السيرفر مرة أخرى قبل الحفظ. الفاتورة المجانية تتطلب جاهزية مسار عدم التحصيل على Staging.</p>
       </div>}
+      {process.env.NEXT_PUBLIC_DECEMBER_EXAM_POS_PREVIEW_ENABLED === 'true' && <DecemberGroupLookup/>}
       <CartPanel
         items={state.items}
         barbers={barbers}
