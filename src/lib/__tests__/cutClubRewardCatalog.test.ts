@@ -52,7 +52,9 @@ describe('CUT CLUB verified-session Rewards read model',()=>{
     expect(stub.queries[1].params).toEqual({tenant});
     expect(stub.queries[1].sql).toContain('p.TenantId=@tenant');
     expect(stub.queries[1].sql).toContain('p.isDeleted=0');
-    expect(stub.queries.some(q=>/INSERT|UPDATE|DELETE/i.test(q.sql))).toBe(false);
+    // Match SQL statement keywords, not identifiers such as p.isDeleted.
+    expect(stub.queries.every(q=>/^\s*SELECT\b/i.test(q.sql))).toBe(true);
+    expect(stub.queries.some(q=>/\b(?:INSERT|UPDATE|DELETE|MERGE|EXEC(?:UTE)?|TRUNCATE|ALTER|DROP|CREATE|INTO)\b/i.test(q.sql))).toBe(false);
     expect(JSON.stringify(result)).not.toContain('ClientID');
   });
   it('unlinked/review members can see real catalog but never inherit someone else’s coins',async()=>{
