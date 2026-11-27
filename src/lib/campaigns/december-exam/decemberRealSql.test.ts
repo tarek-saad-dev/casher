@@ -23,6 +23,7 @@ describe.skipIf(!enabled)('December actual SQL domain integration on disposable 
  });
  afterAll(async()=>{await pool?.close();pool=null;});
  beforeEach(async()=>{await pool!.request().query(`
+ DELETE dbo.CutClubMemberAccount WHERE LegacyClientID IN(101,102,103,104,105);DELETE dbo.TblClientLoyalty WHERE ClientID IN(101,102,103,104,105);
  DELETE dbo.CutOfferOperationAudit;DELETE dbo.CutOfferRedemption;DELETE dbo.CutOfferReferral;DELETE dbo.CutOfferParticipant;DELETE dbo.CutOfferCampaign;
  DELETE dbo.TblinvServDetail;DELETE dbo.TblinvServHead;DELETE dbo.TblCashMove;DELETE dbo.TblinvServPayment;
  INSERT dbo.CutOfferCampaign(TenantId,Code,Status,StartsAtUtc,EndsAtUtc,FirstVisitPct,StudentPct,ClubPct,MultiServicePct,Friend1Pct,Friend2Pct,Friend3Pct)
@@ -58,4 +59,32 @@ describe.skipIf(!enabled)('December actual SQL domain integration on disposable 
   await expect(save(true)).rejects.toThrow('DECEMBER_ZERO_PAYMENT_SIDE_EFFECT');await save(false);
   const r=await pool!.request().query('SELECT COUNT(*) n FROM dbo.TblCashMove;SELECT PercentApplied FROM dbo.CutOfferRedemption;');const sets=r.recordsets as Array<Array<Record<string,number>>>;expect(sets[0][0].n).toBe(0);expect(sets[1][0].PercentApplied).toBe(100);
  });
+ it('old customer is not a first visit in another branch and cannot confirm a referral',async()=>{
+  const owner=await register(101);await register(103,owner.referralCode);await approve(101);await approve(103);
+  await atomic(tx=>invoice(tx,5010,103,1,0));
+  await expect(quoteDecember(input(103,2))).rejects.toThrow('DECEMBER_NO_DISCOUNT');
+  await atomic(async tx=>{await invoice(tx,5011,103,2,0);await confirmStagingDecemberReferral(tx,{invoiceId:5011,clientId:103,branchId:2});});
+  expect((await quoteDecember(input(101))).percent).toBe(10);
+ });
+ it('checks active Club link, active loyalty and student verification from SQL',async()=>{
+  await registerDecemberParticipant(tenant,{name:'Synthetic student',phone:'01000000101',student:true,education:{type:'UNIVERSITY',university:'Test university',faculty:'Test faculty'}});
+  await approve(101);
+  expect((await quoteDecember(input(101))).percent).toBe(10);
+  await pool!.request().query(`
+    UPDATE dbo.CutOfferParticipant SET StudentVerifiedAtUtc=SYSUTCDATETIME(),StudentVerifiedBy=1 WHERE ClientId=101;
+    INSERT dbo.TblClientLoyalty(ClientLoyaltyID,ClientID,IsActive) VALUES(1101,101,1);
+    INSERT dbo.CutClubMemberAccount(TenantId,PhoneNormalized,LegacyClientID,LinkStatus,LinkApprovedBy,LinkApprovedAtUtc,LinkProofType)
+    VALUES('${tenant}','201000000101',101,'ACTIVE',1,SYSUTCDATETIME(),'IN_PERSON_ID');
+  `);
+  expect((await quoteDecember(input(101))).percent).toBe(25);
+  await pool!.request().query('UPDATE dbo.TblClientLoyalty SET IsActive=0 WHERE ClientID=101');
+  expect((await quoteDecember(input(101))).percent).toBe(20);
+ });
+ it('pause denies fresh registration and quote even after a successful previous quote',async()=>{
+  await register(101);await approve(101);expect((await quoteDecember(input(101))).percent).toBe(10);
+  await pool!.request().query("UPDATE dbo.CutOfferCampaign SET Status='PAUSED'");
+  await expect(quoteDecember(input(101))).rejects.toThrow('DECEMBER_REGISTRATION_REQUIRED');
+  await expect(register(105)).rejects.toThrow('CAMPAIGN_UNAVAILABLE');
+ });
+
 });
