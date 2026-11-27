@@ -138,4 +138,26 @@ describe('DRVO Light V1 theme tokens (ADR-024 / ADR-041)', () => {
     expect(css).toContain('--color-primary: var(--primary);');
     expect(css).not.toMatch(/--(background|primary|brand|card|foreground):\s*(#|oklch)/);
   });
+
+  it('resolves inline queue and booking theme tokens in both modes', () => {
+    const paths = [
+      'src/app/queue/live/page.tsx',
+      'src/app/queue/new/page.tsx',
+      'src/app/bookings/page.tsx',
+      'src/app/bookings/new/page.tsx',
+      'src/app/bookings/calendar/page.tsx',
+      'src/app/admin/queue-booking-settings/page.tsx',
+    ];
+    for (const path of paths) {
+      const source = readFileSync(join(process.cwd(), path), 'utf8');
+      const tokens = [...source.matchAll(/var\((--[a-z-]+)\)/g)].map((match) => match[1]);
+      expect(tokens.length, path).toBeGreaterThan(0);
+      for (const token of tokens) {
+        expect(THEME_TOKENS.light, `${path}: ${token}`).toHaveProperty(token);
+        expect(THEME_TOKENS.dark, `${path}: ${token}`).toHaveProperty(token);
+      }
+      expect(source, path).not.toMatch(/\$\{(?:cfg|act)\.color\}[0-9a-f]{2}/i);
+    }
+  });
+
 });
