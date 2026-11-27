@@ -1,0 +1,75 @@
+import {beforeAll,afterAll,describe,it,expect,vi} from 'vitest';
+import sql from 'mssql';
+import {createHash} from 'node:crypto';
+vi.mock('server-only',()=>({}));
+vi.mock('@/lib/cut-club/memberOtp',()=>({digestToken:(token:string)=>createHash('sha256').update('cutclub-member-session-v1:').update(token).digest('hex')}));
+import {pilotTenant} from '@/lib/cut-club/membershipDraft';
+import {saveMembershipDraft} from '@/lib/cut-club/membershipDraftSql';
+import {publishMembership} from '@/lib/cut-club/membershipPublicationSql';
+import {submitMembershipApplication,decideMembershipApplication} from '@/lib/cut-club/membershipApplicationSql';
+import {membershipTrialFromApplication} from '@/lib/cut-club/membershipTrialSql';
+import {saveBenefitDraft} from '@/lib/cut-club/membershipBenefitDraftSql';
+import {recordBenefitApproval} from '@/lib/cut-club/membershipBenefitApprovalSql';
+import {recordSimulatedBenefitUsage,reverseSimulatedBenefitUsage} from '@/lib/cut-club/membershipBenefitUsageSql';
+import {parseUsageInput} from '@/lib/cut-club/membershipBenefitUsage';
+const enabled=process.env.CI==='true'&&process.env.MEMBERSHIP_EPHEMERAL_SQL==='1'&&process.env.MEMBERSHIP_EPHEMERAL_HOST==='127.0.0.1'&&!process.env.DB_SERVER&&!process.env.CLOUD_DB_SERVER;
+const scope={tenantId:pilotTenant,staffId:71},accountId='22222222-2222-4222-8222-222222222222',token='U'.repeat(43);
+const program={code:'USAGE_SQL',expectedRevision:0,title:'Usage fixture',kind:'GENERAL',minimumVisits:2,allowedBranchIds:[1],partnerCode:null,reason:'fixture rules'};
+const rule={code:'HAIR',kind:'PERCENT_DISCOUNT',serviceId:9,value:1000,maxUsesPerMembership:3,maxUsesPerInvoice:2,branchIds:[1]};
+const draft={programCode:program.code,programRevision:1,expectedRevision:0,reason:'proposal only',rules:[rule]};
+const approval={action:'APPROVE',programCode:program.code,programRevision:1,publicationRevision:1,benefitRevision:1,expectedRevision:0,reason:'review complete'};
+const receipt=(i:number)=>'a1000000-0000-4000-8000-'+String(i).padStart(12,'0');
+const base={receiptId:receipt(1),accountId,programCode:program.code,trialRevision:1,approvalRevision:1,serviceId:9,branchId:1,units:2};
+let pool:sql.ConnectionPool;
+describe('usage input',()=>{
+ it('rejects caller prices, unsafe units, and unapproved branch',()=>{
+ expect(parseUsageInput(base)).not.toBeNull();
+ for(const patch of [{discountMinor:1},{units:0},{branchId:2},{receiptId:'invoice-1'}])expect(parseUsageInput({...base,...patch})).toBeNull();
+ });
+});
+describe.skipIf(!enabled)('simulated usage ledger, disposable SQL only',()=>{
+ beforeAll(async()=>{
+ const password=process.env.MEMBERSHIP_EPHEMERAL_AGENT;if(!password)throw Error('MISSING_TEST_LOGIN');
+ pool=await new sql.ConnectionPool({server:'127.0.0.1',port:1433,database:'last132_agent',user:'drvo_agent',password,options:{encrypt:false,trustServerCertificate:true},pool:{max:6,min:0}}).connect();
+ const c=await pool.request().query('SELECT DB_NAME() AS Db,SUSER_SNAME() AS LoginName');
+ if(c.recordset[0]?.Db!=='last132_agent'||c.recordset[0]?.LoginName!=='drvo_agent')throw Error('WRONG_DB');
+ for(const k of ['DRAFT','PUBLICATION','TRIAL','APPLICATION','APPLICATION_ISSUE','BENEFIT_DRAFT','BENEFIT_APPROVAL','BENEFIT_USAGE'])process.env['CUT_CLUB_STAGING_MEMBERSHIP_'+k+'_ENABLED']='true';
+ const digest=createHash('sha256').update('cutclub-member-session-v1:').update(token).digest('hex');
+ await pool.request().input('account',sql.UniqueIdentifier,accountId).input('tenant',sql.UniqueIdentifier,pilotTenant).input('digest',sql.Char(64),digest).query(`
+ UPDATE dbo.CutClubMemberAccount SET AccessStatus='ENABLED',LinkStatus='ACTIVE',LegacyClientID=7 WHERE AccountID=@account AND TenantId=@tenant;
+ UPDATE dbo.TblClient SET Mobile='01000000000' WHERE ClientID=7 AND TenantId=@tenant;
+ UPDATE dbo.TblClientLoyalty SET TotalVisits=3 WHERE ClientID=7;
+ INSERT dbo.CutClubCustomerSession VALUES(@digest,@tenant,@account,NULL,DATEADD(MINUTE,20,SYSUTCDATETIME()));`);
+ });
+ afterAll(async()=>{await pool?.close();});
+ it('serializes uses, preserves limits across approval revisions and restores capacity once',async()=>{
+ await saveMembershipDraft(pool,scope,program);
+ await publishMembership(pool,scope,{action:'PUBLISH',code:program.code,programRevision:1,expectedRevision:0,reason:'publish test'});
+ const application=await submitMembershipApplication(pool,token,{code:program.code,publicationRevision:1,branchId:1});
+ await decideMembershipApplication(pool,scope,{id:application.id,decision:'ACCEPTED_FOR_REVIEW',reason:'review accepted'});
+ await membershipTrialFromApplication(pool,scope,{applicationId:application.id,action:'ISSUE',expectedTrialRevision:0,expiresAt:new Date(Date.now()+86400000).toISOString(),reason:'issue trial'});
+ await saveBenefitDraft(pool,scope,draft);
+ await recordBenefitApproval(pool,scope,approval);
+ const consume=(x:unknown)=>recordSimulatedBenefitUsage(pool,scope,x);
+ const reverse=(i:number)=>reverseSimulatedBenefitUsage(pool,scope,{receiptId:receipt(i),reason:'void simulation'});
+ expect(await consume(base)).toMatchObject({replayed:false,simulationOnly:true,originalMinor:40002,discountMinor:4000,finalMinor:36002});
+ expect(await consume(base)).toMatchObject({replayed:true});
+ await expect(consume({...base,units:1})).rejects.toMatchObject({code:'RECEIPT_CONFLICT'});
+ await expect(consume({...base,receiptId:receipt(2),units:2})).rejects.toMatchObject({code:'LIMIT_OR_PRICE_INVALID'});
+ const competing=await Promise.allSettled([consume({...base,receiptId:receipt(2),units:1}),consume({...base,receiptId:receipt(3),units:1})]);
+ expect(competing.filter(x=>x.status==='fulfilled')).toHaveLength(1);
+ expect(competing.find(x=>x.status==='rejected')).toMatchObject({reason:{code:'LIMIT_OR_PRICE_INVALID'}});
+ await saveBenefitDraft(pool,scope,{...draft,expectedRevision:1,rules:[{...rule,value:2000}],reason:'new draft'});
+ await recordBenefitApproval(pool,scope,{...approval,expectedRevision:1,benefitRevision:2});
+ await expect(consume({...base,receiptId:receipt(4),approvalRevision:2,units:1})).rejects.toMatchObject({code:'LIMIT_OR_PRICE_INVALID'});
+ expect(await reverse(1)).toMatchObject({replayed:false});
+ expect(await reverse(1)).toMatchObject({replayed:true});
+ expect(await consume({...base,receiptId:receipt(4),approvalRevision:2})).toMatchObject({discountMinor:8000,finalMinor:32002});
+ await expect(consume({...base,receiptId:receipt(5),approvalRevision:2,units:1})).rejects.toMatchObject({code:'LIMIT_OR_PRICE_INVALID'});
+ await recordBenefitApproval(pool,scope,{...approval,action:'REVOKE',expectedRevision:2,benefitRevision:2,reason:'revoke trial'});
+ await expect(consume({...base,receiptId:receipt(6),approvalRevision:2,units:1})).rejects.toMatchObject({code:'MEMBERSHIP_OR_APPROVAL_NOT_CURRENT'});
+ expect(await reverse(4)).toMatchObject({replayed:false});
+ const count=await pool.request().input('tenant',sql.UniqueIdentifier,pilotTenant).input('code',sql.VarChar(40),program.code).query('SELECT COUNT(*) AS C FROM dbo.CutClubMembershipBenefitUsage WHERE TenantId=@tenant AND ProgramCode=@code');
+ expect(count.recordset[0].C).toBe(3);
+ });
+});
