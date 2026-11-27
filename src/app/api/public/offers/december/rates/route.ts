@@ -1,3 +1,4 @@
+import {decemberProductionLogin} from '@/lib/campaigns/december-exam/releaseMode';
 import {createHash,timingSafeEqual} from 'node:crypto';
 import {NextRequest,NextResponse} from 'next/server';
 import {getPool,sql} from '@/lib/db';
@@ -12,11 +13,11 @@ export async function GET(req:NextRequest){
  const key=process.env.DECEMBER_EXAM_BFF_SHARED_KEY,tenant=process.env.DECEMBER_EXAM_TENANT_ID,auth=req.headers.get('authorization');
  if(!key||Buffer.byteLength(key)<32||!tenant||!auth?.startsWith('Bearer ')||!timingSafeEqual(digest(key),digest(auth.slice(7))))return reply({ok:false,code:'UNAUTHORIZED'},401);
  try{
- const r=await (await getPool()).request().input('tenant',sql.UniqueIdentifier,tenant).input('code',sql.VarChar(48),DECEMBER_CAMPAIGN_CODE)
+ const r=await (await getPool()).request().input('tenant',sql.UniqueIdentifier,tenant).input('productionLogin',sql.NVarChar(128),decemberProductionLogin()).input('code',sql.VarChar(48),DECEMBER_CAMPAIGN_CODE)
  .query<{FirstVisitPct:number;StudentPct:number;ClubPct:number;MultiServicePct:number;Friend1Pct:number;Friend2Pct:number;Friend3Pct:number}>(`
  SELECT c.FirstVisitPct,c.StudentPct,c.ClubPct,c.MultiServicePct,c.Friend1Pct,c.Friend2Pct,c.Friend3Pct
  FROM dbo.CutOfferCampaign c JOIN dbo.Tenant t ON t.TenantId=c.TenantId AND t.Status=N'active'
- WHERE c.TenantId=@tenant AND c.Code=@code AND c.Status='ACTIVE' AND c.StartsAtUtc<=SYSUTCDATETIME() AND c.EndsAtUtc>SYSUTCDATETIME()
+ WHERE (DB_NAME()<>N'last132' OR (@productionLogin IS NOT NULL AND SUSER_SNAME()=@productionLogin)) AND c.TenantId=@tenant AND c.Code=@code AND c.Status='ACTIVE' AND c.StartsAtUtc<=SYSUTCDATETIME() AND c.EndsAtUtc>SYSUTCDATETIME()
  `);
  const f=r.recordset[0];if(!f)return reply({ok:false,code:'CAMPAIGN_UNAVAILABLE'},503);
  const rates:DecemberRates={firstVisit:f.FirstVisitPct,student:f.StudentPct,club:f.ClubPct,multiService:f.MultiServicePct,friends:[f.Friend1Pct,f.Friend2Pct,f.Friend3Pct]};
