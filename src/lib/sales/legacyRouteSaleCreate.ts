@@ -1,4 +1,5 @@
 import 'server-only';
+import { requireStagingZeroPayment, assertNoZeroInvoiceCash } from '@/lib/campaigns/december-exam/stagingZeroPayment';
 import { quoteDecemberInTransaction, persistDecemberRedemption, DecemberCheckoutError, type DecemberClaim } from '@/lib/campaigns/december-exam/stagingCheckout';
 import { confirmStagingDecemberReferral } from '@/lib/campaigns/december-exam/stagingInvoiceReferral';
 
@@ -102,13 +103,18 @@ async function executeInRouteSaleCreateTransaction(
   const decemberQuote = input.decemberClaim ? await quoteDecemberInTransaction(transaction, {
     tenantId: input.decemberClaim.tenantId, branchId, clientId, items,
   }) : null;
-  if (decemberQuote && (decemberQuote.payablePiasters === 0 ||
-    decemberQuote.discountPiasters !== input.decemberClaim!.expectedDiscountMinor ||
+  if (decemberQuote && (decemberQuote.discountPiasters !== input.decemberClaim!.expectedDiscountMinor ||
     decemberQuote.discountPiasters !== Math.round(disVal * 100) ||
     decemberQuote.payablePiasters !== Math.round(grandTotal * 100) ||
     decemberQuote.subtotalMinor !== Math.round(subTotal * 100) ||
     decemberQuote.percent !== disPercent)) {
     throw new DecemberCheckoutError('DECEMBER_QUOTE_CHANGED');
+  }
+
+  const decemberZero = !!decemberQuote && decemberQuote.payablePiasters === 0;
+  if (decemberZero && ((await requireStagingZeroPayment(transaction)) !== headerPaymentMethodId ||
+      activeAllocations.length !== 0 || isSplitPayment || payCash !== 0 || payVisa !== 0)) {
+    throw new DecemberCheckoutError('DECEMBER_ZERO_PAYMENT_NOT_READY');
   }
 
   const newInvID = await allocateInvID(transaction, 'TblinvServHead', 'مبيعات', 5000);
@@ -352,6 +358,7 @@ async function executeInRouteSaleCreateTransaction(
     throw enqueueErr;
   }
 
+  if (decemberZero) await assertNoZeroInvoiceCash(transaction, newInvID);
   if (decemberQuote) await persistDecemberRedemption(transaction, decemberQuote, newInvID);
   await confirmStagingDecemberReferral(transaction, { invoiceId: newInvID, clientId, branchId });
   return { invID: newInvID, invType, targetRecalcScopes };
