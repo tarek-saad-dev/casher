@@ -54,7 +54,11 @@ export async function saveBenefitDraft(pool:sql.ConnectionPool,s:Scope,raw:unkno
 /** Strict tenant catalog; global SPrice1, NOT branch price or POS entitlement. No schema ensures/writes. */
 export async function listBenefitCatalog(pool:sql.ConnectionPool,s:Scope):Promise<BenefitCatalogService[]>{
  await gate(pool.request(),s);
- const r=await pool.request().input('tenant',sql.UniqueIdentifier,s.tenantId).query<PublicBookingServiceRow>(`
+ return readBenefitCatalog(pool.request(),s.tenantId);
+}
+/** Caller must hold a verified staging scope. Transactional request allows serializable approval reads. */
+export async function readBenefitCatalog(request:sql.Request,tenantId:string):Promise<BenefitCatalogService[]>{
+ const r=await request.input('tenant',sql.UniqueIdentifier,tenantId).query<PublicBookingServiceRow>(`
  SELECT TOP(1001) p.ProID,p.ProName,p.ProNameAr,p.SPrice1,p.DurationMinutes,p.isDeleted,p.ProType,p.CatID,c.CatName,c.CatType
  FROM dbo.TblPro p JOIN dbo.TblCat c ON c.TenantId=p.TenantId AND c.CatID=p.CatID
  WHERE p.TenantId=@tenant AND ISNULL(p.isDeleted,0)=0 AND LOWER(LTRIM(RTRIM(c.CatType)))='serv' ORDER BY p.ProID`);
