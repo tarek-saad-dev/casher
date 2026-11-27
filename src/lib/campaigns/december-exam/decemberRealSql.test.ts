@@ -87,4 +87,21 @@ describe.skipIf(!enabled)('December actual SQL domain integration on disposable 
   await expect(register(105)).rejects.toThrow('CAMPAIGN_UNAVAILABLE');
  });
 
+ it('blocks duplicate historical phone written with Arabic or Persian digits',async()=>{
+  await register(101);await approve(101);
+  for(const alias of ['٠١٠٠٠٠٠٠١٠١','۰۰۲۰۱۰۰۰۰۰۰۱۰۱','+20 (100) 000-0101']){
+   await pool!.request().input('alias',mssql.NVarChar(30),alias).query('UPDATE dbo.TblClient SET Mobile=@alias WHERE ClientID=105');
+   try{await expect(quoteDecember(input(101))).rejects.toThrow('DECEMBER_IDENTITY_REVIEW');}
+   finally{await pool!.request().query("UPDATE dbo.TblClient SET Mobile='01000000105' WHERE ClientID=105");}
+  }
+ });
+ it('does not confirm referral if invitee phone belongs to two canonical clients',async()=>{
+  const owner=await register(101);await register(102,owner.referralCode);await approve(101);await approve(102);
+  await pool!.request().query("UPDATE dbo.TblClient SET Mobile=N'٠١٠٠٠٠٠٠١٠٢' WHERE ClientID=105");
+  try{
+   await atomic(async tx=>{await invoice(tx,5020,102,2,0);await confirmStagingDecemberReferral(tx,{invoiceId:5020,clientId:102,branchId:2});});
+   expect((await quoteDecember(input(101))).percent).toBe(10);
+  }finally{await pool!.request().query("UPDATE dbo.TblClient SET Mobile='01000000105' WHERE ClientID=105");}
+ });
+
 });
