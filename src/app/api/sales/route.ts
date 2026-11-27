@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import {STAGING_VOUCHER_INVOICE_FLAG} from '@/lib/cut-club/stagingInvoiceClaim';
 import { getPool } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import type { CreateSalePayload } from "@/lib/types";
@@ -258,7 +259,20 @@ export async function POST(req: NextRequest) {
         ? '\nCUT_HANDOFF:' + sourceHandoffId + '|'
         : '';
 
+    // Bounded scanned voucher code supplied ONLY by authenticated POS staff.
+    // All owner/service/free-line proofs happen inside invoice transaction.
+    const voucherRequest=(body as CreateSalePayload & {cutClubVoucherCode?:unknown}).cutClubVoucherCode;
+    if(voucherRequest!==undefined&&voucherRequest!==null&&voucherRequest!==''&&
+       (typeof voucherRequest!=='string'||
+        !/^[A-Z0-9-]{6,100}$/.test(voucherRequest.trim().toUpperCase())))
+      return NextResponse.json({error:'كود قسيمة CUT CLUB غير صحيح'},{status:400});
+    if(voucherRequest&&process.env[STAGING_VOUCHER_INVOICE_FLAG]!=='true')
+      return NextResponse.json({error:'استخدام قسيمة CUT CLUB داخل الفاتورة غير متاح'},{status:409});
+
     const saleInput = {
+      tenantId:String(sessionUser.TenantId),
+      cutClubVoucherCode:typeof voucherRequest==='string'?
+        voucherRequest.trim().toUpperCase():undefined,
       items: body.items.map((item) => ({
         proId: item.proId,
         empId: item.empId,

@@ -9,22 +9,42 @@ const h={ 'Cache-Control':'private, no-store','X-Robots-Tag':'noindex' };
 const reply=(value:unknown,status=200)=>NextResponse.json(value,{status,headers:h});
 
 /** Admin review queue: do not return legacy financial data. */
-export async function GET(){
+export async function GET(req:NextRequest){
   const staff=await requireAdmin();
   if(!isAuthResult(staff)) return staff;
   try {
     const tenant=cutClubTenant();
     if(staff.tenantId.toLowerCase()!==tenant) return reply({ok:false,code:'NOT_FOUND'},404);
-    const accounts=await (await getPool()).request().input('tenant',sql.UniqueIdentifier,tenant)
-      .query<{AccountID:string;PhoneNormalized:string;LinkStatus:string;CreatedAtUtc:Date}>(`
-        SELECT TOP(100) AccountID,PhoneNormalized,LinkStatus,CreatedAtUtc
-        FROM dbo.CutClubMemberAccount
-        WHERE TenantId=@tenant AND LinkStatus IN ('REVIEW_REQUIRED','UNLINKED')
-        ORDER BY CreatedAtUtc DESC
+    const rawPhone=req.nextUrl.searchParams.get('phone');
+    const phone=rawPhone?normalizeCutClubPhone(rawPhone):null;
+    if(rawPhone&&!phone)return reply({ok:false,code:'INVALID_PHONE'},400);
+    const db=await getPool();
+    const totals=await db.request().input('tenant',sql.UniqueIdentifier,tenant).query<{
+      Total:number;Active:number;Pending:number;Suspended:number;
+    }>(`
+      SELECT COUNT(*) AS Total,
+        COALESCE(SUM(CASE WHEN AccessStatus='ENABLED' AND LinkStatus='ACTIVE' THEN 1 ELSE 0 END),0) AS Active,
+        COALESCE(SUM(CASE WHEN AccessStatus='ENABLED' AND LinkStatus<>'ACTIVE' THEN 1 ELSE 0 END),0) AS Pending,
+        COALESCE(SUM(CASE WHEN AccessStatus='SUSPENDED' THEN 1 ELSE 0 END),0) AS Suspended
+      FROM dbo.CutClubMemberAccount WHERE TenantId=@tenant
+    `);
+    const accounts=await db.request().input('tenant',sql.UniqueIdentifier,tenant)
+      .input('phone',sql.NVarChar(20),phone)
+      .query<{AccountID:string;PhoneNormalized:string;LinkStatus:string;AccessStatus:string;CreatedAtUtc:Date;ClientName:string|null}>(`
+        SELECT TOP(200) a.AccountID,a.PhoneNormalized,a.LinkStatus,a.AccessStatus,
+          a.CreatedAtUtc,c.Name AS ClientName
+        FROM dbo.CutClubMemberAccount a
+        LEFT JOIN dbo.TblClient c ON c.TenantId=a.TenantId AND c.ClientID=a.LegacyClientID
+        WHERE a.TenantId=@tenant AND (@phone IS NULL OR a.PhoneNormalized=@phone)
+        ORDER BY a.CreatedAtUtc DESC
       `);
-    return reply({ok:true,items:accounts.recordset.map(x=>({
+    const total=totals.recordset[0];
+    return reply({ok:true,stats:{
+      all:total?.Total??0,active:total?.Active??0,review:total?.Pending??0,suspended:total?.Suspended??0,
+    },items:accounts.recordset.map(x=>({
       accountId:x.AccountID,phoneMasked:x.PhoneNormalized.slice(0,4)+'****'+x.PhoneNormalized.slice(-3),
-      linkStatus:x.LinkStatus,createdAt:x.CreatedAtUtc,
+      linkStatus:x.LinkStatus,accessStatus:x.AccessStatus,
+      clientName:x.ClientName?.trim()||null,createdAt:x.CreatedAtUtc,
     }))});
   }catch{return reply({ok:false,code:'CUT_CLUB_UNAVAILABLE'},503);}
 }
@@ -54,13 +74,13 @@ export async function POST(req:NextRequest){
     try{
       const account=await new sql.Request(tx)
         .input('tenant',sql.UniqueIdentifier,tenant).input('accountId',sql.UniqueIdentifier,b.accountId)
-        .query<{PhoneNormalized:string;LinkStatus:string;LegacyClientID:number|null}>(`
-          SELECT PhoneNormalized,LinkStatus,LegacyClientID
+        .query<{PhoneNormalized:string;LinkStatus:string;AccessStatus:string;LegacyClientID:number|null}>(`
+          SELECT PhoneNormalized,LinkStatus,AccessStatus,LegacyClientID
           FROM dbo.CutClubMemberAccount WITH (UPDLOCK,HOLDLOCK)
           WHERE TenantId=@tenant AND AccountID=@accountId
         `);
       const a=account.recordset[0];
-      if(!a || a.LinkStatus==='ACTIVE'){await tx.rollback();return reply({ok:false,code:'REVIEW_NOT_PENDING'},409);}
+      if(!a || a.LinkStatus==='ACTIVE' || a.AccessStatus==='SUSPENDED'){await tx.rollback();return reply({ok:false,code:'REVIEW_NOT_PENDING'},409);}
       const customer=await new sql.Request(tx)
         .input('tenant',sql.UniqueIdentifier,tenant).input('clientId',sql.Int,b.clientId)
         .query<{Mobile:string|null}>(`
@@ -91,7 +111,7 @@ export async function POST(req:NextRequest){
               LinkApprovedAtUtc=SYSUTCDATETIME(),
               LinkApprovedBy=@staffId,LinkProofType='IN_PERSON_ID',UpdatedAtUtc=SYSUTCDATETIME()
           WHERE TenantId=@tenant AND AccountID=@accountId
-            AND LinkStatus IN ('UNLINKED','REVIEW_REQUIRED')
+            AND LinkStatus IN ('UNLINKED','REVIEW_REQUIRED') AND AccessStatus='ENABLED'
         `);
       if(linked.rowsAffected[0]!==1){await tx.rollback();return reply({ok:false,code:'REVIEW_CONFLICT'},409);}
       await tx.commit();

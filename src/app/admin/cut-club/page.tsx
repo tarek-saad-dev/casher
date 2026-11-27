@@ -25,6 +25,14 @@ interface StoreStats {
 }
 
 const quickLinks = [
+  { label: 'اعتماد مزايا العضويات', href: '/admin/cut-club/membership-benefit-approvals', icon: Gift, color: 'text-yellow-400' },
+  { label: 'إعداد مزايا العضويات', href: '/admin/cut-club/membership-benefit-drafts', icon: Gift, color: 'text-yellow-400' },
+  { label: 'طلبات الانضمام للعضويات', href: '/admin/cut-club/membership-applications', icon: Users, color: 'text-yellow-400' },
+  { label: 'نشر برامج العضويات', href: '/admin/cut-club/membership-publication', icon: Crown, color: 'text-yellow-400' },
+  { label: 'تشغيل العضويات تجريبيًا', href: '/admin/cut-club/membership-trials', icon: Crown, color: 'text-yellow-400' },
+  { label: 'مراجعة إثباتات العضويات', href: '/admin/cut-club/membership-proofs', icon: Users, color: 'text-yellow-400' },
+  { label: 'مسودات برامج العضويات', href: '/admin/cut-club/membership-drafts', icon: Crown, color: 'text-yellow-400' },
+  { label: 'معاينة شروط العضويات', href: '/admin/cut-club/membership-preview', icon: Crown, color: 'text-yellow-400' },
   { label: 'إدارة المتجر', href: '/admin/cut-club/store', icon: Store, color: 'text-blue-400' },
   { label: 'المخزون', href: '/admin/cut-club/inventory', icon: Package, color: 'text-green-400' },
   { label: 'صناديق الغموض', href: '/admin/cut-club/mystery-boxes', icon: Gift, color: 'text-purple-400' },

@@ -1,0 +1,54 @@
+name: CUT CLUB Reward Financial Real SQL — Disposable
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/lib/cut-club/stagingRewardSettlement.ts'
+      - 'src/lib/cut-club/stagingRewardSqlPort.ts'
+      - 'src/app/api/public/cut-club/rewards/purchase/route.ts'
+      - 'src/lib/__tests__/cutClubRewardFinancialRealSql.test.ts'
+      - 'src/lib/__tests__/cutClubStagingRewardSettlement.test.ts'
+      - 'src/lib/__tests__/cutClubStagingRewardPurchaseRoute.test.ts'
+      - 'scripts/cut-club/ci/seed-reward-financial-ephemeral.cjs'
+      - 'docs/cut-club/sql/reward-command-staging-v2.sql'
+      - '.github/workflows/cut-club-reward-financial-real-sql.yml'
+permissions:
+  contents: read
+jobs:
+  financial-sql:
+    name: Disposable SQL Server 2022 / concurrent Coins purchase
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        ports:
+          - 1433:1433
+        env:
+          ACCEPT_EULA: "Y"
+          MSSQL_SA_PASSWORD: "Disposable-SQL-Reward-2026-Only!"
+    env:
+      CI: "true"
+      CUT_CLUB_REWARD_EPHEMERAL_SQL: "1"
+      CUT_CLUB_REWARD_EPHEMERAL_HOST: "127.0.0.1"
+      CUT_CLUB_REWARD_EPHEMERAL_SA_PASSWORD: "Disposable-SQL-Reward-2026-Only!"
+      CUT_CLUB_REWARD_EPHEMERAL_AGENT_PASSWORD: "Disposable-Agent-Reward-2026!"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Require ephemeral localhost and no production DB credentials
+        run: |
+          test "$CI" = "true"
+          test "$CUT_CLUB_REWARD_EPHEMERAL_HOST" = "127.0.0.1"
+          test "$CUT_CLUB_REWARD_EPHEMERAL_SQL" = "1"
+          test -z "${CLOUD_DB_SERVER:-}"
+          test -z "${DB_SERVER:-}"
+      - name: Seed disposable tenant, wallet, real service, reward and command schema
+        run: node scripts/cut-club/ci/seed-reward-financial-ephemeral.cjs
+      - name: Test concurrent SQL transactions, rollback, replay, stage-only guards
+        run: npx vitest run src/lib/__tests__/cutClubRewardFinancialRealSql.test.ts
