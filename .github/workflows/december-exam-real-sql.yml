@@ -1,0 +1,50 @@
+name: December Exam Disposable SQL
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/lib/campaigns/december-exam/**'
+      - 'db/drvo-migrations/027-cut-offer-campaign/**'
+      - 'db/drvo-migrations/028-cut-education-catalog/**'
+      - 'db/drvo-migrations/029-cut-offer-operations/**'
+      - 'scripts/drvo/ci/seed-december-ephemeral-sql.cjs'
+      - 'scripts/cut-club/ci/seed-member-ephemeral-sql.cjs'
+      - '.github/workflows/december-exam-real-sql.yml'
+permissions:
+  contents: read
+jobs:
+  sql:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        ports:
+          - 1433:1433
+        env:
+          ACCEPT_EULA: "Y"
+          MSSQL_SA_PASSWORD: "Isolated-SQL-SA-2026-Only!"
+    env:
+      CI: "true"
+      DECEMBER_EPHEMERAL_SQL: "1"
+      CUT_CLUB_EPHEMERAL_SQL: "1"
+      CUT_CLUB_EPHEMERAL_HOST: "127.0.0.1"
+      CUT_CLUB_EPHEMERAL_SA_PASSWORD: "Isolated-SQL-SA-2026-Only!"
+      CUT_CLUB_EPHEMERAL_AGENT_PASSWORD: "Isolated-Drvo-Agent-2026!"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Refuse external database configuration
+        run: |
+          test -z "${DB_SERVER:-}"
+          test -z "${CLOUD_DB_SERVER:-}"
+          test "$CUT_CLUB_EPHEMERAL_HOST" = "127.0.0.1"
+      - run: node scripts/cut-club/ci/seed-member-ephemeral-sql.cjs
+      - run: node scripts/drvo/ci/seed-december-ephemeral-sql.cjs
+      - run: npx vitest run src/lib/campaigns/december-exam/decemberRealSql.test.ts

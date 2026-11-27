@@ -1,0 +1,68 @@
+name: December Exam VPS Staging Preflight
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - '.github/workflows/december-exam-vps-preflight.yml'
+      - 'scripts/drvo/december-exam-staging-preflight.ts'
+      - 'scripts/drvo/december-exam-staging-migrate.ts'
+      - 'db/drvo-migrations/027-cut-offer-campaign/**'
+      - 'db/drvo-migrations/028-cut-education-catalog/**'
+      - 'db/drvo-migrations/029-cut-offer-operations/**'
+permissions:
+  contents: read
+concurrency:
+  group: december-vps-preflight
+  cancel-in-progress: true
+jobs:
+  staging-schema:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'feat/december-exam-foundation'
+    runs-on: ubuntu-latest
+    environment: drvo-staging
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Apply only December migrations to isolated staging and verify
+        env:
+          DRVO_STAGING_SSH_HOST: ${{ secrets.DRVO_STAGING_SSH_HOST || secrets.STAGING_HOST || secrets.VPS_HOST }}
+          DRVO_STAGING_SSH_KEY: ${{ secrets.DRVO_STAGING_SSH_KEY }}
+          DECEMBER_STAGING_SCHEMA_APPLY: 'true'
+          DEPLOY_COMMIT_SHA: ${{ github.event.pull_request.head.sha }}
+          DRVO_STAGING_DB_PASSWORD: ${{ secrets.DRVO_STAGING_DB_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for key in DRVO_STAGING_SSH_HOST DRVO_STAGING_SSH_KEY DRVO_STAGING_DB_PASSWORD; do
+            if [[ -z "${!key:-}" ]]; then echo "Missing staging secret: $key"; exit 11; fi
+          done
+          for f in .env .env.local .env.production .env.production.local; do
+            if [[ -f "$f" ]]; then echo "Unexpected local env file"; exit 10; fi
+          done
+          keyfile=$(mktemp)
+          hosts=$(mktemp)
+          tunnel=""
+          cleanup() {
+            if [[ -n "$tunnel" ]]; then kill "$tunnel" 2>/dev/null || true; fi
+            rm -f "$keyfile" "$hosts"
+          }
+          trap cleanup EXIT
+          chmod 600 "$keyfile" "$hosts"
+          printf '%s\n' "$DRVO_STAGING_SSH_KEY" > "$keyfile"
+          ssh-keyscan -H "$DRVO_STAGING_SSH_HOST" > "$hosts"
+          ssh -i "$keyfile" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$hosts" -o ExitOnForwardFailure=yes -L 14330:127.0.0.1:1433 "drvo-tunnel@$DRVO_STAGING_SSH_HOST" -N &
+          tunnel=$!
+          for i in {1..30}; do
+            if nc -z 127.0.0.1 14330; then break; fi
+            sleep 1
+          done
+          nc -z 127.0.0.1 14330
+          npx tsx scripts/drvo/december-exam-staging-migrate.ts
+          npx tsx scripts/drvo/december-exam-staging-preflight.ts

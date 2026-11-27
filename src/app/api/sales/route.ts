@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
+import { getStagingZeroPaymentMethod } from "@/lib/campaigns/december-exam/stagingZeroPayment";
+import { quoteDecember, DecemberCheckoutError, type DecemberClaim } from "@/lib/campaigns/december-exam/stagingCheckout";
+import { requirePageAccess, isAuthResult } from "@/lib/api-auth";
 import { getSession } from "@/lib/session";
 import type { CreateSalePayload } from "@/lib/types";
 import { resolveSplitPaymentConfig } from "@/lib/clearingMethod";
@@ -135,6 +138,27 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    let decemberClaim: DecemberClaim | undefined;
+    let decemberZeroMethod: number | undefined;
+    let decemberQuote: Awaited<ReturnType<typeof quoteDecember>> | undefined;
+    const requested = (body as CreateSalePayload & {decemberExam?: unknown}).decemberExam;
+    if (requested !== undefined) {
+      const auth = await requirePageAccess('/income/pos');
+      if (!isAuthResult(auth)) return auth;
+      if (auth.tenantId.toLowerCase() !== String(sessionUser.TenantId).toLowerCase() || auth.activeBranchId !== branchId)
+        throw new DecemberCheckoutError('DECEMBER_IDENTITY_REVIEW',403);
+      if (!requested || typeof requested !== 'object' || !('expectedDiscountMinor' in requested) ||
+        typeof requested.expectedDiscountMinor !== 'number' || !Number.isSafeInteger(requested.expectedDiscountMinor) ||
+        requested.expectedDiscountMinor <= 0 || Number(body.dis ?? 0) !== 0 || Number(body.disVal ?? 0) !== 0 ||
+        String(body.notes2 ?? '').includes('[groomPackage]'))
+        throw new DecemberCheckoutError('DECEMBER_INVALID_CART',400);
+      decemberQuote = await quoteDecember({tenantId:auth.tenantId,branchId,clientId:body.clientId,items:body.items});
+      if (decemberQuote.discountPiasters !== requested.expectedDiscountMinor)
+        throw new DecemberCheckoutError('DECEMBER_QUOTE_CHANGED');
+      if (decemberQuote.payablePiasters === 0)
+        decemberZeroMethod = await getStagingZeroPaymentMethod();
+      decemberClaim = {tenantId:auth.tenantId,expectedDiscountMinor:requested.expectedDiscountMinor};
+    }
     // ──── Server-side totals from line items + optional header discount ────
     const computed = computeInvoiceItemsTotals(
       body.items.map((item) => ({
@@ -145,8 +169,8 @@ export async function POST(req: NextRequest) {
         bonus: item.bonus,
       })),
       {
-        discountPercent: body.dis,
-        discountValue: body.disVal,
+        discountPercent: decemberQuote?.percent ?? body.dis,
+        discountValue: decemberQuote ? decemberQuote.discountPiasters / 100 : body.disVal,
       },
     );
     const subTotal = computed.subTotal;
@@ -178,6 +202,13 @@ export async function POST(req: NextRequest) {
     // ──── Payment allocation validation ────
     const rawAllocations = body.paymentAllocations || [];
 
+    // The dedicated no-collection method must never be accepted as a regular
+    // payment allocation, even if it appears in the legacy selector.
+    const reservedZeroMethod=Number(process.env.DECEMBER_EXAM_ZERO_PAYMENT_METHOD_ID);
+    if(Number.isSafeInteger(reservedZeroMethod)&&reservedZeroMethod>0&&rawAllocations.some(pa=>Number(pa.paymentMethodId)===reservedZeroMethod)){
+      return NextResponse.json({error:'طريقة عدم التحصيل مخصصة لفواتير العرض المجانية فقط',code:'DECEMBER_RESERVED_PAYMENT_METHOD'},{status:400});
+    }
+
     // Reject if client attempts to submit the internal clearing method
     const clientSubmittedClearing = rawAllocations.some(
       (pa) => pa.paymentMethodId === splitCfg.clearingMethodId,
@@ -195,7 +226,9 @@ export async function POST(req: NextRequest) {
       return isFinite(amt) && amt > 0 && Number.isInteger(pa.paymentMethodId * 1);
     });
 
-    if (activeAllocations.length === 0) {
+    if (decemberZeroMethod !== undefined && (rawAllocations.some(pa=>Number(pa.amount)!==0) || Number(body.payCash??0)!==0 || Number(body.payVisa??0)!==0 || decemberZeroMethod===splitCfg.clearingMethodId))
+      throw new DecemberCheckoutError('DECEMBER_ZERO_PAYMENT_INVALID',400);
+    if (activeAllocations.length === 0 && decemberZeroMethod === undefined) {
       return NextResponse.json(
         { error: "يجب إدخال مبلغ لطريقة دفع واحدة على الأقل" },
         { status: 400 },
@@ -217,7 +250,7 @@ export async function POST(req: NextRequest) {
     ) / 100;
     const grandTotalRounded = Math.round(grandTotal * 100) / 100;
 
-    if (Math.abs(totalAllocated - grandTotalRounded) > 0.01) {
+    if (decemberClaim ? Math.round(totalAllocated*100)!==Math.round(grandTotalRounded*100) : Math.abs(totalAllocated - grandTotalRounded) > 0.01) {
       console.error(
         `[pos-api]   ❌ REJECTED: payment total mismatch. Allocated=${totalAllocated}, GrandTotal=${grandTotalRounded}`,
       );
@@ -234,9 +267,9 @@ export async function POST(req: NextRequest) {
 
     // For single payment: use the actual payment method
     // For split payment: use the internal clearing account in the header
-    const headerPaymentMethodId = isSplitPayment
+    const headerPaymentMethodId = decemberZeroMethod ?? (isSplitPayment
       ? splitCfg.clearingMethodId
-      : activeAllocations[0].paymentMethodId;
+      : activeAllocations[0].paymentMethodId);
 
     // PayCash / PayVisa backward-compat fields (best-effort by name lookup)
     const payCash = Math.max(0, body.payCash || 0);
@@ -276,6 +309,7 @@ export async function POST(req: NextRequest) {
       payVisa,
       paymentAllocations: body.paymentAllocations,
       computed,
+      decemberClaim,
       branchId,
       businessDayId,
       shiftMoveID,
@@ -317,6 +351,8 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ invID: result.invID, invType: result.invType, handoffSync }, { status: 201 });
   } catch (err: unknown) {
+    if (err instanceof DecemberCheckoutError)
+      return NextResponse.json({error:'تعذر اعتماد خصم ديسمبر. راجع الاستحقاق وأعد حساب الفاتورة.',code:err.code},{status:err.status});
     const { InventoryDomainError } = await import(
       '@/lib/inventory/inventoryMutation.service'
     );

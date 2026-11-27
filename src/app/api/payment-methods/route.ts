@@ -27,6 +27,7 @@ export async function GET() {
         SELECT PaymentID, PaymentMethod
         FROM [dbo].[TblPaymentMethods]
         WHERE TenantId = @tenantId AND PaymentID <> @clearingId
+          AND PaymentMethod <> N'بدون تحصيل - عرض ديسمبر'
         ORDER BY PaymentID
       `);
     const rows = result.recordset.map((r: { PaymentID: number; PaymentMethod: string }) => ({

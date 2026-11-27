@@ -77,6 +77,7 @@ const INDIRECT_TENANT_HELPERS = [
   'resolveInternalOpsBookingRequest',
   'resolvePartnersReportBranchScope',
   'resolvePosPackageRequest',
+  'requireDecemberReception', // wraps requireAdmin or requirePageAccess plus explicit staff assignment
 ];
 
 /** Non-tenant gates with their own trust model. */
