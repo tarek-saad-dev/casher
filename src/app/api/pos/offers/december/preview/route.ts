@@ -28,7 +28,7 @@ export async function GET(req:NextRequest){
  WHERE x.TenantId=@tenant AND CASE WHEN LEN(m.clean)=11 THEN '+2'+m.clean WHEN LEN(m.clean)=14 AND LEFT(m.clean,2)='00' THEN '+'+SUBSTRING(m.clean,3,12) ELSE '+'+m.clean END=p.PhoneNormalized) PhoneMatches,
  CASE WHEN p.StudentVerifiedAtUtc IS NOT NULL THEN 1 ELSE 0 END StudentVerified,
  CASE WHEN EXISTS(SELECT 1 FROM dbo.CutClubMemberAccount a JOIN dbo.TblClientLoyalty l ON l.ClientID=a.LegacyClientID AND l.IsActive=1
- WHERE a.TenantId=@tenant AND a.LegacyClientID=@client AND a.LinkStatus='ACTIVE') THEN 1 ELSE 0 END ClubLinked,
+ WHERE a.TenantId=@tenant AND a.LegacyClientID=@client AND a.LinkStatus='ACTIVE' AND a.PhoneNormalized=SUBSTRING(p.PhoneNormalized,2,12) AND a.LinkApprovedAtUtc IS NOT NULL AND a.LinkApprovedBy IS NOT NULL) THEN 1 ELSE 0 END ClubLinked,
  (SELECT COUNT(*) FROM dbo.CutOfferReferral r JOIN dbo.CutOfferParticipant i ON i.TenantId=r.TenantId AND i.CampaignId=r.CampaignId AND i.ParticipantId=r.InviteeId
  JOIN dbo.TblinvServHead h ON h.invID=r.InvoiceId AND h.invType=N'مبيعات' AND h.ClientID=i.ClientId AND ISNULL(h.isActive,N'no')=N'no'
  WHERE r.TenantId=c.TenantId AND r.CampaignId=c.CampaignId AND r.InviterId=p.ParticipantId AND r.Status='CONFIRMED') Confirmed,
@@ -41,14 +41,13 @@ export async function GET(req:NextRequest){
  let matchesSelected=false;
  try{matchesSelected=normalizeEgyptianMobile(f.Mobile)===f.PhoneNormalized;}catch{/* invalid legacy phone */}
  const registered=f.Registered===1&&f.PhoneMatches===1&&matchesSelected;
- // Club and cart service rules stay excluded until authoritative suspension/catalog
- // policies are verified; expose observed link only, not granted eligibility.
+ // Cart-dependent service rules are excluded from the customer-only preview.
  const evaluation=evaluateDecember({active:f.Active===1,registered,alreadyRedeemed:f.Used===1,
- firstVisit:f.PriorSales===0,studentVerified:f.StudentVerified===1,clubActive:false,eligiblePaidServiceIds:[],
+ firstVisit:f.PriorSales===0,studentVerified:f.StudentVerified===1,clubActive:f.ClubLinked===1,eligiblePaidServiceIds:[],
  clientId:String(client),referrals:Array.from({length:Math.min(3,f.Confirmed)},(_,i)=>({clientId:'confirmed-'+i,firstVisitCompleted:true,voided:false}))},
  {firstVisit:f.FirstVisitPct,student:f.StudentPct,club:f.ClubPct,multiService:f.MultiServicePct,friends:[f.Friend1Pct,f.Friend2Pct,f.Friend3Pct]},0);
  return reply({ok:true,previewOnly:true,active:f.Active===1,registered,identityReview:f.Registered===1&&!registered,alreadyRedeemed:f.Used===1,
- firstVisit:registered&&f.PriorSales===0,studentVerified:registered&&f.StudentVerified===1,clubLinked:f.ClubLinked===1,
+ firstVisit:registered&&f.PriorSales===0,studentVerified:registered&&f.StudentVerified===1,clubLinked:registered&&f.ClubLinked===1,
  confirmed:f.Confirmed,pending:f.Pending,partialPercent:evaluation.percent,rules:evaluation.rules,reason:evaluation.reason});
  }catch{return reply({ok:false,code:'CAMPAIGN_UNAVAILABLE'},503);}
 }
