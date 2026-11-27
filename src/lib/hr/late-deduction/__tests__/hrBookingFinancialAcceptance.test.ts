@@ -49,7 +49,9 @@ describe('Cut Salon: HR hours vs booking-window financial acceptance', () => {
 
   it.each([
     ['12:00', 0, 'none', null],
-    ['12:01', 1, 'quarter', 100],
+    ['12:01', 1, 'none', null],
+    ['12:14', 14, 'none', null],
+    ['12:15', 15, 'quarter', 100],
     ['13:00', 60, 'quarter', 100],
     ['13:01', 61, 'half', 200],
     ['14:00', 120, 'half', 200],
