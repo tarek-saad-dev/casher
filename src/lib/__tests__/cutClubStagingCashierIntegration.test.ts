@@ -34,7 +34,7 @@ describe("CUT CLUB staging-only POS real invoice entrypoint", () => {
     expect(api).toContain("STAGING_VOUCHER_INVOICE_FLAG");
     expect(api).toContain("cutClubVoucherCode:");
     expect(api).toContain("sessionUser.TenantId");
-    expect(api).toContain("status: 409");
+    expect(api).toMatch(/status:\s*409\b/);
     expect(core).toContain('input.voucherCode === ""');
     expect(core).toContain("return false; // ordinary POS sale unchanged");
     expect(core).toContain("CUT_CLUB_STAGING_CONNECTION_OR_CLAIM_SCHEMA_UNVERIFIED");
