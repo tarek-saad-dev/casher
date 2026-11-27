@@ -36,7 +36,7 @@ export async function quoteDecemberInTransaction(tx:Transaction,input:DecemberCh
  c.FirstVisitPct,c.StudentPct,c.ClubPct,c.MultiServicePct,c.Friend1Pct,c.Friend2Pct,c.Friend3Pct,
  (SELECT COUNT(*) FROM dbo.TblinvServHead h WITH(UPDLOCK,HOLDLOCK) WHERE h.ClientID=@client AND h.invType=N'مبيعات' AND ISNULL(h.isActive,N'no')=N'no') PriorSales,
  CASE WHEN EXISTS(SELECT 1 FROM dbo.CutOfferRedemption d WITH(UPDLOCK,HOLDLOCK) WHERE d.TenantId=c.TenantId AND d.CampaignId=c.CampaignId AND d.ClientId=@client) THEN 1 ELSE 0 END Used,
- CASE WHEN EXISTS(SELECT 1 FROM dbo.CutClubMemberAccount a JOIN dbo.TblClientLoyalty l ON l.ClientID=a.LegacyClientID AND l.IsActive=1 WHERE a.TenantId=@tenant AND a.LegacyClientID=@client AND a.LinkStatus='ACTIVE') THEN 1 ELSE 0 END ClubLinked
+ CASE WHEN EXISTS(SELECT 1 FROM dbo.CutClubMemberAccount a JOIN dbo.TblClientLoyalty l ON l.ClientID=a.LegacyClientID AND l.IsActive=1 WHERE a.TenantId=@tenant AND a.LegacyClientID=@client AND a.LinkStatus='ACTIVE' AND a.PhoneNormalized=SUBSTRING(p.PhoneNormalized,2,12) AND a.LinkApprovedAtUtc IS NOT NULL AND a.LinkApprovedBy IS NOT NULL) THEN 1 ELSE 0 END ClubLinked
  FROM dbo.CutOfferCampaign c WITH(HOLDLOCK)
  JOIN dbo.CutOfferParticipant p WITH(UPDLOCK,HOLDLOCK) ON p.TenantId=c.TenantId AND p.CampaignId=c.CampaignId
  JOIN dbo.TblClient cl WITH(HOLDLOCK) ON cl.TenantId=p.TenantId AND cl.ClientID=p.ClientId
@@ -54,8 +54,8 @@ export async function quoteDecemberInTransaction(tx:Transaction,input:DecemberCh
  WHERE TenantId=@tenant AND CASE WHEN LEN(x.clean)=11 THEN '+2'+x.clean WHEN LEN(x.clean)=14 AND LEFT(x.clean,2)='00' THEN '+'+SUBSTRING(x.clean,3,12) ELSE '+'+x.clean END=@phone
  `);
  if(count.recordset[0]?.n!==1)deny('DECEMBER_IDENTITY_REVIEW');
- // Explicitly fail rather than under-award membership when suspension semantics are unverified.
- if(f.ClubPct>0&&f.ClubLinked===1)deny('DECEMBER_CLUB_POLICY_REQUIRED');
+ // An active verified member link AND active loyalty record are required.
+ // Unlinked/review-required accounts or inactive loyalty records do not qualify.
  const distinct=[...new Set(input.items.map(i=>i.proId))];
  if(distinct.some(id=>!Number.isSafeInteger(id)||!ids.includes(id)))deny('DECEMBER_INELIGIBLE_SERVICE');
  const catalog=await q().query<{ProID:number;SPrice1:number}>(`
@@ -82,7 +82,7 @@ export async function quoteDecemberInTransaction(tx:Transaction,input:DecemberCh
  AND i.IdentityVerifiedAtUtc IS NOT NULL AND ISNULL(h.isActive,N'no')=N'no' AND h.GrandTotal>0 AND h.PayDue=0
  `);
  const evaluation=evaluateDecember({active:true,registered:true,alreadyRedeemed:false,firstVisit:f.PriorSales===0,
- studentVerified:f.StudentVerified===1,clubActive:false,eligiblePaidServiceIds:distinct.map(String),clientId:String(input.clientId),
+ studentVerified:f.StudentVerified===1,clubActive:f.ClubLinked===1,eligiblePaidServiceIds:distinct.map(String),clientId:String(input.clientId),
  referrals:refs.recordset.map(r=>({clientId:String(r.ClientId),firstVisitCompleted:true,voided:false}))},
  {firstVisit:f.FirstVisitPct,student:f.StudentPct,club:f.ClubPct,multiService:f.MultiServicePct,friends:[f.Friend1Pct,f.Friend2Pct,f.Friend3Pct]},subtotal);
  if(!evaluation.discountPiasters)deny('DECEMBER_NO_DISCOUNT');
