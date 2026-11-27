@@ -113,15 +113,15 @@ interface DayOffEmployeeOption {
 }
 
 const STATUS_OPTIONS = [
-  { value: 'Pending',    label: 'لم يسجل',       color: 'bg-zinc-500/20 text-zinc-400 border-zinc-500/30' },
-  { value: 'Present',    label: 'حاضر',           color: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' },
-  { value: 'Late',       label: 'متأخر',          color: 'bg-amber-500/20 text-amber-400 border-amber-500/30' },
-  { value: 'Absent',     label: 'غائب',           color: 'bg-rose-500/20 text-rose-400 border-rose-500/30' },
-  { value: 'DayOff',     label: 'إجازة',          color: 'bg-blue-500/20 text-blue-400 border-blue-500/30' },
-  { value: 'EarlyLeave', label: 'انصراف مبكر',   color: 'bg-orange-500/20 text-orange-400 border-orange-500/30' },
-  { value: 'Excused',    label: 'إذن / بعذر',     color: 'bg-purple-500/20 text-purple-400 border-purple-500/30' },
-  { value: 'FreelanceAvailable', label: 'فري لانس', color: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30' },
-  { value: 'NotRequired', label: 'غير مطلوب',     color: 'bg-zinc-500/10 text-zinc-500 border-zinc-600/30' },
+  { value: 'Pending',    label: 'لم يسجل',       color: 'bg-muted text-muted-foreground border-border' },
+  { value: 'Present',    label: 'حاضر',           color: 'bg-success-soft text-success border-success/30' },
+  { value: 'Late',       label: 'متأخر',          color: 'bg-warning-soft text-warning border-warning/30' },
+  { value: 'Absent',     label: 'غائب',           color: 'bg-destructive-soft text-destructive border-destructive/30' },
+  { value: 'DayOff',     label: 'إجازة',          color: 'bg-info-soft text-info border-info/30' },
+  { value: 'EarlyLeave', label: 'انصراف مبكر',   color: 'bg-warning-soft text-warning border-warning/30' },
+  { value: 'Excused',    label: 'إذن / بعذر',     color: 'bg-brand-soft text-brand border-brand/30' },
+  { value: 'FreelanceAvailable', label: 'فري لانس', color: 'bg-info-soft text-info border-info/30' },
+  { value: 'NotRequired', label: 'غير مطلوب',     color: 'bg-muted text-muted-foreground border-border' },
 ];
 
 const DAY_NAMES = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
@@ -159,17 +159,17 @@ function EmploymentBadges({ row }: { row: AttendanceRow }) {
   return (
     <div className="flex flex-wrap gap-0.5 mt-0.5">
       {row.employmentTypeLabel && (
-        <span className="text-[9px] px-1 py-0 rounded bg-zinc-800 text-zinc-400 border border-zinc-700">
+        <span className="text-[9px] px-1 py-0 rounded bg-muted text-muted-foreground border border-border">
           {row.employmentTypeLabel}
         </span>
       )}
       {row.payrollMethodLabel && (
-        <span className="text-[9px] px-1 py-0 rounded bg-zinc-800/60 text-zinc-500 border border-zinc-700/50">
+        <span className="text-[9px] px-1 py-0 rounded bg-muted text-muted-foreground border border-border">
           {row.payrollMethodLabel}
         </span>
       )}
       {row.dayOffPolicyLabel && row.dayOffPolicyLabel !== '—' && (
-        <span className="text-[9px] px-1 py-0 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+        <span className="text-[9px] px-1 py-0 rounded bg-brand-soft text-brand border border-brand/20">
           {row.dayOffPolicyLabel}
         </span>
       )}
@@ -242,7 +242,7 @@ function TodayBranchBadge({
       ? `${transfer.transferStartTime || '—'}–${transfer.transferEndTime || '—'}`
       : null;
   const scheduledTag = transfer.isScheduledTransfer ? (
-    <span className="text-[9px] text-violet-300/90 font-medium">مجدول</span>
+    <span className="text-[9px] text-brand font-medium">مجدول</span>
   ) : null;
 
   return (
@@ -254,15 +254,15 @@ function TodayBranchBadge({
       >
         {baseLabel}
       </span>
-      <span className="text-[10px] text-amber-400/90">→</span>
+      <span className="text-[10px] text-warning">→</span>
       <span
-        className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold border border-amber-500/40 bg-amber-500/15 text-amber-200"
+        className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold border border-warning/40 bg-warning-soft text-warning"
         title="فرع اليوم"
       >
         {opLabel}
       </span>
       {windowLabel ? (
-        <span className="text-[9px] text-amber-300/70">{windowLabel}</span>
+        <span className="text-[9px] text-warning">{windowLabel}</span>
       ) : null}
     </span>
   );
@@ -803,8 +803,8 @@ export default function AttendancePanel({ managerWorkspace = false }: { managerW
     <fieldset disabled={managerClosing} className="min-w-0 space-y-5">
       {managerWorkspace && <ManagerClosingHistory workDate={date} revision={closingHistoryRevision} />}
       <div className="flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-2 text-sm text-zinc-400">
-          <CalendarDays className="w-4 h-4 text-amber-400" />
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <CalendarDays className="w-4 h-4 text-warning" />
           <span>تسجيل حضور وتأخيرات الموظفين يوميًا</span>
         </div>
         <div className="flex items-center gap-2 mr-auto">
@@ -813,7 +813,7 @@ export default function AttendancePanel({ managerWorkspace = false }: { managerW
             variant="outline"
             onClick={() => setDate(shiftCalendarDate(date, -1))}
             disabled={loading}
-            className="border-zinc-700 text-zinc-300 hover:bg-zinc-800 h-9 w-9 p-0"
+            className="border-border text-foreground hover:bg-surface-muted h-9 w-9 p-0"
             aria-label="اليوم السابق"
             data-testid="attendance-prev-day"
             title="اليوم السابق"
@@ -824,14 +824,14 @@ export default function AttendancePanel({ managerWorkspace = false }: { managerW
             type="date"
             value={date}
             onChange={(e) => setDate(e.target.value)}
-            className="bg-zinc-900 border-zinc-700 text-white w-44 h-9 text-sm"
+            className="bg-card border-border text-foreground w-44 h-9 text-sm"
           />
           <Button
             type="button"
             variant="outline"
             onClick={() => setDate(shiftCalendarDate(date, 1))}
             disabled={loading}
-            className="border-zinc-700 text-zinc-300 hover:bg-zinc-800 h-9 w-9 p-0"
+            className="border-border text-foreground hover:bg-surface-muted h-9 w-9 p-0"
             aria-label="اليوم التالي"
             data-testid="attendance-next-day"
             title="اليوم التالي"
@@ -839,15 +839,15 @@ export default function AttendancePanel({ managerWorkspace = false }: { managerW
             <ChevronLeft className="w-4 h-4" />
           </Button>
           <Button variant="outline" onClick={() => setDate(getOperationalDate())}
-            className="border-zinc-700 text-zinc-300 hover:bg-zinc-800 h-9 text-xs gap-1">
+            className="border-border text-foreground hover:bg-surface-muted h-9 text-xs gap-1">
             <CalendarDays className="w-3.5 h-3.5" />اليوم
           </Button>
           <Button variant="outline" onClick={() => fetchAttendance(date)} disabled={loading}
-            className="border-zinc-700 text-zinc-300 hover:bg-zinc-800 h-9 w-9 p-0">
+            className="border-border text-foreground hover:bg-surface-muted h-9 w-9 p-0">
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
           </Button>
           <Button onClick={openFreelanceModal} data-testid="add-freelance-attendance"
-            className="h-9 text-xs gap-1 bg-cyan-600/20 text-cyan-400 border border-cyan-500/30 hover:bg-cyan-600/30">
+            className="h-9 text-xs gap-1 bg-info-soft text-info border border-info/30 hover:bg-info-soft">
             <UserPlus className="w-3.5 h-3.5" />
             إضافة فري لانس للحضور
           </Button>
@@ -856,7 +856,7 @@ export default function AttendancePanel({ managerWorkspace = false }: { managerW
             onClick={openDayOffWorkModal}
             data-testid="add-day-off-work-attendance"
             title="إضافة موظف أجازته اليوم ونزل يشتغل"
-            className="h-9 text-xs gap-1 bg-violet-600/20 text-violet-300 border border-violet-500/30 hover:bg-violet-600/30"
+            className="h-9 text-xs gap-1 bg-brand-soft text-brand border border-brand/30 hover:bg-brand-soft"
           >
             <CalendarOff className="w-3.5 h-3.5" />
             إضافة موظف أجازته اليوم
@@ -870,7 +870,7 @@ export default function AttendancePanel({ managerWorkspace = false }: { managerW
             }}
             data-testid="attendance-temporary-transfer"
             title="نقل موظف ليوم واحد لفرع آخر بدون تعديل الجدول الأسبوعي"
-            className="h-9 text-xs gap-1 border-amber-500/35 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20"
+            className="h-9 text-xs gap-1 border-warning/35 bg-warning-soft text-warning hover:bg-warning-soft"
           >
             <ArrowLeftRight className="w-3.5 h-3.5" />
             نقل موظف اليوم
@@ -880,22 +880,22 @@ export default function AttendancePanel({ managerWorkspace = false }: { managerW
 
       {transferSummary && transferSummary.count > 0 ? (
         <div
-          className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100"
+          className="rounded-xl border border-warning/30 bg-warning-soft px-4 py-3 text-sm text-warning"
           data-testid="attendance-transfer-banner"
         >
           <div className="flex flex-wrap items-center gap-2">
-            <ArrowLeftRight className="w-4 h-4 text-amber-300 shrink-0" />
+            <ArrowLeftRight className="w-4 h-4 text-warning shrink-0" />
             <span>
               اليوم:{' '}
-              <strong className="text-white">{transferSummary.count}</strong>{' '}
+              <strong className="text-foreground">{transferSummary.count}</strong>{' '}
               موظف{transferSummary.count === 1 ? '' : 'ين'} منقول
               {transferSummary.transferredIn > 0 ? (
-                <span className="text-amber-200/90">
+                <span className="text-warning">
                   {' '}({transferSummary.transferredIn} وصل{transferSummary.transferredIn === 1 ? '' : 'وا'} لفرع آخر)
                 </span>
               ) : null}
               {transferSummary.transferredOut > 0 ? (
-                <span className="text-amber-200/90">
+                <span className="text-warning">
                   {' '}({transferSummary.transferredOut} في فرع تاني)
                 </span>
               ) : null}
@@ -904,18 +904,18 @@ export default function AttendancePanel({ managerWorkspace = false }: { managerW
         </div>
       ) : null}
 
-      <div className="text-xs text-zinc-500 flex flex-wrap items-center gap-2">
+      <div className="text-xs text-muted-foreground flex flex-wrap items-center gap-2">
         <span>
           {DAY_NAMES[new Date(date + 'T12:00:00Z').getDay()]} — {date}
           {branchLabel ? (
-            <span className="mr-2 text-emerald-400/90">· عرض: {branchLabel}</span>
+            <span className="mr-2 text-success">· عرض: {branchLabel}</span>
           ) : null}
           {summary?.requiredCount != null && (
-            <span className="mr-2 text-zinc-600">({summary.requiredCount} مطلوب الحضور)</span>
+            <span className="mr-2 text-muted-foreground">({summary.requiredCount} مطلوب الحضور)</span>
           )}
         </span>
-        <span className="text-zinc-600">|</span>
-        <span className="text-zinc-500">عرض الموظفين</span>
+        <span className="text-muted-foreground">|</span>
+        <span className="text-muted-foreground">عرض الموظفين</span>
         {[
           { id: 'all', label: 'كل الفروع' },
           ...scopeOptions.map((o) => ({ id: o.code, label: o.label })),
@@ -927,8 +927,8 @@ export default function AttendancePanel({ managerWorkspace = false }: { managerW
             variant={employeeScope === opt.id ? 'default' : 'outline'}
             className={
               employeeScope === opt.id
-                ? 'h-7 text-[11px] bg-zinc-100 text-zinc-900 hover:bg-white'
-                : 'h-7 text-[11px] border-zinc-700 text-zinc-300'
+                ? 'h-7 text-[11px] bg-primary text-primary-foreground hover:bg-primary-hover'
+                : 'h-7 text-[11px] border-border text-foreground'
             }
             disabled={loading || switchingBranch}
             onClick={() => handleEmployeeScopeChange(opt.id)}
@@ -939,7 +939,7 @@ export default function AttendancePanel({ managerWorkspace = false }: { managerW
         ))}
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 2xl:grid-cols-6">
         <KpiCard title="إجمالي الموظفين" value={total}   icon={<Users className="w-5 h-5" />} variant="default" />
         <KpiCard title="الحاضرين"         value={present} icon={<UserCheck className="w-5 h-5" />} variant="success" />
         <KpiCard title="المتأخرين"         value={late}    icon={<Timer className="w-5 h-5" />} variant="warning" />
@@ -949,19 +949,19 @@ export default function AttendancePanel({ managerWorkspace = false }: { managerW
       </div>
 
       {error && (
-        <div className="flex items-center gap-3 p-4 bg-rose-500/10 border border-rose-500/30 rounded-xl text-rose-400">
+        <div className="flex items-center gap-3 p-4 bg-destructive-soft border border-destructive/30 rounded-xl text-destructive">
           <AlertCircle className="w-5 h-5 shrink-0" />
           <span className="text-sm">{error}</span>
         </div>
       )}
       {successMsg && (
-        <div className="flex items-center gap-3 p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-emerald-400">
+        <div className="flex items-center gap-3 p-4 bg-success-soft border border-success/30 rounded-xl text-success">
           <CheckCircle2 className="w-5 h-5 shrink-0" />
           <span className="text-sm">{successMsg}</span>
         </div>
       )}
 
-      <div className="bg-zinc-900/50 border border-zinc-800/50 rounded-xl overflow-hidden">
+      <div className="bg-card border border-border rounded-xl overflow-hidden">
         <table className="w-full table-fixed border-collapse text-sm">
           <colgroup>
             <col className="w-[22%]" />
@@ -973,24 +973,24 @@ export default function AttendancePanel({ managerWorkspace = false }: { managerW
             <col className="w-[12%]" />
           </colgroup>
           <thead>
-            <tr className="border-b border-zinc-800 bg-zinc-950/60">
-              <th className="text-right px-2 py-2.5 text-[11px] text-zinc-400 font-semibold">الموظف</th>
-              <th className="text-center px-1 py-2.5 text-[11px] text-zinc-400 font-semibold">حضور</th>
-              <th className="text-center px-1 py-2.5 text-[11px] text-zinc-400 font-semibold">انصراف</th>
-              <th className="text-center px-1 py-2.5 text-[11px] text-zinc-400 font-semibold">الحالة</th>
-              <th className="text-center px-1 py-2.5 text-[11px] text-zinc-400 font-semibold">ملخص</th>
-              <th className="text-right px-1 py-2.5 text-[11px] text-zinc-400 font-semibold">ملاحظات</th>
-              <th className="text-center px-1 py-2.5 text-[11px] text-zinc-400 font-semibold sticky left-0 bg-zinc-950 z-10">إجراءات</th>
+            <tr className="border-b border-border bg-background">
+              <th className="text-right px-2 py-2.5 text-[11px] text-muted-foreground font-semibold">الموظف</th>
+              <th className="text-center px-1 py-2.5 text-[11px] text-muted-foreground font-semibold">حضور</th>
+              <th className="text-center px-1 py-2.5 text-[11px] text-muted-foreground font-semibold">انصراف</th>
+              <th className="text-center px-1 py-2.5 text-[11px] text-muted-foreground font-semibold">الحالة</th>
+              <th className="text-center px-1 py-2.5 text-[11px] text-muted-foreground font-semibold">ملخص</th>
+              <th className="text-right px-1 py-2.5 text-[11px] text-muted-foreground font-semibold">ملاحظات</th>
+              <th className="text-center px-1 py-2.5 text-[11px] text-muted-foreground font-semibold sticky left-0 bg-background z-10">إجراءات</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr><td colSpan={7} className="text-center p-12">
-                <Loader2 className="w-8 h-8 animate-spin mx-auto text-zinc-500" />
-                <p className="mt-2 text-zinc-500 text-sm">جاري تحميل البيانات...</p>
+                <Loader2 className="w-8 h-8 animate-spin mx-auto text-muted-foreground" />
+                <p className="mt-2 text-muted-foreground text-sm">جاري تحميل البيانات...</p>
               </td></tr>
             ) : managerClosingAttendance.length === 0 ? (
-              <tr><td colSpan={7} className="text-center p-12 text-zinc-500">
+              <tr><td colSpan={7} className="text-center p-12 text-muted-foreground">
                 {managerClosingMode ? 'تم تقفيل كل حالات الحضور لهذا اليوم ✓' : 'لا يوجد موظفون متوقع حضورهم اليوم'}
               </td></tr>
             ) : managerClosingAttendance.map((row) => {
@@ -1013,18 +1013,18 @@ export default function AttendancePanel({ managerWorkspace = false }: { managerW
               const isCancellingTransfer = cancellingTransferKey === key;
               return (
                 <tr key={key}
-                  className={`border-b border-zinc-800/50 hover:bg-zinc-800/20 transition-colors ${isDirty ? 'bg-amber-500/5' : ''}`}>
+                  className={`border-b border-border hover:bg-surface-muted transition-colors ${isDirty ? 'bg-warning-soft' : ''}`}>
                   <td className="px-2 py-2 align-top">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-1">
-                        <span className="font-semibold text-white text-sm truncate max-w-[9rem]">{row.EmpName}</span>
+                        <span className="font-semibold text-foreground text-sm truncate max-w-[9rem]">{row.EmpName}</span>
                         {employeeScope === 'all' ? branchBadge(row, scopeCodes) : null}
                         <TodayBranchBadge transfer={row.transfer} branchCodes={scopeCodes} />
                       </div>
-                      <div className={`text-[10px] mt-0.5 ${row.scheduleWarning ? 'text-amber-500' : row.transfer?.isTransferredToday ? 'text-amber-400/90' : 'text-zinc-500'}`}>
+                      <div className={`text-[10px] mt-0.5 ${row.scheduleWarning ? 'text-warning' : row.transfer?.isTransferredToday ? 'text-warning' : 'text-muted-foreground'}`}>
                         {row.displayReason || (row.isScheduledWorkingDay ? 'يوم عمل' : 'إجازة') || row.scheduleWarning}
                         {(row.ScheduledStartTime || row.ScheduledEndTime) ? (
-                          <span className="text-zinc-600"> · {row.ScheduledStartTime || '--:--'}–{row.ScheduledEndTime || '--:--'}</span>
+                          <span className="text-muted-foreground"> · {row.ScheduledStartTime || '--:--'}–{row.ScheduledEndTime || '--:--'}</span>
                         ) : null}
                       </div>
                       <EmploymentBadges row={row} />
@@ -1035,15 +1035,15 @@ export default function AttendancePanel({ managerWorkspace = false }: { managerW
                       onChange={(e) => updateRow(row.EmpID, rowBranchId, 'CheckInTime', e.target.value || null)}
                       data-testid={`attendance-checkin-${row.EmpID}`}
                       aria-invalid={periodWarned}
-                      className={`bg-zinc-800/50 text-white h-8 w-full max-w-[6.5rem] mx-auto text-center text-[11px] px-1 ${
+                      className={`bg-muted text-foreground h-8 w-full max-w-[6.5rem] mx-auto text-center text-[11px] px-1 ${
                         periodWarned
-                          ? 'border-amber-500 ring-1 ring-amber-500/40 focus-visible:ring-amber-500'
-                          : 'border-zinc-700'
+                          ? 'border-warning/30 ring-1 ring-warning/40 focus-visible:ring-warning/30'
+                          : 'border-border'
                       }`} />
                     {periodWarned && (
                       <div
                         data-testid={`attendance-period-warning-${row.EmpID}`}
-                        className="mt-1 mx-auto max-w-[8.5rem] rounded-md border border-amber-500/40 bg-amber-500/10 p-1 text-[9px] leading-snug text-amber-300"
+                        className="mt-1 mx-auto max-w-[8.5rem] rounded-md border border-warning/40 bg-warning-soft p-1 text-[9px] leading-snug text-warning"
                       >
                         <div className="flex items-center justify-center gap-0.5 font-semibold">
                           <AlertTriangle className="w-3 h-3 shrink-0" />
@@ -1055,7 +1055,7 @@ export default function AttendancePanel({ managerWorkspace = false }: { managerW
                               type="button"
                               onClick={() => fixCheckInPeriod(row.EmpID, rowBranchId, periodChk.suggested!)}
                               data-testid={`attendance-period-fix-${row.EmpID}`}
-                              className="rounded px-1 py-0.5 bg-amber-500 font-bold text-black hover:bg-amber-400"
+                              className="rounded px-1 py-0.5 bg-warning font-bold text-black hover:bg-warning"
                             >
                               {formatClockAr(periodChk.suggested)}
                             </button>
@@ -1064,7 +1064,7 @@ export default function AttendancePanel({ managerWorkspace = false }: { managerW
                             type="button"
                             onClick={() => confirmMorningCheckIn(row.EmpID, rowBranchId)}
                             data-testid={`attendance-period-confirm-${row.EmpID}`}
-                            className="rounded border border-amber-500/40 px-1 py-0.5 text-amber-300 hover:bg-amber-500/20"
+                            className="rounded border border-warning/40 px-1 py-0.5 text-warning hover:bg-warning-soft"
                           >
                             صباحًا
                           </button>
@@ -1075,63 +1075,63 @@ export default function AttendancePanel({ managerWorkspace = false }: { managerW
                   <td className="text-center px-1 py-2 align-top">
                     <Input type="time" value={sqlTimeForInput(row.CheckOutTime)}
                       onChange={(e) => updateRow(row.EmpID, rowBranchId, 'CheckOutTime', e.target.value || null)}
-                      className="bg-zinc-800/50 border-zinc-700 text-white h-8 w-full max-w-[6.5rem] mx-auto text-center text-[11px] px-1" />
+                      className="bg-muted border-border text-foreground h-8 w-full max-w-[6.5rem] mx-auto text-center text-[11px] px-1" />
                   </td>
                   <td className="text-center px-1 py-2 align-top">
                     <Select value={row.Status} onValueChange={(val) => updateRow(row.EmpID, rowBranchId, 'Status', val)}>
                       <SelectTrigger className={`h-8 w-full max-w-[7.5rem] mx-auto text-[11px] border rounded-lg px-2 ${statusCfg.color}`}>
                         <SelectValue />
                       </SelectTrigger>
-                      <SelectContent className="bg-zinc-900 border-zinc-700">
+                      <SelectContent className="bg-card border-border">
                         {STATUS_OPTIONS.filter(o => !['FreelanceAvailable', 'NotRequired'].includes(o.value)).map(opt => (
-                          <SelectItem key={opt.value} value={opt.value} className="text-white text-xs">{opt.label}</SelectItem>
+                          <SelectItem key={opt.value} value={opt.value} className="text-foreground text-xs">{opt.label}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </td>
                   <td className="text-center px-1 py-2 align-top">
-                    <div className="text-[10px] leading-relaxed space-y-0.5 text-zinc-400">
+                    <div className="text-[10px] leading-relaxed space-y-0.5 text-muted-foreground">
                       {hourly && netHours != null ? (
-                        <div className="text-sky-400 font-semibold" data-testid={`net-hours-${row.EmpID}`}>{netHours.toFixed(2)} س</div>
+                        <div className="text-info font-semibold" data-testid={`net-hours-${row.EmpID}`}>{netHours.toFixed(2)} س</div>
                       ) : null}
                       {row.LateMinutes > 0 ? (
-                        <div className="text-amber-400">تأخير {row.LateMinutes}د</div>
+                        <div className="text-warning">تأخير {row.LateMinutes}د</div>
                       ) : null}
                       {row.EarlyLeaveMinutes > 0 ? (
-                        <div className="text-orange-400">مبكر {row.EarlyLeaveMinutes}د</div>
+                        <div className="text-warning">مبكر {row.EarlyLeaveMinutes}د</div>
                       ) : null}
                       {hourly && breakMins > 0 ? (
-                        <div className="text-amber-400/80">مستقطع {formatBreakMinutesLabel(breakMins)}</div>
+                        <div className="text-warning">مستقطع {formatBreakMinutesLabel(breakMins)}</div>
                       ) : null}
                       {hourly && breakTimeMins > 0 ? (
-                        <div className="text-teal-400/80">بريك {formatBreakMinutesLabel(breakTimeMins)}</div>
+                        <div className="text-success">بريك {formatBreakMinutesLabel(breakTimeMins)}</div>
                       ) : null}
                       {!hourly && row.LateMinutes <= 0 && row.EarlyLeaveMinutes <= 0 ? (
-                        <span className="text-zinc-600">—</span>
+                        <span className="text-muted-foreground">—</span>
                       ) : null}
                       {hourly && netHours == null && breakMins <= 0 && breakTimeMins <= 0 && row.LateMinutes <= 0 && row.EarlyLeaveMinutes <= 0 ? (
-                        <span className="text-zinc-600">—</span>
+                        <span className="text-muted-foreground">—</span>
                       ) : null}
                     </div>
                   </td>
                   <td className="px-1 py-2 align-top">
                     <Input value={row.Notes || ''} onChange={(e) => updateRow(row.EmpID, rowBranchId, 'Notes', e.target.value)}
-                      placeholder="…" className="bg-zinc-800/50 border-zinc-700 text-white placeholder:text-zinc-600 h-8 text-[11px] w-full min-w-0" />
+                      placeholder="…" className="bg-muted border-border text-foreground placeholder:text-muted-foreground h-8 text-[11px] w-full min-w-0" />
                   </td>
-                  <td className={`px-1 py-2 align-top sticky left-0 z-10 ${isDirty ? 'bg-amber-500/5' : 'bg-zinc-900/95'}`}>
+                  <td className={`px-1 py-2 align-top sticky left-0 z-10 ${isDirty ? 'bg-warning-soft' : 'bg-card'}`}>
                     <div className="flex items-center gap-0.5 justify-center flex-wrap">
                       <Button size="sm" variant="ghost" onClick={() => autoFillDefaultTimes(row.EmpID, rowBranchId)}
                         title="املأ بالوقت الافتراضي (D)"
                         data-testid={`attendance-fill-default-${row.EmpID}`}
                         disabled={!row.DefaultCheckInTime && !row.DefaultCheckOutTime}
-                        className={`h-7 w-7 p-0 ${(row.DefaultCheckInTime || row.DefaultCheckOutTime) ? 'text-cyan-400 hover:bg-cyan-500/20' : 'text-zinc-600 cursor-not-allowed'}`}>
+                        className={`h-7 w-7 p-0 ${(row.DefaultCheckInTime || row.DefaultCheckOutTime) ? 'text-info hover:bg-info-soft' : 'text-muted-foreground cursor-not-allowed'}`}>
                         <span className="text-xs font-bold">D</span>
                       </Button>
                       <Button size="sm" variant="ghost" onClick={() => fillNowTimes(row.EmpID, rowBranchId)}
                         title="الآن — الوقت الحالي (N)"
                         data-testid={`attendance-fill-now-${row.EmpID}`}
                         disabled={!!row.CheckInTime && !!row.CheckOutTime}
-                        className={`h-7 w-7 p-0 ${(!row.CheckInTime || !row.CheckOutTime) ? 'text-indigo-400 hover:bg-indigo-500/20' : 'text-zinc-600 cursor-not-allowed'}`}>
+                        className={`h-7 w-7 p-0 ${(!row.CheckInTime || !row.CheckOutTime) ? 'text-brand hover:bg-brand-soft' : 'text-muted-foreground cursor-not-allowed'}`}>
                         <span className="text-xs font-bold">N</span>
                       </Button>
                       {hourly && (
@@ -1144,7 +1144,7 @@ export default function AttendancePanel({ managerWorkspace = false }: { managerW
                           }}
                           title="وقت مستقطع"
                           data-testid={`attendance-breaks-${row.EmpID}`}
-                          className={`h-7 w-7 p-0 ${breakMins > 0 ? 'text-amber-400 hover:bg-amber-500/20' : 'text-zinc-400 hover:bg-zinc-700/40'}`}
+                          className={`h-7 w-7 p-0 ${breakMins > 0 ? 'text-warning hover:bg-warning-soft' : 'text-muted-foreground hover:bg-surface-muted'}`}
                         >
                           <PauseCircle className="w-3.5 h-3.5" />
                         </Button>
@@ -1159,14 +1159,14 @@ export default function AttendancePanel({ managerWorkspace = false }: { managerW
                           }}
                           title="وقت البريك"
                           data-testid={`attendance-break-times-${row.EmpID}`}
-                          className={`h-7 w-7 p-0 ${breakTimeMins > 0 ? 'text-teal-400 hover:bg-teal-500/20' : 'text-zinc-400 hover:bg-zinc-700/40'}`}
+                          className={`h-7 w-7 p-0 ${breakTimeMins > 0 ? 'text-success hover:bg-success-soft' : 'text-muted-foreground hover:bg-surface-muted'}`}
                         >
                           <Coffee className="w-3.5 h-3.5" />
                         </Button>
                       )}
                       <Button size="sm" variant="ghost" onClick={() => void saveSingle(row.EmpID, rowBranchId)} disabled={isSaving || !isDirty || switchingBranch} title="حفظ"
                         data-testid={`attendance-save-${row.EmpID}`}
-                        className={`h-7 w-7 p-0 ${isDirty ? 'text-amber-400 hover:bg-amber-500/20' : 'text-zinc-600'}`}>
+                        className={`h-7 w-7 p-0 ${isDirty ? 'text-warning hover:bg-warning-soft' : 'text-muted-foreground'}`}>
                         {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
                       </Button>
                       <Button
@@ -1178,7 +1178,7 @@ export default function AttendancePanel({ managerWorkspace = false }: { managerW
                         }}
                         title="نقل اليوم لفرع آخر"
                         data-testid={`attendance-transfer-${row.EmpID}`}
-                        className="h-7 w-7 p-0 text-amber-400/80 hover:bg-amber-500/20 hover:text-amber-300"
+                        className="h-7 w-7 p-0 text-warning hover:bg-warning-soft hover:text-warning"
                       >
                         <ArrowLeftRight className="w-3.5 h-3.5" />
                       </Button>
@@ -1190,7 +1190,7 @@ export default function AttendancePanel({ managerWorkspace = false }: { managerW
                           disabled={isCancellingTransfer || switchingBranch}
                           title="إلغاء النقل"
                           data-testid={`attendance-cancel-transfer-${row.EmpID}`}
-                          className="h-7 w-7 p-0 text-rose-400/80 hover:bg-rose-500/20 hover:text-rose-300"
+                          className="h-7 w-7 p-0 text-destructive hover:bg-destructive-soft hover:text-destructive"
                         >
                           {isCancellingTransfer ? (
                             <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -1210,11 +1210,11 @@ export default function AttendancePanel({ managerWorkspace = false }: { managerW
 
       {attendance.length > 0 && (
         <div className="flex items-center justify-between">
-          <div className="text-xs text-zinc-500">
-            {dirty.size > 0 && <span className="text-amber-400 font-medium">{dirty.size} تعديل غير محفوظ</span>}
+          <div className="text-xs text-muted-foreground">
+            {dirty.size > 0 && <span className="text-warning font-medium">{dirty.size} تعديل غير محفوظ</span>}
           </div>
           <Button onClick={saveAll} disabled={savingAll}
-            className="h-11 px-8 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-black font-bold rounded-xl shadow-lg">
+            className="h-11 px-8 bg-primary hover:bg-primary-hover text-primary-foreground font-bold rounded-xl shadow-lg">
             {savingAll
               ? <><Loader2 className="w-5 h-5 animate-spin ml-2" />جاري الحفظ...</>
               : <><Save className="w-5 h-5 ml-2" />حفظ الكل</>}
@@ -1234,27 +1234,27 @@ export default function AttendancePanel({ managerWorkspace = false }: { managerW
       )}
 
       <Dialog open={freelanceOpen} onOpenChange={setFreelanceOpen}>
-        <DialogContent className="bg-zinc-900 border-zinc-700 text-white max-w-md" dir="rtl">
+        <DialogContent className="bg-card border-border text-foreground max-w-md" dir="rtl">
           <DialogHeader>
             <DialogTitle>إضافة فري لانس للحضور</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="relative">
-              <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+              <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
                 value={freelanceQuery}
                 onChange={(e) => setFreelanceQuery(e.target.value)}
                 placeholder="بحث بالاسم..."
-                className="pr-9 bg-zinc-800 border-zinc-700 text-white"
+                className="pr-9 bg-muted border-border text-foreground"
               />
             </div>
-            <div className="max-h-48 overflow-y-auto space-y-1 border border-zinc-800 rounded-lg p-2">
+            <div className="max-h-48 overflow-y-auto space-y-1 border border-border rounded-lg p-2">
               {freelanceLoading ? (
-                <div className="text-center py-4 text-zinc-500 text-sm">
+                <div className="text-center py-4 text-muted-foreground text-sm">
                   <Loader2 className="w-5 h-5 animate-spin mx-auto" />
                 </div>
               ) : freelanceList.length === 0 ? (
-                <p className="text-center text-zinc-500 text-sm py-4">لا يوجد فري لانس متاح</p>
+                <p className="text-center text-muted-foreground text-sm py-4">لا يوجد فري لانس متاح</p>
               ) : freelanceList.map((f) => (
                 <button
                   key={f.EmpID}
@@ -1266,8 +1266,8 @@ export default function AttendancePanel({ managerWorkspace = false }: { managerW
                   }}
                   className={`w-full text-right px-3 py-2 rounded-lg text-sm transition-colors ${
                     selectedFreelancer?.EmpID === f.EmpID
-                      ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
-                      : 'hover:bg-zinc-800 text-zinc-300'
+                      ? 'bg-info-soft text-info border border-info/30'
+                      : 'hover:bg-surface-muted text-foreground'
                   }`}
                 >
                   {f.EmpName}
@@ -1276,7 +1276,7 @@ export default function AttendancePanel({ managerWorkspace = false }: { managerW
             </div>
             {selectedFreelancer && (
               <div className="space-y-2">
-                <label className="text-xs text-zinc-400">وقت الحضور</label>
+                <label className="text-xs text-muted-foreground">وقت الحضور</label>
                 <Input
                   type="time"
                   value={freelanceCheckIn}
@@ -1285,19 +1285,19 @@ export default function AttendancePanel({ managerWorkspace = false }: { managerW
                     setFreelanceAmConfirmed(false);
                   }}
                   aria-invalid={freelancePeriodWarned}
-                  className={`bg-zinc-800 text-white ${
+                  className={`bg-muted text-foreground ${
                     freelancePeriodWarned
-                      ? 'border-amber-500 ring-1 ring-amber-500/40'
-                      : 'border-zinc-700'
+                      ? 'border-warning/30 ring-1 ring-warning/40'
+                      : 'border-border'
                   }`}
                 />
                 {freelancePeriodWarned && freelancePeriodChk && (
-                  <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-amber-300">
+                  <div className="rounded-lg border border-warning/40 bg-warning-soft p-2 text-xs text-warning">
                     <div className="flex items-center gap-1.5 font-semibold">
                       <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
                       <span>ميعاده الافتراضي مساءً ({formatClockAr(freelancePeriodChk.reference)})</span>
                     </div>
-                    <p className="mt-0.5 text-amber-400/80">
+                    <p className="mt-0.5 text-warning">
                       اخترت صباحًا ({formatClockAr(freelancePeriodChk.checkIn)}) — متأكد؟
                     </p>
                     <div className="mt-2 flex items-center gap-2">
@@ -1308,7 +1308,7 @@ export default function AttendancePanel({ managerWorkspace = false }: { managerW
                             setFreelanceCheckIn(freelancePeriodChk.suggested!);
                             setFreelanceAmConfirmed(false);
                           }}
-                          className="inline-flex items-center gap-1 rounded-md bg-amber-500 px-2 py-1 font-bold text-black hover:bg-amber-400"
+                          className="inline-flex items-center gap-1 rounded-md bg-warning px-2 py-1 font-bold text-black hover:bg-warning"
                         >
                           <Clock className="w-3.5 h-3.5" />
                           صحّح لـ {formatClockAr(freelancePeriodChk.suggested)}
@@ -1317,7 +1317,7 @@ export default function AttendancePanel({ managerWorkspace = false }: { managerW
                       <button
                         type="button"
                         onClick={() => setFreelanceAmConfirmed(true)}
-                        className="inline-flex items-center gap-1 rounded-md border border-amber-500/40 px-2 py-1 text-amber-300 hover:bg-amber-500/20"
+                        className="inline-flex items-center gap-1 rounded-md border border-warning/40 px-2 py-1 text-warning hover:bg-warning-soft"
                       >
                         <Sunrise className="w-3.5 h-3.5" />
                         صباحًا فعلاً
@@ -1330,7 +1330,7 @@ export default function AttendancePanel({ managerWorkspace = false }: { managerW
             <Button
               onClick={saveFreelanceAttendance}
               disabled={!selectedFreelancer || freelanceSaving}
-              className="w-full bg-cyan-600 hover:bg-cyan-700 text-white"
+              className="w-full bg-info hover:bg-info/85 text-info-foreground"
             >
               {freelanceSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : 'تسجيل الحضور'}
             </Button>
@@ -1339,30 +1339,30 @@ export default function AttendancePanel({ managerWorkspace = false }: { managerW
       </Dialog>
 
       <Dialog open={dayOffWorkOpen} onOpenChange={setDayOffWorkOpen}>
-        <DialogContent className="bg-zinc-900 border-zinc-700 text-white max-w-md" dir="rtl">
+        <DialogContent className="bg-card border-border text-foreground max-w-md" dir="rtl">
           <DialogHeader>
             <DialogTitle>إضافة موظف أجازته اليوم</DialogTitle>
           </DialogHeader>
-          <p className="text-xs text-zinc-400 -mt-2">
+          <p className="text-xs text-muted-foreground -mt-2">
             موظفو الفرع اللي أجازتهم النهارده — اختَر من نزل يشتغل يوم إجازته عشان يتسجّل حاضر ويظهر في القائمة.
           </p>
           <div className="space-y-4">
             <div className="relative">
-              <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+              <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
                 value={dayOffWorkQuery}
                 onChange={(e) => setDayOffWorkQuery(e.target.value)}
                 placeholder="بحث بالاسم..."
-                className="pr-9 bg-zinc-800 border-zinc-700 text-white"
+                className="pr-9 bg-muted border-border text-foreground"
               />
             </div>
-            <div className="max-h-56 overflow-y-auto space-y-1 border border-zinc-800 rounded-lg p-2">
+            <div className="max-h-56 overflow-y-auto space-y-1 border border-border rounded-lg p-2">
               {dayOffWorkLoading ? (
-                <div className="text-center py-4 text-zinc-500 text-sm">
+                <div className="text-center py-4 text-muted-foreground text-sm">
                   <Loader2 className="w-5 h-5 animate-spin mx-auto" />
                 </div>
               ) : dayOffWorkList.length === 0 ? (
-                <p className="text-center text-zinc-500 text-sm py-4">
+                <p className="text-center text-muted-foreground text-sm py-4">
                   لا يوجد موظفون في إجازة لهذا اليوم
                 </p>
               ) : (
@@ -1373,12 +1373,12 @@ export default function AttendancePanel({ managerWorkspace = false }: { managerW
                     onClick={() => setSelectedDayOffEmp(emp)}
                     className={`w-full text-right px-3 py-2 rounded-lg text-sm transition-colors ${
                       selectedDayOffEmp?.EmpID === emp.EmpID
-                        ? 'bg-violet-500/20 text-violet-200 border border-violet-500/30'
-                        : 'hover:bg-zinc-800 text-zinc-300'
+                        ? 'bg-brand-soft text-brand border border-brand/30'
+                        : 'hover:bg-surface-muted text-foreground'
                     }`}
                   >
                     <span className="font-medium">{emp.EmpName}</span>
-                    <span className="block text-[11px] text-zinc-500 mt-0.5">
+                    <span className="block text-[11px] text-muted-foreground mt-0.5">
                       {emp.DayOffReason}
                     </span>
                   </button>
@@ -1388,7 +1388,7 @@ export default function AttendancePanel({ managerWorkspace = false }: { managerW
             <Button
               onClick={saveDayOffWorkAttendance}
               disabled={!selectedDayOffEmp || dayOffWorkSaving}
-              className="w-full bg-violet-600 hover:bg-violet-500 text-white"
+              className="w-full bg-brand hover:bg-brand/85 text-brand-foreground"
             >
               {dayOffWorkSaving ? (
                 <Loader2 className="w-4 h-4 animate-spin" />

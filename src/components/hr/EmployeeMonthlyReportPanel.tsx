@@ -85,12 +85,12 @@ const MONTHS = [
 ];
 
 const BADGE_CLASSES: Record<string, string> = {
-  success: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
-  warning: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
-  danger: 'bg-red-500/15 text-red-300 border-red-500/30',
-  muted: 'bg-zinc-500/15 text-zinc-400 border-zinc-500/30',
-  info: 'bg-blue-500/15 text-blue-300 border-blue-500/30',
-  neutral: 'bg-zinc-600/15 text-zinc-300 border-zinc-600/30',
+  success: 'bg-success-soft text-success border-success/30',
+  warning: 'bg-warning-soft text-warning border-warning/30',
+  danger: 'bg-destructive-soft text-destructive border-destructive/30',
+  muted: 'bg-muted text-muted-foreground border-border',
+  info: 'bg-info-soft text-info border-info/30',
+  neutral: 'bg-muted text-foreground border-border',
 };
 
 function StatusBadge({ label, variant }: { label: string; variant: string }) {
@@ -377,7 +377,7 @@ export default function EmployeeMonthlyReportPanel() {
   return (
     <div className="space-y-5" dir="rtl">
       {/* Hero filter strip */}
-      <div className="relative overflow-hidden rounded-2xl border border-[#D6A84F]/25 bg-gradient-to-l from-zinc-950 via-zinc-900 to-zinc-950">
+      <div className="relative overflow-hidden rounded-2xl border border-brand/25 bg-card">
         <div
           className="pointer-events-none absolute inset-0 opacity-[0.07]"
           style={{
@@ -388,24 +388,24 @@ export default function EmployeeMonthlyReportPanel() {
         <div className="relative p-5 space-y-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <div className="flex items-center gap-2 text-[#D6A84F] text-xs font-medium mb-1">
+              <div className="flex items-center gap-2 text-brand text-xs font-medium mb-1">
                 <FileSpreadsheet className="h-3.5 w-3.5" />
                 كشف شهري شامل
               </div>
-              <h2 className="text-xl font-semibold text-zinc-50">تقرير الموظف الشهري</h2>
-              <p className="text-sm text-zinc-400 mt-1 max-w-xl">
+              <h2 className="text-xl font-semibold text-foreground">تقرير الموظف الشهري</h2>
+              <p className="text-sm text-muted-foreground mt-1 max-w-xl">
                 حضور وانصراف · ساعات العمل · الأساسي اليومي · خصومات · تارجت — كل يوم في مكان واحد
               </p>
             </div>
             {report && (
-              <div className="rounded-xl border border-zinc-700/80 bg-zinc-950/70 px-4 py-3 text-left sm:text-right">
-                <div className="text-lg font-semibold text-zinc-100">{report.employee.name}</div>
-                <div className="text-xs text-zinc-400 mt-0.5">
+              <div className="rounded-xl border border-border bg-background px-4 py-3 text-left sm:text-right">
+                <div className="text-lg font-semibold text-foreground">{report.employee.name}</div>
+                <div className="text-xs text-muted-foreground mt-0.5">
                   {report.employee.job || '—'}
                   {employmentLabel ? ` · ${employmentLabel}` : ''}
                   {methodLabel ? ` · ${methodLabel}` : ''}
                 </div>
-                <div className="text-xs text-[#D6A84F]/90 mt-1 flex items-center gap-1 justify-end">
+                <div className="text-xs text-brand mt-1 flex items-center gap-1 justify-end">
                   <Calendar className="h-3 w-3" />
                   {report.period.monthLabelAr}
                 </div>
@@ -415,13 +415,13 @@ export default function EmployeeMonthlyReportPanel() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
             <div className="space-y-1.5 lg:col-span-2">
-              <label className="text-xs text-zinc-400">الموظف</label>
+              <label className="text-xs text-muted-foreground">الموظف</label>
               <Select
                 value={employeeId || undefined}
                 onValueChange={setEmployeeId}
                 disabled={employeesLoading}
               >
-                <SelectTrigger className="bg-zinc-950/80 border-zinc-700">
+                <SelectTrigger className="bg-background border-border">
                   <SelectValue
                     placeholder={employeesLoading ? 'جاري التحميل...' : 'اختر الموظف'}
                   />
@@ -437,9 +437,9 @@ export default function EmployeeMonthlyReportPanel() {
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs text-zinc-400">الشهر</label>
+              <label className="text-xs text-muted-foreground">الشهر</label>
               <Select value={String(month)} onValueChange={(v) => setMonth(Number(v))}>
-                <SelectTrigger className="bg-zinc-950/80 border-zinc-700">
+                <SelectTrigger className="bg-background border-border">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -453,9 +453,9 @@ export default function EmployeeMonthlyReportPanel() {
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs text-zinc-400">السنة</label>
+              <label className="text-xs text-muted-foreground">السنة</label>
               <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
-                <SelectTrigger className="bg-zinc-950/80 border-zinc-700">
+                <SelectTrigger className="bg-background border-border">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -478,7 +478,7 @@ export default function EmployeeMonthlyReportPanel() {
               <Button
                 onClick={handleApply}
                 disabled={!employeeId || loading}
-                className="flex-1 bg-[#D6A84F] hover:bg-[#c4983f] text-black"
+                className="flex-1 bg-primary hover:bg-primary-hover text-primary-foreground"
               >
                 {loading ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -494,15 +494,15 @@ export default function EmployeeMonthlyReportPanel() {
       </div>
 
       {/* Quick team review — month summary for all employees */}
-      <section className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-4 sm:p-5 space-y-3">
+      <section className="rounded-2xl border border-border bg-card p-4 sm:p-5 space-y-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <div className="flex items-center gap-2 text-zinc-300 text-xs font-medium mb-1">
-              <LayoutList className="h-3.5 w-3.5 text-[#D6A84F]" />
+            <div className="flex items-center gap-2 text-foreground text-xs font-medium mb-1">
+              <LayoutList className="h-3.5 w-3.5 text-brand" />
               مراجعة سريعة للفريق
             </div>
-            <h3 className="text-base font-semibold text-white">كل أيام الشهر لكل الموظفين</h3>
-            <p className="text-xs text-zinc-500 mt-1">
+            <h3 className="text-base font-semibold text-foreground">كل أيام الشهر لكل الموظفين</h3>
+            <p className="text-xs text-muted-foreground mt-1">
               صف لكل يوم: حضور · انصراف · الفرع · اليومية · التارجت حتى اليوم
             </p>
           </div>
@@ -510,7 +510,7 @@ export default function EmployeeMonthlyReportPanel() {
             type="button"
             onClick={() => void fetchQuickReview(year, month)}
             disabled={quickLoading}
-            className="bg-[#D6A84F] hover:bg-[#c49640] text-black font-bold gap-2 shrink-0"
+            className="bg-primary hover:bg-primary-hover text-primary-foreground font-bold gap-2 shrink-0"
           >
             {quickLoading ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -522,7 +522,7 @@ export default function EmployeeMonthlyReportPanel() {
         </div>
 
         {quickError && (
-          <div className="flex items-center gap-2 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-rose-300 text-sm">
+          <div className="flex items-center gap-2 rounded-xl border border-destructive/30 bg-destructive-soft px-3 py-2 text-destructive text-sm">
             <AlertCircle className="h-4 w-4 shrink-0" />
             {quickError}
           </div>
@@ -530,23 +530,23 @@ export default function EmployeeMonthlyReportPanel() {
 
         {quickRows && (
           <div className="space-y-2">
-            <p className="text-xs text-zinc-500">
+            <p className="text-xs text-muted-foreground">
               من أول الشهر حتى{' '}
-              <span className="text-zinc-300 tabular-nums">{quickAsOfDate ?? '—'}</span>
+              <span className="text-foreground tabular-nums">{quickAsOfDate ?? '—'}</span>
               {' · '}
               {quickRows.length} صف
               {' · '}
               {new Set(quickRows.map((r) => r.employeeId)).size} موظف
             </p>
             {quickRows.length === 0 ? (
-              <p className="text-sm text-zinc-500 py-6 text-center">
+              <p className="text-sm text-muted-foreground py-6 text-center">
                 لا توجد بيانات حضور أو يومية أو تارجت في هذا الشهر
               </p>
             ) : (
-              <div className="overflow-x-auto rounded-xl border border-zinc-800 max-h-[70vh] overflow-y-auto">
+              <div className="overflow-x-auto rounded-xl border border-border max-h-[70vh] overflow-y-auto">
                 <table className="w-full text-sm min-w-[860px]">
                   <thead className="sticky top-0 z-10">
-                    <tr className="border-b border-zinc-800 bg-zinc-950 text-zinc-400">
+                    <tr className="border-b border-border bg-background text-muted-foreground">
                       <th className="text-right p-2.5 font-medium">الموظف</th>
                       <th className="text-right p-2.5 font-medium">اليوم</th>
                       <th className="text-right p-2.5 font-medium">حضور</th>
@@ -563,34 +563,34 @@ export default function EmployeeMonthlyReportPanel() {
                       return (
                         <tr
                           key={`${row.employeeId}-${row.workDate}`}
-                          className={`border-b border-zinc-800/70 hover:bg-zinc-800/30 ${
-                            showName && idx > 0 ? 'border-t border-zinc-700/80' : ''
+                          className={`border-b border-border hover:bg-surface-muted ${
+                            showName && idx > 0 ? 'border-t border-border' : ''
                           }`}
                         >
-                          <td className="p-2.5 text-white font-medium whitespace-nowrap">
+                          <td className="p-2.5 text-foreground font-medium whitespace-nowrap">
                             {showName ? (
                               <span className="inline-flex items-center gap-1.5">
                                 {row.employeeName}
                                 {!row.isActive && (
-                                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-700/80 text-zinc-400 font-normal">
+                                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-normal">
                                     موقوف
                                   </span>
                                 )}
                               </span>
                             ) : (
-                              <span className="text-zinc-700">·</span>
+                              <span className="text-muted-foreground">·</span>
                             )}
                           </td>
-                          <td className="p-2.5 tabular-nums text-zinc-300 whitespace-nowrap">
+                          <td className="p-2.5 tabular-nums text-foreground whitespace-nowrap">
                             {row.workDate}
                           </td>
-                          <td className="p-2.5 tabular-nums text-zinc-200">
+                          <td className="p-2.5 tabular-nums text-foreground">
                             {formatTime12hAr(row.checkIn) ?? '—'}
                           </td>
-                          <td className="p-2.5 tabular-nums text-zinc-200">
+                          <td className="p-2.5 tabular-nums text-foreground">
                             {formatTime12hAr(row.checkOut) ?? '—'}
                           </td>
-                          <td className="p-2.5 text-zinc-300 whitespace-nowrap">
+                          <td className="p-2.5 text-foreground whitespace-nowrap">
                             {row.branchCode || row.branchName
                               ? shortBranchName({
                                   branchCode: row.branchCode || '—',
@@ -598,10 +598,10 @@ export default function EmployeeMonthlyReportPanel() {
                                 })
                               : '—'}
                           </td>
-                          <td className="p-2.5 tabular-nums text-amber-300/90">
+                          <td className="p-2.5 tabular-nums text-warning">
                             {row.dailyWage == null ? '—' : formatCurrencyAr(row.dailyWage)}
                           </td>
-                          <td className="p-2.5 tabular-nums text-emerald-300/90">
+                          <td className="p-2.5 tabular-nums text-success">
                             {row.targetMtd == null ? '—' : formatCurrencyAr(row.targetMtd)}
                           </td>
                         </tr>
@@ -616,22 +616,22 @@ export default function EmployeeMonthlyReportPanel() {
       </section>
 
       {!employeeId && !loading && (
-        <div className="rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/40 p-12 text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full border border-zinc-700 bg-zinc-950">
-            <User className="h-7 w-7 text-zinc-500" />
+        <div className="rounded-2xl border border-dashed border-border bg-card p-12 text-center">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full border border-border bg-background">
+            <User className="h-7 w-7 text-muted-foreground" />
           </div>
-          <p className="text-zinc-300 font-medium">اختر الموظف عشان يظهر كشف الشهر</p>
-          <p className="text-sm text-zinc-500 mt-1">الحضور · الأساسي · الخصومات · التارجت اليومي</p>
+          <p className="text-foreground font-medium">اختر الموظف عشان يظهر كشف الشهر</p>
+          <p className="text-sm text-muted-foreground mt-1">الحضور · الأساسي · الخصومات · التارجت اليومي</p>
         </div>
       )}
 
       {error && (
-        <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 flex items-start gap-3 text-red-300">
+        <div className="rounded-xl border border-destructive/30 bg-destructive-soft p-4 flex items-start gap-3 text-destructive">
           <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
           <div>
             <p>{error}</p>
             {employeeId && (
-              <Button variant="link" className="text-red-200 p-0 h-auto mt-2" onClick={handleApply}>
+              <Button variant="link" className="text-destructive p-0 h-auto mt-2" onClick={handleApply}>
                 إعادة المحاولة
               </Button>
             )}
@@ -640,14 +640,14 @@ export default function EmployeeMonthlyReportPanel() {
       )}
 
       {(fixMsg || fixBusy) && (
-        <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-3 flex items-center gap-2 text-sm text-emerald-200">
+        <div className="rounded-xl border border-success/25 bg-success-soft px-4 py-3 flex items-center gap-2 text-sm text-success">
           {fixBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
           {fixBusy ? 'جاري تحديث الحضور والراتب...' : fixMsg}
         </div>
       )}
 
       {loading && employeeId && (
-        <div className="flex items-center justify-center py-16 text-zinc-400">
+        <div className="flex items-center justify-center py-16 text-muted-foreground">
           <Loader2 className="h-7 w-7 animate-spin ml-3" />
           جاري تجهيز كشف الشهر...
         </div>
@@ -655,7 +655,7 @@ export default function EmployeeMonthlyReportPanel() {
 
       {report && !loading && (
         <>
-          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-3 2xl:grid-cols-6">
             <KpiCard
               title="صافي الشهر"
               value={formatCurrencyAr(report.summary.monthNet)}
@@ -698,19 +698,19 @@ export default function EmployeeMonthlyReportPanel() {
           </div>
 
           {(report.summary.partialHourlyDays > 0 || report.summary.totalBaseShortfall > 0) && (
-            <div className="rounded-xl border border-amber-500/25 bg-amber-500/5 px-4 py-3 flex flex-wrap items-center gap-3 text-sm">
-              <span className="inline-flex items-center gap-1.5 text-amber-300 font-medium">
+            <div className="rounded-xl border border-warning/25 bg-warning-soft px-4 py-3 flex flex-wrap items-center gap-3 text-sm">
+              <span className="inline-flex items-center gap-1.5 text-warning font-medium">
                 <Clock className="h-4 w-4" />
                 أيام ساعات ناقصة: {report.summary.partialHourlyDays}
               </span>
-              <span className="text-zinc-500">|</span>
-              <span className="text-amber-200/90">
+              <span className="text-muted-foreground">|</span>
+              <span className="text-warning">
                 فرق الأساسي عن اليوم الكامل:{' '}
-                <strong className="text-amber-100">
+                <strong className="text-warning">
                   {formatCurrencyAr(report.summary.totalBaseShortfall)}
                 </strong>
               </span>
-              <span className="text-zinc-500 text-xs">
+              <span className="text-muted-foreground text-xs">
                 (في نظام الساعة: اليوم الناقص بيتحسب بالمخدوم فعلًا)
               </span>
             </div>
@@ -725,31 +725,31 @@ export default function EmployeeMonthlyReportPanel() {
               ['انصراف ناقص', String(report.summary.incompleteAttendanceDays)],
               ['مرجع يوم كامل*', formatCurrencyAr(report.summary.totalFullDayBase)],
             ].map(([label, val]) => (
-              <div key={label} className="rounded-lg border border-zinc-800 bg-zinc-950/50 px-3 py-2">
-                <div className="text-zinc-500 text-xs">{label}</div>
-                <div className="text-zinc-200 font-medium">{val}</div>
+              <div key={label} className="rounded-lg border border-border bg-background px-3 py-2">
+                <div className="text-muted-foreground text-xs">{label}</div>
+                <div className="text-foreground font-medium">{val}</div>
               </div>
             ))}
           </div>
 
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h3 className="text-sm font-medium text-zinc-300">تفصيل الأيام</h3>
-            <label className="flex items-center gap-2 text-xs text-zinc-400 cursor-pointer select-none">
+            <h3 className="text-sm font-medium text-foreground">تفصيل الأيام</h3>
+            <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
               <input
                 type="checkbox"
                 checked={onlyWorkDays}
                 onChange={(e) => setOnlyWorkDays(e.target.checked)}
-                className="rounded border-zinc-600"
+                className="rounded border-border"
               />
               إخفاء أيام الراحة الفارغة
             </label>
           </div>
 
-          <div className="rounded-xl border border-zinc-800 overflow-hidden">
+          <div className="rounded-xl border border-border overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full min-w-[1180px] text-sm">
-                <thead className="sticky top-0 z-10 bg-zinc-900 border-b border-zinc-800">
-                  <tr className="text-zinc-400 text-xs">
+                <thead className="sticky top-0 z-10 bg-card border-b border-border">
+                  <tr className="text-muted-foreground text-xs">
                     <th className="px-3 py-3 text-right font-medium">اليوم</th>
                     <th className="px-3 py-3 text-right font-medium">الموعد</th>
                     <th className="px-3 py-3 text-right font-medium">حضور</th>
@@ -767,8 +767,8 @@ export default function EmployeeMonthlyReportPanel() {
                 <tbody>
                   {visibleDays.map((day) => {
                     const rowClass = [
-                      'border-b border-zinc-800/80 transition-colors',
-                      day.isDayOff && !day.checkIn ? 'bg-zinc-900/25 opacity-75' : '',
+                      'border-b border-border transition-colors',
+                      day.isDayOff && !day.checkIn ? 'bg-card opacity-75' : '',
                       day.isPartialDay ? 'bg-amber-500/[0.06]' : '',
                       day.statusCode === 'absent' ? 'bg-red-500/[0.04]' : '',
                       day.isFutureDate ? 'opacity-50' : '',
@@ -779,11 +779,11 @@ export default function EmployeeMonthlyReportPanel() {
                     return (
                       <tr key={day.date} className={rowClass}>
                         <td className="px-3 py-2.5 whitespace-nowrap">
-                          <div className="text-zinc-200 font-medium">{day.dayNameAr}</div>
-                          <div className="text-[11px] text-zinc-500 font-mono">{day.date}</div>
+                          <div className="text-foreground font-medium">{day.dayNameAr}</div>
+                          <div className="text-[11px] text-muted-foreground font-mono">{day.date}</div>
                           {dayBranchBadge(day, branchCodes)}
                         </td>
-                        <td className="px-3 py-2.5 text-zinc-400 whitespace-nowrap text-xs">
+                        <td className="px-3 py-2.5 text-muted-foreground whitespace-nowrap text-xs">
                           {day.scheduledStart && day.scheduledEnd
                             ? formatScheduleRangeAr(day.scheduledStart, day.scheduledEnd)
                             : '—'}
@@ -794,17 +794,17 @@ export default function EmployeeMonthlyReportPanel() {
                         <td className="px-3 py-2.5 whitespace-nowrap">
                           {day.checkOutLabelAr ?? formatTime12hAr(day.checkOut) ?? '—'}
                           {day.breakMinutes > 0 && (
-                            <div className="text-[10px] text-zinc-500">
+                            <div className="text-[10px] text-muted-foreground">
                               مستقطع {day.breakMinutes}د
                             </div>
                           )}
                         </td>
                         <td className="px-3 py-2.5 whitespace-nowrap">
-                          <span className={day.isPartialDay ? 'text-amber-300 font-medium' : 'text-zinc-200'}>
+                          <span className={day.isPartialDay ? 'text-warning font-medium' : 'text-foreground'}>
                             {hoursLabel(day.actualHours)}
                           </span>
                           {day.scheduledHours != null && day.actualHours != null && (
-                            <div className="text-[10px] text-zinc-500">
+                            <div className="text-[10px] text-muted-foreground">
                               من {hoursLabel(day.scheduledHours)}
                             </div>
                           )}
@@ -812,7 +812,7 @@ export default function EmployeeMonthlyReportPanel() {
                         <td className="px-3 py-2.5">
                           <StatusBadge label={day.statusLabelAr} variant={day.badgeVariant} />
                           {(day.lateMinutes > 0 || day.earlyLeaveMinutes > 0) && (
-                            <div className="text-[10px] text-zinc-500 mt-1 space-x-1 space-x-reverse">
+                            <div className="text-[10px] text-muted-foreground mt-1 space-x-1 space-x-reverse">
                               {day.lateMinutes > 0 && <span>تأخير {day.lateMinutes}د</span>}
                               {day.earlyLeaveMinutes > 0 && (
                                 <span>انصراف مبكر {day.earlyLeaveMinutes}د</span>
@@ -822,12 +822,12 @@ export default function EmployeeMonthlyReportPanel() {
                         </td>
                         <td className="px-3 py-2.5 whitespace-nowrap">
                           <div
-                            className={`font-semibold ${day.isPartialDay ? 'text-amber-300' : 'text-zinc-100'}`}
+                            className={`font-semibold ${day.isPartialDay ? 'text-warning' : 'text-foreground'}`}
                           >
                             {moneyOrDash(day.baseWage)}
                           </div>
                           {day.isPartialDay && day.fullDayBase != null && (
-                            <div className="text-[10px] text-zinc-500 line-through">
+                            <div className="text-[10px] text-muted-foreground line-through">
                               {formatCurrencyAr(day.fullDayBase)}
                             </div>
                           )}
@@ -837,26 +837,26 @@ export default function EmployeeMonthlyReportPanel() {
                             <span
                               className={`text-xs leading-relaxed ${
                                 day.isPartialDay
-                                  ? 'text-amber-200/90'
-                                  : 'text-zinc-400'
+                                  ? 'text-warning'
+                                  : 'text-muted-foreground'
                               }`}
                             >
                               {day.baseWageNoteAr}
                             </span>
                           ) : (
-                            <span className="text-zinc-600">—</span>
+                            <span className="text-muted-foreground">—</span>
                           )}
                         </td>
                         <td className="px-3 py-2.5 whitespace-nowrap">
                           {day.deductions > 0 ? (
-                            <span className="text-rose-300 font-medium">
+                            <span className="text-destructive font-medium">
                               {formatCurrencyAr(day.deductions)}
                             </span>
                           ) : (
-                            <span className="text-zinc-600">—</span>
+                            <span className="text-muted-foreground">—</span>
                           )}
                           {day.advances > 0 && (
-                            <div className="text-[10px] text-orange-300/80">
+                            <div className="text-[10px] text-warning">
                               سلفة {formatCurrencyAr(day.advances)}
                             </div>
                           )}
@@ -864,22 +864,22 @@ export default function EmployeeMonthlyReportPanel() {
                         <td className="px-3 py-2.5 whitespace-nowrap">
                           {day.targetAmount != null ? (
                             <>
-                              <div className="text-emerald-300 font-medium">
+                              <div className="text-success font-medium">
                                 {formatCurrencyAr(day.targetAmount)}
                               </div>
                               {day.targetSales != null && (
-                                <div className="text-[10px] text-zinc-500">
+                                <div className="text-[10px] text-muted-foreground">
                                   مبيعات {formatCurrencyAr(day.targetSales)}
                                 </div>
                               )}
                             </>
                           ) : day.targetPersistence === 'not_generated' ? (
-                            <span className="text-[11px] text-zinc-500">لم يُولَّد</span>
+                            <span className="text-[11px] text-muted-foreground">لم يُولَّد</span>
                           ) : (
-                            <span className="text-zinc-600">—</span>
+                            <span className="text-muted-foreground">—</span>
                           )}
                         </td>
-                        <td className="px-3 py-2.5 whitespace-nowrap font-semibold text-[#D6A84F]">
+                        <td className="px-3 py-2.5 whitespace-nowrap font-semibold text-brand">
                           {day.isFutureDate ? '—' : formatCurrencyAr(day.dayNet)}
                         </td>
                         <td className="px-2 py-2.5 text-center">
@@ -897,8 +897,8 @@ export default function EmployeeMonthlyReportPanel() {
                               }
                               className={
                                 needsAttendanceWageReview(day)
-                                  ? 'h-8 text-[11px] gap-1 border-amber-500/40 bg-amber-500/10 text-amber-200 hover:bg-amber-500/20'
-                                  : 'h-8 text-[11px] gap-1 border-zinc-700 text-zinc-300'
+                                  ? 'h-8 text-[11px] gap-1 border-warning/40 bg-warning-soft text-warning hover:bg-warning-soft'
+                                  : 'h-8 text-[11px] gap-1 border-border text-foreground'
                               }
                               data-testid={`monthly-fix-attendance-${day.date}`}
                               onClick={() =>
@@ -914,15 +914,15 @@ export default function EmployeeMonthlyReportPanel() {
                               {needsAttendanceWageReview(day) ? 'راجع الحضور' : 'تعديل'}
                             </Button>
                           ) : (
-                            <span className="text-zinc-700 text-xs">—</span>
+                            <span className="text-muted-foreground text-xs">—</span>
                           )}
                         </td>
                       </tr>
                     );
                   })}
                 </tbody>
-                <tfoot className="bg-zinc-900/90 border-t border-zinc-700">
-                  <tr className="text-xs text-zinc-300">
+                <tfoot className="bg-card border-t border-border">
+                  <tr className="text-xs text-foreground">
                     <td className="px-3 py-3 font-semibold" colSpan={4}>
                       إجمالي الشهر ({visibleDays.length} يوم معروض)
                     </td>
@@ -933,18 +933,18 @@ export default function EmployeeMonthlyReportPanel() {
                     <td className="px-3 py-3 font-semibold">
                       {formatCurrencyAr(report.summary.totalBaseWage)}
                     </td>
-                    <td className="px-3 py-3 text-amber-200/80">
+                    <td className="px-3 py-3 text-warning">
                       {report.summary.totalBaseShortfall > 0
                         ? `فرق ناقص ${formatCurrencyAr(report.summary.totalBaseShortfall)}`
                         : '—'}
                     </td>
-                    <td className="px-3 py-3 font-semibold text-rose-300">
+                    <td className="px-3 py-3 font-semibold text-destructive">
                       {formatCurrencyAr(report.summary.totalDeductions)}
                     </td>
-                    <td className="px-3 py-3 font-semibold text-emerald-300">
+                    <td className="px-3 py-3 font-semibold text-success">
                       {formatCurrencyAr(report.summary.totalTargetAmount)}
                     </td>
-                    <td className="px-3 py-3 font-bold text-[#D6A84F]">
+                    <td className="px-3 py-3 font-bold text-brand">
                       {formatCurrencyAr(report.summary.monthNet)}
                     </td>
                     <td />
@@ -954,7 +954,7 @@ export default function EmployeeMonthlyReportPanel() {
             </div>
           </div>
 
-          <p className="text-[11px] text-zinc-500 leading-relaxed">
+          <p className="text-[11px] text-muted-foreground leading-relaxed">
             * مرجع اليوم الكامل = سعر الساعة × الساعات المجدولة (أو اليومية الثابتة). صافي اليوم =
             الأساسي + التارجت − الخصومات − السلف المسجّلة في دفتر الموظف لنفس التاريخ.
             زر «راجع الحضور» يظهر للأيام اللي ساعات الحضور/الانصراف ممكن تأثر على الراتب — بعد التعديل

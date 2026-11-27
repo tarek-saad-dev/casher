@@ -120,7 +120,7 @@ const REASON_LABEL = PAYROLL_VALIDATION_REASON_LABELS;
 function employmentBadge(type: string | null) {
   if (!type || !(type in EMPLOYMENT_TYPE_LABELS)) return null;
   return (
-    <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700">
+    <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground border border-border">
       {EMPLOYMENT_TYPE_LABELS[type as keyof typeof EMPLOYMENT_TYPE_LABELS]}
     </span>
   );
@@ -129,7 +129,7 @@ function employmentBadge(type: string | null) {
 function payrollMethodBadge(method: string | null) {
   if (!method || !(method in PAYROLL_METHOD_LABELS)) return null;
   return (
-    <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800/60 text-zinc-500 border border-zinc-700/50">
+    <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground border border-border">
       {PAYROLL_METHOD_LABELS[method as keyof typeof PAYROLL_METHOD_LABELS]}
     </span>
   );
@@ -168,22 +168,22 @@ const fmt = (n: number) =>
 // Uses getBusinessDateStr from timeUtils — day ends at 5 AM
 
 function attendanceBadge(status: string | null) {
-  if (!status) return <span className="text-zinc-600 text-xs">—</span>;
+  if (!status) return <span className="text-muted-foreground text-xs">—</span>;
   const map: Record<string, string> = {
-    Present: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
-    Late:    'bg-amber-500/15 text-amber-400 border-amber-500/30',
-    Absent:  'bg-rose-500/15 text-rose-400 border-rose-500/30',
-    DayOff:  'bg-blue-500/15 text-blue-400 border-blue-500/30',
-    Excused: 'bg-purple-500/15 text-purple-400 border-purple-500/30',
-    Pending: 'bg-zinc-500/15 text-zinc-400 border-zinc-500/30',
-    EarlyLeave: 'bg-orange-500/15 text-orange-400 border-orange-500/30',
+    Present: 'bg-success-soft text-success border-success/30',
+    Late:    'bg-warning-soft text-warning border-warning/30',
+    Absent:  'bg-destructive-soft text-destructive border-destructive/30',
+    DayOff:  'bg-info-soft text-info border-info/30',
+    Excused: 'bg-brand-soft text-brand border-brand/30',
+    Pending: 'bg-muted text-muted-foreground border-border',
+    EarlyLeave: 'bg-warning-soft text-warning border-warning/30',
   };
   const label: Record<string, string> = {
     Present: 'حاضر', Late: 'متأخر', Absent: 'غائب',
     DayOff: 'إجازة', Excused: 'بعذر', Pending: 'لم يسجل', EarlyLeave: 'انصراف مبكر',
   };
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border ${map[status] ?? 'bg-zinc-500/15 text-zinc-400 border-zinc-500/30'}`}>
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border ${map[status] ?? 'bg-muted text-muted-foreground border-border'}`}>
       {label[status] ?? status}
     </span>
   );
@@ -194,28 +194,28 @@ function targetSyncBadge(
 ) {
   if (status === 'pending') {
     return (
-      <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] border border-amber-500/40 text-amber-300 bg-amber-500/10">
+      <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] border border-warning/40 text-warning bg-warning-soft">
         التارجت يحتاج إعادة حساب
       </span>
     );
   }
   if (status === 'processing') {
     return (
-      <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] border border-sky-500/40 text-sky-300 bg-sky-500/10">
+      <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] border border-info/40 text-info bg-info-soft">
         جاري التحديث
       </span>
     );
   }
   if (status === 'failed') {
     return (
-      <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] border border-rose-500/40 text-rose-300 bg-rose-500/10">
+      <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] border border-destructive/40 text-destructive bg-destructive-soft">
         تعذر تحديث التارجت
       </span>
     );
   }
   if (status === 'up_to_date') {
     return (
-      <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] border border-emerald-500/30 text-emerald-400 bg-emerald-500/10">
+      <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] border border-success/30 text-success bg-success-soft">
         محدث
       </span>
     );
@@ -226,27 +226,27 @@ function targetSyncBadge(
 function targetPersistenceBadge(status: TargetLikeRow['persistenceStatus'] | undefined) {
   if (!status) {
     return (
-      <span className="inline-flex px-2 py-0.5 rounded-full text-[11px] border bg-zinc-500/15 text-zinc-500 border-zinc-600/40">
+      <span className="inline-flex px-2 py-0.5 rounded-full text-[11px] border bg-muted text-muted-foreground border-border">
         لا يوجد تارجت
       </span>
     );
   }
   if (status === 'not_generated') {
     return (
-      <span className="inline-flex px-2 py-0.5 rounded-full text-[11px] border bg-amber-500/15 text-amber-400 border-amber-500/30">
+      <span className="inline-flex px-2 py-0.5 rounded-full text-[11px] border bg-warning-soft text-warning border-warning/30">
         لم يتم التوليد
       </span>
     );
   }
   if (status === 'recalculated') {
     return (
-      <span className="inline-flex px-2 py-0.5 rounded-full text-[11px] border bg-sky-500/15 text-sky-400 border-sky-500/30">
+      <span className="inline-flex px-2 py-0.5 rounded-full text-[11px] border bg-info-soft text-info border-info/30">
         أُعيد حسابه
       </span>
     );
   }
   return (
-    <span className="inline-flex px-2 py-0.5 rounded-full text-[11px] border bg-emerald-500/15 text-emerald-400 border-emerald-500/30">
+    <span className="inline-flex px-2 py-0.5 rounded-full text-[11px] border bg-success-soft text-success border-success/30">
       مولَّد
     </span>
   );
@@ -1631,12 +1631,12 @@ export default function DailyPayrollPanel() {
     <div className="space-y-5" dir="rtl">
 
       {/* ── Date hub: all branches for one work date ───────────────────────── */}
-      <div className="rounded-xl border border-zinc-700/70 bg-zinc-950/50 p-4 space-y-4">
+      <div className="rounded-xl border border-border bg-background p-4 space-y-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="space-y-1">
-            <p className="text-xs text-zinc-500">مركز تقفيل اليوميات · كل الفروع</p>
-            <h2 className="text-lg font-bold text-white">{formatWorkDateAr(workspaceDate)}</h2>
-            <p className="text-[11px] text-zinc-500">
+            <p className="text-xs text-muted-foreground">مركز تقفيل اليوميات · كل الفروع</p>
+            <h2 className="text-lg font-bold text-foreground">{formatWorkDateAr(workspaceDate)}</h2>
+            <p className="text-[11px] text-muted-foreground">
               {dateHubSummary.total} فروع
               {dateHubSummary.readyCount > 0 ? ` · ${dateHubSummary.readyCount} جاهز` : ''}
               {dateHubSummary.reviewCount > 0 ? ` · ${dateHubSummary.reviewCount} يحتاج مراجعة` : ''}
@@ -1649,7 +1649,7 @@ export default function DailyPayrollPanel() {
               variant="outline"
               onClick={() => handleDateChange(shiftCalendarDate(workspaceDate, -1))}
               disabled={workspaceBusy}
-              className="h-9 w-9 p-0 border-zinc-600 bg-black/20"
+              className="h-9 w-9 p-0 border-border bg-background"
               aria-label="اليوم السابق"
             >
               <ChevronRight className="w-4 h-4" />
@@ -1658,14 +1658,14 @@ export default function DailyPayrollPanel() {
               type="date"
               value={workspaceDate}
               onChange={(e) => handleDateChange(e.target.value)}
-              className="bg-black/30 border-zinc-600 text-white w-40 h-9 text-sm"
+              className="bg-background border-border text-foreground w-40 h-9 text-sm"
             />
             <Button
               type="button"
               variant="outline"
               onClick={() => handleDateChange(shiftCalendarDate(workspaceDate, 1))}
               disabled={workspaceBusy}
-              className="h-9 w-9 p-0 border-zinc-600 bg-black/20"
+              className="h-9 w-9 p-0 border-border bg-background"
               aria-label="اليوم التالي"
             >
               <ChevronLeft className="w-4 h-4" />
@@ -1674,7 +1674,7 @@ export default function DailyPayrollPanel() {
               type="button"
               variant="outline"
               size="sm"
-              className="h-9 border-zinc-700 text-zinc-300"
+              className="h-9 border-border text-foreground"
               disabled={dateBranchesLoading || workspaceBusy}
               onClick={() => void loadDateBranchCards(workspaceDate)}
             >
@@ -1689,12 +1689,12 @@ export default function DailyPayrollPanel() {
         </div>
 
         {dateBranchesLoading && dateBranchCards.length === 0 ? (
-          <div className="flex items-center gap-2 text-sm text-zinc-500 py-2">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
             <Loader2 className="w-4 h-4 animate-spin" />
             جاري تحميل جاهزية الفروع…
           </div>
         ) : dateBranchCards.length === 0 ? (
-          <p className="text-sm text-zinc-500">لا توجد فروع متاحة لهذا اليوم</p>
+          <p className="text-sm text-muted-foreground">لا توجد فروع متاحة لهذا اليوم</p>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {dateBranchCards.map((card) => {
@@ -1705,13 +1705,13 @@ export default function DailyPayrollPanel() {
                   className={cn(
                     'rounded-lg border p-3 space-y-2 text-right',
                     selected
-                      ? 'border-sky-500/50 bg-sky-500/10 ring-1 ring-sky-500/30'
+                      ? 'border-info/50 bg-info-soft ring-1 ring-info/30'
                       : recommendedStateTone(card.recommendedState),
                   )}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <p className="font-semibold text-white">{shortBranchName(card)}</p>
+                      <p className="font-semibold text-foreground">{shortBranchName(card)}</p>
                       <p className="text-[11px] opacity-80 mt-0.5">
                         {recommendedStateLabelAr(
                           card.persistedState === 'CLOSED'
@@ -1747,13 +1747,13 @@ export default function DailyPayrollPanel() {
           </div>
         )}
 
-        <div className="flex flex-wrap gap-2 pt-1 border-t border-zinc-800/80">
+        <div className="flex flex-wrap gap-2 pt-1 border-t border-border">
           <Button
             type="button"
             variant="outline"
             onClick={() => void handleBulkValidateAllBranches()}
             disabled={busy || bulkRunning || validating}
-            className="border-sky-600/40 text-sky-400 hover:bg-sky-500/10 gap-2 h-10"
+            className="border-info/40 text-info hover:bg-info-soft gap-2 h-10"
           >
             {bulkRunning || validating ? (
               <Loader2 className="w-4 h-4 animate-spin" />
@@ -1766,7 +1766,7 @@ export default function DailyPayrollPanel() {
             type="button"
             onClick={() => void handleBulkGenerateAllBranches()}
             disabled={busy || bulkRunning || generating}
-            className="bg-amber-600 hover:bg-amber-700 gap-2 h-10"
+            className="bg-warning hover:bg-warning/85 text-warning-foreground gap-2 h-10"
           >
             {bulkRunning || generating ? (
               <Loader2 className="w-4 h-4 animate-spin" />
@@ -1779,7 +1779,7 @@ export default function DailyPayrollPanel() {
             type="button"
             onClick={() => void handleBulkCloseReadyBranches()}
             disabled={busy || bulkRunning || dateHubSummary.readyCount === 0}
-            className="bg-emerald-700 hover:bg-emerald-600 gap-2 h-10"
+            className="bg-success hover:bg-success/85 text-success-foreground gap-2 h-10"
           >
             {bulkRunning ? (
               <Loader2 className="w-4 h-4 animate-spin" />
@@ -1794,27 +1794,27 @@ export default function DailyPayrollPanel() {
 
       {/* ── Open days monitor (quick jump) ─────────────────────────────────── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <div className="rounded-xl border border-zinc-700/60 bg-zinc-900/50 px-4 py-3">
-          <p className="text-[11px] text-zinc-500 mb-1">الأيام المفتوحة</p>
-          <p className="text-2xl font-bold text-white tabular-nums">
+        <div className="rounded-xl border border-border bg-card px-4 py-3">
+          <p className="text-[11px] text-muted-foreground mb-1">الأيام المفتوحة</p>
+          <p className="text-2xl font-bold text-foreground tabular-nums">
             {openDaysLoading && openDaysItems.length === 0 ? '…' : openDaysSummary.openCount}
           </p>
         </div>
-        <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3">
-          <p className="text-[11px] text-emerald-500/80 mb-1">جاهزة للإقفال</p>
-          <p className="text-2xl font-bold text-emerald-300 tabular-nums">
+        <div className="rounded-xl border border-success/30 bg-success-soft px-4 py-3">
+          <p className="text-[11px] text-success mb-1">جاهزة للإقفال</p>
+          <p className="text-2xl font-bold text-success tabular-nums">
             {openDaysLoading && openDaysItems.length === 0 ? '…' : openDaysSummary.readyCount}
           </p>
         </div>
-        <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3">
-          <p className="text-[11px] text-amber-500/80 mb-1">تحتاج مراجعة</p>
-          <p className="text-2xl font-bold text-amber-300 tabular-nums">
+        <div className="rounded-xl border border-warning/30 bg-warning-soft px-4 py-3">
+          <p className="text-[11px] text-warning mb-1">تحتاج مراجعة</p>
+          <p className="text-2xl font-bold text-warning tabular-nums">
             {openDaysLoading && openDaysItems.length === 0 ? '…' : openDaysSummary.reviewCount}
           </p>
         </div>
-        <div className="rounded-xl border border-zinc-700/60 bg-zinc-900/50 px-4 py-3">
-          <p className="text-[11px] text-zinc-500 mb-1">أقدم يوم مفتوح</p>
-          <p className="text-sm font-semibold text-zinc-200 leading-snug">
+        <div className="rounded-xl border border-border bg-card px-4 py-3">
+          <p className="text-[11px] text-muted-foreground mb-1">أقدم يوم مفتوح</p>
+          <p className="text-sm font-semibold text-foreground leading-snug">
             {openDaysSummary.oldest
               ? `${formatWorkDateAr(openDaysSummary.oldest.workDate)} · ${shortBranchName(openDaysSummary.oldest)}`
               : openDaysLoading
@@ -1824,17 +1824,17 @@ export default function DailyPayrollPanel() {
         </div>
       </div>
 
-      <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-4 space-y-3">
+      <div className="rounded-xl border border-border bg-background p-4 space-y-3">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-baseline gap-2">
-            <h3 className="text-sm font-bold text-zinc-200">أيام تحتاج إقفال</h3>
-            <span className="text-[11px] text-zinc-500">دخول سريع · الشهر الحالي</span>
+            <h3 className="text-sm font-bold text-foreground">أيام تحتاج إقفال</h3>
+            <span className="text-[11px] text-muted-foreground">دخول سريع · الشهر الحالي</span>
           </div>
           <Button
             type="button"
             variant="outline"
             size="sm"
-            className="h-8 border-zinc-700 text-zinc-300"
+            className="h-8 border-border text-foreground"
             disabled={openDaysLoading}
             onClick={() => void loadOpenDays()}
           >
@@ -1843,15 +1843,15 @@ export default function DailyPayrollPanel() {
           </Button>
         </div>
         {openDaysError && (
-          <p className="text-sm text-rose-400">{openDaysError}</p>
+          <p className="text-sm text-destructive">{openDaysError}</p>
         )}
         {openDaysLoading && openDaysItems.length === 0 ? (
-          <div className="flex items-center gap-2 text-sm text-zinc-500 py-2">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
             <Loader2 className="w-4 h-4 animate-spin" />
             جاري تحميل الأيام المفتوحة…
           </div>
         ) : openDaysItems.length === 0 ? (
-          <p className="text-sm text-zinc-500">لا توجد أيام غير محلولة في الشهر الحالي</p>
+          <p className="text-sm text-muted-foreground">لا توجد أيام غير محلولة في الشهر الحالي</p>
         ) : (
           <div className="flex flex-wrap gap-2">
             {openDaysItems.map((item) => {
@@ -1872,7 +1872,7 @@ export default function DailyPayrollPanel() {
                     type="button"
                     size="sm"
                     variant="outline"
-                    className="h-7 w-full text-[11px] border-white/20 bg-black/20"
+                    className="h-7 w-full text-[11px] border-border bg-background"
                     disabled={workspaceBusy}
                     onClick={() => void openDayIntoWorkspace(item.branchId, item.workDate)}
                   >
@@ -1891,13 +1891,13 @@ export default function DailyPayrollPanel() {
           'rounded-xl border p-4 space-y-3',
           readiness
             ? recommendedStateTone(readiness.recommendedState)
-            : 'border-zinc-800 bg-zinc-900/40',
+            : 'border-border bg-card',
         )}
       >
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="space-y-1">
             <p className="text-xs opacity-80">إدارة فرع محدد</p>
-            <h2 className="text-lg font-bold text-white">
+            <h2 className="text-lg font-bold text-foreground">
               {formatWorkDateAr(workspaceDate)}
               {workspaceBranchMeta
                 ? ` · ${shortBranchName(workspaceBranchMeta)}`
@@ -1906,16 +1906,16 @@ export default function DailyPayrollPanel() {
                   : ''}
             </h2>
             <div className="flex flex-wrap gap-2 text-[11px]">
-              <span className="rounded-md border border-white/10 bg-black/20 px-2 py-0.5">
+              <span className="rounded-md border border-border bg-background px-2 py-0.5">
                 حالة محفوظة: {readiness ? recommendedStateLabelAr(readiness.persistedState) : '—'}
               </span>
-              <span className="rounded-md border border-white/10 bg-black/20 px-2 py-0.5">
+              <span className="rounded-md border border-border bg-background px-2 py-0.5">
                 توصية الجاهزية: {readiness ? recommendedStateLabelAr(readiness.recommendedState) : '—'}
               </span>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <label className="flex items-center gap-1.5 text-[11px] text-zinc-400">
+            <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
               فرع الإجراءات
               <select
                 value={workspaceBranchId ?? ''}
@@ -1924,7 +1924,7 @@ export default function DailyPayrollPanel() {
                   const id = Number(e.target.value);
                   if (Number.isFinite(id) && id > 0) void handleWorkspaceBranchChange(id);
                 }}
-                className="h-9 rounded-md bg-black/30 border border-white/15 text-white text-sm px-2 min-w-[8rem]"
+                className="h-9 rounded-md bg-background border border-border text-foreground text-sm px-2 min-w-[8rem]"
                 title="فرع الفحص/التوليد/الإقفال — منفصل عن فلتر عرض الموظفين"
               >
                 {workspaceBranches.length === 0 ? (
@@ -1944,15 +1944,15 @@ export default function DailyPayrollPanel() {
         <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
           {workflow.map((step, idx) => (
             <div key={step.key} className="flex items-center gap-1.5">
-              {idx > 0 && <span className="text-zinc-500">→</span>}
+              {idx > 0 && <span className="text-muted-foreground">→</span>}
               <span
                 className={cn(
                   'rounded-md px-2 py-1 border',
                   step.done
-                    ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-200'
+                    ? 'border-success/40 bg-success-soft text-success'
                     : step.active
-                      ? 'border-amber-500/40 bg-amber-500/15 text-amber-100'
-                      : 'border-zinc-600/40 bg-zinc-900/40 text-zinc-500',
+                      ? 'border-warning/40 bg-warning-soft text-warning'
+                      : 'border-border bg-card text-muted-foreground',
                 )}
               >
                 {step.label}
@@ -1976,7 +1976,7 @@ export default function DailyPayrollPanel() {
         </p>
 
         {isDayClosed && (
-          <div className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-100 space-y-1">
+          <div className="rounded-lg border border-destructive/40 bg-destructive-soft px-3 py-2 text-sm text-destructive space-y-1">
             <div className="flex items-center gap-2 font-bold">
               <Lock className="w-4 h-4" />
               مقفل — لا يمكن توليد/إعادة حساب الأجر لهذا الفرع والتاريخ
@@ -1991,7 +1991,7 @@ export default function DailyPayrollPanel() {
         )}
 
         {isDayReopened && !isDayClosed && (
-          <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-100 space-y-1">
+          <div className="rounded-lg border border-warning/40 bg-warning-soft px-3 py-2 text-sm text-warning space-y-1">
             <div className="flex items-center gap-2 font-bold">
               <Unlock className="w-4 h-4" />
               تحذير: تم إعادة فتح هذا اليوم
@@ -2014,7 +2014,7 @@ export default function DailyPayrollPanel() {
               type="button"
               onClick={() => setSmartFixOpen(true)}
               disabled={busy}
-              className="bg-amber-700 hover:bg-amber-600 gap-2 h-10"
+              className="bg-warning hover:bg-warning/85 text-warning-foreground gap-2 h-10"
             >
               <Wrench className="w-4 h-4" />
               حل المشاكل
@@ -2028,7 +2028,7 @@ export default function DailyPayrollPanel() {
               type="button"
               onClick={() => setCloseConfirmOpen(true)}
               disabled={busy || closingDay}
-              className="bg-emerald-700 hover:bg-emerald-600 gap-2 h-10"
+              className="bg-success hover:bg-success/85 text-success-foreground gap-2 h-10"
             >
               <Lock className="w-4 h-4" />
               إقفال يوم الموظفين
@@ -2043,7 +2043,7 @@ export default function DailyPayrollPanel() {
                 setReopenConfirmOpen(true);
               }}
               disabled={busy || reopeningDay}
-              className="border-amber-500/40 text-amber-200 hover:bg-amber-500/10 gap-2 h-10"
+              className="border-warning/40 text-warning hover:bg-warning-soft gap-2 h-10"
             >
               <Unlock className="w-4 h-4" />
               إعادة فتح اليوم
@@ -2054,7 +2054,7 @@ export default function DailyPayrollPanel() {
               type="button"
               onClick={() => void handleAutoNightlyClose()}
               disabled={busy || nightlyClosing || bulkRangeClosing}
-              className="bg-violet-700 hover:bg-violet-600 text-white gap-2 h-10"
+              className="bg-brand hover:bg-brand/85 text-brand-foreground gap-2 h-10"
               title="مثل سكربت الساعة 2:40 — حضور Default + يوميات + تارجت لكل الفروع، بدون واتساب"
             >
               {nightlyClosing ? (
@@ -2069,11 +2069,11 @@ export default function DailyPayrollPanel() {
       </div>
 
       {canReopenPayrollDay && (
-        <div className="rounded-xl border border-violet-500/25 bg-violet-500/5 p-4 space-y-3">
+        <div className="rounded-xl border border-brand/25 bg-brand-soft p-4 space-y-3">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <p className="text-sm font-semibold text-violet-100">قفل رينج أيام تلقائياً</p>
-              <p className="text-[11px] text-zinc-500 mt-1 leading-relaxed">
+              <p className="text-sm font-semibold text-brand">قفل رينج أيام تلقائياً</p>
+              <p className="text-[11px] text-muted-foreground mt-1 leading-relaxed">
                 لكل يوم بالترتيب: إكمال حضور ناقص → توليد يوميات + تارجت + ترحيل الدفتر (كل الفروع
                 النشطة) → محاولة إقفال الفروع الجاهزة فقط. الحد الأقصى 31 يومًا · بدون واتساب · بدون
                 إجبار إقفال.
@@ -2082,23 +2082,23 @@ export default function DailyPayrollPanel() {
           </div>
           <div className="flex flex-wrap items-end gap-3">
             <div className="space-y-1">
-              <label className="text-[11px] text-zinc-500">من تاريخ</label>
+              <label className="text-[11px] text-muted-foreground">من تاريخ</label>
               <Input
                 type="date"
                 value={bulkRangeFrom}
                 onChange={(e) => setBulkRangeFrom(e.target.value)}
                 disabled={busy || bulkRangeClosing}
-                className="bg-zinc-950 border-zinc-700 h-10 w-[160px]"
+                className="bg-background border-border h-10 w-[160px]"
               />
             </div>
             <div className="space-y-1">
-              <label className="text-[11px] text-zinc-500">إلى تاريخ</label>
+              <label className="text-[11px] text-muted-foreground">إلى تاريخ</label>
               <Input
                 type="date"
                 value={bulkRangeTo}
                 onChange={(e) => setBulkRangeTo(e.target.value)}
                 disabled={busy || bulkRangeClosing}
-                className="bg-zinc-950 border-zinc-700 h-10 w-[160px]"
+                className="bg-background border-border h-10 w-[160px]"
               />
             </div>
             <Button
@@ -2111,7 +2111,7 @@ export default function DailyPayrollPanel() {
                 !bulkRangeTo ||
                 bulkRangeFrom > bulkRangeTo
               }
-              className="bg-amber-500 hover:bg-amber-400 text-black font-semibold gap-2 h-10"
+              className="bg-warning hover:bg-warning/85 text-warning-foreground font-semibold gap-2 h-10"
             >
               {bulkRangeClosing ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -2122,34 +2122,34 @@ export default function DailyPayrollPanel() {
             </Button>
           </div>
           {bulkRangeProgress && (
-            <div className="rounded-lg border border-violet-500/30 bg-zinc-950/70 p-3 space-y-2">
+            <div className="rounded-lg border border-brand/30 bg-background p-3 space-y-2">
               <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                <p className="text-zinc-200 font-medium">
+                <p className="text-foreground font-medium">
                   {bulkRangeClosing ? 'جاري التنفيذ…' : 'التقدم'}
                   {bulkRangeProgress.currentDate
                     ? ` · ${bulkRangeProgress.currentDate}`
                     : ''}
-                  <span className="text-zinc-500 font-normal mr-2">
+                  <span className="text-muted-foreground font-normal mr-2">
                     — {bulkRangeProgress.phase}
                   </span>
                 </p>
-                <p className="tabular-nums text-zinc-400">
+                <p className="tabular-nums text-muted-foreground">
                   {bulkRangeProgress.dayIndex}/{bulkRangeProgress.totalDays || '—'} يوم
                   {' · '}
-                  <span className="text-emerald-300">{bulkRangeProgress.closed} مقفول</span>
+                  <span className="text-success">{bulkRangeProgress.closed} مقفول</span>
                   {' · '}
-                  <span className="text-zinc-400">{bulkRangeProgress.alreadyClosed} مسبقاً</span>
+                  <span className="text-muted-foreground">{bulkRangeProgress.alreadyClosed} مسبقاً</span>
                   {' · '}
-                  <span className="text-amber-300">{bulkRangeProgress.notReady} غير جاهز</span>
+                  <span className="text-warning">{bulkRangeProgress.notReady} غير جاهز</span>
                   {' · '}
-                  <span className="text-rose-300">{bulkRangeProgress.failed} فشل</span>
+                  <span className="text-destructive">{bulkRangeProgress.failed} فشل</span>
                 </p>
               </div>
-              <div className="h-2 rounded-full bg-zinc-800 overflow-hidden">
+              <div className="h-2 rounded-full bg-muted overflow-hidden">
                 <div
                   className={cn(
                     'h-full rounded-full transition-[width] duration-300',
-                    bulkRangeClosing ? 'bg-amber-400' : 'bg-emerald-500',
+                    bulkRangeClosing ? 'bg-warning' : 'bg-success',
                   )}
                   style={{
                     width: `${
@@ -2171,21 +2171,21 @@ export default function DailyPayrollPanel() {
           )}
 
           {(bulkRangeLogs.length > 0 || bulkRangeClosing) && (
-            <div className="rounded-lg border border-zinc-700 bg-black/40 p-3 space-y-2">
-              <p className="text-[11px] font-semibold text-zinc-300">سجل التنفيذ (Logs)</p>
+            <div className="rounded-lg border border-border bg-background p-3 space-y-2">
+              <p className="text-[11px] font-semibold text-foreground">سجل التنفيذ (Logs)</p>
               <div className="max-h-48 overflow-y-auto space-y-1 text-[11px] font-mono leading-relaxed">
                 {bulkRangeLogs.length === 0 ? (
-                  <p className="text-zinc-500">في انتظار أول حدث…</p>
+                  <p className="text-muted-foreground">في انتظار أول حدث…</p>
                 ) : (
                   bulkRangeLogs.map((log) => (
                     <div
                       key={log.id}
                       className={cn(
-                        'border-b border-zinc-900/80 pb-1 last:border-0',
-                        log.level === 'ok' && 'text-emerald-300',
-                        log.level === 'warn' && 'text-amber-300',
-                        log.level === 'error' && 'text-rose-300',
-                        log.level === 'info' && 'text-zinc-400',
+                        'border-b border-border pb-1 last:border-0',
+                        log.level === 'ok' && 'text-success',
+                        log.level === 'warn' && 'text-warning',
+                        log.level === 'error' && 'text-destructive',
+                        log.level === 'info' && 'text-muted-foreground',
                       )}
                     >
                       {log.message}
@@ -2198,8 +2198,8 @@ export default function DailyPayrollPanel() {
           )}
 
           {bulkRangeErrors.length > 0 && (
-            <div className="rounded-lg border border-rose-500/35 bg-rose-500/5 p-3 space-y-2">
-              <p className="text-[11px] font-semibold text-rose-200">
+            <div className="rounded-lg border border-destructive/35 bg-destructive-soft p-3 space-y-2">
+              <p className="text-[11px] font-semibold text-destructive">
                 الأخطاء والملاحظات ({bulkRangeErrors.length})
               </p>
               <div className="max-h-44 overflow-y-auto space-y-2 text-xs">
@@ -2211,17 +2211,17 @@ export default function DailyPayrollPanel() {
                     return acc;
                   }, {}),
                 ).map(([workDate, rows]) => (
-                  <div key={workDate} className="border-t border-rose-500/20 pt-2 first:border-0 first:pt-0">
-                    <p className="tabular-nums text-rose-100 font-medium mb-1">{workDate}</p>
-                    <ul className="space-y-1 text-zinc-300">
+                  <div key={workDate} className="border-t border-destructive/20 pt-2 first:border-0 first:pt-0">
+                    <p className="tabular-nums text-destructive font-medium mb-1">{workDate}</p>
+                    <ul className="space-y-1 text-foreground">
                       {rows.map((row) => (
                         <li key={row.id} className="flex flex-wrap gap-x-2 gap-y-0.5">
                           <span
                             className={cn(
                               'shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold',
-                              row.kind === 'pipeline' && 'bg-rose-500/20 text-rose-200',
-                              row.kind === 'notReady' && 'bg-amber-500/20 text-amber-200',
-                              row.kind === 'failed' && 'bg-rose-600/30 text-rose-100',
+                              row.kind === 'pipeline' && 'bg-destructive-soft text-destructive',
+                              row.kind === 'notReady' && 'bg-warning-soft text-warning',
+                              row.kind === 'failed' && 'bg-destructive-soft text-destructive',
                             )}
                           >
                             {row.kind === 'pipeline'
@@ -2231,9 +2231,9 @@ export default function DailyPayrollPanel() {
                                 : 'فشل'}
                           </span>
                           {row.branchCode ? (
-                            <span className="text-zinc-200 font-medium">{row.branchCode}</span>
+                            <span className="text-foreground font-medium">{row.branchCode}</span>
                           ) : null}
-                          <span className="text-zinc-400">{row.message}</span>
+                          <span className="text-muted-foreground">{row.message}</span>
                         </li>
                       ))}
                     </ul>
@@ -2244,8 +2244,8 @@ export default function DailyPayrollPanel() {
           )}
 
           {bulkRangeResult && !bulkRangeClosing && (
-            <div className="rounded-lg border border-zinc-700 bg-zinc-950/60 p-3 text-xs space-y-2 max-h-40 overflow-y-auto">
-              <p className="text-zinc-300 font-medium">
+            <div className="rounded-lg border border-border bg-background p-3 text-xs space-y-2 max-h-40 overflow-y-auto">
+              <p className="text-foreground font-medium">
                 ملخص نهائي — أيام {bulkRangeResult.summary.daysProcessed} · فروع{' '}
                 {bulkRangeResult.summary.branchesProcessed} · مقفول {bulkRangeResult.summary.closed}{' '}
                 · مسبقاً {bulkRangeResult.summary.alreadyClosed} · غير جاهز{' '}
@@ -2258,42 +2258,42 @@ export default function DailyPayrollPanel() {
 
       {/* ── Messages ────────────────────────────────────────────────────────── */}
       {error && (
-        <div className="flex items-center gap-3 p-4 bg-rose-500/10 border border-rose-500/30 rounded-xl text-rose-400 text-sm">
+        <div className="flex items-center gap-3 p-4 bg-destructive-soft border border-destructive/30 rounded-xl text-destructive text-sm">
           <AlertCircle className="w-5 h-5 shrink-0" />
           <span className="flex-1">{error}</span>
           <button onClick={() => setError('')}><X className="w-4 h-4 opacity-60 hover:opacity-100" /></button>
         </div>
       )}
       {successMsg && (
-        <div className="flex items-center gap-3 p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-emerald-400 text-sm">
+        <div className="flex items-center gap-3 p-4 bg-success-soft border border-success/30 rounded-xl text-success text-sm">
           <CheckCircle2 className="w-5 h-5 shrink-0" />{successMsg}
         </div>
       )}
 
       {/* ── Blockers / warnings from readiness engine ─────────────────────── */}
       {blockersByEmp.length > 0 && (
-        <div className="rounded-xl border border-rose-500/30 bg-rose-500/5 p-4 space-y-2">
-          <div className="flex items-center gap-2 text-rose-300 font-semibold text-sm">
+        <div className="rounded-xl border border-destructive/30 bg-destructive-soft p-4 space-y-2">
+          <div className="flex items-center gap-2 text-destructive font-semibold text-sm">
             <AlertCircle className="w-4 h-4" />
             موانع الإقفال ({readiness?.summary.blockerCount ?? blockersByEmp.length})
           </div>
           <ul className="space-y-1.5 text-sm">
             {blockersByEmp.map((row) => (
-              <li key={row.empId} className="flex flex-wrap gap-x-2 gap-y-0.5 text-rose-100/90">
-                <span className="font-medium text-white">{row.empName}</span>
-                <span className="text-rose-300/90">— {row.messages.join(' · ')}</span>
+              <li key={row.empId} className="flex flex-wrap gap-x-2 gap-y-0.5 text-destructive">
+                <span className="font-medium text-foreground">{row.empName}</span>
+                <span className="text-destructive">— {row.messages.join(' · ')}</span>
               </li>
             ))}
           </ul>
         </div>
       )}
       {(readiness?.warnings?.length ?? 0) > 0 && (
-        <div className="rounded-xl border border-zinc-600/50 bg-zinc-900/40 p-4 space-y-2">
-          <div className="flex items-center gap-2 text-zinc-400 font-semibold text-sm">
+        <div className="rounded-xl border border-border bg-card p-4 space-y-2">
+          <div className="flex items-center gap-2 text-muted-foreground font-semibold text-sm">
             <AlertTriangle className="w-4 h-4" />
             تنبيهات (ليست موانع إقفال)
           </div>
-          <ul className="space-y-1 text-xs text-zinc-400">
+          <ul className="space-y-1 text-xs text-muted-foreground">
             {readiness!.warnings.map((w, idx) => (
               <li key={`${w.empId ?? 'x'}-${w.code}-${idx}`}>
                 {w.empName ? `${w.empName} — ` : ''}
@@ -2307,11 +2307,11 @@ export default function DailyPayrollPanel() {
       {/* ── Auto-generate log banner ────────────────────────────────────────── */}
       {autoGenLog?.found && (
         autoGenLog.success ? (
-          <div className="flex items-start gap-3 p-4 bg-sky-500/10 border border-sky-500/30 rounded-xl text-sky-400 text-sm">
+          <div className="flex items-start gap-3 p-4 bg-info-soft border border-info/30 rounded-xl text-info text-sm">
             <ShieldCheck className="w-5 h-5 shrink-0 mt-0.5" />
             <div className="flex-1">
               <p className="font-semibold">تم توليد اليوميات تلقائيًا ولم يتم ترحيلها للخزنة بعد</p>
-              <p className="text-xs text-sky-300/70 mt-0.5">
+              <p className="text-xs text-info mt-0.5">
                 {autoGenLog.employeesCount} موظف · {Number(autoGenLog.totalHours ?? 0).toFixed(1)} ساعة · {fmt(autoGenLog.totalWages ?? 0)} ج.م
                 {autoGenLog.createdAt ? ` · ${new Date(autoGenLog.createdAt).toLocaleTimeString('ar-EG')}` : ''}
               </p>
@@ -2319,19 +2319,19 @@ export default function DailyPayrollPanel() {
             <button onClick={() => setAutoGenLog(null)}><X className="w-4 h-4 opacity-50 hover:opacity-100" /></button>
           </div>
         ) : autoGenLog.missing && autoGenLog.missing.length > 0 ? (
-          <div className="p-4 bg-orange-500/10 border border-orange-500/30 rounded-xl text-sm">
+          <div className="p-4 bg-warning-soft border border-warning/30 rounded-xl text-sm">
             <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2 text-orange-400 font-semibold">
+              <div className="flex items-center gap-2 text-warning font-semibold">
                 <AlertTriangle className="w-5 h-5 shrink-0" />
                 لم يتم توليد اليوميات تلقائيًا بسبب نقص بيانات الحضور والانصراف
               </div>
-              <button onClick={() => setAutoGenLog(null)}><X className="w-4 h-4 text-zinc-500 hover:text-zinc-300" /></button>
+              <button onClick={() => setAutoGenLog(null)}><X className="w-4 h-4 text-muted-foreground hover:text-foreground" /></button>
             </div>
             <div className="space-y-1.5">
               {autoGenLog.missing.map((m: ValidationMissing) => (
-                <div key={m.empId} className="flex items-center justify-between px-3 py-1.5 bg-orange-500/5 rounded-lg border border-orange-500/20">
-                  <span className="text-white text-sm">{m.empName}</span>
-                  <span className="text-orange-400 text-xs">{REASON_LABEL[m.reason]}</span>
+                <div key={m.empId} className="flex items-center justify-between px-3 py-1.5 bg-warning-soft rounded-lg border border-warning/20">
+                  <span className="text-foreground text-sm">{m.empName}</span>
+                  <span className="text-warning text-xs">{REASON_LABEL[m.reason]}</span>
                 </div>
               ))}
             </div>
@@ -2345,14 +2345,14 @@ export default function DailyPayrollPanel() {
           <>
         <Button onClick={handleValidate} disabled={validating || busy}
           variant="outline"
-          className="border-sky-600/40 text-sky-400 hover:bg-sky-500/10 gap-2 h-11 px-5">
+          className="border-info/40 text-info hover:bg-info-soft gap-2 h-11 px-5">
           {validating
             ? <><Loader2 className="w-4 h-4 animate-spin" />جاري الفحص...</>
             : <><ClipboardList className="w-4 h-4" />فحص الحضور</>}
         </Button>
 
         <Button onClick={handleGenerate} disabled={generating || regeneratingTarget || busy}
-          className="bg-amber-600 hover:bg-amber-700 gap-2 h-11 px-6">
+          className="bg-warning hover:bg-warning/85 text-warning-foreground gap-2 h-11 px-6">
           {generating
             ? <><Loader2 className="w-4 h-4 animate-spin" />جاري التوليد...</>
             : <><Zap className="w-4 h-4" />{dualWriteEnabled ? 'توليد اليوميات + الترحيل للدفتر' : 'توليد اليوميات والتارجت'}</>}
@@ -2362,7 +2362,7 @@ export default function DailyPayrollPanel() {
           onClick={handleRecalculateTargets}
           disabled={generating || regeneratingTarget || busy}
           variant="outline"
-          className="border-violet-500/40 text-violet-300 hover:bg-violet-500/10 gap-2 h-11 px-5"
+          className="border-brand/40 text-brand hover:bg-brand-soft gap-2 h-11 px-5"
         >
           {regeneratingTarget
             ? <><Loader2 className="w-4 h-4 animate-spin" />جاري إعادة حساب التارجت...</>
@@ -2372,7 +2372,7 @@ export default function DailyPayrollPanel() {
         )}
 
         {isDayClosed && (
-          <p className="text-xs text-zinc-400">
+          <p className="text-xs text-muted-foreground">
             توليد اليوميات وإعادة حساب التارجت مخفيان لأن اليوم مقفل.
           </p>
         )}
@@ -2380,22 +2380,22 @@ export default function DailyPayrollPanel() {
         {canPost && (
           <Button onClick={() => setConfirmOpen(true)} disabled={posting || busy}
             className={showLegacyPost
-              ? 'bg-zinc-700 hover:bg-zinc-600 border border-amber-500/40 gap-2 h-11 px-6'
-              : 'bg-emerald-700 hover:bg-emerald-600 gap-2 h-11 px-6'}>
+              ? 'bg-muted hover:bg-surface-muted border border-warning/40 gap-2 h-11 px-6'
+              : 'bg-success hover:bg-success/85 text-success-foreground gap-2 h-11 px-6'}>
             <Send className="w-4 h-4" />
             {showLegacyPost ? 'ترحيل قديم للخزنة' : 'ترحيل للخزنة'}
             {showLegacyPost && (
-              <Badge className="bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] px-1.5">
+              <Badge className="bg-warning-soft text-warning border border-warning/30 text-[10px] px-1.5">
                 قديم
               </Badge>
             )}
-            <Badge className="bg-white/20 text-white text-[10px] px-1.5 mr-1">{generatedCount}</Badge>
+            <Badge className="bg-muted text-foreground text-[10px] px-1.5 mr-1">{generatedCount}</Badge>
           </Button>
         )}
 
         <Link
           href="/admin/hr?tab=employee-ledger"
-          className="inline-flex items-center justify-center gap-1 h-11 px-3 text-xs rounded-md border border-zinc-700 text-zinc-300 hover:bg-zinc-800"
+          className="inline-flex items-center justify-center gap-1 h-11 px-3 text-xs rounded-md border border-border text-foreground hover:bg-surface-muted"
         >
           <BookOpen className="w-3.5 h-3.5" />
           دفتر الموظفين
@@ -2403,7 +2403,7 @@ export default function DailyPayrollPanel() {
       </div>
 
       {legacyPostToCashDisabled && (
-        <div className="flex flex-col sm:flex-row sm:items-start gap-3 p-4 bg-sky-500/10 border border-sky-500/30 rounded-xl text-sky-300 text-sm">
+        <div className="flex flex-col sm:flex-row sm:items-start gap-3 p-4 bg-info-soft border border-info/30 rounded-xl text-info text-sm">
           <ShieldCheck className="w-5 h-5 shrink-0 mt-0.5" />
           <div className="space-y-2 flex-1">
             <p>
@@ -2411,7 +2411,7 @@ export default function DailyPayrollPanel() {
             </p>
             <Link
               href="/admin/hr?tab=employee-ledger"
-              className="inline-flex items-center gap-1 text-xs font-medium text-sky-200 underline underline-offset-2 hover:text-white"
+              className="inline-flex items-center gap-1 text-xs font-medium text-info underline underline-offset-2 hover:text-foreground"
             >
               <BookOpen className="w-3.5 h-3.5" />
               فتح دفتر الموظفين
@@ -2421,7 +2421,7 @@ export default function DailyPayrollPanel() {
       )}
 
       {showLegacyPost && canPost && (
-        <div className="flex flex-col sm:flex-row sm:items-start gap-3 p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-300 text-sm">
+        <div className="flex flex-col sm:flex-row sm:items-start gap-3 p-4 bg-warning-soft border border-warning/30 rounded-xl text-warning text-sm">
           <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
           <div className="space-y-2 flex-1">
             <p>
@@ -2430,7 +2430,7 @@ export default function DailyPayrollPanel() {
             </p>
             <Link
               href="/admin/hr?tab=employee-ledger"
-              className="inline-flex items-center gap-1 text-xs font-medium text-amber-200 underline underline-offset-2 hover:text-white"
+              className="inline-flex items-center gap-1 text-xs font-medium text-warning underline underline-offset-2 hover:text-foreground"
             >
               <BookOpen className="w-3.5 h-3.5" />
               استخدم دفتر الموظفين لصرف المستحقات
@@ -2440,7 +2440,7 @@ export default function DailyPayrollPanel() {
       )}
 
       {!legacyPostToCashDisabled && dualWriteEnabled && !canPost && (
-        <div className="flex flex-col sm:flex-row sm:items-start gap-3 p-4 bg-zinc-800/40 border border-zinc-700/50 rounded-xl text-zinc-400 text-sm">
+        <div className="flex flex-col sm:flex-row sm:items-start gap-3 p-4 bg-muted border border-border rounded-xl text-muted-foreground text-sm">
           <BookOpen className="w-5 h-5 shrink-0 mt-0.5" />
           <p className="flex-1">
             اليوميات المُولَّدة تُسجَّل كاستحقاق في دفتر الموظفين. استخدم «صرف مستحقات» من الدفتر للصرف الفعلي.
@@ -2451,21 +2451,21 @@ export default function DailyPayrollPanel() {
       {/* ── Validation result card ───────────────────────────────────────────── */}
       {validationDone && (
         validationOk ? (
-          <div className="flex items-center gap-3 p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-emerald-400 text-sm">
+          <div className="flex items-center gap-3 p-4 bg-success-soft border border-success/30 rounded-xl text-success text-sm">
             <ShieldCheck className="w-5 h-5 shrink-0" />
             <span>بيانات الحضور والانصراف مكتملة لجميع الموظفين — يمكنك توليد اليوميات الآن</span>
           </div>
         ) : validationMissing.length > 0 ? (
-          <div className="p-4 bg-rose-500/10 border border-rose-500/30 rounded-xl text-sm">
-            <div className="flex items-center gap-2 text-rose-400 font-semibold mb-3">
+          <div className="p-4 bg-destructive-soft border border-destructive/30 rounded-xl text-sm">
+            <div className="flex items-center gap-2 text-destructive font-semibold mb-3">
               <AlertCircle className="w-5 h-5 shrink-0" />
               برجاء إكمال بيانات الحضور والانصراف أولاً
             </div>
             <div className="space-y-2">
               {validationMissing.map(m => (
-                <div key={m.empId} className="flex items-center justify-between px-3 py-2 bg-rose-500/5 rounded-lg border border-rose-500/20">
-                  <span className="text-white font-medium text-sm">{m.empName}</span>
-                  <span className="text-rose-400 text-xs">{REASON_LABEL[m.reason]}</span>
+                <div key={m.empId} className="flex items-center justify-between px-3 py-2 bg-destructive-soft rounded-lg border border-destructive/20">
+                  <span className="text-foreground font-medium text-sm">{m.empName}</span>
+                  <span className="text-destructive text-xs">{REASON_LABEL[m.reason]}</span>
                 </div>
               ))}
             </div>
@@ -2474,16 +2474,16 @@ export default function DailyPayrollPanel() {
       )}
 
       {validationDone && validationExcluded.length > 0 && (
-        <div className="p-4 bg-zinc-800/40 border border-zinc-700/50 rounded-xl text-sm">
-          <div className="flex items-center gap-2 text-zinc-400 font-semibold mb-3">
+        <div className="p-4 bg-muted border border-border rounded-xl text-sm">
+          <div className="flex items-center gap-2 text-muted-foreground font-semibold mb-3">
             <Users className="w-5 h-5 shrink-0" />
             مستثنون من اليوميات (ليس خطأ)
           </div>
           <div className="space-y-2">
             {validationExcluded.map(m => (
-              <div key={m.empId} className="flex items-center justify-between px-3 py-2 bg-zinc-800/30 rounded-lg border border-zinc-700/40">
-                <span className="text-zinc-300 text-sm">{m.empName}</span>
-                <span className="text-zinc-500 text-xs">{REASON_LABEL[m.reason]}</span>
+              <div key={m.empId} className="flex items-center justify-between px-3 py-2 bg-muted rounded-lg border border-border">
+                <span className="text-foreground text-sm">{m.empName}</span>
+                <span className="text-muted-foreground text-xs">{REASON_LABEL[m.reason]}</span>
               </div>
             ))}
           </div>
@@ -2509,7 +2509,7 @@ export default function DailyPayrollPanel() {
       )}
 
       {planConflicts.length > 0 && (
-        <div className="p-4 bg-rose-500/10 border border-rose-500/30 rounded-xl text-rose-300 text-sm">
+        <div className="p-4 bg-destructive-soft border border-destructive/30 rounded-xl text-destructive text-sm">
           <p className="font-semibold mb-1">تعارض خطط تارجت يحتاج مراجعة</p>
           <ul className="text-xs space-y-1 list-disc pr-4">
             {planConflicts.map((c) => <li key={c}>{c}</li>)}
@@ -2519,14 +2519,14 @@ export default function DailyPayrollPanel() {
 
       {/* ── Missing revenue-mapping warning ─────────────────────────────────── */}
       {missingMappingEmps.length > 0 && (
-        <div className="flex items-start gap-3 p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-400 text-sm">
+        <div className="flex items-start gap-3 p-4 bg-warning-soft border border-warning/30 rounded-xl text-warning text-sm">
           <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
           <div>
             <p className="font-semibold mb-1">تحذير: موظفون بدون تصنيف إيراد مربوط</p>
-            <p className="text-xs text-amber-300/80">لن يمكن ترحيل يومياتهم حتى يتم ربط تصنيف إيراد لكل منهم في تاب الموظفون:</p>
+            <p className="text-xs text-warning">لن يمكن ترحيل يومياتهم حتى يتم ربط تصنيف إيراد لكل منهم في تاب الموظفون:</p>
             <div className="flex flex-wrap gap-1.5 mt-2">
               {missingMappingEmps.map(e => (
-                <span key={e.EmpID} className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-500/20 border border-amber-500/30">
+                <span key={e.EmpID} className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-warning-soft border border-warning/30">
                   {e.EmpName}
                 </span>
               ))}
@@ -2536,18 +2536,18 @@ export default function DailyPayrollPanel() {
       )}
 
       {sameDayMultiBranchEmployees.length > 0 && (
-        <div className="flex items-start gap-3 p-4 bg-violet-500/10 border border-violet-500/30 rounded-xl text-violet-200 text-sm">
+        <div className="flex items-start gap-3 p-4 bg-brand-soft border border-brand/30 rounded-xl text-brand text-sm">
           <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
           <div>
             <p className="font-semibold mb-1">تنبيه: بيانات على أكثر من فرع لنفس اليوم</p>
-            <p className="text-xs text-violet-200/80 mb-2">
+            <p className="text-xs text-brand mb-2">
               الجدول يعرض صفًا واحدًا لكل موظف حسب فرع الحضور/اليومية الفعلي لذلك اليوم.
             </p>
             <div className="flex flex-wrap gap-1.5">
               {sameDayMultiBranchEmployees.map((e) => (
                 <span
                   key={e.empId}
-                  className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-violet-500/20 border border-violet-500/30"
+                  className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-brand-soft border border-brand/30"
                 >
                   {e.empName} · فروع {e.branchIds.join(', ')}
                 </span>
@@ -2558,16 +2558,16 @@ export default function DailyPayrollPanel() {
       )}
 
       {/* ── Table ───────────────────────────────────────────────────────────── */}
-      <div className="bg-zinc-900/50 border border-zinc-800/50 rounded-xl overflow-hidden">
-        <div className="px-5 py-3 border-b border-zinc-800/60 flex flex-wrap items-center justify-between gap-3">
+      <div className="bg-card border border-border rounded-xl overflow-hidden">
+        <div className="px-5 py-3 border-b border-border flex flex-wrap items-center justify-between gap-3">
           <div className="space-y-1">
-            <h2 className="text-sm font-bold text-zinc-300">يوميات وتارجت {date}</h2>
-            <p className="text-[11px] text-zinc-500">
+            <h2 className="text-sm font-bold text-foreground">يوميات وتارجت {date}</h2>
+            <p className="text-[11px] text-muted-foreground">
               فلتر العرض منفصل عن فرع الإجراءات — لا يبدّل الجلسة
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[11px] text-zinc-500">عرض الموظفين</span>
+            <span className="text-[11px] text-muted-foreground">عرض الموظفين</span>
             {[
               { id: 'all', label: 'كل الموظفين' },
               ...scopeOptions.map((o) => ({ id: o.code, label: o.label })),
@@ -2580,8 +2580,8 @@ export default function DailyPayrollPanel() {
                 className={cn(
                   'h-8 text-[11px]',
                   employeeScope === opt.id
-                    ? 'bg-zinc-100 text-zinc-900 hover:bg-white'
-                    : 'border-zinc-700 text-zinc-300',
+                    ? 'bg-primary text-primary-foreground hover:bg-primary-hover'
+                    : 'border-border text-foreground',
                 )}
                 disabled={loading}
                 onClick={() => handleEmployeeScopeChange(opt.id)}
@@ -2589,28 +2589,28 @@ export default function DailyPayrollPanel() {
                 {opt.label}
               </Button>
             ))}
-            {loaded && <span className="text-xs text-zinc-500 mr-1">{mergedRows.length} صف</span>}
+            {loaded && <span className="text-xs text-muted-foreground mr-1">{mergedRows.length} صف</span>}
           </div>
         </div>
         <div className="overflow-x-auto">
           {loading ? (
-            <div className="flex items-center justify-center py-16 text-zinc-500 gap-3">
+            <div className="flex items-center justify-center py-16 text-muted-foreground gap-3">
               <Loader2 className="w-6 h-6 animate-spin" />جاري التحميل...
             </div>
           ) : !loaded ? (
-            <div className="flex flex-col items-center justify-center py-16 text-zinc-600 gap-3">
+            <div className="flex flex-col items-center justify-center py-16 text-muted-foreground gap-3">
               <CalendarDays className="w-10 h-10 opacity-30" />
               <p className="text-sm">اختر يومًا من «أيام تحتاج إقفال» أو غيّر التاريخ</p>
             </div>
           ) : mergedRows.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 text-zinc-600 gap-3">
+            <div className="flex flex-col items-center justify-center py-16 text-muted-foreground gap-3">
               <Users className="w-10 h-10 opacity-30" />
               <p className="text-sm">لا توجد يوميات أو خطط تارجت لهذا اليوم</p>
             </div>
           ) : (
             <table className="w-full text-sm" dir="rtl">
               <thead>
-                <tr className="border-b border-zinc-800 text-xs text-zinc-500">
+                <tr className="border-b border-border text-xs text-muted-foreground">
                   <th className="px-3 py-3 text-right font-medium">الموظف</th>
                   <th className="px-3 py-3 text-center font-medium">الحالة</th>
                   <th className="px-3 py-3 text-center font-medium">حالة الحضور</th>
@@ -2652,23 +2652,23 @@ export default function DailyPayrollPanel() {
                   return (
                     <tr
                       key={rowKey}
-                      className={`border-b border-zinc-800/40 hover:bg-zinc-800/20 transition-colors ${row?.Status === 'PostedToCashMove' ? 'opacity-60' : ''}`}
+                      className={`border-b border-border hover:bg-surface-muted transition-colors ${row?.Status === 'PostedToCashMove' ? 'opacity-60' : ''}`}
                     >
                       <td className="px-3 py-3">
                         <div className="flex items-center gap-2">
-                          <div className="w-7 h-7 rounded-full bg-zinc-800 flex items-center justify-center text-xs font-bold text-zinc-400 shrink-0">
+                          <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center text-xs font-bold text-muted-foreground shrink-0">
                             {merged.empName?.charAt(0)}
                           </div>
                           <div>
                             <div className="flex flex-wrap items-center gap-1.5">
-                              <span className="font-medium text-white text-sm">{merged.empName}</span>
+                              <span className="font-medium text-foreground text-sm">{merged.empName}</span>
                               {branchBadge(
                                 merged.branchCode ?? row?.BranchCode ?? target?.branchCode,
                                 merged.branchName ?? row?.BranchName ?? target?.branchName,
                                 scopeCodes,
                               )}
                               {merged.sameDayMultiBranch ? (
-                                <span className="text-[10px] text-violet-300/90">متعدد الفروع</span>
+                                <span className="text-[10px] text-brand">متعدد الفروع</span>
                               ) : null}
                             </div>
                             {row && (
@@ -2676,7 +2676,7 @@ export default function DailyPayrollPanel() {
                                 {employmentBadge(row.EmploymentType)}
                                 {payrollMethodBadge(row.PayrollMethod)}
                                 {row.PayrollMethod === 'monthly' ? (
-                                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800/80 text-zinc-400 border border-zinc-700/60">
+                                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground border border-border">
                                     شهري — لا يُغلق على اليوميات
                                   </span>
                                 ) : null}
@@ -2696,52 +2696,52 @@ export default function DailyPayrollPanel() {
                         </span>
                       </td>
                       <td className="px-3 py-3 text-center">
-                        {row ? attendanceBadge(row.AttendanceStatus) : <span className="text-zinc-600 text-xs">—</span>}
+                        {row ? attendanceBadge(row.AttendanceStatus) : <span className="text-muted-foreground text-xs">—</span>}
                       </td>
                       <td className="px-3 py-3 text-center text-xs">
                         {row?.ActualHours != null
-                          ? <span className="text-sky-400 font-medium">{Number(row.ActualHours).toFixed(2)} س</span>
-                          : <span className="text-zinc-600">—</span>}
+                          ? <span className="text-info font-medium">{Number(row.ActualHours).toFixed(2)} س</span>
+                          : <span className="text-muted-foreground">—</span>}
                       </td>
                       <td className="px-3 py-3 text-left whitespace-nowrap">
                         {row ? (
                           <>
-                            <span className="font-bold text-white">{fmt(row.DailyWage)}</span>
-                            <span className="text-[11px] font-normal text-zinc-500 mr-1">ج.م</span>
+                            <span className="font-bold text-foreground">{fmt(row.DailyWage)}</span>
+                            <span className="text-[11px] font-normal text-muted-foreground mr-1">ج.م</span>
                           </>
                         ) : (
-                          <span className="text-zinc-600">—</span>
+                          <span className="text-muted-foreground">—</span>
                         )}
                       </td>
                       <td className="px-3 py-3 text-left text-xs">
                         {target ? (
                           <div className="space-y-0.5">
-                            <span className="text-sky-300 font-medium">
+                            <span className="text-info font-medium">
                               {fmt(Number(target.currentNetSalesAfterDiscount))}
                             </span>
                             {target.currentMtdSales != null && (
-                              <div className="text-[10px] text-zinc-500">
+                              <div className="text-[10px] text-muted-foreground">
                                 تراكمي {fmt(Number(target.currentMtdSales))}
                               </div>
                             )}
                           </div>
                         ) : (
-                          <span className="text-zinc-600">—</span>
+                          <span className="text-muted-foreground">—</span>
                         )}
                       </td>
-                      <td className="px-3 py-3 text-center text-[11px] text-zinc-300 max-w-[140px]">
+                      <td className="px-3 py-3 text-center text-[11px] text-foreground max-w-[140px]">
                         {target ? target.planSummary : 'لا يوجد تارجت'}
                       </td>
                       <td className="px-3 py-3 text-left whitespace-nowrap">
-                        {!target && <span className="text-zinc-600">—</span>}
+                        {!target && <span className="text-muted-foreground">—</span>}
                         {target?.persistenceStatus === 'not_generated' && (
-                          <span className="text-amber-400 text-xs">لم يتم التوليد</span>
+                          <span className="text-warning text-xs">لم يتم التوليد</span>
                         )}
                         {target && target.persistenceStatus !== 'not_generated' && (
                           <div className="space-y-0.5">
                             <button
                               type="button"
-                              className="font-bold text-violet-300 hover:underline"
+                              className="font-bold text-brand hover:underline"
                               onClick={() => setDetailTarget(target)}
                             >
                               {fmt(
@@ -2752,23 +2752,23 @@ export default function DailyPayrollPanel() {
                                     0,
                                 ),
                               )}
-                              <span className="text-[10px] font-normal text-zinc-500 mr-1">
+                              <span className="text-[10px] font-normal text-muted-foreground mr-1">
                                 حتى الآن
                               </span>
                             </button>
-                            <div className="text-[10px] text-zinc-400">
+                            <div className="text-[10px] text-muted-foreground">
                               فرق اليوم {fmt(Number(target.storedTargetAmount ?? 0))}
                             </div>
                             {target.displayStatus === 'below_first_tier' && (
                               <div>
-                                <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] border border-amber-500/30 text-amber-400 bg-amber-500/10">
+                                <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] border border-warning/30 text-warning bg-warning-soft">
                                   لسه متحسبلهوش تارجت
                                 </span>
                               </div>
                             )}
                             {target.displayStatus === 'earned_target' && (
                               <div>
-                                <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] border border-emerald-500/30 text-emerald-400 bg-emerald-500/10">
+                                <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] border border-success/30 text-success bg-success-soft">
                                   مستحق
                                 </span>
                               </div>
@@ -2786,7 +2786,7 @@ export default function DailyPayrollPanel() {
                             <Button
                               size="sm"
                               variant="outline"
-                              className="h-7 text-[10px] border-amber-500/40 text-amber-200"
+                              className="h-7 text-[10px] border-warning/40 text-warning"
                               disabled={regeneratingTarget || generating}
                               onClick={() => void retryEmployeeTarget(merged.empId, rowBranchId)}
                             >
@@ -2800,13 +2800,13 @@ export default function DailyPayrollPanel() {
                           <Button
                             size="sm"
                             variant="outline"
-                            className="h-7 text-[11px] border-zinc-700"
+                            className="h-7 text-[11px] border-border"
                             onClick={() => setDetailTarget(target)}
                           >
                             تفاصيل
                           </Button>
                         ) : (
-                          <span className="text-zinc-600">—</span>
+                          <span className="text-muted-foreground">—</span>
                         )}
                       </td>
                       <td className="px-3 py-3">
@@ -2815,7 +2815,7 @@ export default function DailyPayrollPanel() {
                             type="button"
                             size="sm"
                             variant="outline"
-                            className="h-7 text-[10px] border-sky-500/40 text-sky-200 gap-1"
+                            className="h-7 text-[10px] border-info/40 text-info gap-1"
                             disabled={busy || switchingBranch}
                             onClick={() =>
                               openEmployeeAttendance(merged.empId, merged.empName, rowBranchId)
@@ -2828,7 +2828,7 @@ export default function DailyPayrollPanel() {
                             type="button"
                             size="sm"
                             variant="outline"
-                            className="h-7 text-[10px] border-emerald-500/40 text-emerald-200 gap-1"
+                            className="h-7 text-[10px] border-success/40 text-success gap-1"
                             disabled={
                               busy ||
                               generating ||
@@ -2856,7 +2856,7 @@ export default function DailyPayrollPanel() {
                               type="button"
                               size="sm"
                               variant="outline"
-                              className="h-7 text-[10px] border-violet-500/40 text-violet-200 gap-1"
+                              className="h-7 text-[10px] border-brand/40 text-brand gap-1"
                               disabled={
                                 busy ||
                                 rowClosed ||
@@ -2888,28 +2888,28 @@ export default function DailyPayrollPanel() {
               </tbody>
               {(summary || targetTotals) && (
                 <tfoot>
-                  <tr className="border-t-2 border-zinc-700 bg-zinc-800/30">
-                    <td className="px-3 py-3 text-xs font-bold text-zinc-400" colSpan={3}>
+                  <tr className="border-t-2 border-border bg-muted">
+                    <td className="px-3 py-3 text-xs font-bold text-muted-foreground" colSpan={3}>
                       الإجماليات (منفصلة)
                     </td>
-                    <td className="px-3 py-3 text-center text-sky-400 font-bold text-sm">
+                    <td className="px-3 py-3 text-center text-info font-bold text-sm">
                       {summary ? `${Number(summary.totalHours ?? 0).toFixed(1)} س` : '—'}
                     </td>
-                    <td className="px-3 py-3 text-left font-bold text-white whitespace-nowrap">
+                    <td className="px-3 py-3 text-left font-bold text-foreground whitespace-nowrap">
                       {summary ? `${fmt(summary.totalWage)} ج.م` : '—'}
-                      <div className="text-[10px] text-zinc-500 font-normal">أساسي فقط</div>
+                      <div className="text-[10px] text-muted-foreground font-normal">أساسي فقط</div>
                     </td>
-                    <td className="px-3 py-3 text-left text-sky-300 font-bold text-sm">
+                    <td className="px-3 py-3 text-left text-info font-bold text-sm">
                       {targetTotals ? fmt(Number(targetTotals.totalCurrentNetSalesAfterDiscount)) : '—'}
                     </td>
                     <td />
-                    <td className="px-3 py-3 text-left font-bold text-violet-300 whitespace-nowrap">
+                    <td className="px-3 py-3 text-left font-bold text-brand whitespace-nowrap">
                       {targetTotals
                         ? `${fmt(Number(targetTotals.totalStoredMtdTargetAmount ?? targetTotals.totalStoredTargetAmount))} ج.م`
                         : '—'}
-                      <div className="text-[10px] text-zinc-500 font-normal">حتى الآن</div>
+                      <div className="text-[10px] text-muted-foreground font-normal">حتى الآن</div>
                       {targetTotals && (
-                        <div className="text-[10px] text-zinc-500 font-normal">
+                        <div className="text-[10px] text-muted-foreground font-normal">
                           فرق اليوم {fmt(Number(targetTotals.totalStoredTargetAmount))}
                         </div>
                       )}
@@ -2947,48 +2947,48 @@ export default function DailyPayrollPanel() {
 
       {/* ── Confirm Post Dialog ─────────────────────────────────────────────── */}
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <DialogContent className="bg-zinc-900 border-zinc-700 text-white max-w-md" dir="rtl">
+        <DialogContent className="bg-card border-border text-foreground max-w-md" dir="rtl">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-white">
-              <Send className="w-5 h-5 text-emerald-400" />
+            <DialogTitle className="flex items-center gap-2 text-foreground">
+              <Send className="w-5 h-5 text-success" />
               تأكيد ترحيل يوميات الموظفين للخزنة
             </DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4 py-2">
             <div className="grid grid-cols-2 gap-3">
-              <div className="bg-zinc-800/60 rounded-lg p-3 text-center">
-                <p className="text-xs text-zinc-500 mb-1">تاريخ اليوميات</p>
-                <p className="text-sm font-bold text-white">{date}</p>
+              <div className="bg-muted rounded-lg p-3 text-center">
+                <p className="text-xs text-muted-foreground mb-1">تاريخ اليوميات</p>
+                <p className="text-sm font-bold text-foreground">{date}</p>
               </div>
-              <div className="bg-zinc-800/60 rounded-lg p-3 text-center">
-                <p className="text-xs text-zinc-500 mb-1">عدد الموظفين</p>
-                <p className="text-sm font-bold text-white">{generatedCount}</p>
+              <div className="bg-muted rounded-lg p-3 text-center">
+                <p className="text-xs text-muted-foreground mb-1">عدد الموظفين</p>
+                <p className="text-sm font-bold text-foreground">{generatedCount}</p>
               </div>
-              <div className="bg-zinc-800/60 rounded-lg p-3 text-center">
-                <p className="text-xs text-zinc-500 mb-1">إجمالي الساعات</p>
-                <p className="text-sm font-bold text-sky-400">{Number(summary?.totalHours ?? 0).toFixed(1)} س</p>
+              <div className="bg-muted rounded-lg p-3 text-center">
+                <p className="text-xs text-muted-foreground mb-1">إجمالي الساعات</p>
+                <p className="text-sm font-bold text-info">{Number(summary?.totalHours ?? 0).toFixed(1)} س</p>
               </div>
-              <div className="bg-zinc-800/60 rounded-lg p-3 text-center">
-                <p className="text-xs text-zinc-500 mb-1">إجمالي الأجور</p>
-                <p className="text-sm font-bold text-emerald-400">{fmt(summary?.totalWage ?? 0)} ج.م</p>
+              <div className="bg-muted rounded-lg p-3 text-center">
+                <p className="text-xs text-muted-foreground mb-1">إجمالي الأجور</p>
+                <p className="text-sm font-bold text-success">{fmt(summary?.totalWage ?? 0)} ج.م</p>
               </div>
             </div>
 
-            <div className="flex items-start gap-2 p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-amber-400 text-xs">
+            <div className="flex items-start gap-2 p-3 bg-warning-soft border border-warning/30 rounded-lg text-warning text-xs">
               <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
               <span>بعد الترحيل للخزنة سيتم تسجيل هذه اليوميات كمصروفات، ولا يُفضل تعديلها إلا من خلال إجراء تصحيح.</span>
             </div>
 
             {showLegacyPost && (
-              <div className="flex flex-col gap-2 p-3 bg-rose-500/10 border border-rose-500/30 rounded-lg text-rose-300 text-xs">
+              <div className="flex flex-col gap-2 p-3 bg-destructive-soft border border-destructive/30 rounded-lg text-destructive text-xs">
                 <p>
                   {legacyPostToCashWarning ??
                     'هذا الإجراء ينشئ حركات خزنة وقد يضخم التقارير. في النظام الجديد، استخدم دفتر الموظفين لصرف المستحقات.'}
                 </p>
                 <Link
                   href="/admin/hr?tab=employee-ledger"
-                  className="inline-flex items-center gap-1 text-amber-200 underline underline-offset-2 hover:text-white"
+                  className="inline-flex items-center gap-1 text-warning underline underline-offset-2 hover:text-foreground"
                 >
                   <BookOpen className="w-3.5 h-3.5" />
                   استخدم دفتر الموظفين لصرف المستحقات
@@ -2999,13 +2999,13 @@ export default function DailyPayrollPanel() {
 
           <DialogFooter className="gap-2 flex-row-reverse sm:flex-row-reverse" dir="rtl">
             <Button variant="outline" onClick={() => setConfirmOpen(false)}
-              className="border-zinc-700 text-zinc-300 hover:bg-zinc-800">
+              className="border-border text-foreground hover:bg-surface-muted">
               إلغاء
             </Button>
             <Button onClick={handlePostToCash} disabled={posting}
               className={showLegacyPost
-                ? 'bg-zinc-700 hover:bg-zinc-600 border border-amber-500/40 gap-2'
-                : 'bg-emerald-700 hover:bg-emerald-600 gap-2'}>
+                ? 'bg-muted hover:bg-surface-muted border border-warning/40 gap-2'
+                : 'bg-success hover:bg-success/85 text-success-foreground gap-2'}>
               {posting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
               {showLegacyPost ? 'تأكيد الترحيل القديم للخزنة' : 'تأكيد الترحيل للخزنة'}
             </Button>
@@ -3014,27 +3014,27 @@ export default function DailyPayrollPanel() {
       </Dialog>
 
       <Dialog open={closeConfirmOpen} onOpenChange={setCloseConfirmOpen}>
-        <DialogContent className="bg-zinc-900 border-zinc-700 text-white max-w-md" dir="rtl">
+        <DialogContent className="bg-card border-border text-foreground max-w-md" dir="rtl">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-white">
-              <Lock className="w-5 h-5 text-emerald-400" />
+            <DialogTitle className="flex items-center gap-2 text-foreground">
+              <Lock className="w-5 h-5 text-success" />
               تأكيد إقفال يوم الموظفين
             </DialogTitle>
-            <DialogDescription className="text-zinc-400 text-sm">
+            <DialogDescription className="text-muted-foreground text-sm">
               سيتم قفل توليد/إعادة حساب الأجر لهذا الفرع والتاريخ فقط. فروع أخرى في نفس التاريخ تبقى مستقلة.
             </DialogDescription>
           </DialogHeader>
-          <div className="text-sm text-zinc-300 space-y-1 py-2">
+          <div className="text-sm text-foreground space-y-1 py-2">
             <p>الفرع: {readiness ? shortBranchName(readiness) : selectedBranchId}</p>
             <p>التاريخ: {formatWorkDateAr(date)}</p>
           </div>
           <DialogFooter className="gap-2 flex-row-reverse sm:flex-row-reverse" dir="rtl">
             <Button variant="outline" onClick={() => setCloseConfirmOpen(false)} disabled={closingDay}
-              className="border-zinc-700 text-zinc-300 hover:bg-zinc-800">
+              className="border-border text-foreground hover:bg-surface-muted">
               إلغاء
             </Button>
             <Button onClick={() => void handleCloseDay()} disabled={closingDay}
-              className="bg-emerald-700 hover:bg-emerald-600 gap-2">
+              className="bg-success hover:bg-success/85 text-success-foreground gap-2">
               {closingDay ? <Loader2 className="w-4 h-4 animate-spin" /> : <Lock className="w-4 h-4" />}
               تأكيد الإقفال
             </Button>
@@ -3048,23 +3048,23 @@ export default function DailyPayrollPanel() {
           if (!bulkRangeClosing) setBulkRangeConfirmOpen(open);
         }}
       >
-        <DialogContent className="bg-zinc-900 border-zinc-700 text-white max-w-md" dir="rtl">
+        <DialogContent className="bg-card border-border text-foreground max-w-md" dir="rtl">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-white">
-              <CalendarDays className="w-5 h-5 text-amber-400" />
+            <DialogTitle className="flex items-center gap-2 text-foreground">
+              <CalendarDays className="w-5 h-5 text-warning" />
               تأكيد قفل رينج أيام
             </DialogTitle>
-            <DialogDescription className="text-zinc-400 text-sm leading-relaxed">
+            <DialogDescription className="text-muted-foreground text-sm leading-relaxed">
               العملية قد تقفل أيامًا نهائيًا لكل الفروع النشطة. لا يُفرض إقفال على يوم/فرع غير جاهز،
               ويمكن إعادة التشغيل لنفس الرينج بأمان (idempotent).
             </DialogDescription>
           </DialogHeader>
-          <div className="text-sm text-zinc-300 space-y-2 py-2">
+          <div className="text-sm text-foreground space-y-2 py-2">
             <p>
-              من <span className="tabular-nums font-medium text-white">{bulkRangeFrom}</span> إلى{' '}
-              <span className="tabular-nums font-medium text-white">{bulkRangeTo}</span>
+              من <span className="tabular-nums font-medium text-foreground">{bulkRangeFrom}</span> إلى{' '}
+              <span className="tabular-nums font-medium text-foreground">{bulkRangeTo}</span>
             </p>
-            <ul className="text-xs text-zinc-500 list-disc pr-4 space-y-1">
+            <ul className="text-xs text-muted-foreground list-disc pr-4 space-y-1">
               <li>لكل يوم: بايبلاين قفل اليوم التلقائي (بدون واتساب) ثم محاولة إقفال الفروع</li>
               <li>الحد الأقصى 31 يومًا · بدون تواريخ مستقبلية</li>
               <li>فشل يوم/فرع لا يوقف باقي الرينج</li>
@@ -3075,14 +3075,14 @@ export default function DailyPayrollPanel() {
               variant="outline"
               onClick={() => setBulkRangeConfirmOpen(false)}
               disabled={bulkRangeClosing}
-              className="border-zinc-700 text-zinc-300 hover:bg-zinc-800"
+              className="border-border text-foreground hover:bg-surface-muted"
             >
               إلغاء
             </Button>
             <Button
               onClick={() => void handleBulkCloseRange()}
               disabled={bulkRangeClosing}
-              className="bg-amber-500 hover:bg-amber-400 text-black font-semibold gap-2"
+              className="bg-warning hover:bg-warning/85 text-warning-foreground font-semibold gap-2"
             >
               {bulkRangeClosing ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -3096,35 +3096,35 @@ export default function DailyPayrollPanel() {
       </Dialog>
 
       <Dialog open={reopenConfirmOpen} onOpenChange={setReopenConfirmOpen}>
-        <DialogContent className="bg-zinc-900 border-zinc-700 text-white max-w-md" dir="rtl">
+        <DialogContent className="bg-card border-border text-foreground max-w-md" dir="rtl">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-white">
-              <Unlock className="w-5 h-5 text-amber-400" />
+            <DialogTitle className="flex items-center gap-2 text-foreground">
+              <Unlock className="w-5 h-5 text-warning" />
               إعادة فتح يوم الموظفين
             </DialogTitle>
-            <DialogDescription className="text-zinc-400 text-sm">
+            <DialogDescription className="text-muted-foreground text-sm">
               مطلوب سبب إلزامي. بعد إعادة الفتح يمكن التصحيح والتوليد، ولن يُقفل تلقائيًا.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2 py-2">
-            <label className="text-xs text-zinc-400">سبب إعادة الفتح</label>
+            <label className="text-xs text-muted-foreground">سبب إعادة الفتح</label>
             <Input
               value={reopenReason}
               onChange={(e) => setReopenReason(e.target.value)}
               maxLength={500}
               placeholder="مثال: تصحيح حضور ناقص"
-              className="bg-zinc-800 border-zinc-600 text-white"
+              className="bg-muted border-border text-foreground"
             />
           </div>
           <DialogFooter className="gap-2 flex-row-reverse sm:flex-row-reverse" dir="rtl">
             <Button variant="outline" onClick={() => setReopenConfirmOpen(false)} disabled={reopeningDay}
-              className="border-zinc-700 text-zinc-300 hover:bg-zinc-800">
+              className="border-border text-foreground hover:bg-surface-muted">
               إلغاء
             </Button>
             <Button
               onClick={() => void handleReopenDay()}
               disabled={reopeningDay || !reopenReason.trim()}
-              className="bg-amber-700 hover:bg-amber-600 gap-2"
+              className="bg-warning hover:bg-warning/85 text-warning-foreground gap-2"
             >
               {reopeningDay ? <Loader2 className="w-4 h-4 animate-spin" /> : <Unlock className="w-4 h-4" />}
               تأكيد إعادة الفتح
