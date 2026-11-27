@@ -60,6 +60,8 @@ export async function startCutClubOtp(raw: unknown, purpose: unknown) {
     SELECT CASE WHEN OBJECT_ID(N'dbo.CutClubOtpPending',N'U') IS NOT NULL
       AND OBJECT_ID(N'dbo.CutClubCustomerSession',N'U') IS NOT NULL
       AND OBJECT_ID(N'dbo.CutClubMemberAccount',N'U') IS NOT NULL
+      AND COL_LENGTH(N'dbo.CutClubMemberAccount',N'AccessStatus') IS NOT NULL
+      AND OBJECT_ID(N'dbo.CutClubMemberAccessAudit',N'U') IS NOT NULL
       AND COL_LENGTH(N'dbo.TblClient',N'TenantId') IS NOT NULL
       AND EXISTS (SELECT 1 FROM dbo.Tenant
                   WHERE TenantId=@tenant AND Code=@tenantCode AND Status=N'active')
@@ -143,8 +145,11 @@ async function bindVerifiedPhone(tenantId: string, phone: string): Promise<Verif
       // historic customers share a phone. Reject only if the approved record
       // no longer matches the verified tenant + phone.
       if (!current.LegacyClientID || !rows.some(row => row.ClientID === current.LegacyClientID)) {
-        // If phone record changes or duplicates arise, fail closed: no wallet.
-        throw new ClubAuthError('ACCOUNT_REVIEW_REQUIRED',409);
+        // OTP verified the account identity, not the historical wallet. Keep a
+        // status-only session so the member can see the review screen. Leave the
+        // historical binding for staff to resolve; never auto-claim another row.
+        await tx.commit();
+        return { accountId: current.AccountID, tenantId, legacyClientId: null, linkStatus: 'REVIEW_REQUIRED' };
       }
       await tx.commit();
       return { accountId: current.AccountID, tenantId, legacyClientId: current.LegacyClientID, linkStatus: 'ACTIVE' };

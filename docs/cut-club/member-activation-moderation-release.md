@@ -17,6 +17,10 @@
 - Resume restores access, but does NOT silently re-link previously unlinked clients or mint Coins.
 - Support actions UNLINK/REVOKE_SESSIONS remain separate and still invalidate sessions as before.
 
+## Migration ordering and recovery
+- Reserve 027 for member moderation on this release track. Older reward draft #327 independently uses 027: do not merge or APPLY that draft as written. Reconcile the current staging reward checkout #331 and POS claim #332 into a later uniquely numbered reviewed migration after moderation is applied; never renumber an applied migration.
+- OTP delivery checks the moderation schema before contacting DRVO. If an approved legacy record no longer matches the verified phone, re-login returns a review-only session, without changing historical wallet binding or exposing funds; staff must investigate using member support.
+
 ## Production gate
 1. Review these PRs: Casher #329 and Website #75. Confirm CI, real isolated SQL acceptance and mobile smoke.
 2. Migration 027 **depends on applied 026**. Use the trusted `migration-control` branch PLAN with exact PR #329 head SHA. The nested `plan.ok` must equal `true`, `unknownApplied=[]` and `checksumMismatches=[]`; read pending list and digest.

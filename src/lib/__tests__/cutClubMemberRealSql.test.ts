@@ -113,6 +113,25 @@ describe.skipIf(!enabled)('CUT CLUB REAL disposable SQL acceptance (NO staging /
     expect((wallet?.coins??0)).not.toBe(9000);
     expect(await loadCutClubWallet('X'.repeat(43))).toBeNull();
   });
+  it('re-login after a historical phone change returns review-only without exposing or relinking a wallet',async()=>{
+    const auth=await verifyCutClubOtp((await startCutClubOtp(phone,'LOGIN')).pendingToken,'123456');
+    await pool!.request().query(`UPDATE dbo.CutClubMemberAccount
+      SET LinkStatus='ACTIVE',LegacyClientID=7,LinkApprovedBy=1,
+          LinkProofType='IN_PERSON_ID',LinkApprovedAtUtc=SYSUTCDATETIME()`);
+    expect((await loadCutClubWallet(auth.sessionToken))?.coins).toBe(225.75);
+    await pool!.request().input('tenant',mssql.UniqueIdentifier,tenant).query(`UPDATE dbo.TblClient SET Mobile='01200000000' WHERE TenantId=@tenant AND ClientID=7`);
+    try{
+      const again=await verifyCutClubOtp((await startCutClubOtp(phone,'LOGIN')).pendingToken,'123456');
+      expect(again.status).toBe('REVIEW_REQUIRED');
+      expect(await getCutClubSession(again.sessionToken)).toMatchObject({linkStatus:'REVIEW_REQUIRED',legacyClientId:null});
+      expect(await loadCutClubWallet(again.sessionToken)).toMatchObject({coins:null,movements:null,ownedVouchers:null});
+      expect((await loadCutClubWallet(auth.sessionToken))?.coins).toBeNull();
+      const binding=await pool!.request().query<{LegacyClientID:number}>(`SELECT LegacyClientID FROM dbo.CutClubMemberAccount`);
+      expect(binding.recordset[0]?.LegacyClientID).toBe(7);
+    }finally{
+      await pool!.request().input('tenant',mssql.UniqueIdentifier,tenant).query(`UPDATE dbo.TblClient SET Mobile='01557994946' WHERE TenantId=@tenant AND ClientID=7`);
+    }
+  });
   it('automatic unique matching is opt-in and writes explicit system proof, not forged staff approval',async()=>{
     process.env.CUT_CLUB_AUTO_LINK_UNIQUE_PHONE_ENABLED='true';
     await pool!.request().query(`

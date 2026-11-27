@@ -40,10 +40,11 @@ class FakeSql {
   sessions:{digest:string;account:string;revoked:boolean}[]=[];
   matches:{ClientID:number}[]=[];
   linkedPhoneChanged=false;
+  schemaReady=true;
   ledger:{LedgerID:number;ClientID:number;MovementType:string;PointsDelta:number;CreatedAt:Date}[]=[];
   async execute(q:string,p:Record<string,any>){
     const ok=(recordset:any[]=[],rowsAffected=[1])=>({recordset,rowsAffected});
-    if(q.includes(' AS Ready'))return ok([{Ready:1}]);
+    if(q.includes(' AS Ready'))return ok([{Ready:this.schemaReady?1:0}]);
     if(q.includes('INSERT dbo.CutClubOtpPending')){
       this.pending={digest:p.digest,phone:p.phone,purpose:p.purpose,challengeId:p.challenge,status:'READY',lease:null,expires:p.expires};return ok();
     }
@@ -142,6 +143,22 @@ describe('CUT CLUB OTP → binding → owned wallet state with isolated SQL adap
     expect(await getCutClubSession('C'.repeat(43))).toBeNull();
     await logoutCutClubSession(authenticated.sessionToken);
     expect(await getCutClubSession(authenticated.sessionToken)).toBeNull();
+  });
+  it('missing moderation schema blocks OTP delivery before contacting DRVO',async()=>{
+    fake.db.schemaReady=false;
+    await expect(startCutClubOtp(phone,'LOGIN')).rejects.toThrow('CUT_CLUB_SCHEMA_NOT_READY');
+    expect(fake.providerSend).not.toHaveBeenCalled();
+    expect(fake.db.pending).toBeNull();
+  });
+  it('re-login after a linked phone change creates a review-only session, not a failed OTP',async()=>{
+    fake.db.accounts.push({AccountID:randomUUID(),TenantId:tenant,PhoneNormalized:phone,LegacyClientID:7,LinkStatus:'ACTIVE'});
+    fake.db.matches=[{ClientID:8}];
+    fake.db.linkedPhoneChanged=true;
+    const auth=await verifyCutClubOtp((await startCutClubOtp(phone,'LOGIN')).pendingToken,'123456');
+    expect(auth.status).toBe('REVIEW_REQUIRED');
+    expect(await getCutClubSession(auth.sessionToken)).toMatchObject({linkStatus:'REVIEW_REQUIRED',legacyClientId:null});
+    expect(await loadCutClubWallet(auth.sessionToken)).toMatchObject({coins:null,movements:null,ownedVouchers:null});
+    expect(fake.db.accounts[0].LegacyClientID).toBe(7);
   });
   it('matching old phone requires staff review; never infer ownership from OTP alone',async()=>{
     fake.db.matches=[{ClientID:7},{ClientID:8}];
