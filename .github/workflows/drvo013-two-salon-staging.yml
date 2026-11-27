@@ -1,0 +1,97 @@
+name: DRVO-013 Two-Salon Booking Isolation — Staging Only
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: drvo013-two-salon-staging
+  cancel-in-progress: false
+
+jobs:
+  two-salon-staging-isolation:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'fix/drvo013-outbox-booking-tenant-guard-20261122'
+    runs-on: ubuntu-latest
+    environment: drvo-staging
+    timeout-minutes: 22
+    env:
+      DRVO_STAGING_SSH_HOST: ${{ secrets.DRVO_STAGING_SSH_HOST || secrets.VPS_HOST }}
+      DRVO_STAGING_SSH_KEY: ${{ secrets.DRVO_STAGING_SSH_KEY }}
+      DRVO_STAGING_DB_PASSWORD: ${{ secrets.DRVO_STAGING_DB_PASSWORD }}
+      DRVO_STAGING_DB_SERVER: '127.0.0.1'
+      DRVO_STAGING_DB_PORT: '14330'
+    steps:
+      - name: Checkout reviewed exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - name: Refuse local/production environment files
+        shell: bash
+        run: |
+          set -euo pipefail
+          for f in .env .env.local .env.production .env.production.local; do
+            if [[ -f "$f" ]]; then
+              echo "Unsafe environment file: $f" >&2
+              exit 10
+            fi
+          done
+
+      - name: Require dedicated staging credentials only
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -n "$DRVO_STAGING_SSH_HOST" ]] || { echo 'Missing staging SSH host' >&2; exit 11; }
+          [[ -n "$DRVO_STAGING_SSH_KEY" ]] || { echo 'Missing dedicated staging SSH key' >&2; exit 11; }
+          [[ -n "$DRVO_STAGING_DB_PASSWORD" ]] || { echo 'Missing dedicated staging DB password' >&2; exit 11; }
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Open staging-only SSH tunnel
+        id: tunnel
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$DRVO_STAGING_SSH_KEY" > ~/.ssh/drvo_staging
+          chmod 600 ~/.ssh/drvo_staging
+          ssh-keyscan -H "$DRVO_STAGING_SSH_HOST" >> ~/.ssh/known_hosts
+          ssh -i ~/.ssh/drvo_staging -o BatchMode=yes -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 \
+            -L 14330:127.0.0.1:1433 "drvo-tunnel@$DRVO_STAGING_SSH_HOST" -N &
+          echo $! > /tmp/drvo013-two-salon-staging.pid
+          for i in {1..30}; do
+            if nc -z 127.0.0.1 14330; then exit 0; fi
+            sleep 1
+          done
+          echo 'Staging tunnel unavailable' >&2
+          exit 12
+
+      - name: Test real SQL two synthetic Salon Tenants and scoped Booking contact reads
+        timeout-minutes: 12
+        run: npx tsx scripts/drvo/drvo013-two-salon-booking-isolation-staging.ts
+
+      - name: Independent recovery cleanup for synthetic QA tenants
+        if: always() && steps.tunnel.outcome == 'success'
+        timeout-minutes: 4
+        run: npx tsx scripts/drvo/drvo013-two-salon-staging-cleanup.ts
+
+      - name: Close staging SSH tunnel
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f /tmp/drvo013-two-salon-staging.pid ]]; then
+            kill "$(cat /tmp/drvo013-two-salon-staging.pid)" || true
+          fi

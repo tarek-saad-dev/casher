@@ -134,6 +134,9 @@ jobs:
           npx vitest run
           src/platform/__tests__/qaCrossTenantEntitlement.test.ts
           src/platform/__tests__/drvo013TenantIsolation.test.ts
+          src/platform/__tests__/drvo013BookingOutboxIsolation.test.ts
+          src/platform/__tests__/drvo013TwoSalonStageSafety.test.ts
+          src/lib/booking/__tests__/bookingCustomerContactTenantIsolation.test.ts
           src/platform/__tests__/drvo013RouteAuthGuards.test.ts
           src/platform/__tests__/drvo013TenantJobsAndGates.test.ts
           src/platform/__tests__/drvo015MasterDataIsolation.test.ts

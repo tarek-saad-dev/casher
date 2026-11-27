@@ -1,7 +1,8 @@
 import 'server-only';
 
 import { getPool, sql } from '@/lib/db';
-import { loadBookingCustomerContact } from '@/lib/booking/bookingCustomerContact';
+import { loadBookingCustomerContactForTenant } from '@/lib/booking/bookingCustomerContact';
+import { assertLegacyBranchInTenant } from '@/platform/tenant/tenantContext';
 import { composeMessage } from '@/modules/messaging/application/composeMessage';
 import { runWithMessagingTenant } from '@/modules/messaging/tenancy/messagingTenantScope';
 import { sendViaTenantChannel } from '@/modules/messaging/tenancy/transport';
@@ -150,10 +151,17 @@ function servicesFromSummary(summary: string | null): string {
 
 async function deliverBookingEvent(row: PlatformOutboxRow): Promise<void> {
   const bookingId = bookingIdFromRow(row);
-  const contact = await loadBookingCustomerContact(bookingId);
+  const contact = await loadBookingCustomerContactForTenant(bookingId, String(row.TenantId));
   if (!contact) {
     throw new Error('BOOKING_NOT_FOUND');
   }
+  // Defensive second check: the contact query itself was SQL-scoped to row.TenantId,
+  // and the Branch must still belong to that active tenant before compose/send.
+  // A stale or cross-tenant aggregate pointer must retry/dead-letter without sending.
+  if (contact.branchId == null) {
+    throw new Error('BOOKING_BRANCH_MISSING');
+  }
+  await assertLegacyBranchInTenant(String(row.TenantId), contact.branchId);
   if (!contact.phone) {
     throw new Error('BOOKING_CUSTOMER_PHONE_MISSING');
   }
