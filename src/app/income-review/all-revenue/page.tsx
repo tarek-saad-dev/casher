@@ -480,26 +480,26 @@ export default function AllRevenuePage() {
       <PageHeader title="كل الإيرادات" description="مراجعة جميع الإيرادات حسب الفئة مع فلاتر متقدمة" />
 
       {/* Filters */}
-      <div className="flex flex-wrap items-end gap-4 bg-zinc-900/50 border border-zinc-800/50 rounded-xl p-4">
+      <div className="flex flex-wrap items-end gap-4 bg-card border border-border rounded-xl p-4">
         <div className="flex flex-col gap-1">
-          <label className="text-xs text-zinc-400">من تاريخ</label>
+          <label className="text-xs text-muted-foreground">من تاريخ</label>
           <input
             type="date"
             value={fromDate}
             onChange={(e) => setFromDate(e.target.value)}
-            className="h-9 rounded-lg border border-zinc-700 bg-zinc-900 px-3 text-sm text-white focus:border-amber-500 focus:outline-none"
+            className="h-9 rounded-lg border border-border bg-card px-3 text-sm text-foreground focus:border-warning/30 focus:outline-none"
           />
         </div>
         <div className="flex flex-col gap-1">
-          <label className="text-xs text-zinc-400">إلى تاريخ</label>
+          <label className="text-xs text-muted-foreground">إلى تاريخ</label>
           <input
             type="date"
             value={toDate}
             onChange={(e) => setToDate(e.target.value)}
-            className="h-9 rounded-lg border border-zinc-700 bg-zinc-900 px-3 text-sm text-white focus:border-amber-500 focus:outline-none"
+            className="h-9 rounded-lg border border-border bg-card px-3 text-sm text-foreground focus:border-warning/30 focus:outline-none"
           />
         </div>
-        <Button onClick={fetchData} disabled={loading} className="gap-2 bg-amber-600 hover:bg-amber-700 h-9">
+        <Button onClick={fetchData} disabled={loading} className="gap-2 bg-primary hover:bg-primary/85 text-primary-foreground h-9">
           <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           تحديث
         </Button>
@@ -507,7 +507,7 @@ export default function AllRevenuePage() {
 
       {/* Error */}
       {error && (
-        <div className="bg-rose-500/10 border border-rose-500/30 rounded-lg p-4 text-rose-400 text-sm font-medium">
+        <div className="bg-destructive-soft border border-destructive/30 rounded-lg p-4 text-destructive text-sm font-medium">
           خطأ: {error}
         </div>
       )}
@@ -544,14 +544,14 @@ export default function AllRevenuePage() {
 
       {/* Bulk Selection Controls */}
       {categoriesList.length > 0 && (
-        <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4">
+        <div className="bg-warning-soft border border-warning/30 rounded-xl p-4">
           <div className="space-y-3">
             {/* Selection Info - only show when items are selected */}
             {selectedItems.size > 0 && (
               <div className="flex items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
-                  <CheckSquare className="h-5 w-5 text-amber-400" />
-                  <span className="text-amber-400 font-medium">
+                  <CheckSquare className="h-5 w-5 text-warning" />
+                  <span className="text-warning font-medium">
                     تم اختيار {selectedItems.size} {selectedItems.size === 1 ? 'إيراد' : 'إيرادات'}
                   </span>
                 </div>
@@ -560,7 +560,7 @@ export default function AllRevenuePage() {
                     variant="outline"
                     size="sm"
                     onClick={handleClearSelection}
-                    className="gap-2 border-zinc-600 text-zinc-400 hover:text-white"
+                    className="gap-2 border-border text-muted-foreground hover:text-foreground"
                   >
                     <X className="h-4 w-4" />
                     إلغاء الاختيار
@@ -568,7 +568,7 @@ export default function AllRevenuePage() {
                   <Button
                     size="sm"
                     onClick={() => setIsBulkEditOpen(true)}
-                    className="gap-2 bg-zinc-700 hover:bg-zinc-600"
+                    className="gap-2 bg-muted hover:bg-surface-muted"
                   >
                     <Edit3 className="h-4 w-4" />
                     تعديل مفصل
@@ -579,11 +579,11 @@ export default function AllRevenuePage() {
 
             {/* Quick Transfer - always visible when categories exist */}
             <div className="flex items-center gap-3">
-              <span className="text-sm text-amber-300">نقل سريع:</span>
+              <span className="text-sm text-warning">نقل سريع:</span>
               <select
                 value={quickTransferCategoryId}
                 onChange={(e) => setQuickTransferCategoryId(e.target.value)}
-                className="h-8 rounded-lg border border-zinc-600 bg-zinc-800 px-3 text-sm text-white focus:border-amber-500 focus:outline-none min-w-[200px]"
+                className="h-8 rounded-lg border border-border bg-muted px-3 text-sm text-foreground focus:border-warning/30 focus:outline-none min-w-[200px]"
               >
                 <option value="">اختر التصنيف</option>
                 {categoriesList.map((cat) => (
@@ -596,13 +596,13 @@ export default function AllRevenuePage() {
                 size="sm"
                 onClick={handleQuickTransfer}
                 disabled={isBulkUpdating || !quickTransferCategoryId || selectedItems.size === 0}
-                className="gap-2 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="gap-2 bg-primary hover:bg-primary/85 text-primary-foreground disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isBulkUpdating ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
                 {isBulkUpdating ? 'جاري النقل...' : `نقل ${selectedItems.size > 0 ? `(${selectedItems.size})` : ''}`}
               </Button>
               {selectedItems.size === 0 && (
-                <span className="text-xs text-zinc-400">يرجى اختيار إيرادات أولاً</span>
+                <span className="text-xs text-muted-foreground">يرجى اختيار إيرادات أولاً</span>
               )}
             </div>
           </div>
@@ -614,27 +614,27 @@ export default function AllRevenuePage() {
         <EmptyState
           title="لا توجد إيرادات"
           description="لا توجد إيرادات في الفترة المحددة"
-          icon={<CalendarDays className="w-8 h-8 text-amber-500" />}
+          icon={<CalendarDays className="w-8 h-8 text-warning" />}
         />
       )}
 
       {loading && categories.length === 0 && (
         <div className="space-y-3">
           {[...Array(4)].map((_, i) => (
-            <div key={i} className="h-16 bg-zinc-800/40 rounded-xl animate-pulse" />
+            <div key={i} className="h-16 bg-muted rounded-xl animate-pulse" />
           ))}
         </div>
       )}
 
       {categories.length > 0 && (
         <div className="space-y-3">
-          <h2 className="text-lg font-semibold text-white">الإيرادات حسب الفئة</h2>
+          <h2 className="text-lg font-semibold text-foreground">الإيرادات حسب الفئة</h2>
           {categories.map((cat) => {
             const isOpen = expandedCat === cat.ExpINID;
             return (
-              <div key={cat.ExpINID} className="border border-zinc-800 rounded-xl overflow-hidden bg-zinc-900/40">
+              <div key={cat.ExpINID} className="border border-border rounded-xl overflow-hidden bg-card">
                 {/* Category header */}
-                <div className={`p-4 transition-colors ${isOpen ? 'bg-zinc-800/60' : ''}`}>
+                <div className={`p-4 transition-colors ${isOpen ? 'bg-muted' : ''}`}>
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-3 flex-1">
                       {isOpen && (
@@ -644,9 +644,9 @@ export default function AllRevenuePage() {
                           title="اختر الكل"
                         >
                           {cat.items.every(item => selectedItems.has(item.ID)) ? (
-                            <CheckSquare className="h-5 w-5 text-amber-400" />
+                            <CheckSquare className="h-5 w-5 text-warning" />
                           ) : (
-                            <Square className="h-5 w-5 text-zinc-400" />
+                            <Square className="h-5 w-5 text-muted-foreground" />
                           )}
                         </button>
                       )}
@@ -655,13 +655,13 @@ export default function AllRevenuePage() {
                         className="flex items-center gap-3 flex-1 text-right hover:opacity-80 transition-opacity"
                       >
                         {isOpen ? (
-                          <ChevronDown className="h-5 w-5 text-zinc-400 shrink-0" />
+                          <ChevronDown className="h-5 w-5 text-muted-foreground shrink-0" />
                         ) : (
-                          <ChevronLeft className="h-5 w-5 text-zinc-400 shrink-0" />
+                          <ChevronLeft className="h-5 w-5 text-muted-foreground shrink-0" />
                         )}
                         <div>
-                          <span className="font-medium text-white">{cat.CategoryName}</span>
-                          <div className="text-xs text-zinc-500 mt-0.5">
+                          <span className="font-medium text-foreground">{cat.CategoryName}</span>
+                          <div className="text-xs text-muted-foreground mt-0.5">
                             {cat.Count} {cat.Count === 1 ? 'عملية' : 'عمليات'}
                           </div>
                         </div>
@@ -669,7 +669,7 @@ export default function AllRevenuePage() {
                     </div>
 
                     <div className="flex items-center gap-3 shrink-0">
-                      <span className="text-lg font-bold text-emerald-400">{fmt(cat.TotalAmount)}</span>
+                      <span className="text-lg font-bold text-success">{fmt(cat.TotalAmount)}</span>
                       <Button
                         variant="outline"
                         size="sm"
@@ -677,7 +677,7 @@ export default function AllRevenuePage() {
                           e.stopPropagation();
                           setDeletingCat({ ExpINID: cat.ExpINID, name: cat.CategoryName, count: cat.Count });
                         }}
-                        className="gap-1.5 text-xs text-rose-400 border-rose-500/30 hover:text-rose-300 hover:bg-rose-500/10"
+                        className="gap-1.5 text-xs text-destructive border-destructive/30 hover:text-destructive hover:bg-destructive-soft"
                       >
                         <Trash2 className="h-3 w-3" />
                         مسح الكل
@@ -688,12 +688,12 @@ export default function AllRevenuePage() {
 
                 {/* Expanded transactions */}
                 {isOpen && (
-                  <div className="border-t border-zinc-800 bg-zinc-950/40">
+                  <div className="border-t border-border bg-background">
                     <div className="overflow-x-auto">
                       <table className="w-full">
                         <thead>
-                          <tr className="border-b border-zinc-800 bg-zinc-900/60">
-                            <th className="text-center py-2 px-3 text-xs font-medium text-zinc-500 w-8">
+                          <tr className="border-b border-border bg-card">
+                            <th className="text-center py-2 px-3 text-xs font-medium text-muted-foreground w-8">
                               {isOpen && (
                                 <button
                                   onClick={() => handleSelectAll(cat.items)}
@@ -701,26 +701,26 @@ export default function AllRevenuePage() {
                                   title="اختر الكل"
                                 >
                                   {cat.items.every(item => selectedItems.has(item.ID)) ? (
-                                    <CheckSquare className="h-4 w-4 text-amber-400" />
+                                    <CheckSquare className="h-4 w-4 text-warning" />
                                   ) : (
-                                    <Square className="h-4 w-4 text-zinc-400" />
+                                    <Square className="h-4 w-4 text-muted-foreground" />
                                   )}
                                 </button>
                               )}
                             </th>
-                            <th className="text-right py-2 px-3 text-xs font-medium text-zinc-500">#</th>
-                            <th className="text-right py-2 px-3 text-xs font-medium text-zinc-500">التاريخ</th>
-                            <th className="text-right py-2 px-3 text-xs font-medium text-zinc-500">الوقت</th>
-                            <th className="text-right py-2 px-3 text-xs font-medium text-zinc-500">المبلغ</th>
-                            <th className="text-right py-2 px-3 text-xs font-medium text-zinc-500">طريقة الدفع</th>
-                            <th className="text-right py-2 px-3 text-xs font-medium text-zinc-500">المستخدم</th>
-                            <th className="text-right py-2 px-3 text-xs font-medium text-zinc-500">الملاحظات</th>
-                            <th className="text-right py-2 px-3 text-xs font-medium text-zinc-500">إجراء</th>
+                            <th className="text-right py-2 px-3 text-xs font-medium text-muted-foreground">#</th>
+                            <th className="text-right py-2 px-3 text-xs font-medium text-muted-foreground">التاريخ</th>
+                            <th className="text-right py-2 px-3 text-xs font-medium text-muted-foreground">الوقت</th>
+                            <th className="text-right py-2 px-3 text-xs font-medium text-muted-foreground">المبلغ</th>
+                            <th className="text-right py-2 px-3 text-xs font-medium text-muted-foreground">طريقة الدفع</th>
+                            <th className="text-right py-2 px-3 text-xs font-medium text-muted-foreground">المستخدم</th>
+                            <th className="text-right py-2 px-3 text-xs font-medium text-muted-foreground">الملاحظات</th>
+                            <th className="text-right py-2 px-3 text-xs font-medium text-muted-foreground">إجراء</th>
                           </tr>
                         </thead>
                         <tbody>
                           {cat.items.map((item) => (
-                            <tr key={item.ID} className={`border-b border-zinc-800/50 last:border-0 hover:bg-zinc-800/30 transition-colors ${selectedItems.has(item.ID) ? 'bg-amber-500/10' : ''}`}>
+                            <tr key={item.ID} className={`border-b border-border last:border-0 hover:bg-surface-muted transition-colors ${selectedItems.has(item.ID) ? 'bg-warning-soft' : ''}`}>
                               <td className="py-2.5 px-3 text-xs text-center">
                                 <button
                                   onClick={() => handleSelectItem(item.ID)}
@@ -728,31 +728,31 @@ export default function AllRevenuePage() {
                                   title="اختر"
                                 >
                                   {selectedItems.has(item.ID) ? (
-                                    <CheckSquare className="h-4 w-4 text-amber-400" />
+                                    <CheckSquare className="h-4 w-4 text-warning" />
                                   ) : (
-                                    <Square className="h-4 w-4 text-zinc-400" />
+                                    <Square className="h-4 w-4 text-muted-foreground" />
                                   )}
                                 </button>
                               </td>
-                              <td className="py-2.5 px-3 text-xs text-zinc-500">{item.invID}</td>
-                              <td className="py-2.5 px-3 text-xs text-zinc-300">{fmtDate(item.invDate)}</td>
-                              <td className="py-2.5 px-3 text-xs text-zinc-500">{item.invTime || '—'}</td>
-                              <td className="py-2.5 px-3 text-xs font-bold text-emerald-400">
+                              <td className="py-2.5 px-3 text-xs text-muted-foreground">{item.invID}</td>
+                              <td className="py-2.5 px-3 text-xs text-foreground">{fmtDate(item.invDate)}</td>
+                              <td className="py-2.5 px-3 text-xs text-muted-foreground">{item.invTime || '—'}</td>
+                              <td className="py-2.5 px-3 text-xs font-bold text-success">
                                 <div className="flex flex-col gap-1">
                                   <span>{fmt(item.Amount)}</span>
                                   <IncomeRowClassificationBadge reportClassification={item.reportClassification} />
                                 </div>
                               </td>
-                              <td className="py-2.5 px-3 text-xs text-zinc-400">{item.PaymentMethod || '—'}</td>
-                              <td className="py-2.5 px-3 text-xs text-zinc-400">{item.UserName || '—'}</td>
-                              <td className="py-2.5 px-3 text-xs text-zinc-500 max-w-[200px] truncate">{item.Notes || '—'}</td>
+                              <td className="py-2.5 px-3 text-xs text-muted-foreground">{item.PaymentMethod || '—'}</td>
+                              <td className="py-2.5 px-3 text-xs text-muted-foreground">{item.UserName || '—'}</td>
+                              <td className="py-2.5 px-3 text-xs text-muted-foreground max-w-[200px] truncate">{item.Notes || '—'}</td>
                               <td className="py-2.5 px-3">
                                 <div className="flex items-center gap-1">
                                   <Button
                                     variant="ghost"
                                     size="icon-xs"
                                     onClick={() => handleEditClick(item)}
-                                    className="text-amber-400 hover:text-amber-300 hover:bg-amber-500/10"
+                                    className="text-warning hover:text-warning hover:bg-warning-soft"
                                     title="تعديل"
                                   >
                                     <Pencil className="h-3 w-3" />
@@ -761,7 +761,7 @@ export default function AllRevenuePage() {
                                     variant="ghost"
                                     size="icon-xs"
                                     onClick={() => setDeletingId({ ID: item.ID, invID: item.invID })}
-                                    className="text-rose-400 hover:text-rose-300 hover:bg-rose-500/10"
+                                    className="text-destructive hover:text-destructive hover:bg-destructive-soft"
                                     title="حذف"
                                   >
                                     <Trash2 className="h-3 w-3" />
@@ -784,12 +784,12 @@ export default function AllRevenuePage() {
       {/* ── Delete single confirmation ── */}
       {deletingId && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl max-w-sm w-full p-6">
-            <h3 className="text-lg font-semibold text-white mb-3">تأكيد الحذف</h3>
-            <p className="text-sm text-zinc-400 mb-5">
-              هل أنت متأكد من حذف الإيراد رقم <span className="font-bold text-white">#{deletingId.invID}</span>؟
+          <div className="bg-card border border-border rounded-xl shadow-2xl max-w-sm w-full p-6">
+            <h3 className="text-lg font-semibold text-foreground mb-3">تأكيد الحذف</h3>
+            <p className="text-sm text-muted-foreground mb-5">
+              هل أنت متأكد من حذف الإيراد رقم <span className="font-bold text-foreground">#{deletingId.invID}</span>؟
               <br />
-              <span className="text-rose-400">لا يمكن التراجع عن هذا الإجراء.</span>
+              <span className="text-destructive">لا يمكن التراجع عن هذا الإجراء.</span>
             </p>
             <div className="flex items-center justify-end gap-2">
               <Button variant="outline" onClick={() => setDeletingId(null)} disabled={busyDelete}>
@@ -807,18 +807,18 @@ export default function AllRevenuePage() {
       {/* ── Delete category confirmation ── */}
       {deletingCat && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl max-w-md w-full p-6">
+          <div className="bg-card border border-border rounded-xl shadow-2xl max-w-md w-full p-6">
             <div className="flex items-center gap-3 mb-3">
-              <AlertTriangle className="h-6 w-6 text-rose-400" />
-              <h3 className="text-lg font-semibold text-white">تحذير: حذف جماعي</h3>
+              <AlertTriangle className="h-6 w-6 text-destructive" />
+              <h3 className="text-lg font-semibold text-foreground">تحذير: حذف جماعي</h3>
             </div>
-            <p className="text-sm text-zinc-400 mb-5">
-              هل أنت متأكد من حذف <span className="font-bold text-rose-400">{deletingCat.count}</span> إيراد من فئة{' '}
-              <span className="font-bold text-white">&quot;{deletingCat.name}&quot;</span>؟
+            <p className="text-sm text-muted-foreground mb-5">
+              هل أنت متأكد من حذف <span className="font-bold text-destructive">{deletingCat.count}</span> إيراد من فئة{' '}
+              <span className="font-bold text-foreground">&quot;{deletingCat.name}&quot;</span>؟
               <br /><br />
-              <span className="text-rose-400 font-semibold">⚠️ سيتم حذف جميع الإيرادات تحت هذه الفئة في الفترة المحددة!</span>
+              <span className="text-destructive font-semibold">⚠️ سيتم حذف جميع الإيرادات تحت هذه الفئة في الفترة المحددة!</span>
               <br />
-              <span className="text-rose-400">لا يمكن التراجع عن هذا الإجراء.</span>
+              <span className="text-destructive">لا يمكن التراجع عن هذا الإجراء.</span>
             </p>
             <div className="flex items-center justify-end gap-2">
               <Button variant="outline" onClick={() => setDeletingCat(null)} disabled={busyDelete}>
@@ -836,17 +836,17 @@ export default function AllRevenuePage() {
       {/* ── Edit Modal ── */}
       {isEditModalOpen && editingItem && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl max-w-lg w-full p-6 max-h-[90vh] overflow-y-auto">
+          <div className="bg-card border border-border rounded-xl shadow-2xl max-w-lg w-full p-6 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-5">
-              <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-                <Pencil className="h-5 w-5 text-amber-400" />
+              <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                <Pencil className="h-5 w-5 text-warning" />
                 تعديل الإيراد #{editingItem.invID}
               </h3>
               <Button
                 variant="ghost"
                 size="icon-sm"
                 onClick={() => setIsEditModalOpen(false)}
-                className="text-zinc-400 hover:text-white"
+                className="text-muted-foreground hover:text-foreground"
               >
                 <X className="h-5 w-5" />
               </Button>
@@ -855,35 +855,35 @@ export default function AllRevenuePage() {
             <div className="space-y-4">
               {/* Amount */}
               <div className="space-y-1">
-                <label className="text-sm text-zinc-400">المبلغ <span className="text-rose-400">*</span></label>
+                <label className="text-sm text-muted-foreground">المبلغ <span className="text-destructive">*</span></label>
                 <input
                   type="number"
                   step="0.01"
                   value={editForm.amount}
                   onChange={(e) => setEditForm({ ...editForm, amount: e.target.value })}
-                  className="w-full h-10 rounded-lg border border-zinc-700 bg-zinc-950 px-3 text-sm text-white focus:border-amber-500 focus:outline-none"
+                  className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground focus:border-warning/30 focus:outline-none"
                   placeholder="0.00"
                 />
               </div>
 
               {/* Date */}
               <div className="space-y-1">
-                <label className="text-sm text-zinc-400">التاريخ <span className="text-rose-400">*</span></label>
+                <label className="text-sm text-muted-foreground">التاريخ <span className="text-destructive">*</span></label>
                 <input
                   type="date"
                   value={editForm.invDate}
                   onChange={(e) => setEditForm({ ...editForm, invDate: e.target.value })}
-                  className="w-full h-10 rounded-lg border border-zinc-700 bg-zinc-950 px-3 text-sm text-white focus:border-amber-500 focus:outline-none"
+                  className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground focus:border-warning/30 focus:outline-none"
                 />
               </div>
 
               {/* Category */}
               <div className="space-y-1">
-                <label className="text-sm text-zinc-400">التصنيف <span className="text-rose-400">*</span></label>
+                <label className="text-sm text-muted-foreground">التصنيف <span className="text-destructive">*</span></label>
                 <select
                   value={editForm.expInId}
                   onChange={(e) => setEditForm({ ...editForm, expInId: e.target.value })}
-                  className="w-full h-10 rounded-lg border border-zinc-700 bg-zinc-950 px-3 text-sm text-white focus:border-amber-500 focus:outline-none"
+                  className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground focus:border-warning/30 focus:outline-none"
                 >
                   <option value="">اختر التصنيف</option>
                   {categoriesList.map((cat) => (
@@ -896,11 +896,11 @@ export default function AllRevenuePage() {
 
               {/* Payment Method */}
               <div className="space-y-1">
-                <label className="text-sm text-zinc-400">طريقة الدفع <span className="text-rose-400">*</span></label>
+                <label className="text-sm text-muted-foreground">طريقة الدفع <span className="text-destructive">*</span></label>
                 <select
                   value={editForm.paymentMethodId}
                   onChange={(e) => setEditForm({ ...editForm, paymentMethodId: e.target.value })}
-                  className="w-full h-10 rounded-lg border border-zinc-700 bg-zinc-950 px-3 text-sm text-white focus:border-amber-500 focus:outline-none"
+                  className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground focus:border-warning/30 focus:outline-none"
                 >
                   <option value="">اختر طريقة الدفع</option>
                   {paymentMethodsList.map((pm) => (
@@ -913,12 +913,12 @@ export default function AllRevenuePage() {
 
               {/* Notes */}
               <div className="space-y-1">
-                <label className="text-sm text-zinc-400">الملاحظات</label>
+                <label className="text-sm text-muted-foreground">الملاحظات</label>
                 <textarea
                   value={editForm.notes}
                   onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
                   rows={3}
-                  className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-white focus:border-amber-500 focus:outline-none resize-none"
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-warning/30 focus:outline-none resize-none"
                   placeholder="أضف ملاحظات..."
                 />
               </div>
@@ -935,7 +935,7 @@ export default function AllRevenuePage() {
               <Button
                 onClick={handleSaveEdit}
                 disabled={isSaving}
-                className="gap-2 bg-amber-600 hover:bg-amber-700"
+                className="gap-2 bg-primary hover:bg-primary/85 text-primary-foreground"
               >
                 {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                 {isSaving ? 'جاري الحفظ...' : 'حفظ التعديلات'}
@@ -948,35 +948,35 @@ export default function AllRevenuePage() {
       {/* ── Bulk Edit Modal ── */}
       {isBulkEditOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl max-w-md w-full p-6">
+          <div className="bg-card border border-border rounded-xl shadow-2xl max-w-md w-full p-6">
             <div className="flex items-center justify-between mb-5">
-              <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-                <Edit3 className="h-5 w-5 text-amber-400" />
+              <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                <Edit3 className="h-5 w-5 text-warning" />
                 نقل {selectedItems.size} {selectedItems.size === 1 ? 'إيراد' : 'إيرادات'}
               </h3>
               <Button
                 variant="ghost"
                 size="icon-sm"
                 onClick={() => setIsBulkEditOpen(false)}
-                className="text-zinc-400 hover:text-white"
+                className="text-muted-foreground hover:text-foreground"
               >
                 <X className="h-5 w-5" />
               </Button>
             </div>
 
             <div className="space-y-4">
-              <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3">
-                <p className="text-sm text-amber-400">
+              <div className="bg-warning-soft border border-warning/30 rounded-lg p-3">
+                <p className="text-sm text-warning">
                   سيتم نقل {selectedItems.size} {selectedItems.size === 1 ? 'إيراد' : 'إيرادات'} للتصنيف الجديد
                 </p>
               </div>
 
               <div className="space-y-1">
-                <label className="text-sm text-zinc-400">التصنيف الجديد <span className="text-rose-400">*</span></label>
+                <label className="text-sm text-muted-foreground">التصنيف الجديد <span className="text-destructive">*</span></label>
                 <select
                   value={bulkCategoryId}
                   onChange={(e) => setBulkCategoryId(e.target.value)}
-                  className="w-full h-10 rounded-lg border border-zinc-700 bg-zinc-950 px-3 text-sm text-white focus:border-amber-500 focus:outline-none"
+                  className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground focus:border-warning/30 focus:outline-none"
                 >
                   <option value="">اختر التصنيف الجديد</option>
                   {categoriesList.map((cat) => (
@@ -999,7 +999,7 @@ export default function AllRevenuePage() {
               <Button
                 onClick={handleBulkCategoryUpdate}
                 disabled={isBulkUpdating || !bulkCategoryId}
-                className="gap-2 bg-amber-600 hover:bg-amber-700"
+                className="gap-2 bg-primary hover:bg-primary/85 text-primary-foreground"
               >
                 {isBulkUpdating ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
                 {isBulkUpdating ? 'جاري النقل...' : `نقل (${selectedItems.size})`}

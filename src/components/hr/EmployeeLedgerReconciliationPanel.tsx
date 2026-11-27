@@ -55,8 +55,8 @@ function advanceIssueLabel(reason: string): string {
 }
 
 function diffClass(diff: number): string {
-  if (Math.abs(diff) < 0.01) return 'text-emerald-400';
-  return 'text-amber-400';
+  if (Math.abs(diff) < 0.01) return 'text-success';
+  return 'text-warning';
 }
 
 function SectionTable({
@@ -71,23 +71,23 @@ function SectionTable({
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-zinc-800 overflow-hidden">
-      <div className="px-4 py-3 border-b border-zinc-800 bg-zinc-900/40">
-        <h3 className="text-sm font-semibold text-zinc-300">{title}</h3>
+    <div className="rounded-xl border border-border overflow-hidden">
+      <div className="px-4 py-3 border-b border-border bg-card">
+        <h3 className="text-sm font-semibold text-foreground">{title}</h3>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-zinc-800 text-zinc-500 text-xs uppercase tracking-wider">
+            <tr className="border-b border-border text-muted-foreground text-xs uppercase tracking-wider">
               {headers.map((h) => (
                 <th key={h} className="px-4 py-3 text-right font-medium">{h}</th>
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-zinc-800/60">{children}</tbody>
+          <tbody className="divide-y divide-border">{children}</tbody>
         </table>
         {!children && (
-          <p className="px-4 py-8 text-center text-zinc-500 text-sm">{emptyText}</p>
+          <p className="px-4 py-8 text-center text-muted-foreground text-sm">{emptyText}</p>
         )}
       </div>
     </div>
@@ -404,21 +404,21 @@ export default function EmployeeLedgerReconciliationPanel() {
       </div>
 
       {error && (
-        <div className="flex items-center gap-2 p-3 rounded-lg border border-amber-500/30 bg-amber-500/5 text-amber-300 text-sm">
+        <div className="flex items-center gap-2 p-3 rounded-lg border border-warning/30 bg-warning-soft text-warning text-sm">
           <AlertCircle className="w-4 h-4 shrink-0" />
           {error}
         </div>
       )}
 
       {advanceDiffWarning && (
-        <div className="flex items-center gap-2 p-3 rounded-lg border border-amber-500/30 bg-amber-500/5 text-amber-300 text-sm">
+        <div className="flex items-center gap-2 p-3 rounded-lg border border-warning/30 bg-warning-soft text-warning text-sm">
           <AlertTriangle className="w-4 h-4 shrink-0" />
           يوجد فرق في السلف بين الخزنة ودفتر الموظفين. راجع السلف غير المرتبطة أو غير المتزامنة.
         </div>
       )}
 
       {healthy && (
-        <div className="flex items-center gap-2 p-3 rounded-lg border border-emerald-500/30 bg-emerald-500/5 text-emerald-300 text-sm">
+        <div className="flex items-center gap-2 p-3 rounded-lg border border-success/30 bg-success-soft text-success text-sm">
           <CheckCircle2 className="w-4 h-4 shrink-0" />
           لا توجد فجوات مسجّلة بين اليوميات والدفتر والسلف والصرف لهذا الشهر.
         </div>
@@ -467,10 +467,10 @@ export default function EmployeeLedgerReconciliationPanel() {
         headers={['اليومية', 'الموظف', 'التاريخ', 'المبلغ']}
       >
         {(data?.missingPayrollCredits ?? []).length === 0 ? (
-          <tr><td colSpan={4} className="px-4 py-6 text-center text-zinc-500 text-sm">لا توجد يوميات ناقصة</td></tr>
+          <tr><td colSpan={4} className="px-4 py-6 text-center text-muted-foreground text-sm">لا توجد يوميات ناقصة</td></tr>
         ) : (
           data?.missingPayrollCredits.map((row) => (
-            <tr key={row.payrollId} className="hover:bg-zinc-800/30">
+            <tr key={row.payrollId} className="hover:bg-surface-muted">
               <td className="px-4 py-3 font-mono text-xs">#{row.payrollId}</td>
               <td className="px-4 py-3">{row.empName}</td>
               <td className="px-4 py-3 font-mono text-xs">{row.workDate}</td>
@@ -486,14 +486,14 @@ export default function EmployeeLedgerReconciliationPanel() {
         headers={['القيد', 'الموظف', 'التاريخ', 'المبلغ', 'RefID']}
       >
         {(data?.orphanLedgerCredits ?? []).length === 0 ? (
-          <tr><td colSpan={5} className="px-4 py-6 text-center text-zinc-500 text-sm">لا توجد قيود يتيمة</td></tr>
+          <tr><td colSpan={5} className="px-4 py-6 text-center text-muted-foreground text-sm">لا توجد قيود يتيمة</td></tr>
         ) : (
           data?.orphanLedgerCredits.map((row) => (
-            <tr key={row.ledgerEntryId} className="hover:bg-zinc-800/30">
+            <tr key={row.ledgerEntryId} className="hover:bg-surface-muted">
               <td className="px-4 py-3 font-mono text-xs">#{row.ledgerEntryId}</td>
               <td className="px-4 py-3">{row.empName}</td>
               <td className="px-4 py-3 font-mono text-xs">{row.entryDate}</td>
-              <td className="px-4 py-3 font-mono text-rose-400">{fmt(row.amount)}</td>
+              <td className="px-4 py-3 font-mono text-destructive">{fmt(row.amount)}</td>
               <td className="px-4 py-3 font-mono text-xs">{row.refId}</td>
             </tr>
           ))
@@ -506,17 +506,17 @@ export default function EmployeeLedgerReconciliationPanel() {
         headers={['CashMove', 'الموظف', 'التاريخ', 'التصنيف', 'المبلغ', 'السبب', 'إجراء']}
       >
         {(data?.missingAdvanceDebits ?? []).length === 0 ? (
-          <tr><td colSpan={7} className="px-4 py-6 text-center text-zinc-500 text-sm">لا توجد سلف ناقصة</td></tr>
+          <tr><td colSpan={7} className="px-4 py-6 text-center text-muted-foreground text-sm">لا توجد سلف ناقصة</td></tr>
         ) : (
           data?.missingAdvanceDebits.map((row) => (
-            <tr key={row.cashMoveId} className="hover:bg-zinc-800/30">
+            <tr key={row.cashMoveId} className="hover:bg-surface-muted">
               <td className="px-4 py-3 font-mono text-xs">#{row.cashMoveId}</td>
               <td className="px-4 py-3">{row.empName ?? 'غير محدد'}</td>
               <td className="px-4 py-3 font-mono text-xs">{row.invDate}</td>
               <td className="px-4 py-3">{row.categoryName ?? '—'}</td>
-              <td className="px-4 py-3 font-mono text-rose-400">{fmt(row.amount)}</td>
-              <td className="px-4 py-3 text-xs text-zinc-400">{advanceIssueLabel(row.issueReason)}</td>
-              <td className="px-4 py-3 text-xs text-amber-300">
+              <td className="px-4 py-3 font-mono text-destructive">{fmt(row.amount)}</td>
+              <td className="px-4 py-3 text-xs text-muted-foreground">{advanceIssueLabel(row.issueReason)}</td>
+              <td className="px-4 py-3 text-xs text-warning">
                 {row.issueReason === 'missing_employee_mapping' ? 'راجع ربط التصنيف بالموظف' : '—'}
               </td>
             </tr>
@@ -533,10 +533,10 @@ export default function EmployeeLedgerReconciliationPanel() {
         ]}
       >
         {(data?.unresolvedCashAdvances ?? []).length === 0 ? (
-          <tr><td colSpan={11} className="px-4 py-6 text-center text-zinc-500 text-sm">لا توجد سلف غير مرتبطة</td></tr>
+          <tr><td colSpan={11} className="px-4 py-6 text-center text-muted-foreground text-sm">لا توجد سلف غير مرتبطة</td></tr>
         ) : (
           data?.unresolvedCashAdvances.map((row) => (
-            <tr key={`unresolved-${row.cashMoveId}`} className="hover:bg-zinc-800/30">
+            <tr key={`unresolved-${row.cashMoveId}`} className="hover:bg-surface-muted">
               <td className="px-4 py-3 font-mono text-xs">#{row.cashMoveId}</td>
               <td className="px-4 py-3 font-mono text-xs">{row.expInId}</td>
               <td className="px-4 py-3 font-mono text-xs">{row.invDate}</td>
@@ -544,13 +544,13 @@ export default function EmployeeLedgerReconciliationPanel() {
               <td className="px-4 py-3 font-mono text-xs">{row.cashEmpId ?? '—'}</td>
               <td className="px-4 py-3 font-mono text-xs">{row.mapEmpId ?? '—'}</td>
               <td className="px-4 py-3 text-xs">{boolLabel(row.hasLedgerEntry)}</td>
-              <td className="px-4 py-3 font-mono text-amber-400">{fmt(row.amount)}</td>
-              <td className="px-4 py-3 text-xs text-zinc-400">
+              <td className="px-4 py-3 font-mono text-warning">{fmt(row.amount)}</td>
+              <td className="px-4 py-3 text-xs text-muted-foreground">
                 {row.suggestedEmployeeMatches.length === 0
                   ? '—'
                   : row.suggestedEmployeeMatches.map((m) => m.empName).join('، ')}
               </td>
-              <td className="px-4 py-3 text-xs text-zinc-400">{advanceIssueLabel(row.issueReason)}</td>
+              <td className="px-4 py-3 text-xs text-muted-foreground">{advanceIssueLabel(row.issueReason)}</td>
               <td className="px-4 py-3">
                 <Button
                   variant="outline"
@@ -572,16 +572,16 @@ export default function EmployeeLedgerReconciliationPanel() {
         headers={['CashMove', 'الموظف', 'التاريخ', 'خزنة', 'دفتر', 'السبب']}
       >
         {(data?.advanceAmountMismatches ?? []).length === 0 ? (
-          <tr><td colSpan={6} className="px-4 py-6 text-center text-zinc-500 text-sm">لا توجد فروق مبالغ</td></tr>
+          <tr><td colSpan={6} className="px-4 py-6 text-center text-muted-foreground text-sm">لا توجد فروق مبالغ</td></tr>
         ) : (
           data?.advanceAmountMismatches.map((row) => (
-            <tr key={`mismatch-${row.cashMoveId}`} className="hover:bg-zinc-800/30">
+            <tr key={`mismatch-${row.cashMoveId}`} className="hover:bg-surface-muted">
               <td className="px-4 py-3 font-mono text-xs">#{row.cashMoveId}</td>
               <td className="px-4 py-3">{row.empName}</td>
               <td className="px-4 py-3 font-mono text-xs">{row.invDate}</td>
-              <td className="px-4 py-3 font-mono text-rose-400">{fmt(row.cashAmount)}</td>
-              <td className="px-4 py-3 font-mono text-emerald-400">{fmt(row.ledgerAmount)}</td>
-              <td className="px-4 py-3 text-xs text-zinc-400">{advanceIssueLabel(row.issueReason)}</td>
+              <td className="px-4 py-3 font-mono text-destructive">{fmt(row.cashAmount)}</td>
+              <td className="px-4 py-3 font-mono text-success">{fmt(row.ledgerAmount)}</td>
+              <td className="px-4 py-3 text-xs text-muted-foreground">{advanceIssueLabel(row.issueReason)}</td>
             </tr>
           ))
         )}
@@ -593,26 +593,26 @@ export default function EmployeeLedgerReconciliationPanel() {
         headers={['الوصف', 'المبلغ', 'السبب', 'ملاحظات', 'إجراء']}
       >
         {(data?.advanceDiagnosticRows ?? []).length === 0 ? (
-          <tr><td colSpan={5} className="px-4 py-6 text-center text-zinc-500 text-sm">لا توجد فروقات تشخيصية</td></tr>
+          <tr><td colSpan={5} className="px-4 py-6 text-center text-muted-foreground text-sm">لا توجد فروقات تشخيصية</td></tr>
         ) : (
           data?.advanceDiagnosticRows.map((row, idx) => (
-            <tr key={`diag-${idx}`} className="hover:bg-zinc-800/30">
+            <tr key={`diag-${idx}`} className="hover:bg-surface-muted">
               <td className="px-4 py-3">{row.label}</td>
-              <td className="px-4 py-3 font-mono text-amber-400">{fmt(row.amount)}</td>
-              <td className="px-4 py-3 text-xs text-zinc-400">{advanceIssueLabel(row.issueReason)}</td>
-              <td className="px-4 py-3 text-xs text-zinc-500">{row.notes ?? '—'}</td>
+              <td className="px-4 py-3 font-mono text-warning">{fmt(row.amount)}</td>
+              <td className="px-4 py-3 text-xs text-muted-foreground">{advanceIssueLabel(row.issueReason)}</td>
+              <td className="px-4 py-3 text-xs text-muted-foreground">{row.notes ?? '—'}</td>
               <td className="px-4 py-3">
                 {row.issueReason === 'orphan_ledger_debit' && row.ledgerEntryId != null ? (
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-8 text-xs border-rose-500/40 text-rose-300"
+                    className="h-8 text-xs border-destructive/40 text-destructive"
                     onClick={() => openVoidModal(row.ledgerEntryId!)}
                   >
                     إلغاء قيد الدفتر
                   </Button>
                 ) : (
-                  <span className="text-xs text-zinc-600">—</span>
+                  <span className="text-xs text-muted-foreground">—</span>
                 )}
               </td>
             </tr>
@@ -626,14 +626,14 @@ export default function EmployeeLedgerReconciliationPanel() {
         headers={['CashMove', 'الموظف', 'التاريخ', 'المبلغ']}
       >
         {(data?.missingPayoutDebits ?? []).length === 0 ? (
-          <tr><td colSpan={4} className="px-4 py-6 text-center text-zinc-500 text-sm">لا توجد عمليات صرف ناقصة</td></tr>
+          <tr><td colSpan={4} className="px-4 py-6 text-center text-muted-foreground text-sm">لا توجد عمليات صرف ناقصة</td></tr>
         ) : (
           data?.missingPayoutDebits.map((row) => (
-            <tr key={row.cashMoveId} className="hover:bg-zinc-800/30">
+            <tr key={row.cashMoveId} className="hover:bg-surface-muted">
               <td className="px-4 py-3 font-mono text-xs">#{row.cashMoveId}</td>
               <td className="px-4 py-3">{row.empName ?? '—'}</td>
               <td className="px-4 py-3 font-mono text-xs">{row.invDate}</td>
-              <td className="px-4 py-3 font-mono text-rose-400">{fmt(row.amount)}</td>
+              <td className="px-4 py-3 font-mono text-destructive">{fmt(row.amount)}</td>
             </tr>
           ))
         )}
@@ -645,21 +645,21 @@ export default function EmployeeLedgerReconciliationPanel() {
         headers={['التاريخ', 'الموظف', 'إيراد معادلة', 'مصروف يومية', 'عدد الحركات']}
       >
         {(data?.legacyMirrorRows ?? []).length === 0 ? (
-          <tr><td colSpan={5} className="px-4 py-6 text-center text-zinc-500 text-sm">لا توجد مرايا قديمة</td></tr>
+          <tr><td colSpan={5} className="px-4 py-6 text-center text-muted-foreground text-sm">لا توجد مرايا قديمة</td></tr>
         ) : (
           data?.legacyMirrorRows.map((row, idx) => (
-            <tr key={`${row.invDate}-${row.empId ?? 'x'}-${idx}`} className="hover:bg-zinc-800/30">
+            <tr key={`${row.invDate}-${row.empId ?? 'x'}-${idx}`} className="hover:bg-surface-muted">
               <td className="px-4 py-3 font-mono text-xs">{row.invDate}</td>
               <td className="px-4 py-3">{row.empName ?? '—'}</td>
-              <td className="px-4 py-3 font-mono text-amber-400">{fmt(row.incomeMirrorTotal)}</td>
-              <td className="px-4 py-3 font-mono text-rose-400">{fmt(row.expenseMirrorTotal)}</td>
+              <td className="px-4 py-3 font-mono text-warning">{fmt(row.incomeMirrorTotal)}</td>
+              <td className="px-4 py-3 font-mono text-destructive">{fmt(row.expenseMirrorTotal)}</td>
               <td className="px-4 py-3 font-mono text-xs">{row.rowCount}</td>
             </tr>
           ))
         )}
       </SectionTable>
 
-      <p className="text-xs text-zinc-600 px-1">
+      <p className="text-xs text-muted-foreground px-1">
         المراجعة read-only — إجراءات التنظيف الآمن (ربط التصنيف / إلغاء قيد يتيم) لا تحذف حركات الخزنة ولا تعدّل CashMove التاريخية.
       </p>
 
@@ -667,19 +667,19 @@ export default function EmployeeLedgerReconciliationPanel() {
         <DialogContent className="bg-surface border-border text-foreground max-w-lg" dir="rtl">
           <DialogHeader>
             <DialogTitle>ربط التصنيف بموظف</DialogTitle>
-            <DialogDescription className="text-zinc-400">
+            <DialogDescription className="text-muted-foreground">
               يُحدّث جدول TblExpCatEmpMap فقط — لا يُعدَّل CashMove ولا قيود الدفتر مباشرة.
             </DialogDescription>
           </DialogHeader>
 
           {mappingRow && (
             <div className="space-y-3 text-sm">
-              <p><span className="text-zinc-500">CashMove:</span> #{mappingRow.cashMoveId}</p>
-              <p><span className="text-zinc-500">ExpINID:</span> {mappingRow.expInId}</p>
-              <p><span className="text-zinc-500">التصنيف:</span> {mappingRow.categoryName ?? '—'}</p>
-              <p><span className="text-zinc-500">المبلغ:</span> {fmt(mappingRow.amount)} ج.م</p>
+              <p><span className="text-muted-foreground">CashMove:</span> #{mappingRow.cashMoveId}</p>
+              <p><span className="text-muted-foreground">ExpINID:</span> {mappingRow.expInId}</p>
+              <p><span className="text-muted-foreground">التصنيف:</span> {mappingRow.categoryName ?? '—'}</p>
+              <p><span className="text-muted-foreground">المبلغ:</span> {fmt(mappingRow.amount)} ج.م</p>
               {mappingRow.suggestedEmployeeMatches.length > 0 && (
-                <p className="text-xs text-amber-300">
+                <p className="text-xs text-warning">
                   اقتراحات: {mappingRow.suggestedEmployeeMatches.map((m) => m.empName).join('، ')}
                 </p>
               )}
@@ -695,12 +695,12 @@ export default function EmployeeLedgerReconciliationPanel() {
                 </Select>
               </div>
               {mappingError && (
-                <div className="p-3 text-sm rounded-lg border border-rose-500/30 bg-rose-500/10 text-rose-300">
+                <div className="p-3 text-sm rounded-lg border border-destructive/30 bg-destructive-soft text-destructive">
                   {mappingError}
                 </div>
               )}
               {mappingSuccess && (
-                <div className="p-3 text-sm rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-emerald-300">
+                <div className="p-3 text-sm rounded-lg border border-success/30 bg-success-soft text-success">
                   {mappingSuccess}
                 </div>
               )}
@@ -720,13 +720,13 @@ export default function EmployeeLedgerReconciliationPanel() {
         <DialogContent className="bg-surface border-border text-foreground max-w-lg" dir="rtl">
           <DialogHeader>
             <DialogTitle>إلغاء قيد الدفتر</DialogTitle>
-            <DialogDescription className="text-amber-300">
+            <DialogDescription className="text-warning">
               يُعلَّم القيد كملغى (IsVoided=1) — لا يُحذف من قاعدة البيانات.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-3">
-            <p className="text-sm text-zinc-400">قيد الدفتر #{voidEntryId}</p>
+            <p className="text-sm text-muted-foreground">قيد الدفتر #{voidEntryId}</p>
             <div>
               <p className="text-sm mb-2">سبب الإلغاء *</p>
               <Input
@@ -736,7 +736,7 @@ export default function EmployeeLedgerReconciliationPanel() {
               />
             </div>
             {voidError && (
-              <div className="p-3 text-sm rounded-lg border border-rose-500/30 bg-rose-500/10 text-rose-300">
+              <div className="p-3 text-sm rounded-lg border border-destructive/30 bg-destructive-soft text-destructive">
                 {voidError}
               </div>
             )}
@@ -759,7 +759,7 @@ export default function EmployeeLedgerReconciliationPanel() {
         <DialogContent className="bg-surface border-border text-foreground max-w-xl" dir="rtl">
           <DialogHeader>
             <DialogTitle>مزامنة دفتر الموظفين</DialogTitle>
-            <DialogDescription className="text-amber-300">
+            <DialogDescription className="text-warning">
               المزامنة لا تعدل حركات الخزنة، فقط تنشئ قيود دفتر الموظفين الناقصة.
             </DialogDescription>
           </DialogHeader>
@@ -796,13 +796,13 @@ export default function EmployeeLedgerReconciliationPanel() {
             </div>
 
             {syncError && (
-              <div className="p-3 text-sm rounded-lg border border-rose-500/30 bg-rose-500/10 text-rose-300">
+              <div className="p-3 text-sm rounded-lg border border-destructive/30 bg-destructive-soft text-destructive">
                 {syncError}
               </div>
             )}
 
             {syncPreview && (
-              <div className="rounded-lg border border-zinc-700 p-3 text-sm space-y-2">
+              <div className="rounded-lg border border-border p-3 text-sm space-y-2">
                 <p className="font-semibold">نتيجة المعاينة</p>
                 <p>Payroll Insert: {syncPreview.counts.payrollCreditsToInsert ?? 0}</p>
                 <p>Payroll Update: {syncPreview.counts.payrollCreditsToUpdate ?? 0}</p>
@@ -830,20 +830,20 @@ export default function EmployeeLedgerReconciliationPanel() {
         <DialogContent className="bg-surface border-border text-foreground max-w-5xl max-h-[85vh] overflow-y-auto" dir="rtl">
           <DialogHeader>
             <DialogTitle>فحص مصدر اليوميات — {month}</DialogTitle>
-            <DialogDescription className="text-zinc-400">
+            <DialogDescription className="text-muted-foreground">
               مراجعة read-only لمصادر استحقاق اليوميات قبل إيقاف الترحيل القديم للخزنة.
             </DialogDescription>
           </DialogHeader>
 
           {auditLoading && (
-            <div className="flex items-center gap-2 text-sm text-zinc-400 py-6">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground py-6">
               <Loader2 className="w-4 h-4 animate-spin" />
               جاري الفحص...
             </div>
           )}
 
           {auditError && (
-            <div className="p-3 text-sm rounded-lg border border-rose-500/30 bg-rose-500/10 text-rose-300">
+            <div className="p-3 text-sm rounded-lg border border-destructive/30 bg-destructive-soft text-destructive">
               {auditError}
             </div>
           )}
@@ -864,10 +864,10 @@ export default function EmployeeLedgerReconciliationPanel() {
                 headers={['الحالة', 'عدد الصفوف', 'إجمالي اليومية']}
               >
                 {auditData.dailyPayroll.byStatus.length === 0 ? (
-                  <tr><td colSpan={3} className="px-4 py-6 text-center text-zinc-500 text-sm">لا توجد يوميات</td></tr>
+                  <tr><td colSpan={3} className="px-4 py-6 text-center text-muted-foreground text-sm">لا توجد يوميات</td></tr>
                 ) : (
                   auditData.dailyPayroll.byStatus.map((row) => (
-                    <tr key={row.status} className="hover:bg-zinc-800/30">
+                    <tr key={row.status} className="hover:bg-surface-muted">
                       <td className="px-4 py-3">{row.status}</td>
                       <td className="px-4 py-3 font-mono text-xs">{row.rowCount}</td>
                       <td className="px-4 py-3 font-mono">{fmt(row.dailyWageTotal)}</td>
@@ -882,16 +882,16 @@ export default function EmployeeLedgerReconciliationPanel() {
                 headers={['CashMove', 'التاريخ', 'الموظف', 'التصنيف', 'المبلغ', 'السبب']}
               >
                 {auditData.cashWageExpenses.length === 0 ? (
-                  <tr><td colSpan={6} className="px-4 py-6 text-center text-zinc-500 text-sm">لا توجد حركات</td></tr>
+                  <tr><td colSpan={6} className="px-4 py-6 text-center text-muted-foreground text-sm">لا توجد حركات</td></tr>
                 ) : (
                   auditData.cashWageExpenses.map((row) => (
-                    <tr key={row.cashMoveId} className="hover:bg-zinc-800/30">
+                    <tr key={row.cashMoveId} className="hover:bg-surface-muted">
                       <td className="px-4 py-3 font-mono text-xs">#{row.cashMoveId}</td>
                       <td className="px-4 py-3 font-mono text-xs">{row.invDate}</td>
                       <td className="px-4 py-3">{row.empName ?? '—'}</td>
                       <td className="px-4 py-3">{row.categoryName ?? '—'}</td>
-                      <td className="px-4 py-3 font-mono text-rose-400">{fmt(row.amount)}</td>
-                      <td className="px-4 py-3 text-xs text-zinc-400">{row.matchReason}</td>
+                      <td className="px-4 py-3 font-mono text-destructive">{fmt(row.amount)}</td>
+                      <td className="px-4 py-3 text-xs text-muted-foreground">{row.matchReason}</td>
                     </tr>
                   ))
                 )}
@@ -903,15 +903,15 @@ export default function EmployeeLedgerReconciliationPanel() {
                 headers={['CashMove', 'التاريخ', 'الموظف', 'التصنيف', 'المبلغ', 'مطابقة مصروف']}
               >
                 {auditData.incomeMirrors.length === 0 ? (
-                  <tr><td colSpan={6} className="px-4 py-6 text-center text-zinc-500 text-sm">لا توجد مرايا</td></tr>
+                  <tr><td colSpan={6} className="px-4 py-6 text-center text-muted-foreground text-sm">لا توجد مرايا</td></tr>
                 ) : (
                   auditData.incomeMirrors.map((row) => (
-                    <tr key={row.cashMoveId} className="hover:bg-zinc-800/30">
+                    <tr key={row.cashMoveId} className="hover:bg-surface-muted">
                       <td className="px-4 py-3 font-mono text-xs">#{row.cashMoveId}</td>
                       <td className="px-4 py-3 font-mono text-xs">{row.invDate}</td>
                       <td className="px-4 py-3">{row.empName ?? '—'}</td>
                       <td className="px-4 py-3">{row.categoryName ?? '—'}</td>
-                      <td className="px-4 py-3 font-mono text-amber-400">{fmt(row.amount)}</td>
+                      <td className="px-4 py-3 font-mono text-warning">{fmt(row.amount)}</td>
                       <td className="px-4 py-3 font-mono text-xs">
                         {row.matchedExpenseCashMoveId != null ? `#${row.matchedExpenseCashMoveId}` : '—'}
                       </td>
@@ -926,14 +926,14 @@ export default function EmployeeLedgerReconciliationPanel() {
                 headers={['الموظف', 'hourly_wage', 'monthly_salary', 'الإجمالي', 'عدد القيود']}
               >
                 {auditData.ledgerSalaryCredits.byEmployee.length === 0 ? (
-                  <tr><td colSpan={5} className="px-4 py-6 text-center text-zinc-500 text-sm">لا توجد قيود</td></tr>
+                  <tr><td colSpan={5} className="px-4 py-6 text-center text-muted-foreground text-sm">لا توجد قيود</td></tr>
                 ) : (
                   auditData.ledgerSalaryCredits.byEmployee.map((row) => (
-                    <tr key={row.empId} className="hover:bg-zinc-800/30">
+                    <tr key={row.empId} className="hover:bg-surface-muted">
                       <td className="px-4 py-3">{row.empName}</td>
                       <td className="px-4 py-3 font-mono">{fmt(row.hourlyWageTotal)}</td>
                       <td className="px-4 py-3 font-mono">{fmt(row.monthlySalaryTotal)}</td>
-                      <td className="px-4 py-3 font-mono text-emerald-400">{fmt(row.totalAmount)}</td>
+                      <td className="px-4 py-3 font-mono text-success">{fmt(row.totalAmount)}</td>
                       <td className="px-4 py-3 font-mono text-xs">{row.entryCount}</td>
                     </tr>
                   ))

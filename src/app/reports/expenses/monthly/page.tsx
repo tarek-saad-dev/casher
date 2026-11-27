@@ -70,7 +70,7 @@ export default function MonthlyExpensesReportPage() {
   const isCurrentMonth = year === now.getFullYear() && month === now.getMonth() + 1;
 
   return (
-    <div className="min-h-screen bg-background p-6">
+    <div className="min-h-full bg-background p-3 sm:p-6">
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex items-center gap-3">
@@ -115,13 +115,13 @@ export default function MonthlyExpensesReportPage() {
         {/* Tab Navigation */}
         {report && (
           <div className="bg-card border border-border rounded-lg p-2">
-            <div className="flex gap-2 overflow-x-auto">
+            <div className="flex flex-wrap gap-2">
               <button
                 onClick={() => setActiveTab('summary')}
                 className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
                   activeTab === 'summary'
                     ? 'bg-primary text-primary-foreground'
-                    : 'hover:bg-muted'
+                    : 'hover:bg-surface-muted'
                 }`}
               >
                 <BarChart3 className="h-4 w-4" />
@@ -132,7 +132,7 @@ export default function MonthlyExpensesReportPage() {
                 className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
                   activeTab === 'category-breakdown'
                     ? 'bg-primary text-primary-foreground'
-                    : 'hover:bg-muted'
+                    : 'hover:bg-surface-muted'
                 }`}
               >
                 <List className="h-4 w-4" />
@@ -143,7 +143,7 @@ export default function MonthlyExpensesReportPage() {
                 className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
                   activeTab === 'daily-trend'
                     ? 'bg-primary text-primary-foreground'
-                    : 'hover:bg-muted'
+                    : 'hover:bg-surface-muted'
                 }`}
               >
                 <TrendingUp className="h-4 w-4" />
@@ -154,7 +154,7 @@ export default function MonthlyExpensesReportPage() {
                 className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
                   activeTab === 'transactions'
                     ? 'bg-primary text-primary-foreground'
-                    : 'hover:bg-muted'
+                    : 'hover:bg-surface-muted'
                 }`}
               >
                 <FileText className="h-4 w-4" />

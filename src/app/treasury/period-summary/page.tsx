@@ -7,6 +7,7 @@ import {
   Wallet, Activity, CalendarDays, Users, ChevronUp, ChevronDown,
   ArrowRightLeft, List, Smartphone,
 } from 'lucide-react';
+import PageHeader from '@/components/shared/PageHeader';
 import PastDateIncomeModal  from '@/components/treasury/PastDateIncomeModal';
 import PastDateExpenseModal from '@/components/treasury/PastDateExpenseModal';
 import PastDateTransferModal from '@/components/treasury/PastDateTransferModal';
@@ -53,16 +54,16 @@ function getCell(v: number): { text: string; cls: string } {
   const safe = isNaN(v) || !isFinite(v) ? 0 : v;
   return {
     text: fmt(safe),
-    cls: safe > 0 ? 'text-emerald-400' : safe < 0 ? 'text-rose-400' : 'text-zinc-400',
+    cls: safe > 0 ? 'text-success' : safe < 0 ? 'text-destructive' : 'text-muted-foreground',
   };
 }
 
 function statusBadge(status: PeriodDayRow['status']) {
   if (status === 'open')
-    return <span className="px-1.5 py-0.5 text-[10px] rounded-md bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">مفتوح</span>;
+    return <span className="px-1.5 py-0.5 text-[10px] rounded-md bg-success-soft text-success border border-success/20">مفتوح</span>;
   if (status === 'closed')
-    return <span className="px-1.5 py-0.5 text-[10px] rounded-md bg-zinc-700/60 text-zinc-400 border border-zinc-600/30">مقفول</span>;
-  return <span className="px-1.5 py-0.5 text-[10px] rounded-md bg-zinc-800/60 text-zinc-600 border border-zinc-700/20">—</span>;
+    return <span className="px-1.5 py-0.5 text-[10px] rounded-md bg-muted text-muted-foreground border border-border">مقفول</span>;
+  return <span className="px-1.5 py-0.5 text-[10px] rounded-md bg-muted text-muted-foreground border border-border">—</span>;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -84,7 +85,7 @@ function KpiCard({ label, value, icon, colorClass, bgClass, borderClass, isCount
     <div className={`rounded-xl border p-4 ${bgClass} ${borderClass}`}>
       <div className="flex items-center gap-2 mb-2">
         <div className={`p-1.5 rounded-lg ${bgClass}`}>{icon}</div>
-        <p className="text-xs text-zinc-400">{label}</p>
+        <p className="text-xs text-muted-foreground">{label}</p>
       </div>
       <p className={`text-lg font-bold ${colorClass}`}>
         {isCount ? value : (typeof value === 'number' ? fmt(value) : value)}
@@ -298,13 +299,13 @@ export default function TreasuryPeriodSummaryPage() {
   // ── Th helper ─────────────────────────────────────────────────────────────
 
   const Th = ({
-    label, sKey, sticky = false, colorClass = 'text-zinc-300',
+    label, sKey, sticky = false, colorClass = 'text-foreground',
   }: { label: string; sKey: SortKey; sticky?: boolean; colorClass?: string }) => (
     <th
       onClick={() => toggleSort(sKey)}
       className={`px-3 py-3 text-right text-xs font-semibold whitespace-nowrap cursor-pointer select-none
-        hover:bg-zinc-800/60 transition-colors
-        ${sticky ? 'sticky bg-zinc-900 z-10' : ''}
+        hover:bg-muted transition-colors
+        ${sticky ? 'sticky bg-card z-10' : ''}
         ${colorClass}`}
       style={sticky ? (sKey === 'date' ? { right: 0 } : { left: 0 }) : undefined}
     >
@@ -319,20 +320,16 @@ export default function TreasuryPeriodSummaryPage() {
 
   // ─────────────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-zinc-950 p-4 sm:p-6" dir="rtl">
+    <div className="min-h-full bg-background p-3 sm:p-6" dir="rtl">
       <div className="max-w-[1600px] mx-auto space-y-5">
 
         {/* ── Header ──────────────────────────────────────────────────────── */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-bold text-white">ملخص الخزنة الدوري</h1>
-            <p className="text-zinc-400 text-sm mt-1">جدول تجميعي لحركات الخزنة يومياً خلال الفترة المحددة</p>
-          </div>
+        <PageHeader title="ملخص الخزنة الدوري" description="جدول تجميعي لحركات الخزنة يومياً خلال الفترة المحددة" icon={<CalendarDays />} eyebrow="الإدارة المالية">
           <div className="flex items-center gap-2">
             <button
               onClick={handleRefresh}
               disabled={loading}
-              className="flex items-center gap-2 px-3 py-2 bg-zinc-800/60 text-zinc-300 border border-zinc-700/40 rounded-xl text-sm hover:bg-zinc-800 transition-colors disabled:opacity-50"
+              className="flex items-center gap-2 px-3 py-2 bg-muted text-foreground border border-border rounded-xl text-sm hover:bg-muted transition-colors disabled:opacity-50"
             >
               <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
               تحديث
@@ -340,44 +337,44 @@ export default function TreasuryPeriodSummaryPage() {
             <button
               onClick={exportCSV}
               disabled={!data || loading}
-              className="flex items-center gap-2 px-3 py-2 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-xl text-sm hover:bg-emerald-500/20 transition-colors disabled:opacity-50"
+              className="flex items-center gap-2 px-3 py-2 bg-success-soft text-success border border-success/20 rounded-xl text-sm hover:bg-success/15 transition-colors disabled:opacity-50"
             >
               <Download className="h-4 w-4" />
               تصدير CSV
             </button>
           </div>
-        </div>
+        </PageHeader>
 
         {/* ── Filters ─────────────────────────────────────────────────────── */}
-        <div className="bg-zinc-900/60 border border-zinc-800/50 rounded-2xl p-4">
+        <div className="bg-card border border-border rounded-2xl p-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-end">
             {/* dateFrom */}
             <div>
-              <label className="block text-xs text-zinc-400 mb-1.5">من تاريخ</label>
+              <label className="block text-xs text-muted-foreground mb-1.5">من تاريخ</label>
               <input
                 type="date"
                 value={dateFrom}
                 onChange={e => setDateFrom(e.target.value)}
-                className="w-full bg-zinc-800 border border-zinc-700/50 text-white text-sm rounded-xl px-3 py-2 focus:outline-none focus:border-emerald-500/50"
+                className="w-full bg-muted border border-border text-foreground text-sm rounded-xl px-3 py-2 focus:outline-none focus:border-ring"
               />
             </div>
             {/* dateTo */}
             <div>
-              <label className="block text-xs text-zinc-400 mb-1.5">إلى تاريخ</label>
+              <label className="block text-xs text-muted-foreground mb-1.5">إلى تاريخ</label>
               <input
                 type="date"
                 value={dateTo}
                 onChange={e => setDateTo(e.target.value)}
-                className="w-full bg-zinc-800 border border-zinc-700/50 text-white text-sm rounded-xl px-3 py-2 focus:outline-none focus:border-emerald-500/50"
+                className="w-full bg-muted border border-border text-foreground text-sm rounded-xl px-3 py-2 focus:outline-none focus:border-ring"
               />
             </div>
             {/* User */}
             <div>
-              <label className="block text-xs text-zinc-400 mb-1.5">المستخدم</label>
+              <label className="block text-xs text-muted-foreground mb-1.5">المستخدم</label>
               <select
                 value={userId}
                 onChange={e => setUserId(e.target.value)}
-                className="w-full bg-zinc-800 border border-zinc-700/50 text-white text-sm rounded-xl px-3 py-2 focus:outline-none focus:border-emerald-500/50"
+                className="w-full bg-muted border border-border text-foreground text-sm rounded-xl px-3 py-2 focus:outline-none focus:border-ring"
               >
                 <option value="all">كل المستخدمين</option>
                 {data?.users.map(u => (
@@ -390,7 +387,7 @@ export default function TreasuryPeriodSummaryPage() {
               <button
                 onClick={handleRefresh}
                 disabled={loading}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 rounded-xl text-sm font-medium hover:bg-emerald-500/25 transition-colors disabled:opacity-50"
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-success-soft text-success border border-success/25 rounded-xl text-sm font-medium hover:bg-success/15 transition-colors disabled:opacity-50"
               >
                 {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
                 عرض
@@ -401,16 +398,16 @@ export default function TreasuryPeriodSummaryPage() {
 
         {/* ── Error ───────────────────────────────────────────────────────── */}
         {error && (
-          <div className="bg-rose-950/20 border border-rose-500/20 rounded-2xl p-4">
-            <p className="text-rose-400 text-sm">{error}</p>
+          <div className="bg-destructive-soft border border-destructive/20 rounded-2xl p-4">
+            <p className="text-destructive text-sm">{error}</p>
           </div>
         )}
 
         {/* ── Loading skeleton ─────────────────────────────────────────────── */}
         {loading && !data && (
-          <div className="bg-zinc-900/60 border border-zinc-800/50 rounded-2xl p-12 flex flex-col items-center gap-4">
-            <Loader2 className="h-10 w-10 animate-spin text-emerald-500/50" />
-            <p className="text-zinc-400 text-sm">جاري تحميل بيانات الخزنة...</p>
+          <div className="bg-card border border-border rounded-2xl p-12 flex flex-col items-center gap-4">
+            <Loader2 className="h-10 w-10 animate-spin text-success" />
+            <p className="text-muted-foreground text-sm">جاري تحميل بيانات الخزنة...</p>
           </div>
         )}
 
@@ -422,63 +419,63 @@ export default function TreasuryPeriodSummaryPage() {
               <KpiCard
                 label="إجمالي الإيرادات"
                 value={data.summary.totalIncome}
-                icon={<TrendingUp className="h-4 w-4 text-emerald-400" />}
-                colorClass="text-emerald-400"
-                bgClass="bg-emerald-500/5"
-                borderClass="border-emerald-500/15"
+                icon={<TrendingUp className="h-4 w-4 text-success" />}
+                colorClass="text-success"
+                bgClass="bg-success-soft"
+                borderClass="border-success/15"
               />
               <KpiCard
                 label="إجمالي المصروفات"
                 value={data.summary.totalExpense}
-                icon={<TrendingDown className="h-4 w-4 text-rose-400" />}
-                colorClass="text-rose-400"
-                bgClass="bg-rose-500/5"
-                borderClass="border-rose-500/15"
+                icon={<TrendingDown className="h-4 w-4 text-destructive" />}
+                colorClass="text-destructive"
+                bgClass="bg-destructive-soft"
+                borderClass="border-destructive/15"
               />
               <KpiCard
                 label="صافي الفترة"
                 value={data.summary.netTotal}
-                icon={<Wallet className={`h-4 w-4 ${data.summary.netTotal >= 0 ? 'text-emerald-400' : 'text-rose-400'}`} />}
-                colorClass={data.summary.netTotal >= 0 ? 'text-emerald-400' : 'text-rose-400'}
-                bgClass={data.summary.netTotal >= 0 ? 'bg-emerald-500/5' : 'bg-rose-500/5'}
-                borderClass={data.summary.netTotal >= 0 ? 'border-emerald-500/15' : 'border-rose-500/15'}
+                icon={<Wallet className={`h-4 w-4 ${data.summary.netTotal >= 0 ? 'text-success' : 'text-destructive'}`} />}
+                colorClass={data.summary.netTotal >= 0 ? 'text-success' : 'text-destructive'}
+                bgClass={data.summary.netTotal >= 0 ? 'bg-success-soft' : 'bg-destructive-soft'}
+                borderClass={data.summary.netTotal >= 0 ? 'border-success/15' : 'border-destructive/15'}
               />
               {data.paymentMethods.slice(0, 2).map(pm => (
                 <KpiCard
                   key={pm.id}
                   label={pm.name}
                   value={data.summary.totalByPaymentMethod[String(pm.id)] ?? 0}
-                  icon={<Wallet className="h-4 w-4 text-amber-400" />}
-                  colorClass="text-amber-400"
-                  bgClass="bg-amber-500/5"
-                  borderClass="border-amber-500/15"
+                  icon={<Wallet className="h-4 w-4 text-warning" />}
+                  colorClass="text-warning"
+                  bgClass="bg-warning-soft"
+                  borderClass="border-warning/15"
                 />
               ))}
               <KpiCard
                 label="عدد الحركات"
                 value={data.summary.transactionsCount}
-                icon={<Activity className="h-4 w-4 text-zinc-400" />}
-                colorClass="text-white"
-                bgClass="bg-zinc-800/40"
-                borderClass="border-zinc-700/30"
+                icon={<Activity className="h-4 w-4 text-muted-foreground" />}
+                colorClass="text-foreground"
+                bgClass="bg-muted"
+                borderClass="border-border"
                 isCount
               />
             </div>
 
             {/* ── Table ──────────────────────────────────────────────────── */}
-            <div className="bg-zinc-900/60 border border-zinc-800/50 rounded-2xl overflow-hidden">
+            <div className="bg-card border border-border rounded-2xl overflow-hidden">
               {/* table header */}
-              <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800/50">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-border">
                 <div className="flex items-center gap-2">
-                  <CalendarDays className="h-4 w-4 text-emerald-400" />
-                  <span className="text-sm font-semibold text-white">
+                  <CalendarDays className="h-4 w-4 text-success" />
+                  <span className="text-sm font-semibold text-foreground">
                     تفاصيل الأيام
                   </span>
-                  <span className="px-2 py-0.5 text-[10px] bg-zinc-800/60 text-zinc-400 rounded-full border border-zinc-700/30">
+                  <span className="px-2 py-0.5 text-[10px] bg-muted text-muted-foreground rounded-full border border-border">
                     {data.days.length} يوم
                   </span>
                 </div>
-                <div className="flex items-center gap-1 text-xs text-zinc-500">
+                <div className="flex items-center gap-1 text-xs text-muted-foreground">
                   <Users className="h-3.5 w-3.5" />
                   {data.summary.transactionsCount} حركة
                 </div>
@@ -486,28 +483,28 @@ export default function TreasuryPeriodSummaryPage() {
 
               {data.days.length === 0 ? (
                 <div className="p-12 flex flex-col items-center gap-3">
-                  <CalendarDays className="h-10 w-10 text-zinc-700" />
-                  <p className="text-zinc-500 text-sm">لا توجد بيانات للفترة المحددة</p>
+                  <CalendarDays className="h-10 w-10 text-muted-foreground" />
+                  <p className="text-muted-foreground text-sm">لا توجد بيانات للفترة المحددة</p>
                 </div>
               ) : (
                 <div ref={tableRef} className="overflow-x-auto">
                   <table className="w-full text-sm border-collapse">
                     <thead>
-                      <tr className="bg-zinc-800/30 border-b border-zinc-800/60">
+                      <tr className="bg-muted border-b border-border">
                         {/* Sticky: Date */}
-                        <Th label="التاريخ"            sKey="date"              sticky colorClass="text-zinc-200" />
-                        <Th label="الحالة"             sKey="status"            colorClass="text-zinc-300" />
-                        <Th label="إجمالي الإيرادات"  sKey="totalIncome"       colorClass="text-emerald-400" />
-                        <Th label="إجمالي المصروفات"  sKey="totalExpense"      colorClass="text-rose-400" />
+                        <Th label="التاريخ"            sKey="date"              sticky colorClass="text-foreground" />
+                        <Th label="الحالة"             sKey="status"            colorClass="text-foreground" />
+                        <Th label="إجمالي الإيرادات"  sKey="totalIncome"       colorClass="text-success" />
+                        <Th label="إجمالي المصروفات"  sKey="totalExpense"      colorClass="text-destructive" />
                         {/* Sticky: Net */}
-                        <Th label="صافي اليوم"        sKey="netTotal"          sticky colorClass="text-sky-400" />
+                        <Th label="صافي اليوم"        sKey="netTotal"          sticky colorClass="text-info" />
                         {/* Dynamic PM columns */}
                         {data.paymentMethods.map(pm => (
-                          <Th key={pm.id} label={pm.name} sKey={String(pm.id)} colorClass="text-amber-400" />
+                          <Th key={pm.id} label={pm.name} sKey={String(pm.id)} colorClass="text-warning" />
                         ))}
-                        <Th label="عدد الحركات"       sKey="transactionsCount" colorClass="text-zinc-300" />
+                        <Th label="عدد الحركات"       sKey="transactionsCount" colorClass="text-foreground" />
                         {/* Sticky actions column */}
-                        <th className="px-3 py-3 text-right text-xs font-semibold text-zinc-400 whitespace-nowrap sticky left-0 bg-zinc-900 z-10 border-r border-zinc-800/40">
+                        <th className="px-3 py-3 text-right text-xs font-semibold text-muted-foreground whitespace-nowrap sticky left-0 bg-card z-10 border-r border-border">
                           إجراءات
                         </th>
                       </tr>
@@ -518,37 +515,37 @@ export default function TreasuryPeriodSummaryPage() {
                         const mtdNet = getCell(day.monthToDateNetTotal ?? 0);
                         const isEven   = idx % 2 === 0;
                         // Each day pair (main row + MTD sub-row) shares the same stripe
-                        const rowBg    = isEven ? 'bg-zinc-900/50' : 'bg-zinc-800/30';
+                        const rowBg    = isEven ? 'bg-card' : 'bg-muted';
                         const mtdBg    = rowBg;
-                        const stickyBg = isEven ? 'bg-zinc-900'    : 'bg-[#1f1f27]';
+                        const stickyBg = isEven ? 'bg-card'    : 'bg-[#1f1f27]';
                         return (
                           <React.Fragment key={day.date}>
                             {/* ── Main day row ── */}
                             <tr
-                              className={`border-b border-zinc-800/20 hover:bg-zinc-800/25 transition-colors ${rowBg}`}
+                              className={`border-b border-border hover:bg-muted transition-colors ${rowBg}`}
                             >
                               {/* Date — sticky right */}
                               <td
-                                className={`px-3 py-2.5 text-right whitespace-nowrap sticky z-10 border-l border-zinc-800/30 ${stickyBg}`}
+                                className={`px-3 py-2.5 text-right whitespace-nowrap sticky z-10 border-l border-border ${stickyBg}`}
                                 style={{ right: 0 }}
                               >
-                                <span className="text-sm font-semibold text-zinc-200">{fmtDate(day.date)}</span>
+                                <span className="text-sm font-semibold text-foreground">{fmtDate(day.date)}</span>
                               </td>
                               {/* Status */}
                               <td className="px-3 py-2.5 text-right whitespace-nowrap">
                                 {statusBadge(day.status)}
                               </td>
                               {/* Income */}
-                              <td className="px-4 py-3.5 text-right whitespace-nowrap tabular-nums text-base text-emerald-400 font-semibold">
+                              <td className="px-4 py-3.5 text-right whitespace-nowrap tabular-nums text-base text-success font-semibold">
                                 {fmt(day.totalIncome)}
                               </td>
                               {/* Expense */}
-                              <td className="px-4 py-3.5 text-right whitespace-nowrap tabular-nums text-base text-rose-400 font-semibold">
+                              <td className="px-4 py-3.5 text-right whitespace-nowrap tabular-nums text-base text-destructive font-semibold">
                                 {fmt(day.totalExpense)}
                               </td>
                               {/* Net — sticky left */}
                               <td
-                                className={`px-4 py-3.5 text-right whitespace-nowrap tabular-nums text-base font-bold sticky z-10 border-r border-zinc-800/30 ${stickyBg} ${net.cls}`}
+                                className={`px-4 py-3.5 text-right whitespace-nowrap tabular-nums text-base font-bold sticky z-10 border-r border-border ${stickyBg} ${net.cls}`}
                                 style={{ left: 0 }}
                               >
                                 {net.text}
@@ -561,7 +558,7 @@ export default function TreasuryPeriodSummaryPage() {
                                   <td key={pm.id} className="px-3 py-2.5 text-right whitespace-nowrap">
                                     <div className="flex items-center justify-end gap-1.5">
                                       <span className={`tabular-nums text-base ${c.cls}`}>
-                                        {v === 0 ? <span className="text-zinc-700">—</span> : c.text}
+                                        {v === 0 ? <span className="text-muted-foreground">—</span> : c.text}
                                       </span>
                                       {/* Quick transfer this amount to InstaPay for this day */}
                                       {instaPay && pm.id !== instaPay.id && v > 0 && (
@@ -570,7 +567,7 @@ export default function TreasuryPeriodSummaryPage() {
                                           onClick={() => transferToInstaPay(pm, day, v)}
                                           disabled={instaBusy.has(`${day.date}:${pm.id}`)}
                                           title={`تحويل ${c.text} من ${pm.name} إلى ${instaPay.name} — ${fmtDate(day.date)}`}
-                                          className="shrink-0 p-1 rounded-md border border-purple-500/30 bg-purple-500/10 hover:bg-purple-500/25 text-purple-300 hover:text-purple-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                          className="shrink-0 p-1 rounded-md border border-brand/30 bg-brand-soft hover:bg-brand-soft text-brand hover:text-brand transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                         >
                                           {instaBusy.has(`${day.date}:${pm.id}`)
                                             ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -585,7 +582,7 @@ export default function TreasuryPeriodSummaryPage() {
                                           date: day.date,
                                         })}
                                         title={`تفاصيل ${pm.name} — ${fmtDate(day.date)}`}
-                                        className="shrink-0 p-1 rounded-md border border-zinc-600/40 bg-zinc-700/30 hover:bg-zinc-700/60 text-zinc-400 hover:text-white transition-colors"
+                                        className="shrink-0 p-1 rounded-md border border-border bg-muted hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
                                       >
                                         <List className="h-3.5 w-3.5" />
                                       </button>
@@ -594,19 +591,19 @@ export default function TreasuryPeriodSummaryPage() {
                                 );
                               })}
                               {/* TX count */}
-                              <td className="px-4 py-3.5 text-right text-zinc-300 tabular-nums text-base">
+                              <td className="px-4 py-3.5 text-right text-foreground tabular-nums text-base">
                                 {day.transactionsCount}
                               </td>
                               {/* Actions — sticky left */}
                               <td
-                                className={`px-2 py-2 text-right whitespace-nowrap sticky left-0 z-10 border-r border-zinc-800/30 ${stickyBg}`}
+                                className={`px-2 py-2 text-right whitespace-nowrap sticky left-0 z-10 border-r border-border ${stickyBg}`}
                               >
                                 <div className="flex items-center gap-1 justify-end">
                                   {/* Income */}
                                   <button
                                     onClick={() => openModal('income', day.date)}
                                     title={`إضافة إيراد ليوم ${day.date}`}
-                                    className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/25 transition-colors"
+                                    className="p-1.5 rounded-lg bg-success-soft text-success border border-success/20 hover:bg-success/15 transition-colors"
                                   >
                                     <TrendingUp className="h-3.5 w-3.5" />
                                   </button>
@@ -614,7 +611,7 @@ export default function TreasuryPeriodSummaryPage() {
                                   <button
                                     onClick={() => openModal('expense', day.date)}
                                     title={`إضافة مصروف ليوم ${day.date}`}
-                                    className="p-1.5 rounded-lg bg-rose-500/10 text-rose-400 border border-rose-500/20 hover:bg-rose-500/25 transition-colors"
+                                    className="p-1.5 rounded-lg bg-destructive-soft text-destructive border border-destructive/20 hover:bg-destructive-soft transition-colors"
                                   >
                                     <TrendingDown className="h-3.5 w-3.5" />
                                   </button>
@@ -622,7 +619,7 @@ export default function TreasuryPeriodSummaryPage() {
                                   <button
                                     onClick={() => openModal('transfer', day.date)}
                                     title={`تحويل ليوم ${day.date}`}
-                                    className="p-1.5 rounded-lg bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 hover:bg-cyan-500/25 transition-colors"
+                                    className="p-1.5 rounded-lg bg-info-soft text-info border border-info/20 hover:bg-info-soft transition-colors"
                                   >
                                     <ArrowRightLeft className="h-3.5 w-3.5" />
                                   </button>
@@ -633,30 +630,30 @@ export default function TreasuryPeriodSummaryPage() {
                             {/* ── MTD sub-row ── */}
                             <tr
                               key={`${day.date}-mtd`}
-                              className={`border-b-2 border-zinc-600/60 hover:brightness-110 transition-colors ${mtdBg}`}
+                              className={`border-b-2 border-border hover:brightness-110 transition-colors ${mtdBg}`}
                             >
                               {/* Date label — sticky right */}
                               <td
-                                className={`px-3 py-1.5 text-right whitespace-nowrap sticky z-10 border-l border-zinc-800/20 ${mtdBg}`}
+                                className={`px-3 py-1.5 text-right whitespace-nowrap sticky z-10 border-l border-border ${mtdBg}`}
                                 style={{ right: 0 }}
                               >
-                                <span className="text-xs text-zinc-500 font-normal">
+                                <span className="text-xs text-muted-foreground font-normal">
                                   ↩ تراكمي الشهر حتى {fmtDate(day.date)}
                                 </span>
                               </td>
                               {/* Status — empty */}
                               <td className="px-3 py-1.5" />
                               {/* MTD Income */}
-                              <td className="px-4 py-2 text-right whitespace-nowrap tabular-nums text-sm text-emerald-400/60">
+                              <td className="px-4 py-2 text-right whitespace-nowrap tabular-nums text-sm text-success">
                                 {fmt(day.monthToDateIncome ?? 0)}
                               </td>
                               {/* MTD Expense */}
-                              <td className="px-4 py-2 text-right whitespace-nowrap tabular-nums text-sm text-rose-400/60">
+                              <td className="px-4 py-2 text-right whitespace-nowrap tabular-nums text-sm text-destructive">
                                 {fmt(day.monthToDateExpense ?? 0)}
                               </td>
                               {/* MTD Net — sticky left */}
                               <td
-                                className={`px-4 py-2 text-right whitespace-nowrap tabular-nums text-sm font-semibold sticky z-10 border-r border-zinc-800/20 ${mtdBg} ${mtdNet.cls} opacity-75`}
+                                className={`px-4 py-2 text-right whitespace-nowrap tabular-nums text-sm font-semibold sticky z-10 border-r border-border ${mtdBg} ${mtdNet.cls} opacity-75`}
                                 style={{ left: 0 }}
                               >
                                 {mtdNet.text}
@@ -667,30 +664,30 @@ export default function TreasuryPeriodSummaryPage() {
                                 const c = getCell(v);
                                 return (
                                   <td key={pm.id} className={`px-4 py-2 text-right whitespace-nowrap tabular-nums text-sm ${c.cls} opacity-60`}>
-                                    {v === 0 ? <span className="text-zinc-700">—</span> : c.text}
+                                    {v === 0 ? <span className="text-muted-foreground">—</span> : c.text}
                                   </td>
                                 );
                               })}
                               {/* TX count — empty for MTD */}
                               <td className="px-4 py-2" />
                               {/* Actions — empty for MTD sub-row */}
-                              <td className={`px-2 py-1.5 sticky left-0 z-10 border-r border-zinc-800/20 ${mtdBg}`} />
+                              <td className={`px-2 py-1.5 sticky left-0 z-10 border-r border-border ${mtdBg}`} />
                             </tr>
                           </React.Fragment>
                         );
                       })}
 
                       {/* Totals row */}
-                      <tr className="border-t-2 border-zinc-700/50 bg-zinc-800/25 font-semibold">
-                        <td className="px-3 py-3 text-right text-xs text-zinc-300 sticky bg-zinc-800/40 z-10 border-l border-zinc-700/30" style={{ right: 0 }}>
+                      <tr className="border-t-2 border-border bg-muted font-semibold">
+                        <td className="px-3 py-3 text-right text-xs text-foreground sticky bg-muted z-10 border-l border-border" style={{ right: 0 }}>
                           الإجمالي
                         </td>
-                        <td className="px-3 py-3 text-right text-zinc-500 text-xs">{data.days.length} يوم</td>
-                        <td className="px-3 py-3 text-right tabular-nums text-emerald-400">{fmt(data.summary.totalIncome)}</td>
-                        <td className="px-3 py-3 text-right tabular-nums text-rose-400">{fmt(data.summary.totalExpense)}</td>
+                        <td className="px-3 py-3 text-right text-muted-foreground text-xs">{data.days.length} يوم</td>
+                        <td className="px-3 py-3 text-right tabular-nums text-success">{fmt(data.summary.totalIncome)}</td>
+                        <td className="px-3 py-3 text-right tabular-nums text-destructive">{fmt(data.summary.totalExpense)}</td>
                         <td
-                          className={`px-3 py-3 text-right tabular-nums sticky z-10 border-r border-zinc-700/30 bg-zinc-800/40
-                            ${data.summary.netTotal >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}
+                          className={`px-3 py-3 text-right tabular-nums sticky z-10 border-r border-border bg-muted
+                            ${data.summary.netTotal >= 0 ? 'text-success' : 'text-destructive'}`}
                           style={{ left: 0 }}
                         >
                           {fmt(data.summary.netTotal)}
@@ -700,12 +697,12 @@ export default function TreasuryPeriodSummaryPage() {
                           const c = getCell(v);
                           return (
                             <td key={pm.id} className={`px-3 py-3 text-right tabular-nums ${c.cls}`}>
-                              {v === 0 ? <span className="text-zinc-700">—</span> : c.text}
+                              {v === 0 ? <span className="text-muted-foreground">—</span> : c.text}
                             </td>
                           );
                         })}
-                        <td className="px-3 py-3 text-right text-zinc-300 tabular-nums">{data.summary.transactionsCount}</td>
-                        <td className="px-3 py-3 sticky left-0 z-10 bg-zinc-800/40 border-r border-zinc-700/30" />
+                        <td className="px-3 py-3 text-right text-foreground tabular-nums">{data.summary.transactionsCount}</td>
+                        <td className="px-3 py-3 sticky left-0 z-10 bg-muted border-r border-border" />
                       </tr>
                     </tbody>
                   </table>

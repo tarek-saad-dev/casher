@@ -9,8 +9,8 @@
   "orientation": "any",
   "lang": "ar",
   "dir": "rtl",
-  "theme_color": "#0B1220",
-  "background_color": "#0B1220",
+  "theme_color": "#553E53",
+  "background_color": "#F7F6F8",
   "icons": [
     {
       "src": "/icons/cut-system/icon-192.png",

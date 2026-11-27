@@ -241,6 +241,25 @@ function PartnersReportPageContent({
             background: white !important;
             color: black !important;
           }
+          .partners-report-surface {
+            --background: #ffffff;
+            --card: #ffffff;
+            --foreground: #111827;
+            --muted: #f3f4f6;
+            --muted-foreground: #4b5563;
+            --surface-muted: #f3f4f6;
+            --border: #d1d5db;
+            --brand: #0f766e;
+            --brand-soft: #f0fdfa;
+            --success: #166534;
+            --success-soft: #f0fdf4;
+            --destructive: #b91c1c;
+            --destructive-soft: #fef2f2;
+            --warning: #92400e;
+            --warning-soft: #fffbeb;
+            --info: #1d4ed8;
+            --info-soft: #eff6ff;
+          }
           nav, header, aside, footer {
             display: none !important;
           }
@@ -267,7 +286,7 @@ function PartnersReportPageContent({
       `}</style>
 
       <div
-        className="px-3 py-3 sm:px-5 sm:py-4 lg:px-6 lg:py-6 space-y-3 sm:space-y-4 max-w-[1600px] mx-auto w-full min-w-0 overflow-x-hidden print:p-4 print:max-w-none"
+        className="partners-report-surface px-3 py-3 sm:px-5 sm:py-4 lg:px-6 lg:py-6 space-y-3 sm:space-y-4 max-w-[1600px] mx-auto w-full min-w-0 overflow-x-hidden print:p-4 print:max-w-none"
         dir="rtl"
       >
         <div className="hidden print:block mb-4">
@@ -278,10 +297,10 @@ function PartnersReportPageContent({
         </div>
 
         <header className="print:hidden text-right w-full min-w-0">
-          <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
+          <h1 className="text-xl sm:text-2xl font-bold text-foreground tracking-tight">
             {title}
           </h1>
-          <p className="mt-1 text-xs sm:text-sm text-zinc-400">
+          <p className="mt-1 text-xs sm:text-sm text-muted-foreground">
             {subtitle}
           </p>
         </header>
@@ -306,8 +325,8 @@ function PartnersReportPageContent({
         />
 
         {error && !report && (
-          <div className="print:hidden flex flex-col items-center gap-4 rounded-xl border border-rose-500/20 bg-rose-950/20 p-4 sm:p-6 w-full min-w-0">
-            <div className="flex items-start gap-2 text-rose-400 text-sm text-center max-w-full">
+          <div className="print:hidden flex flex-col items-center gap-4 rounded-xl border border-destructive/20 bg-destructive-soft p-4 sm:p-6 w-full min-w-0">
+            <div className="flex items-start gap-2 text-destructive text-sm text-center max-w-full">
               <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" aria-hidden />
               <span className="break-words">{error}</span>
             </div>
@@ -315,7 +334,7 @@ function PartnersReportPageContent({
               type="button"
               variant="outline"
               onClick={() => fetchReport(year, month)}
-              className="min-h-11 w-full sm:w-auto border-zinc-700"
+              className="min-h-11 w-full sm:w-auto border-border"
             >
               إعادة المحاولة
             </Button>
@@ -406,7 +425,7 @@ function PartnersReportPageContent({
 export default function PartnersReportPageView(props: PartnersReportPageViewProps) {
   return (
     <Suspense fallback={
-      <div className="px-3 py-6 text-sm sm:text-base text-zinc-400 text-center w-full min-w-0" dir="rtl">
+      <div className="px-3 py-6 text-sm sm:text-base text-muted-foreground text-center w-full min-w-0" dir="rtl">
         جاري تحميل التقرير...
       </div>
     }>

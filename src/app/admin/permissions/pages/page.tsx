@@ -46,9 +46,9 @@ function isSensitivePage(page: PageRow): boolean {
 }
 
 const ACCESS_MODES = [
-  { value: 'all',              label: 'للجميع',          icon: Globe,  cls: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/25', desc: 'أي مستخدم مسجّل' },
-  { value: 'roles',            label: 'أدوار محددة',      icon: Users,  cls: 'text-blue-400 bg-blue-500/10 border-blue-500/25',          desc: 'الأدوار المحددة فقط' },
-  { value: 'super_admin_only', label: 'مدير النظام فقط', icon: Lock,   cls: 'text-yellow-400 bg-yellow-500/10 border-yellow-500/25',    desc: 'super_admin فقط' },
+  { value: 'all',              label: 'للجميع',          icon: Globe,  cls: 'text-success bg-success-soft border-success/25', desc: 'أي مستخدم مسجّل' },
+  { value: 'roles',            label: 'أدوار محددة',      icon: Users,  cls: 'text-info bg-info-soft border-info/25',          desc: 'الأدوار المحددة فقط' },
+  { value: 'super_admin_only', label: 'مدير النظام فقط', icon: Lock,   cls: 'text-warning bg-warning-soft border-warning/25',    desc: 'super_admin فقط' },
 ];
 
 function groupBySection(pages: PageRow[]) {
@@ -138,20 +138,20 @@ function AddPageModal({
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
 
       {/* Modal */}
-      <div className="relative w-full max-w-lg bg-zinc-900 border border-zinc-700/60 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90dvh]">
+      <div className="relative w-full max-w-lg bg-card border border-border rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90dvh]">
 
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800/60 flex-shrink-0">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border flex-shrink-0">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-emerald-500/15 border border-emerald-500/25">
-              <Plus className="w-4 h-4 text-emerald-400" />
+            <div className="p-2 rounded-lg bg-success-soft border border-success/25">
+              <Plus className="w-4 h-4 text-success" />
             </div>
             <div>
-              <h2 className="text-sm font-bold text-white">إضافة صفحة جديدة</h2>
-              <p className="text-[11px] text-zinc-500">تُضاف فوراً إلى TblSystemPages</p>
+              <h2 className="text-sm font-bold text-foreground">إضافة صفحة جديدة</h2>
+              <p className="text-[11px] text-muted-foreground">تُضاف فوراً إلى TblSystemPages</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300 transition-colors">
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-surface-muted text-muted-foreground hover:text-foreground transition-colors">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -162,18 +162,18 @@ function AddPageModal({
 
             {/* Path — first so key auto-fills */}
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-zinc-400">
-                مسار الصفحة <span className="text-rose-400">*</span>
+              <label className="text-xs font-medium text-muted-foreground">
+                مسار الصفحة <span className="text-destructive">*</span>
               </label>
               <input
                 ref={firstRef}
                 value={form.pagePath}
                 onChange={e => handlePathChange(e.target.value)}
                 placeholder="/admin/my-page"
-                className="w-full bg-zinc-800/60 border border-zinc-700/50 rounded-xl px-3.5 py-2.5 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20 transition-colors font-mono"
+                className="w-full bg-muted border border-border rounded-xl px-3.5 py-2.5 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:border-success/50 focus:ring-1 focus:ring-success/20 transition-colors font-mono"
                 dir="ltr"
               />
-              <p className="text-[11px] text-zinc-600 flex items-center gap-1">
+              <p className="text-[11px] text-muted-foreground flex items-center gap-1">
                 <Info className="w-3 h-3" /> المفتاح يتولّد تلقائياً من المسار
               </p>
             </div>
@@ -181,26 +181,26 @@ function AddPageModal({
             {/* Key + Name side by side */}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-zinc-400">
-                  مفتاح الصفحة <span className="text-rose-400">*</span>
+                <label className="text-xs font-medium text-muted-foreground">
+                  مفتاح الصفحة <span className="text-destructive">*</span>
                 </label>
                 <input
                   value={form.pageKey}
                   onChange={e => setForm(f => ({ ...f, pageKey: e.target.value }))}
                   placeholder="admin.my-page"
-                  className="w-full bg-zinc-800/60 border border-zinc-700/50 rounded-xl px-3.5 py-2.5 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20 transition-colors font-mono"
+                  className="w-full bg-muted border border-border rounded-xl px-3.5 py-2.5 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:border-success/50 focus:ring-1 focus:ring-success/20 transition-colors font-mono"
                   dir="ltr"
                 />
               </div>
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-zinc-400">
-                  اسم الصفحة <span className="text-rose-400">*</span>
+                <label className="text-xs font-medium text-muted-foreground">
+                  اسم الصفحة <span className="text-destructive">*</span>
                 </label>
                 <input
                   value={form.pageName}
                   onChange={e => setForm(f => ({ ...f, pageName: e.target.value }))}
                   placeholder="صفحة جديدة"
-                  className="w-full bg-zinc-800/60 border border-zinc-700/50 rounded-xl px-3.5 py-2.5 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20 transition-colors"
+                  className="w-full bg-muted border border-border rounded-xl px-3.5 py-2.5 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:border-success/50 focus:ring-1 focus:ring-success/20 transition-colors"
                 />
               </div>
             </div>
@@ -208,11 +208,11 @@ function AddPageModal({
             {/* Section */}
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <label className="text-xs font-medium text-zinc-400">القسم</label>
+                <label className="text-xs font-medium text-muted-foreground">القسم</label>
                 <button
                   type="button"
                   onClick={() => setCustomSection(v => !v)}
-                  className="text-[11px] text-zinc-500 hover:text-zinc-300 transition-colors"
+                  className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
                 >
                   {customSection ? 'اختر من الموجودة' : 'أضف قسماً جديداً'}
                 </button>
@@ -222,13 +222,13 @@ function AddPageModal({
                   value={form.section}
                   onChange={e => setForm(f => ({ ...f, section: e.target.value }))}
                   placeholder="اسم القسم الجديد"
-                  className="w-full bg-zinc-800/60 border border-zinc-700/50 rounded-xl px-3.5 py-2.5 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20 transition-colors"
+                  className="w-full bg-muted border border-border rounded-xl px-3.5 py-2.5 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:border-success/50 focus:ring-1 focus:ring-success/20 transition-colors"
                 />
               ) : (
                 <select
                   value={form.section}
                   onChange={e => setForm(f => ({ ...f, section: e.target.value }))}
-                  className="w-full bg-zinc-800/60 border border-zinc-700/50 rounded-xl px-3.5 py-2.5 text-sm text-zinc-200 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20 transition-colors"
+                  className="w-full bg-muted border border-border rounded-xl px-3.5 py-2.5 text-sm text-foreground focus:outline-none focus:border-success/50 focus:ring-1 focus:ring-success/20 transition-colors"
                 >
                   <option value="">— بدون قسم —</option>
                   {sections.map(s => <option key={s} value={s}>{s}</option>)}
@@ -238,12 +238,12 @@ function AddPageModal({
 
             {/* Sort Order */}
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-zinc-400">ترتيب العرض</label>
+              <label className="text-xs font-medium text-muted-foreground">ترتيب العرض</label>
               <input
                 type="number"
                 value={form.sortOrder}
                 onChange={e => setForm(f => ({ ...f, sortOrder: parseInt(e.target.value) || 999 }))}
-                className="w-32 bg-zinc-800/60 border border-zinc-700/50 rounded-xl px-3.5 py-2.5 text-sm text-zinc-200 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20 transition-colors"
+                className="w-32 bg-muted border border-border rounded-xl px-3.5 py-2.5 text-sm text-foreground focus:outline-none focus:border-success/50 focus:ring-1 focus:ring-success/20 transition-colors"
                 dir="ltr"
                 min={1}
               />
@@ -251,14 +251,14 @@ function AddPageModal({
 
             {/* Access Mode */}
             <div className="space-y-2">
-              <label className="text-xs font-medium text-zinc-400">نوع الوصول <span className="text-rose-400">*</span></label>
+              <label className="text-xs font-medium text-muted-foreground">نوع الوصول <span className="text-destructive">*</span></label>
               <div className="grid grid-cols-3 gap-2">
                 {ACCESS_MODES.map(m => (
                   <button
                     key={m.value}
                     type="button"
                     onClick={() => setForm(f => ({ ...f, accessMode: m.value as typeof form.accessMode }))}
-                    className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border text-center transition-colors ${form.accessMode === m.value ? m.cls + ' ring-1 ring-current/30' : 'bg-zinc-800/30 text-zinc-500 border-zinc-700/40 hover:border-zinc-600/60'}`}
+                    className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border text-center transition-colors ${form.accessMode === m.value ? m.cls + ' ring-1 ring-current/30' : 'bg-muted text-muted-foreground border-border hover:border-border'}`}
                   >
                     <m.icon className="w-4 h-4" />
                     <span className="text-[11px] font-medium leading-tight">{m.label}</span>
@@ -271,26 +271,26 @@ function AddPageModal({
             {/* Roles (only when accessMode = 'roles') */}
             {form.accessMode === 'roles' && (
               <div className="space-y-2">
-                <label className="text-xs font-medium text-zinc-400">الأدوار المسموح لها</label>
+                <label className="text-xs font-medium text-muted-foreground">الأدوار المسموح لها</label>
                 <div className="grid grid-cols-2 gap-2">
                   {roles.map(role => {
                     const active = form.roles.includes(role.RoleKey);
                     return (
                       <label
                         key={role.RoleID}
-                        className={`flex items-center gap-2.5 p-2.5 rounded-xl cursor-pointer border transition-colors ${active ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-300' : 'bg-zinc-800/30 border-zinc-700/30 text-zinc-400 hover:border-zinc-600/50'}`}
+                        className={`flex items-center gap-2.5 p-2.5 rounded-xl cursor-pointer border transition-colors ${active ? 'bg-success-soft border-success/25 text-success' : 'bg-muted border-border text-muted-foreground hover:border-border'}`}
                       >
                         <input type="checkbox" checked={active} onChange={() => toggleRole(role.RoleKey)} className="w-3.5 h-3.5 accent-emerald-500 flex-shrink-0" />
                         <div className="min-w-0">
                           <p className="text-xs font-medium truncate">{role.RoleName}</p>
-                          <p className="text-[10px] text-zinc-500">{role.RoleKey}</p>
+                          <p className="text-[10px] text-muted-foreground">{role.RoleKey}</p>
                         </div>
                       </label>
                     );
                   })}
                 </div>
                 {form.roles.length === 0 && (
-                  <p className="text-[11px] text-amber-400/80 flex items-center gap-1.5 bg-amber-500/5 border border-amber-500/15 rounded-lg px-3 py-2">
+                  <p className="text-[11px] text-warning flex items-center gap-1.5 bg-warning-soft border border-warning/15 rounded-lg px-3 py-2">
                     <Info className="w-3 h-3 flex-shrink-0" />
                     لم تختر أي دور — لن يصل أحد لهذه الصفحة
                   </p>
@@ -300,7 +300,7 @@ function AddPageModal({
 
             {/* Error */}
             {err && (
-              <div className="flex items-center gap-2 px-3 py-2.5 bg-rose-500/10 border border-rose-500/20 rounded-xl text-rose-300 text-xs">
+              <div className="flex items-center gap-2 px-3 py-2.5 bg-destructive-soft border border-destructive/20 rounded-xl text-destructive text-xs">
                 <X className="w-3.5 h-3.5 flex-shrink-0" />
                 {err}
               </div>
@@ -308,18 +308,18 @@ function AddPageModal({
           </div>
 
           {/* Footer */}
-          <div className="px-5 py-4 border-t border-zinc-800/60 flex items-center justify-between gap-3 flex-shrink-0 bg-zinc-900">
+          <div className="px-5 py-4 border-t border-border flex items-center justify-between gap-3 flex-shrink-0 bg-card">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm font-medium transition-colors border border-zinc-700/50"
+              className="px-4 py-2 rounded-xl bg-muted hover:bg-surface-muted text-foreground text-sm font-medium transition-colors border border-border"
             >
               إلغاء
             </button>
             <button
               type="submit"
               disabled={saving}
-              className="flex items-center gap-2 px-5 py-2 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 text-sm font-medium border border-emerald-500/25 transition-colors disabled:opacity-50"
+              className="flex items-center gap-2 px-5 py-2 rounded-xl bg-success-soft hover:bg-success-soft text-success text-sm font-medium border border-success/25 transition-colors disabled:opacity-50"
             >
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
               إنشاء الصفحة
@@ -424,8 +424,8 @@ export default function PagesPermissionsPage() {
     setCollapsed(prev => ({ ...prev, [sec]: !prev[sec] }));
 
   if (loading) return (
-    <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
-      <Loader2 className="w-8 h-8 animate-spin text-blue-400" />
+    <div className="min-h-full bg-background flex items-center justify-center">
+      <Loader2 className="w-8 h-8 animate-spin text-info" />
     </div>
   );
 
@@ -444,32 +444,32 @@ export default function PagesPermissionsPage() {
       {sensitiveConfirm && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" dir="rtl">
           <div className="absolute inset-0 bg-black/75 backdrop-blur-sm" onClick={() => setSensitiveConfirm(null)} />
-          <div className="relative w-full max-w-sm bg-zinc-900 border border-rose-500/30 rounded-2xl shadow-2xl p-6 space-y-4">
+          <div className="relative w-full max-w-sm bg-card border border-destructive/30 rounded-2xl shadow-2xl p-6 space-y-4">
             <div className="flex items-start gap-3">
-              <div className="p-2 rounded-xl bg-rose-500/15 border border-rose-500/25 flex-shrink-0">
-                <AlertTriangle className="w-5 h-5 text-rose-400" />
+              <div className="p-2 rounded-xl bg-destructive-soft border border-destructive/25 flex-shrink-0">
+                <AlertTriangle className="w-5 h-5 text-destructive" />
               </div>
               <div>
-                <h3 className="text-sm font-bold text-white">صفحة حساسة</h3>
-                <p className="text-xs text-zinc-400 mt-1">
-                  <span className="text-zinc-200 font-medium">"{sensitiveConfirm.pageName}"</span> صفحة حساسة.
+                <h3 className="text-sm font-bold text-foreground">صفحة حساسة</h3>
+                <p className="text-xs text-muted-foreground mt-1">
+                  <span className="text-foreground font-medium">"{sensitiveConfirm.pageName}"</span> صفحة حساسة.
                   جعلها متاحة للكل قد يسبب كشف بيانات مالية أو تحكم غير مصرح.
                 </p>
               </div>
             </div>
-            <div className="bg-rose-500/5 border border-rose-500/15 rounded-xl px-3 py-2.5 text-[11px] text-rose-300/80">
+            <div className="bg-destructive-soft border border-destructive/15 rounded-xl px-3 py-2.5 text-[11px] text-destructive">
               هل أنت متأكد أنك تريد تغيير وضع الوصول إلى <span className="font-bold">للجميع</span>؟
             </div>
             <div className="flex gap-2 justify-end">
               <button
                 onClick={() => setSensitiveConfirm(null)}
-                className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm font-medium border border-zinc-700/50 transition-colors"
+                className="px-4 py-2 rounded-xl bg-muted hover:bg-surface-muted text-foreground text-sm font-medium border border-border transition-colors"
               >
                 إلغاء
               </button>
               <button
                 onClick={confirmSensitiveMode}
-                className="px-4 py-2 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 text-sm font-medium border border-rose-500/25 transition-colors"
+                className="px-4 py-2 rounded-xl bg-destructive-soft hover:bg-destructive-soft text-destructive text-sm font-medium border border-destructive/25 transition-colors"
               >
                 نعم، أنا متأكد
               </button>
@@ -486,31 +486,31 @@ export default function PagesPermissionsPage() {
         onCreated={text => { showMsg('ok', text); load(); }}
       />
 
-      <div className="min-h-screen bg-zinc-950 p-4 sm:p-6" dir="rtl">
+      <div className="min-h-full bg-background p-3 sm:p-6" dir="rtl">
         <div className="max-w-5xl mx-auto space-y-5">
 
           {/* ── Header ── */}
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-blue-500/15 border border-blue-500/25">
-                <FileKey2 className="w-5 h-5 text-blue-400" />
+              <div className="p-2.5 rounded-xl bg-info-soft border border-info/25">
+                <FileKey2 className="w-5 h-5 text-info" />
               </div>
               <div>
-                <h1 className="text-lg font-bold text-white">صلاحيات الصفحات</h1>
-                <p className="text-[11px] text-zinc-500">{pages.length} صفحة مسجّلة</p>
+                <h1 className="text-lg font-bold text-foreground">صلاحيات الصفحات</h1>
+                <p className="text-[11px] text-muted-foreground">{pages.length} صفحة مسجّلة</p>
               </div>
             </div>
             <div className="flex items-center gap-2">
               <button
                 onClick={load}
-                className="p-2 rounded-lg bg-zinc-800/80 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 transition-colors border border-zinc-700/40"
+                className="p-2 rounded-lg bg-muted hover:bg-surface-muted text-muted-foreground hover:text-foreground transition-colors border border-border"
                 title="تحديث"
               >
                 <RefreshCw className="w-4 h-4" />
               </button>
               <button
                 onClick={() => setShowAdd(true)}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 text-sm font-medium border border-emerald-500/25 transition-colors"
+                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-success-soft hover:bg-success-soft text-success text-sm font-medium border border-success/25 transition-colors"
               >
                 <Plus className="w-4 h-4" />
                 إضافة صفحة
@@ -520,7 +520,7 @@ export default function PagesPermissionsPage() {
 
           {/* ── Toast ── */}
           {msg && (
-            <div className={`flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-medium border ${msg.type === 'ok' ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20' : 'bg-rose-500/10 text-rose-300 border-rose-500/20'}`}>
+            <div className={`flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-medium border ${msg.type === 'ok' ? 'bg-success-soft text-success border-success/20' : 'bg-destructive-soft text-destructive border-destructive/20'}`}>
               {msg.type === 'err' && <X className="w-4 h-4 flex-shrink-0" />}
               {msg.text}
             </div>
@@ -528,15 +528,15 @@ export default function PagesPermissionsPage() {
 
           {/* ── Search ── */}
           <div className="relative">
-            <Search className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none" />
+            <Search className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
             <input
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="بحث بالاسم أو المسار أو المفتاح..."
-              className="w-full bg-zinc-900/60 border border-zinc-800/60 rounded-xl pr-10 pl-4 py-2.5 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-600 transition-colors"
+              className="w-full bg-card border border-border rounded-xl pr-10 pl-4 py-2.5 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:border-border transition-colors"
             />
             {search && (
-              <button onClick={() => setSearch('')} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300">
+              <button onClick={() => setSearch('')} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
                 <X className="w-3.5 h-3.5" />
               </button>
             )}
@@ -544,7 +544,7 @@ export default function PagesPermissionsPage() {
 
           {/* ── Sections ── */}
           {Object.keys(grouped).length === 0 ? (
-            <div className="text-center py-12 text-zinc-600 text-sm">لا توجد نتائج</div>
+            <div className="text-center py-12 text-muted-foreground text-sm">لا توجد نتائج</div>
           ) : (
             Object.entries(grouped).map(([section, sPages]) => {
               const isCollapsed = collapsed[section];
@@ -555,15 +555,15 @@ export default function PagesPermissionsPage() {
                     onClick={() => toggleSection(section)}
                     className="w-full flex items-center justify-between px-2 py-1 group"
                   >
-                    <span className="text-xs font-semibold text-zinc-500 group-hover:text-zinc-400 transition-colors uppercase tracking-wider">{section}</span>
+                    <span className="text-xs font-semibold text-muted-foreground group-hover:text-muted-foreground transition-colors uppercase tracking-wider">{section}</span>
                     <div className="flex items-center gap-2">
-                      <span className="text-[10px] text-zinc-700">{sPages.length}</span>
-                      {isCollapsed ? <ChevronDown className="w-3.5 h-3.5 text-zinc-600" /> : <ChevronUp className="w-3.5 h-3.5 text-zinc-600" />}
+                      <span className="text-[10px] text-muted-foreground">{sPages.length}</span>
+                      {isCollapsed ? <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronUp className="w-3.5 h-3.5 text-muted-foreground" />}
                     </div>
                   </button>
 
                   {!isCollapsed && (
-                    <div className="rounded-2xl border border-zinc-800/50 bg-zinc-900/30 divide-y divide-zinc-800/40 overflow-hidden">
+                    <div className="rounded-2xl border border-border bg-card divide-y divide-border overflow-hidden">
                       {sPages.map(page => {
                         const edit = editMap[page.pageKey] || { accessMode: page.accessMode, roles: page.roles };
                         const isSaving = saving === page.pageKey;
@@ -577,12 +577,12 @@ export default function PagesPermissionsPage() {
                             <div className="flex items-start gap-3 flex-wrap">
                               <div className="flex-1 min-w-[160px]">
                                 <div className="flex items-center gap-2 flex-wrap">
-                                  <p className="text-sm font-medium text-zinc-200">{page.pageName}</p>
+                                  <p className="text-sm font-medium text-foreground">{page.pageName}</p>
                                   {isDirty && (
-                                    <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-amber-500/10 text-amber-400 border border-amber-500/20">غير محفوظ</span>
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-warning-soft text-warning border border-warning/20">غير محفوظ</span>
                                   )}
                                 </div>
-                                <p className="text-[11px] text-zinc-600 font-mono mt-0.5">{page.pagePath}</p>
+                                <p className="text-[11px] text-muted-foreground font-mono mt-0.5">{page.pagePath}</p>
                               </div>
 
                               {/* AccessMode pills */}
@@ -592,7 +592,7 @@ export default function PagesPermissionsPage() {
                                     key={m.value}
                                     onClick={() => setMode(page, m.value)}
                                     title={m.desc}
-                                    className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-medium border transition-colors ${edit.accessMode === m.value ? m.cls : 'bg-zinc-800/50 text-zinc-600 border-zinc-700/30 hover:border-zinc-600/50'}`}
+                                    className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-medium border transition-colors ${edit.accessMode === m.value ? m.cls : 'bg-muted text-muted-foreground border-border hover:border-border'}`}
                                   >
                                     <m.icon className="w-3 h-3" />
                                     {m.label}
@@ -609,7 +609,7 @@ export default function PagesPermissionsPage() {
                                   return (
                                     <label
                                       key={role.RoleID}
-                                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg cursor-pointer border text-[11px] transition-colors select-none ${active ? 'bg-blue-500/15 border-blue-500/25 text-blue-300' : 'bg-zinc-800/30 border-zinc-700/25 text-zinc-500 hover:border-zinc-600/50'}`}
+                                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg cursor-pointer border text-[11px] transition-colors select-none ${active ? 'bg-info-soft border-info/25 text-info' : 'bg-muted border-border text-muted-foreground hover:border-border'}`}
                                     >
                                       <input
                                         type="checkbox"
@@ -629,7 +629,7 @@ export default function PagesPermissionsPage() {
                               <button
                                 onClick={() => save(page.pageKey)}
                                 disabled={isSaving || !isDirty}
-                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${isDirty ? 'bg-blue-500/15 hover:bg-blue-500/25 text-blue-300 border-blue-500/25' : 'bg-zinc-800/30 text-zinc-600 border-zinc-700/25 cursor-default'} disabled:opacity-50`}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${isDirty ? 'bg-info-soft hover:bg-info-soft text-info border-info/25' : 'bg-muted text-muted-foreground border-border cursor-default'} disabled:opacity-50`}
                               >
                                 {isSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
                                 {isDirty ? 'حفظ التغييرات' : 'محفوظ'}

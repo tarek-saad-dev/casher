@@ -147,25 +147,25 @@ export default function TreasuryFiltersBar({
   };
 
   return (
-    <div className="bg-gradient-to-br from-zinc-900/90 to-zinc-900/50 backdrop-blur-sm border border-zinc-800/50 rounded-2xl p-5 shadow-xl shadow-black/10">
+    <div className="bg-card border border-border rounded-xl p-3 sm:p-5 shadow-xs">
       <div className="flex items-center gap-3 mb-4">
-        <div className="p-2 bg-amber-500/10 rounded-xl">
-          <Calendar className="h-5 w-5 text-amber-400" />
+        <div className="p-2 bg-warning-soft rounded-xl">
+          <Calendar className="h-5 w-5 text-warning" />
         </div>
-        <h3 className="text-lg font-bold text-white">فلاتر الخزنة</h3>
+        <h3 className="text-lg font-bold text-foreground">فلاتر الخزنة</h3>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
         {/* Business Day Selector */}
         <div>
-          <label className="block text-xs text-zinc-400 font-medium mb-2">
+          <label className="block text-xs text-muted-foreground font-medium mb-2">
             اليوم
           </label>
           <select
             value={selectedNewDay || ''}
             onChange={(e) => setSelectedNewDay(e.target.value || null)}
             disabled={loadingDays}
-            className="w-full bg-zinc-800/40 border border-zinc-700/30 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500/50 transition-colors"
+            className="w-full bg-muted border border-border rounded-xl px-3 py-2 text-sm text-foreground focus:outline-none focus:border-ring focus-visible:ring-2 focus-visible:ring-ring transition-colors"
           >
             <option value="">اختر اليوم</option>
             {days.map((day) => (
@@ -178,40 +178,40 @@ export default function TreasuryFiltersBar({
 
         {/* Date From */}
         <div>
-          <label className="block text-xs text-zinc-400 font-medium mb-2">
+          <label className="block text-xs text-muted-foreground font-medium mb-2">
             من تاريخ
           </label>
           <input
             type="date"
             value={dateFrom}
             onChange={(e) => setDateFrom(e.target.value)}
-            className="w-full bg-zinc-800/40 border border-zinc-700/30 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500/50 transition-colors"
+            className="w-full bg-muted border border-border rounded-xl px-3 py-2 text-sm text-foreground focus:outline-none focus:border-ring focus-visible:ring-2 focus-visible:ring-ring transition-colors"
           />
         </div>
 
         {/* Date To */}
         <div>
-          <label className="block text-xs text-zinc-400 font-medium mb-2">
+          <label className="block text-xs text-muted-foreground font-medium mb-2">
             إلى تاريخ
           </label>
           <input
             type="date"
             value={dateTo}
             onChange={(e) => setDateTo(e.target.value)}
-            className="w-full bg-zinc-800/40 border border-zinc-700/30 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500/50 transition-colors"
+            className="w-full bg-muted border border-border rounded-xl px-3 py-2 text-sm text-foreground focus:outline-none focus:border-ring focus-visible:ring-2 focus-visible:ring-ring transition-colors"
           />
         </div>
 
         {/* Shift Selector */}
         <div>
-          <label className="block text-xs text-zinc-400 font-medium mb-2">
+          <label className="block text-xs text-muted-foreground font-medium mb-2">
             الوردية
           </label>
           <select
             value={selectedShiftMoveId || ''}
             onChange={(e) => setSelectedShiftMoveId(e.target.value ? parseInt(e.target.value) : null)}
             disabled={loadingShifts || !selectedNewDay}
-            className="w-full bg-zinc-800/40 border border-zinc-700/30 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500/50 transition-colors disabled:opacity-50"
+            className="w-full bg-muted border border-border rounded-xl px-3 py-2 text-sm text-foreground focus:outline-none focus:border-ring focus-visible:ring-2 focus-visible:ring-ring transition-colors disabled:opacity-50"
           >
             <option value="">كل الورديات</option>
             {shifts.map((shift) => (
@@ -224,14 +224,14 @@ export default function TreasuryFiltersBar({
 
         {/* User Selector */}
         <div>
-          <label className="block text-xs text-zinc-400 font-medium mb-2">
+          <label className="block text-xs text-muted-foreground font-medium mb-2">
             المستخدم
           </label>
           <select
             value={selectedUserId || ''}
             onChange={(e) => setSelectedUserId(e.target.value ? parseInt(e.target.value) : null)}
             disabled={loadingUsers}
-            className="w-full bg-zinc-800/40 border border-zinc-700/30 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500/50 transition-colors"
+            className="w-full bg-muted border border-border rounded-xl px-3 py-2 text-sm text-foreground focus:outline-none focus:border-ring focus-visible:ring-2 focus-visible:ring-ring transition-colors"
           >
             <option value="">كل المستخدمين</option>
             {users.map((user) => (
@@ -247,7 +247,7 @@ export default function TreasuryFiltersBar({
           <button
             onClick={handleCurrentDay}
             disabled={!currentDay}
-            className="flex items-center gap-2 px-4 py-2 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-xl text-sm font-medium hover:bg-emerald-500/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 px-4 py-2 bg-success-soft text-success border border-success/20 rounded-xl text-sm font-medium hover:bg-success/15 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Calendar className="h-4 w-4" />
             اليوم الحالي
@@ -256,7 +256,7 @@ export default function TreasuryFiltersBar({
           <button
             onClick={handleCurrentShift}
             disabled={!currentShift}
-            className="flex items-center gap-2 px-4 py-2 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-xl text-sm font-medium hover:bg-amber-500/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 px-4 py-2 bg-warning-soft text-warning border border-warning/20 rounded-xl text-sm font-medium hover:bg-warning/15 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Clock className="h-4 w-4" />
             الوردية الحالية
@@ -264,7 +264,7 @@ export default function TreasuryFiltersBar({
           
           <button
             onClick={handleReset}
-            className="flex items-center gap-2 px-4 py-2 bg-zinc-800/40 text-zinc-400 border border-zinc-700/30 rounded-xl text-sm font-medium hover:bg-zinc-800/60 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 bg-muted text-muted-foreground border border-border rounded-xl text-sm font-medium hover:bg-muted transition-colors"
           >
             <RefreshCw className="h-4 w-4" />
             إعادة تعيين

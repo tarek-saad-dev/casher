@@ -78,7 +78,7 @@ export default function DeleteInvoiceDialog({
         className="absolute inset-0 bg-black/80 backdrop-blur-sm"
         onClick={handleClose}
       />
-      <div className="relative bg-surface border border-border rounded-2xl p-6 max-w-md w-full shadow-2xl">
+      <div className="relative bg-surface border border-border rounded-2xl p-4 sm:p-6 max-w-md w-full max-h-[85dvh] overflow-y-auto shadow-xl">
         {/* Header */}
         <div className="flex items-center gap-3 mb-4">
           <div className="p-3 bg-destructive/20 rounded-full">

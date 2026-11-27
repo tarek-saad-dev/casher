@@ -37,9 +37,9 @@ function dayStatusLabel(status: 'open' | 'closed' | 'missing'): string {
 }
 
 function dayStatusClass(status: 'open' | 'closed' | 'missing'): string {
-  if (status === 'open') return 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30';
-  if (status === 'closed') return 'bg-zinc-500/15 text-zinc-300 border-zinc-500/30';
-  return 'bg-amber-500/15 text-amber-200 border-amber-500/30';
+  if (status === 'open') return 'bg-success-soft text-success border-success/30';
+  if (status === 'closed') return 'bg-muted text-foreground border-border';
+  return 'bg-warning-soft text-warning border-warning/30';
 }
 
 export default function TreasuryGroupDailyView() {
@@ -153,13 +153,13 @@ export default function TreasuryGroupDailyView() {
             <span className="rounded-full border border-border px-3 py-1 text-muted-foreground">
               فروع: {summary.branchCount}
             </span>
-            <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-emerald-300">
+            <span className="rounded-full border border-success/30 bg-success-soft px-3 py-1 text-success">
               أيام مفتوحة: {summary.openDayCount}
             </span>
-            <span className="rounded-full border border-zinc-500/30 bg-zinc-500/10 px-3 py-1 text-zinc-300">
+            <span className="rounded-full border border-border bg-muted px-3 py-1 text-foreground">
               أيام مقفولة: {summary.closedDayCount}
             </span>
-            <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-amber-200">
+            <span className="rounded-full border border-warning/30 bg-warning-soft px-3 py-1 text-warning">
               بدون يوم: {summary.missingDayCount}
             </span>
             {summary.topPaymentMethod ? (
@@ -170,13 +170,13 @@ export default function TreasuryGroupDailyView() {
           </div>
 
           {(data?.alerts.length ?? 0) > 0 && (
-            <div className="space-y-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4">
-              <div className="flex items-center gap-2 text-sm font-medium text-amber-100">
+            <div className="space-y-2 rounded-xl border border-warning/30 bg-warning-soft p-4">
+              <div className="flex items-center gap-2 text-sm font-medium text-warning">
                 <AlertTriangle className="h-4 w-4" />
                 تنبيهات سلامة للفروع في هذا اليوم
               </div>
               {data!.alerts.map((a) => (
-                <p key={a.code} className="text-sm text-amber-100/90">
+                <p key={a.code} className="text-sm text-warning">
                   {a.message}: <strong>{a.count}</strong>
                 </p>
               ))}
@@ -222,7 +222,7 @@ export default function TreasuryGroupDailyView() {
                       <div className="flex items-center gap-3 shrink-0">
                         <span
                           className={`text-base font-bold ${
-                            b.grandNet >= 0 ? 'text-emerald-400' : 'text-destructive'
+                            b.grandNet >= 0 ? 'text-success' : 'text-destructive'
                           }`}
                         >
                           {formatMoney(b.grandNet)}
@@ -264,7 +264,7 @@ export default function TreasuryGroupDailyView() {
                                   {b.paymentMethods.map((pm) => (
                                     <tr key={pm.paymentMethodKey} className="border-t border-border/70">
                                       <td className="px-3 py-2">{pm.paymentMethodName}</td>
-                                      <td className="px-3 py-2 text-emerald-400">{formatMoney(pm.inflow)}</td>
+                                      <td className="px-3 py-2 text-success">{formatMoney(pm.inflow)}</td>
                                       <td className="px-3 py-2 text-destructive">{formatMoney(pm.outflow)}</td>
                                       <td className="px-3 py-2 font-medium">{formatMoney(pm.net)}</td>
                                       <td className="px-3 py-2">{pm.transactionCount}</td>
@@ -288,7 +288,7 @@ export default function TreasuryGroupDailyView() {
                                   className="rounded-lg border border-border bg-surface px-3 py-1.5 text-xs"
                                 >
                                   {u.userName}:{' '}
-                                  <strong className={u.net >= 0 ? 'text-emerald-400' : 'text-destructive'}>
+                                  <strong className={u.net >= 0 ? 'text-success' : 'text-destructive'}>
                                     {formatMoney(u.net)}
                                   </strong>{' '}
                                   <span className="text-muted-foreground">({u.transactionCount})</span>
@@ -327,7 +327,7 @@ export default function TreasuryGroupDailyView() {
                     {data!.paymentMethods.map((pm) => (
                       <tr key={pm.paymentMethodKey} className="border-t border-border/70">
                         <td className="px-3 py-2.5">{pm.paymentMethodName}</td>
-                        <td className="px-3 py-2.5 text-emerald-400">{formatMoney(pm.inflow)}</td>
+                        <td className="px-3 py-2.5 text-success">{formatMoney(pm.inflow)}</td>
                         <td className="px-3 py-2.5 text-destructive">{formatMoney(pm.outflow)}</td>
                         <td className="px-3 py-2.5 font-medium">{formatMoney(pm.net)}</td>
                         <td className="px-3 py-2.5">{formatMoney(pm.salesInflow)}</td>
@@ -359,12 +359,12 @@ function Kpi({
 }) {
   const toneClass =
     tone === 'good'
-      ? 'border-emerald-500/20 bg-emerald-500/5'
+      ? 'border-success/20 bg-success-soft'
       : tone === 'bad'
         ? 'border-destructive/20 bg-destructive/5'
         : 'border-border bg-surface';
   const iconClass =
-    tone === 'good' ? 'text-emerald-400' : tone === 'bad' ? 'text-destructive' : 'text-muted-foreground';
+    tone === 'good' ? 'text-success' : tone === 'bad' ? 'text-destructive' : 'text-muted-foreground';
   return (
     <div className={`rounded-2xl border px-4 py-3 ${toneClass}`}>
       <div className="flex items-center justify-between gap-2">

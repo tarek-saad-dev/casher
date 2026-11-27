@@ -187,7 +187,7 @@ export default function BranchSwitcher() {
             ref={menuRef}
             id={listboxId}
             role="listbox"
-            className="min-w-[12rem] rounded-md border border-border bg-background py-1 shadow-lg"
+            className="min-w-[12rem] rounded-lg border border-border bg-popover py-1 shadow-md"
             style={{
               position: 'fixed',
               top: menuPos.top,
@@ -205,7 +205,7 @@ export default function BranchSwitcher() {
                   aria-selected={b.isCurrent}
                   disabled={b.isCurrent}
                   onClick={() => void onSelect(b.branchId)}
-                  className="flex w-full items-center gap-2 px-3 py-1.5 text-right text-xs hover:bg-muted disabled:opacity-70"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-start text-xs hover:bg-muted disabled:opacity-70"
                 >
                   <span className="flex-1 truncate font-medium">{itemLabel}</span>
                   {b.shortName && b.shortName !== b.branchName ? (
@@ -250,7 +250,7 @@ export default function BranchSwitcher() {
         type="button"
         disabled={!canSwitch}
         onClick={() => setOpen((v) => !v)}
-        className="flex max-w-[11rem] items-center gap-1.5 rounded px-1.5 py-0.5 transition-colors hover:bg-muted disabled:opacity-60"
+        className="flex h-7 max-w-[11rem] items-center gap-1.5 rounded-md px-1.5 transition-colors hover:bg-muted disabled:opacity-60"
         title={viewBranch.branchName}
         aria-haspopup="listbox"
         aria-expanded={open}

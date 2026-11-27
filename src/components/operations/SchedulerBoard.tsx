@@ -68,14 +68,14 @@ interface Props {
 }
 
 export const BARBER_COLORS = [
-  { bg: 'rgba(16, 185, 129, 0.12)', border: 'rgba(16, 185, 129, 0.45)', text: '#34D399', dot: '#10B981', label: 'green' },
-  { bg: 'rgba(59, 130, 246, 0.12)', border: 'rgba(59, 130, 246, 0.45)', text: '#60A5FA', dot: '#3B82F6', label: 'blue' },
-  { bg: 'rgba(168, 85, 247, 0.12)', border: 'rgba(168, 85, 247, 0.45)', text: '#C084FC', dot: '#A855F7', label: 'purple' },
-  { bg: 'rgba(245, 158, 11, 0.12)', border: 'rgba(245, 158, 11, 0.45)', text: '#FBBF24', dot: '#F59E0B', label: 'amber' },
-  { bg: 'rgba(236, 72, 153, 0.12)', border: 'rgba(236, 72, 153, 0.45)', text: '#F472B6', dot: '#EC4899', label: 'pink' },
-  { bg: 'rgba(20, 184, 166, 0.12)', border: 'rgba(20, 184, 166, 0.45)', text: '#2DD4BF', dot: '#14B8A6', label: 'teal' },
-  { bg: 'rgba(239, 68, 68, 0.12)', border: 'rgba(239, 68, 68, 0.45)', text: '#F87171', dot: '#EF4444', label: 'red' },
-  { bg: 'rgba(99, 102, 241, 0.12)', border: 'rgba(99, 102, 241, 0.45)', text: '#818CF8', dot: '#6366F1', label: 'indigo' },
+  { bg: 'color-mix(in srgb, #10B981 12%, var(--card))', border: 'color-mix(in srgb, #10B981 45%, var(--border))', text: 'var(--foreground)', dot: '#10B981', label: 'green' },
+  { bg: 'color-mix(in srgb, #3B82F6 12%, var(--card))', border: 'color-mix(in srgb, #3B82F6 45%, var(--border))', text: 'var(--foreground)', dot: '#3B82F6', label: 'blue' },
+  { bg: 'color-mix(in srgb, #A855F7 12%, var(--card))', border: 'color-mix(in srgb, #A855F7 45%, var(--border))', text: 'var(--foreground)', dot: '#A855F7', label: 'purple' },
+  { bg: 'color-mix(in srgb, #F59E0B 12%, var(--card))', border: 'color-mix(in srgb, #F59E0B 45%, var(--border))', text: 'var(--foreground)', dot: '#F59E0B', label: 'amber' },
+  { bg: 'color-mix(in srgb, #EC4899 12%, var(--card))', border: 'color-mix(in srgb, #EC4899 45%, var(--border))', text: 'var(--foreground)', dot: '#EC4899', label: 'pink' },
+  { bg: 'color-mix(in srgb, #14B8A6 12%, var(--card))', border: 'color-mix(in srgb, #14B8A6 45%, var(--border))', text: 'var(--foreground)', dot: '#14B8A6', label: 'teal' },
+  { bg: 'color-mix(in srgb, #EF4444 12%, var(--card))', border: 'color-mix(in srgb, #EF4444 45%, var(--border))', text: 'var(--foreground)', dot: '#EF4444', label: 'red' },
+  { bg: 'color-mix(in srgb, #6366F1 12%, var(--card))', border: 'color-mix(in srgb, #6366F1 45%, var(--border))', text: 'var(--foreground)', dot: '#6366F1', label: 'indigo' },
 ] as const;
 
 export type BarberColor = (typeof BARBER_COLORS)[number];

@@ -27,8 +27,8 @@ export function TenantSubscriptionBanner() {
       role="status"
       className={cn(
         'flex items-center gap-2 px-4 py-1.5 text-xs border-b',
-        notice.tone === 'info' && 'bg-sky-500/10 border-sky-500/30 text-sky-600 dark:text-sky-300',
-        notice.tone === 'warning' && 'bg-amber-500/10 border-amber-500/30 text-amber-700 dark:text-amber-300',
+        notice.tone === 'info' && 'bg-info-soft border-info/20 text-info',
+        notice.tone === 'warning' && 'bg-warning-soft border-warning/25 text-warning',
       )}
     >
       <Icon className="h-3.5 w-3.5 shrink-0" />
@@ -52,8 +52,8 @@ function BlockedPanel({
   return (
     <div className="flex flex-1 items-center justify-center p-6">
       <div className="max-w-md space-y-4 text-center">
-        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full border border-rose-500/30 bg-rose-500/10">
-          <Icon className="h-8 w-8 text-rose-500" />
+        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full border border-destructive/20 bg-destructive-soft">
+          <Icon className="h-8 w-8 text-destructive" />
         </div>
         <h2 className="text-xl font-bold">{title}</h2>
         <p className="text-sm text-muted-foreground">{detail}</p>

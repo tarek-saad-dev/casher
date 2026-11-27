@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import { Star, Check, ChevronLeft, ChevronRight, Users, UserRound } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, Users, UserRound } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { deriveAttendanceDisplay, type TeamAttendanceMember } from '@/lib/teamAttendance';
 import NonBarberEmployeeModal from '@/components/pos/NonBarberEmployeeModal';
@@ -18,28 +18,10 @@ interface BarberCarouselProps {
 }
 
 // Barber colors for borders
-const BARBER_COLORS = [
-  'border-amber-500/80',
-  'border-purple-500/80',
-  'border-emerald-500/80',
-  'border-blue-500/80',
-  'border-rose-500/80',
-  'border-cyan-500/80',
-];
+// Selected barber uses the single DRVO selection colour (Plum).
+const BARBER_COLORS = ['border-brand'];
 
-// Mock ratings (in production would come from API)
-const getBarberRating = (name: string): number => {
-  const ratings: Record<string, number> = {
-    'بلسم': 4.8,
-    'بسم': 4.8,
-    'زيد': 4.7,
-    'زياد': 4.7,
-    'محمد': 4.9,
-    'كريم': 4.8,
-    'يوسف': 4.6,
-  };
-  return ratings[name] || 4.5;
-};
+// DRVO: no hard-coded ratings — show only real data (ADR-025 "no fake KPI").
 
 function isBarberInList(barbers: Barber[], empId: number | undefined): boolean {
   if (empId == null) return false;
@@ -180,7 +162,6 @@ export default function BarberCarousel({
         {barbers.map((barber, idx) => {
           const isSelected = selected?.EmpID === barber.EmpID;
           const colorClass = BARBER_COLORS[idx % BARBER_COLORS.length];
-          const rating = getBarberRating(barber.EmpName);
           const attendance = attendanceByEmpId?.get(barber.EmpID);
           const attendanceDisplay = attendance ? deriveAttendanceDisplay(attendance) : null;
 
@@ -190,10 +171,10 @@ export default function BarberCarousel({
               type="button"
               onClick={() => onSelect(barber)}
               className={cn(
-                'group relative flex min-w-[100px] shrink-0 flex-col items-center rounded-2xl border p-2.5 transition-all duration-300 md:min-w-[112px] md:p-3',
+                'group relative flex min-w-[96px] shrink-0 flex-col items-center rounded-xl border p-2.5 transition-colors md:min-w-[104px]',
                 isSelected
-                  ? `bg-surface-muted ${colorClass} border-2 shadow-lg shadow-primary/10`
-                  : 'bg-surface border-border hover:border-muted hover:bg-surface-muted'
+                  ? `bg-brand-soft ${colorClass} border-2 shadow-sm`
+                  : 'bg-card border-border hover:border-brand/30 hover:bg-muted'
               )}
             >
               <BarberAvatar
@@ -221,11 +202,6 @@ export default function BarberCarousel({
                 </span>
               )}
 
-              {/* Rating */}
-              <div className="flex items-center gap-1">
-                <Star className="w-3 h-3 fill-primary text-primary" />
-                <span className="text-[10px] text-primary font-medium">{rating}</span>
-              </div>
             </button>
           );
         })}

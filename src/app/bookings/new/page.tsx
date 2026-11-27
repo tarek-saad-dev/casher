@@ -193,18 +193,18 @@ export default function NewBookingPage() {
   };
 
   if (success && newBookingId) return (
-    <div className="h-full flex flex-col items-center justify-center bg-zinc-950 text-center px-6" dir="rtl">
+    <div className="h-full flex flex-col items-center justify-center bg-background text-center px-6" dir="rtl">
       <div className="w-20 h-20 rounded-full flex items-center justify-center mb-4"
-        style={{ background: 'rgba(16,185,129,0.15)', border: '2px solid rgba(16,185,129,0.4)' }}>
-        <CheckCircle2 size={36} className="text-emerald-400" />
+        style={{ background: 'color-mix(in srgb, var(--success) 15%, transparent)', border: '2px solid rgba(16,185,129,0.4)' }}>
+        <CheckCircle2 size={36} className="text-success" />
       </div>
-      <h2 className="text-xl font-black text-white mb-2">تم إنشاء الحجز!</h2>
-      <p className="text-zinc-400 text-sm mb-1">
-        رقم الحجز: <span className="text-amber-400 font-bold">#{newBookingId}</span>
+      <h2 className="text-xl font-black text-foreground mb-2">تم إنشاء الحجز!</h2>
+      <p className="text-muted-foreground text-sm mb-1">
+        رقم الحجز: <span className="text-warning font-bold">#{newBookingId}</span>
       </p>
       {newBookingCode && (
-        <p className="text-zinc-500 text-xs mb-6">
-          الكود: <span className="text-white font-mono">{newBookingCode}</span>
+        <p className="text-muted-foreground text-xs mb-6">
+          الكود: <span className="text-foreground font-mono">{newBookingCode}</span>
         </p>
       )}
       {!newBookingCode && <div className="mb-6" />}
@@ -212,30 +212,30 @@ export default function NewBookingPage() {
         <button
           onClick={() => router.push(`/bookings/${newBookingId}`)}
           className="px-5 py-2.5 rounded-xl text-sm font-semibold"
-          style={{ background: 'linear-gradient(135deg,#D6A84F,#B8923A)', color: '#000' }}
+          style={{ background: 'var(--primary)', color: 'var(--primary-foreground)' }}
         >عرض الحجز</button>
         <button
           onClick={() => router.push('/bookings')}
-          className="px-5 py-2.5 rounded-xl text-sm border border-zinc-700 text-zinc-300 hover:bg-zinc-800"
+          className="px-5 py-2.5 rounded-xl text-sm border border-border text-foreground hover:bg-muted"
         >كل الحجوزات</button>
       </div>
     </div>
   );
 
   return (
-    <div className="h-full flex flex-col bg-zinc-950" dir="rtl">
+    <div className="h-full min-h-0 min-w-0 flex flex-col bg-background" dir="rtl">
       {/* Header */}
-      <div className="flex items-center gap-3 px-6 py-4 border-b border-zinc-800 shrink-0">
-        <button onClick={() => router.push('/bookings')} className="p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-500 hover:text-white transition-all">
+      <div className="flex items-center gap-3 px-6 py-4 border-b border-border shrink-0">
+        <button onClick={() => router.push('/bookings')} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-all">
           <ArrowRight size={16} />
         </button>
         <div>
-          <h1 className="text-base font-black text-white">حجز جديد</h1>
-          <p className="text-xs text-zinc-500">أدخل تفاصيل الحجز</p>
+          <h1 className="text-base font-black text-foreground">حجز جديد</h1>
+          <p className="text-xs text-muted-foreground">أدخل تفاصيل الحجز</p>
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto scrollbar-luxury-v">
+      <div className="min-h-0 flex-1 overflow-y-auto scrollbar-luxury-v">
         <div className="max-w-2xl mx-auto p-6 space-y-6">
 
           {/* Client */}
@@ -243,66 +243,66 @@ export default function NewBookingPage() {
             {!showNewClient ? (
               <>
                 <div className="relative mb-3">
-                  <Search size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500" />
+                  <Search size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                   <input
                     value={clientSearch}
                     onChange={e => { setClientSearch(e.target.value); setSelectedClient(null); }}
                     placeholder="ابحث عن عميل..."
-                    className="w-full bg-zinc-900 border border-zinc-700 rounded-xl pr-9 pl-4 py-2.5 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/50"
+                    className="w-full bg-card border border-border rounded-xl pr-9 pl-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-ring focus-visible:ring-2 focus-visible:ring-ring"
                   />
-                  {clientLoading && <Loader2 size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 animate-spin" />}
+                  {clientLoading && <Loader2 size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground animate-spin" />}
                 </div>
                 {clientResults.length > 0 && !selectedClient && (
-                  <div className="border border-zinc-700 rounded-xl overflow-hidden mb-3">
+                  <div className="border border-border rounded-xl overflow-hidden mb-3">
                     {clientResults.map(c => (
                       <button key={c.ClientID} onClick={() => { setSelectedClient(c); setClientSearch(c.ClientName); setClientResults([]); }}
-                        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-zinc-800 transition-colors text-right border-b border-zinc-800 last:border-0">
-                        <div className="w-8 h-8 rounded-full bg-zinc-700 flex items-center justify-center text-xs font-bold text-white">{c.ClientName.charAt(0)}</div>
-                        <div><p className="text-sm font-medium text-white">{c.ClientName}</p>{c.ClientMobile && <p className="text-xs text-zinc-500">{c.ClientMobile}</p>}</div>
+                        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-muted transition-colors text-right border-b border-border last:border-0">
+                        <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-xs font-bold text-foreground">{c.ClientName.charAt(0)}</div>
+                        <div><p className="text-sm font-medium text-foreground">{c.ClientName}</p>{c.ClientMobile && <p className="text-xs text-muted-foreground">{c.ClientMobile}</p>}</div>
                       </button>
                     ))}
                   </div>
                 )}
                 {selectedClient ? (
-                  <div className="flex items-center gap-3 p-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 mb-2">
-                    <CheckCircle2 size={15} className="text-emerald-400" />
-                    <div className="flex-1"><p className="text-sm font-semibold text-white">{selectedClient.ClientName}</p>{selectedClient.ClientMobile && <p className="text-xs text-zinc-400">{selectedClient.ClientMobile}</p>}</div>
-                    <button onClick={() => { setSelectedClient(null); setClientSearch(''); }} className="text-xs text-zinc-500 hover:text-white">تغيير</button>
+                  <div className="flex items-center gap-3 p-3 rounded-xl border border-success/30 bg-success-soft mb-2">
+                    <CheckCircle2 size={15} className="text-success" />
+                    <div className="flex-1"><p className="text-sm font-semibold text-foreground">{selectedClient.ClientName}</p>{selectedClient.ClientMobile && <p className="text-xs text-muted-foreground">{selectedClient.ClientMobile}</p>}</div>
+                    <button onClick={() => { setSelectedClient(null); setClientSearch(''); }} className="text-xs text-muted-foreground hover:text-foreground">تغيير</button>
                   </div>
                 ) : null}
-                <button onClick={() => setShowNewClient(true)} className="flex items-center gap-1.5 text-xs text-amber-400 hover:text-amber-300">
+                <button onClick={() => setShowNewClient(true)} className="flex items-center gap-1.5 text-xs text-warning hover:text-warning">
                   <UserPlus size={13} /> عميل جديد
                 </button>
               </>
             ) : (
               <div className="space-y-3">
-                <div><label className="text-xs text-zinc-400 mb-1 block">الاسم *</label>
-                  <input value={newClientName} onChange={e => setNewClientName(e.target.value)} placeholder="الاسم الكامل" className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500/50" /></div>
-                <div><label className="text-xs text-zinc-400 mb-1 block">الجوال</label>
-                  <input value={newClientMobile} onChange={e => setNewClientMobile(e.target.value)} placeholder="05XXXXXXXX" dir="ltr" className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500/50" /></div>
-                <button onClick={() => { setShowNewClient(false); setNewClientName(''); setNewClientMobile(''); }} className="text-xs text-zinc-500 hover:text-zinc-300">← العودة للبحث</button>
+                <div><label className="text-xs text-muted-foreground mb-1 block">الاسم *</label>
+                  <input value={newClientName} onChange={e => setNewClientName(e.target.value)} placeholder="الاسم الكامل" className="w-full bg-card border border-border rounded-xl px-4 py-2.5 text-sm text-foreground focus:outline-none focus:border-ring focus-visible:ring-2 focus-visible:ring-ring" /></div>
+                <div><label className="text-xs text-muted-foreground mb-1 block">الجوال</label>
+                  <input value={newClientMobile} onChange={e => setNewClientMobile(e.target.value)} placeholder="05XXXXXXXX" dir="ltr" className="w-full bg-card border border-border rounded-xl px-4 py-2.5 text-sm text-foreground focus:outline-none focus:border-ring focus-visible:ring-2 focus-visible:ring-ring" /></div>
+                <button onClick={() => { setShowNewClient(false); setNewClientName(''); setNewClientMobile(''); }} className="text-xs text-muted-foreground hover:text-foreground">← العودة للبحث</button>
               </div>
             )}
           </Section>
 
           {/* Date & Time */}
           <Section title="التاريخ والوقت" icon={<CalendarDays size={14} />}>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <div className="col-span-1">
-                <label className="text-xs text-zinc-400 mb-1 block">التاريخ *</label>
-                <input type="date" value={bookingDate} onChange={e => setBookingDate(e.target.value)} className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500/50" />
+                <label className="text-xs text-muted-foreground mb-1 block">التاريخ *</label>
+                <input type="date" value={bookingDate} onChange={e => setBookingDate(e.target.value)} className="w-full bg-card border border-border rounded-xl px-3 py-2.5 text-sm text-foreground focus:outline-none focus:border-ring focus-visible:ring-2 focus-visible:ring-ring" />
               </div>
               <div>
-                <label className="text-xs text-zinc-400 mb-1 block">وقت البداية *</label>
-                <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500/50" />
+                <label className="text-xs text-muted-foreground mb-1 block">وقت البداية *</label>
+                <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} className="w-full bg-card border border-border rounded-xl px-3 py-2.5 text-sm text-foreground focus:outline-none focus:border-ring focus-visible:ring-2 focus-visible:ring-ring" />
               </div>
               <div>
-                <label className="text-xs text-zinc-400 mb-1 block">وقت النهاية</label>
-                <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500/50" />
+                <label className="text-xs text-muted-foreground mb-1 block">وقت النهاية</label>
+                <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} className="w-full bg-card border border-border rounded-xl px-3 py-2.5 text-sm text-foreground focus:outline-none focus:border-ring focus-visible:ring-2 focus-visible:ring-ring" />
               </div>
             </div>
             {conflictWarning && (
-              <div className="mt-2 flex items-center gap-2 p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs">
+              <div className="mt-2 flex items-center gap-2 p-2.5 rounded-xl bg-warning-soft border border-warning/30 text-warning text-xs">
                 <AlertCircle size={13} />{conflictWarning}
               </div>
             )}
@@ -313,16 +313,16 @@ export default function NewBookingPage() {
             <div className="grid grid-cols-2 gap-2">
               <button onClick={() => setSelectedBarber(null)}
                 className="flex items-center gap-2 p-3 rounded-xl border text-right transition-all"
-                style={!selectedBarber ? { borderColor: 'rgba(214,168,79,0.5)', background: 'rgba(214,168,79,0.1)', color: '#D6A84F' } : { borderColor: '#2A2A35', background: 'transparent', color: '#9CA3AF' }}>
-                <div className="w-8 h-8 rounded-full bg-zinc-800 flex items-center justify-center text-xs">—</div>
+                style={!selectedBarber ? { borderColor: 'color-mix(in srgb, var(--primary) 50%, transparent)', background: 'color-mix(in srgb, var(--primary) 10%, transparent)', color: 'var(--primary)' } : { borderColor: 'var(--border)', background: 'transparent', color: 'var(--muted-foreground)' }}>
+                <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-xs">—</div>
                 <span className="text-sm font-medium">أي حلاق</span>
               </button>
               {barbers.map(b => (
                 <button key={b.EmpID} onClick={() => setSelectedBarber(b)}
                   className="flex items-center gap-2 p-3 rounded-xl border text-right transition-all"
-                  style={selectedBarber?.EmpID === b.EmpID ? { borderColor: 'rgba(214,168,79,0.5)', background: 'rgba(214,168,79,0.1)', color: '#D6A84F' } : { borderColor: '#2A2A35', background: 'transparent', color: '#D1D5DB' }}>
+                  style={selectedBarber?.EmpID === b.EmpID ? { borderColor: 'color-mix(in srgb, var(--primary) 50%, transparent)', background: 'color-mix(in srgb, var(--primary) 10%, transparent)', color: 'var(--primary)' } : { borderColor: 'var(--border)', background: 'transparent', color: 'var(--foreground)' }}>
                   <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
-                    style={{ background: selectedBarber?.EmpID === b.EmpID ? 'linear-gradient(135deg,#D6A84F,#B8923A)' : '#2A2A35', color: selectedBarber?.EmpID === b.EmpID ? '#000' : '#fff' }}>
+                    style={{ background: selectedBarber?.EmpID === b.EmpID ? 'var(--primary)' : 'var(--border)', color: selectedBarber?.EmpID === b.EmpID ? 'var(--primary-foreground)' : 'var(--foreground)' }}>
                     {b.EmpName.charAt(0)}
                   </div>
                   <span className="text-sm font-medium truncate">{b.EmpName}</span>
@@ -339,16 +339,16 @@ export default function NewBookingPage() {
                 return (
                   <button key={svc.ProID} onClick={() => handleSvcToggle(svc)}
                     className="w-full flex items-center gap-3 p-3 rounded-xl border text-right transition-all"
-                    style={sel ? { borderColor: 'rgba(139,92,246,0.4)', background: 'rgba(139,92,246,0.1)' } : { borderColor: '#2A2A35', background: 'rgba(255,255,255,0.02)' }}>
+                    style={sel ? { borderColor: 'color-mix(in srgb, var(--brand) 40%, transparent)', background: 'color-mix(in srgb, var(--brand) 10%, transparent)' } : { borderColor: 'var(--border)', background: 'var(--surface-muted)' }}>
                     <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0"
-                      style={{ background: sel ? 'rgba(139,92,246,0.2)' : '#2A2A35' }}>
-                      {sel ? <CheckCircle2 size={14} className="text-purple-400" /> : <Scissors size={13} className="text-zinc-500" />}
+                      style={{ background: sel ? 'color-mix(in srgb, var(--brand) 20%, transparent)' : 'var(--border)' }}>
+                      {sel ? <CheckCircle2 size={14} className="text-brand" /> : <Scissors size={13} className="text-muted-foreground" />}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-white truncate">{svc.ProName}</p>
+                      <p className="text-sm font-medium text-foreground truncate">{svc.ProName}</p>
                       <div className="flex items-center gap-2">
-                        <span className="text-xs text-amber-400 font-semibold">{svc.SPrice} ر.س</span>
-                        {svc.DurationMinutes && <span className="text-xs text-zinc-500 flex items-center gap-1"><Clock size={9} />{svc.DurationMinutes}د</span>}
+                        <span className="text-xs text-warning font-semibold">{svc.SPrice} ر.س</span>
+                        {svc.DurationMinutes && <span className="text-xs text-muted-foreground flex items-center gap-1"><Clock size={9} />{svc.DurationMinutes}د</span>}
                       </div>
                     </div>
                   </button>
@@ -356,9 +356,9 @@ export default function NewBookingPage() {
               })}
             </div>
             {selectedServices.length > 0 && (
-              <div className="mt-3 p-3 rounded-xl bg-zinc-900 border border-zinc-800 flex justify-between items-center">
-                <span className="text-xs text-zinc-400">{selectedServices.length} خدمة</span>
-                <span className="text-sm font-bold text-amber-400">{totalPrice} ر.س</span>
+              <div className="mt-3 p-3 rounded-xl bg-card border border-border flex justify-between items-center">
+                <span className="text-xs text-muted-foreground">{selectedServices.length} خدمة</span>
+                <span className="text-sm font-bold text-warning">{totalPrice} ر.س</span>
               </div>
             )}
           </Section>
@@ -367,21 +367,21 @@ export default function NewBookingPage() {
           <Section title="إضافي" icon={<CalendarDays size={14} />}>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs text-zinc-400 mb-1 block">مصدر الحجز</label>
-                <select value={source} onChange={e => setSource(e.target.value)} className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500/50">
+                <label className="text-xs text-muted-foreground mb-1 block">مصدر الحجز</label>
+                <select value={source} onChange={e => setSource(e.target.value)} className="w-full bg-card border border-border rounded-xl px-3 py-2.5 text-sm text-foreground focus:outline-none focus:border-ring focus-visible:ring-2 focus-visible:ring-ring">
                   {SOURCE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               </div>
             </div>
             <div className="mt-3">
-              <label className="text-xs text-zinc-400 mb-1 block">ملاحظات</label>
+              <label className="text-xs text-muted-foreground mb-1 block">ملاحظات</label>
               <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} placeholder="أي ملاحظات إضافية..."
-                className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-zinc-600 focus:outline-none resize-none" />
+                className="w-full bg-card border border-border rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none resize-none" />
             </div>
           </Section>
 
           {error && (
-            <div className="flex items-center gap-2 p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
+            <div className="flex items-center gap-2 p-3 rounded-xl bg-destructive-soft border border-destructive/30 text-destructive text-sm">
               <AlertCircle size={14} />{error}
             </div>
           )}
@@ -390,7 +390,7 @@ export default function NewBookingPage() {
             onClick={handleSubmit}
             disabled={!canSubmit || submitting}
             className="w-full py-3 rounded-xl text-sm font-bold transition-all disabled:opacity-40 flex items-center justify-center gap-2"
-            style={{ background: canSubmit ? 'linear-gradient(135deg,#D6A84F,#B8923A)' : '#2A2A35', color: canSubmit ? '#000' : '#6B7280' }}
+            style={{ background: canSubmit ? 'var(--primary)' : 'var(--border)', color: canSubmit ? 'var(--primary-foreground)' : 'var(--muted-foreground)' }}
           >
             {submitting ? <><Loader2 size={16} className="animate-spin" /> جاري الحفظ...</> : <><CalendarDays size={16} /> حفظ الحجز</>}
           </button>
@@ -402,10 +402,10 @@ export default function NewBookingPage() {
 
 function Section({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) {
   return (
-    <div className="rounded-2xl border p-5" style={{ background: '#141418', borderColor: '#2A2A35' }}>
+    <div className="rounded-2xl border p-5" style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
       <div className="flex items-center gap-2 mb-4">
-        <div className="text-amber-400">{icon}</div>
-        <h3 className="text-sm font-bold text-white">{title}</h3>
+        <div className="text-warning">{icon}</div>
+        <h3 className="text-sm font-bold text-foreground">{title}</h3>
       </div>
       {children}
     </div>

@@ -157,12 +157,12 @@ export default function CategoriesPage() {
   const inactiveCount = allOfTab.filter(c => !c.IsActive).length;
 
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-6" dir="rtl">
+    <div className="min-w-0 p-3 sm:p-6 max-w-5xl mx-auto space-y-6" dir="rtl">
       <PageHeader
         title="تصنيفات الإيرادات والمصروفات"
         description="إدارة فئات TblExpINCat — المصروفات والإيرادات"
       >
-        <Button className="gap-2 bg-amber-600 hover:bg-amber-700" onClick={openCreate}>
+        <Button className="gap-2 bg-primary hover:bg-primary/85 text-primary-foreground" onClick={openCreate}>
           <Plus className="w-4 h-4" />
           تصنيف جديد
         </Button>
@@ -175,8 +175,8 @@ export default function CategoriesPage() {
             onClick={() => setTab('مصروفات')}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border transition-colors
               ${tab === 'مصروفات'
-                ? 'bg-rose-600/20 border-rose-500/50 text-rose-300'
-                : 'border-zinc-700 text-zinc-400 hover:border-zinc-600'}`}
+                ? 'bg-destructive-soft border-destructive/50 text-destructive'
+                : 'border-border text-muted-foreground hover:border-border'}`}
           >
             <TrendingDown className="w-4 h-4" />
             مصروفات ({expenseCount})
@@ -185,8 +185,8 @@ export default function CategoriesPage() {
             onClick={() => setTab('ايرادات')}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border transition-colors
               ${tab === 'ايرادات'
-                ? 'bg-emerald-600/20 border-emerald-500/50 text-emerald-300'
-                : 'border-zinc-700 text-zinc-400 hover:border-zinc-600'}`}
+                ? 'bg-success-soft border-success/50 text-success'
+                : 'border-border text-muted-foreground hover:border-border'}`}
           >
             <TrendingUp className="w-4 h-4" />
             إيرادات ({incomeCount})
@@ -195,18 +195,18 @@ export default function CategoriesPage() {
 
         {/* Status filter */}
         <div className="flex items-center gap-1.5 text-xs">
-          <Filter className="w-3.5 h-3.5 text-zinc-500" />
+          <Filter className="w-3.5 h-3.5 text-muted-foreground" />
           {(['all', 'active', 'inactive'] as const).map(f => (
             <button key={f}
               onClick={() => setStatusFilter(f)}
               className={`px-3 py-1.5 rounded-lg border transition-colors font-medium ${
                 statusFilter === f
                   ? f === 'active'
-                    ? 'bg-emerald-600/20 border-emerald-500/40 text-emerald-400'
+                    ? 'bg-success-soft border-success/40 text-success'
                     : f === 'inactive'
-                      ? 'bg-zinc-700/60 border-zinc-600 text-zinc-300'
-                      : 'bg-zinc-700/60 border-zinc-600 text-zinc-300'
-                  : 'border-zinc-800 text-zinc-500 hover:border-zinc-700'
+                      ? 'bg-muted border-border text-foreground'
+                      : 'bg-muted border-border text-foreground'
+                  : 'border-border text-muted-foreground hover:border-border'
               }`}
             >
               {f === 'all' ? `الكل (${allOfTab.length})` : f === 'active' ? `نشط (${activeCount})` : `متوقف (${inactiveCount})`}
@@ -216,7 +216,7 @@ export default function CategoriesPage() {
       </div>
 
       {error && (
-        <div className="flex items-center gap-3 p-3 rounded-lg border border-rose-500/30 bg-rose-500/5 text-rose-400 text-sm">
+        <div className="flex items-center gap-3 p-3 rounded-lg border border-destructive/30 bg-destructive-soft text-destructive text-sm">
           <X className="w-4 h-4 shrink-0" />
           {error}
           <button onClick={() => setError('')} className="mr-auto opacity-60 hover:opacity-100">×</button>
@@ -224,15 +224,15 @@ export default function CategoriesPage() {
       )}
 
       {loading ? (
-        <div className="flex items-center justify-center py-16 text-zinc-500 gap-3">
+        <div className="flex items-center justify-center py-16 text-muted-foreground gap-3">
           <Loader2 className="w-6 h-6 animate-spin" />
           جاري التحميل...
         </div>
       ) : displayed.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 text-zinc-600">
+        <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
           <Tags className="w-10 h-10 mb-3 opacity-30" />
           <p className="text-sm">لا توجد فئات {tab} بعد</p>
-          <Button size="sm" className="mt-4 bg-amber-600 hover:bg-amber-700" onClick={openCreate}>
+          <Button size="sm" className="mt-4 bg-primary hover:bg-primary/85 text-primary-foreground" onClick={openCreate}>
             <Plus className="w-4 h-4 ml-1" />
             إضافة فئة
           </Button>
@@ -245,17 +245,17 @@ export default function CategoriesPage() {
               <div key={cat.ExpINID}
                 className={`flex flex-col gap-2 rounded-xl px-4 py-3 border transition-colors ${
                   isActive
-                    ? 'bg-zinc-900/60 border-zinc-800 hover:border-zinc-700'
-                    : 'bg-zinc-950/40 border-zinc-800/50 opacity-60 hover:opacity-80'
+                    ? 'bg-card border-border hover:border-border'
+                    : 'bg-background border-border opacity-60 hover:opacity-80'
                 }`}>
                 {/* Top row: name + id */}
                 <div className="flex items-center gap-3 min-w-0">
-                  <Tags className={`w-4 h-4 shrink-0 ${ isActive ? 'text-zinc-500' : 'text-zinc-600' }`} />
-                  <span className="text-sm font-medium text-white truncate flex-1">{cat.CatName}</span>
+                  <Tags className={`w-4 h-4 shrink-0 ${ isActive ? 'text-muted-foreground' : 'text-muted-foreground' }`} />
+                  <span className="text-sm font-medium text-foreground truncate flex-1">{cat.CatName}</span>
                   <Badge variant="outline" className={`text-[10px] shrink-0 ${
                     cat.ExpINType === TYPE_EXPENSE
-                      ? 'border-rose-500/40 text-rose-400'
-                      : 'border-emerald-500/40 text-emerald-400'
+                      ? 'border-destructive/40 text-destructive'
+                      : 'border-success/40 text-success'
                   }`}>
                     #{cat.ExpINID}
                   </Badge>
@@ -266,10 +266,10 @@ export default function CategoriesPage() {
                   {/* Status badge */}
                   <span className={`inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full border ${
                     isActive
-                      ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
-                      : 'bg-zinc-700/30 border-zinc-700 text-zinc-500'
+                      ? 'bg-success-soft border-success/30 text-success'
+                      : 'bg-muted border-border text-muted-foreground'
                   }`}>
-                    <span className={`w-1.5 h-1.5 rounded-full ${ isActive ? 'bg-emerald-400' : 'bg-zinc-600' }`} />
+                    <span className={`w-1.5 h-1.5 rounded-full ${ isActive ? 'bg-success' : 'bg-muted-foreground/40' }`} />
                     {isActive ? 'نشط' : 'متوقف'}
                   </span>
 
@@ -280,8 +280,8 @@ export default function CategoriesPage() {
                       variant="ghost" size="sm"
                       className={`h-7 px-2 text-xs gap-1 ${
                         isActive
-                          ? 'text-zinc-400 hover:text-amber-400 hover:bg-amber-400/10'
-                          : 'text-zinc-500 hover:text-emerald-400 hover:bg-emerald-400/10'
+                          ? 'text-muted-foreground hover:text-warning hover:bg-warning-soft'
+                          : 'text-muted-foreground hover:text-success hover:bg-success-soft'
                       }`}
                       onClick={() => handleToggleStatus(cat)}
                       disabled={toggling === cat.ExpINID}
@@ -294,11 +294,11 @@ export default function CategoriesPage() {
                           : <><ToggleLeft  className="w-3.5 h-3.5" /><span>تفعيل</span></>
                       }
                     </Button>
-                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-zinc-400 hover:text-amber-400"
+                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground hover:text-warning"
                       onClick={() => openEdit(cat)}>
                       <Edit2 className="w-3.5 h-3.5" />
                     </Button>
-                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-zinc-400 hover:text-rose-400"
+                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
                       onClick={() => handleDelete(cat)}
                       disabled={deleting === cat.ExpINID}>
                       {deleting === cat.ExpINID
@@ -316,47 +316,47 @@ export default function CategoriesPage() {
 
       {/* Create / Edit Modal */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent className="bg-zinc-900 border-zinc-700 text-white max-w-sm" dir="rtl">
+        <DialogContent className="bg-card border-border text-foreground max-w-sm" dir="rtl">
           <DialogHeader>
             <DialogTitle>{editing ? 'تعديل الفئة' : 'فئة جديدة'}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 pt-2">
             <div>
-              <Label htmlFor="catName" className="text-zinc-300">اسم الفئة *</Label>
+              <Label htmlFor="catName" className="text-foreground">اسم الفئة *</Label>
               <Input
                 id="catName"
                 value={formName}
                 onChange={e => { setFormName(e.target.value); setModalError(''); }}
-                className="bg-zinc-800 border-zinc-700 text-white mt-1"
+                className="bg-muted border-border text-foreground mt-1"
                 placeholder="مثال: إيجار، كهرباء، مرتبات..."
                 autoFocus
               />
             </div>
             <div>
-              <Label htmlFor="catType" className="text-zinc-300">النوع *</Label>
+              <Label htmlFor="catType" className="text-foreground">النوع *</Label>
               <Select value={formType} onValueChange={setFormType}>
-                <SelectTrigger className="bg-zinc-800 border-zinc-700 text-white mt-1">
+                <SelectTrigger className="bg-muted border-border text-foreground mt-1">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="bg-zinc-800 border-zinc-700">
-                  <SelectItem value={TYPE_EXPENSE} className="text-rose-300">مصروفات</SelectItem>
-                  <SelectItem value={TYPE_INCOME}  className="text-emerald-300">ايرادات</SelectItem>
+                <SelectContent className="bg-muted border-border">
+                  <SelectItem value={TYPE_EXPENSE} className="text-destructive">مصروفات</SelectItem>
+                  <SelectItem value={TYPE_INCOME}  className="text-success">ايرادات</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
             {modalError && (
-              <p className="text-sm text-rose-400 flex items-center gap-1">
+              <p className="text-sm text-destructive flex items-center gap-1">
                 <X className="w-3.5 h-3.5" />{modalError}
               </p>
             )}
           </div>
           <div className="flex justify-end gap-2 pt-4">
-            <Button variant="outline" className="border-zinc-700" onClick={() => setModalOpen(false)} disabled={saving}>
+            <Button variant="outline" className="border-border" onClick={() => setModalOpen(false)} disabled={saving}>
               إلغاء
             </Button>
             <Button
-              className={editing ? 'bg-amber-600 hover:bg-amber-700' : 'bg-emerald-600 hover:bg-emerald-700'}
+              className={editing ? 'bg-primary hover:bg-primary/85 text-primary-foreground' : 'bg-success hover:bg-success/85 text-success-foreground'}
               onClick={handleSave}
               disabled={saving}
             >

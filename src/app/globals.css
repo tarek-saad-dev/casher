@@ -1,62 +1,106 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+/* Temporary light-mode compatibility for legacy dark-era classes (generated). */
+@import "./legacy-dark-bridge.css";
 @custom-variant dark (&:is(.dark *));
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * DRVO Light V1 design system (ADR-022/023/024/025/041)
+ *
+ * Colour VALUES live only in src/lib/theme.ts and are injected on :root by
+ * ThemeInit (first paint) and ThemeProvider (runtime). This file maps them to
+ * Tailwind utilities and defines non-colour foundations.
+ *
+ *   Plum  → bg-brand / text-brand / bg-brand-soft     (identity, navigation)
+ *   Teal  → bg-primary / text-primary / bg-primary-soft (primary actions)
+ *   Status → success | warning | destructive | info (+ -soft tints)
+ *            Always paired with text/icon — never colour alone.
+ *
+ * Do NOT use raw palette classes (zinc-*, amber-*, white …) in new code;
+ * Legacy colour ratchet will be re-baselined against current main separately.
+ * ──────────────────────────────────────────────────────────────────────────── */
+
 @theme inline {
+  /* Typography — single central source (Cairo for now; ADR-026 swaps here). */
+  --font-sans: var(--font-cairo), "Cairo", system-ui, sans-serif;
+  --font-heading: var(--font-cairo), "Cairo", system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* Surfaces & text */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-surface: var(--surface);
   --color-surface-muted: var(--surface-muted);
   --color-surface-elevated: var(--surface-elevated);
-  --font-sans: var(--font-cairo), "Cairo", system-ui, sans-serif;
-  --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-cairo), "Cairo", system-ui, sans-serif;
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* Brand (Plum) */
+  --color-brand: var(--brand);
+  --color-brand-deep: var(--brand-deep);
+  --color-brand-foreground: var(--brand-foreground);
+  --color-brand-soft: var(--brand-soft);
+
+  /* Primary action (Teal) */
+  --color-primary: var(--primary);
   --color-primary-hover: var(--primary-hover);
   --color-primary-active: var(--primary-active);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-soft: var(--primary-soft);
+  --color-secondary: var(--secondary);
+  --color-secondary-hover: var(--secondary-hover);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+
+  /* Semantic status */
   --color-success: var(--success);
   --color-success-foreground: var(--success-foreground);
+  --color-success-soft: var(--success-soft);
   --color-warning: var(--warning);
   --color-warning-foreground: var(--warning-foreground);
+  --color-warning-soft: var(--warning-soft);
+  --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
+  --color-destructive-soft: var(--destructive-soft);
   --color-info: var(--info);
   --color-info-foreground: var(--info-foreground);
+  --color-info-soft: var(--info-soft);
+
+  /* App shell */
   --color-topbar-background: var(--topbar-background);
   --color-topbar-foreground: var(--topbar-foreground);
   --color-topbar-border: var(--topbar-border);
+  --color-sidebar: var(--sidebar-background);
   --color-sidebar-background: var(--sidebar-background);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-hover: var(--sidebar-hover);
   --color-sidebar-active: var(--sidebar-active);
   --color-sidebar-active-foreground: var(--sidebar-active-foreground);
-  --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar: var(--sidebar);
-  --color-chart-5: var(--chart-5);
-  --color-chart-4: var(--chart-4);
-  --color-chart-3: var(--chart-3);
-  --color-chart-2: var(--chart-2);
+  --color-sidebar-accent: var(--sidebar-active);
+  --color-sidebar-accent-foreground: var(--sidebar-active-foreground);
+  --color-sidebar-primary: var(--brand);
+  --color-sidebar-primary-foreground: var(--brand-foreground);
+  --color-sidebar-ring: var(--ring);
+
+  /* Charts */
   --color-chart-1: var(--chart-1);
-  --color-ring: var(--ring);
-  --color-input: var(--input);
-  --color-border: var(--border);
-  --color-destructive: var(--destructive);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-accent: var(--accent);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-muted: var(--muted);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-secondary: var(--secondary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-primary: var(--primary);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-popover: var(--popover);
-  --color-card-foreground: var(--card-foreground);
-  --color-card: var(--card);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-chart-6: var(--chart-6);
+
+  /* Radius 6 / 8 / 10 / 14 px */
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -64,146 +108,93 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+
+  /* Elevation — restrained, no glow */
+  --shadow-xs: 0 1px 2px rgb(39 36 43 / 0.05);
+  --shadow-sm: 0 1px 3px rgb(39 36 43 / 0.08), 0 1px 2px rgb(39 36 43 / 0.04);
+  --shadow-md: 0 4px 12px rgb(39 36 43 / 0.08), 0 1px 3px rgb(39 36 43 / 0.05);
+  --shadow-lg: 0 12px 32px rgb(39 36 43 / 0.12), 0 2px 6px rgb(39 36 43 / 0.06);
 }
 
+/* Non-colour foundations (density tokens are candidates — ADR-023, not final). */
 :root {
-  --app-sidebar-width: 215px;
-  --app-sidebar-width-collapsed: 60px;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
   --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
-}
-
-.dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --app-topbar-height: 56px;
+  --app-sidebar-width: 240px;
+  --app-sidebar-width-collapsed: 64px;
+  --control-h-sm: 32px;
+  --control-h: 40px;
+  --control-h-lg: 48px;
+  --row-h-compact: 36px;
+  --row-h-comfortable: 44px;
 }
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
-  body {
-    @apply bg-background text-foreground;
-  }
   html {
     @apply font-sans;
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "kern";
+    text-rendering: optimizeLegibility;
+  }
+  ::selection {
+    background: color-mix(in oklab, var(--primary) 22%, transparent);
+  }
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
   }
 }
 
-/* ───────────────────────── Luxury Scrollbar ───────────────────────── */
-
-/* Thin stylish scrollbar for horizontal scrolling */
-
-.scrollbar-luxury {
-  scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--primary) 55%, transparent) color-mix(in srgb, var(--muted) 35%, transparent);
+/* Money, IDs, phones: tabular figures + bidi isolation (never reverse digits). */
+@utility num {
+  font-variant-numeric: tabular-nums;
+  unicode-bidi: isolate;
+}
+@utility ltr-isolate {
+  direction: ltr;
+  unicode-bidi: isolate;
 }
 
-.scrollbar-luxury::-webkit-scrollbar {
-  height: 6px;
-}
+/* ───────────────────────── Scrollbars ───────────────────────── */
+/* Class names kept for compatibility; styling is now quiet and neutral. */
 
-.scrollbar-luxury::-webkit-scrollbar-track {
-  background: color-mix(in srgb, var(--muted) 45%, transparent);
-  border-radius: 100px;
-  margin-inline: 6px;
-}
-
-.scrollbar-luxury::-webkit-scrollbar-thumb {
-  background: linear-gradient(90deg, var(--primary) 0%, var(--primary-hover) 100%);
-  border-radius: 100px;
-  box-shadow: 0 0 10px color-mix(in srgb, var(--primary) 35%, transparent);
-}
-
-.scrollbar-luxury::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(90deg, var(--primary-hover) 0%, var(--primary-active) 100%);
-  box-shadow: 0 0 15px color-mix(in srgb, var(--primary) 50%, transparent);
-}
-
-/* Vertical scrollbar variant */
-
+.scrollbar-luxury,
 .scrollbar-luxury-v {
   scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--primary) 13%, transparent) transparent;
+  scrollbar-color: color-mix(in oklab, var(--muted-foreground) 35%, transparent) transparent;
 }
 
-.scrollbar-luxury-v::-webkit-scrollbar {
-  width: 4px;
-}
+.scrollbar-luxury::-webkit-scrollbar { height: 6px; }
+.scrollbar-luxury-v::-webkit-scrollbar { width: 6px; }
 
+.scrollbar-luxury::-webkit-scrollbar-track,
 .scrollbar-luxury-v::-webkit-scrollbar-track {
   background: transparent;
-  border-radius: 100px;
 }
 
+.scrollbar-luxury::-webkit-scrollbar-thumb,
 .scrollbar-luxury-v::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, var(--primary) 0%, var(--primary-hover) 100%);
+  background: color-mix(in oklab, var(--muted-foreground) 35%, transparent);
   border-radius: 100px;
-  box-shadow: 0 0 10px color-mix(in srgb, var(--primary) 30%, transparent);
 }
 
+.scrollbar-luxury::-webkit-scrollbar-thumb:hover,
 .scrollbar-luxury-v::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(180deg, var(--primary-hover) 0%, var(--primary-active) 100%);
-  box-shadow: 0 0 15px color-mix(in srgb, var(--primary) 50%, transparent);
+  background: color-mix(in oklab, var(--muted-foreground) 55%, transparent);
 }
 
 /* Hide scrollbar while keeping scroll (mobile horizontal rows) */
@@ -221,3 +212,4 @@
   min-width: 0;
   overflow-x: hidden;
 }
+

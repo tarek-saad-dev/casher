@@ -25,11 +25,11 @@ export default function BarberSpinner({ size = 'md', text, className }: BarberSp
   return (
     <div className={cn('flex items-center gap-2', className)}>
       <div className="relative">
-        <Scissors className={cn('text-amber-500 animate-pulse', sizeClasses[size])} />
-        <Loader2 className={cn('absolute inset-0 text-amber-600 animate-spin', sizeClasses[size])} />
+        <Scissors className={cn('text-brand animate-pulse', sizeClasses[size])} />
+        <Loader2 className={cn('absolute inset-0 text-primary animate-spin', sizeClasses[size])} />
       </div>
       {text && (
-        <span className={cn('text-amber-200 font-medium', textSizes[size])}>
+        <span className={cn('text-muted-foreground font-medium', textSizes[size])}>
           {text}
         </span>
       )}

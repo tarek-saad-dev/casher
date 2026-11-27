@@ -222,7 +222,7 @@ export default function ExpenseByCategoryView({
       {/* Delete Single Expense Confirmation */}
       {deletingExpense && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-card border border-border rounded-lg shadow-lg max-w-sm w-full p-6">
+          <div className="bg-card border border-border rounded-lg shadow-lg max-w-sm w-full max-h-[85dvh] overflow-y-auto p-4 sm:p-6">
             <h3 className="text-lg font-semibold mb-3">تأكيد الحذف</h3>
             <p className="text-sm text-muted-foreground mb-4">
               هل أنت متأكد من حذف المصروف رقم <span className="font-bold">#{formatArabicNumber(deletingExpense.invID)}</span>؟
@@ -276,7 +276,7 @@ export default function ExpenseByCategoryView({
       {/* Delete All Category Expenses Confirmation */}
       {deletingCategory && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-card border border-border rounded-lg shadow-lg max-w-md w-full p-6">
+          <div className="bg-card border border-border rounded-lg shadow-lg max-w-md w-full max-h-[85dvh] overflow-y-auto p-4 sm:p-6">
             <div className="flex items-center gap-3 mb-3">
               <AlertTriangle className="h-6 w-6 text-destructive" />
               <h3 className="text-lg font-semibold">تحذير: حذف جماعي</h3>
@@ -360,7 +360,7 @@ export default function ExpenseByCategoryView({
                       <div className="flex items-center gap-2">
                         <span className="font-medium">{category.CatName}</span>
                         {hasUncategorized && (
-                          <span className="text-xs bg-amber-500/20 text-amber-700 px-2 py-0.5 rounded-full border border-amber-500/50">
+                          <span className="text-xs bg-warning-soft text-warning px-2 py-0.5 rounded-full border border-warning/50">
                             ⚠️ يحتاج مراجعة
                           </span>
                         )}
@@ -373,7 +373,7 @@ export default function ExpenseByCategoryView({
                   
                   <div className="flex items-center gap-3">
                     <div className="text-right">
-                      <div className="text-lg font-bold text-red-600">
+                      <div className="text-lg font-bold text-destructive">
                         {formatCurrency(category.TotalAmount)}
                       </div>
                     </div>
@@ -444,7 +444,7 @@ export default function ExpenseByCategoryView({
                           <tr
                             key={transaction.ID}
                             className={`border-b border-border last:border-0 ${
-                              transaction.needsCategorization ? 'bg-amber-500/5' : 'bg-card'
+                              transaction.needsCategorization ? 'bg-warning-soft' : 'bg-card'
                             }`}
                           >
                             <td className="py-2 px-3 text-xs text-muted-foreground">
@@ -456,7 +456,7 @@ export default function ExpenseByCategoryView({
                             <td className="py-2 px-3 text-xs text-muted-foreground">
                               {toArabicDigits(transaction.invTime)}
                             </td>
-                            <td className="py-2 px-3 text-xs font-bold text-red-600">
+                            <td className="py-2 px-3 text-xs font-bold text-destructive">
                               {formatCurrency(transaction.GrandTolal)}
                             </td>
                             <td className="py-2 px-3 text-xs text-muted-foreground">

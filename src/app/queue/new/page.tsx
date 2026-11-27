@@ -259,26 +259,26 @@ export default function NewQueuePage() {
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <>
-    <div className="h-full flex flex-col bg-zinc-950" dir="rtl">
+    <div className="h-full min-h-0 min-w-0 flex flex-col bg-background" dir="rtl">
 
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800 shrink-0">
+      <div className="flex flex-wrap items-center justify-between gap-2 px-3 sm:px-6 py-3 sm:py-4 border-b border-border shrink-0">
         <div className="flex items-center gap-3">
-          <button onClick={() => router.push('/queue/live')} className="p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-500 hover:text-white transition-all">
+          <button onClick={() => router.push('/queue/live')} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-all">
             <ArrowRight size={16} />
           </button>
           <div>
-            <h1 className="text-base font-black text-white">تذكرة انتظار جديدة</h1>
-            <p className="text-xs text-zinc-500">إضافة عميل لقائمة الانتظار</p>
+            <h1 className="text-base font-black text-foreground">تذكرة انتظار جديدة</h1>
+            <p className="text-xs text-muted-foreground">إضافة عميل لقائمة الانتظار</p>
           </div>
         </div>
-        <div className="text-xs text-zinc-500">
-          الرقم التالي: <span className="text-amber-400 font-bold">{settings.QueuePrefix}?</span>
+        <div className="text-xs text-muted-foreground">
+          الرقم التالي: <span className="text-warning font-bold">{settings.QueuePrefix}?</span>
         </div>
       </div>
 
       {/* Form body */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="max-w-lg mx-auto p-6">
 
           {/* Step indicator */}
@@ -289,12 +289,12 @@ export default function NewQueuePage() {
                   <div
                     className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all"
                     style={step > n
-                      ? { background: '#10B981', color: '#fff' }
+                      ? { background: 'var(--success)', color: 'var(--success-foreground)' }
                       : step === n
-                        ? { background: 'linear-gradient(135deg,#D6A84F,#B8923A)', color: '#000' }
-                        : { background: '#2A2A35', color: '#6B7280' }}
+                        ? { background: 'var(--primary)', color: 'var(--primary-foreground)' }
+                        : { background: 'var(--border)', color: 'var(--muted-foreground)' }}
                   >{step > n ? <CheckCircle2 size={14} /> : n}</div>
-                  {n < 3 && <div className="w-8 h-0.5 rounded" style={{ background: step > n ? '#10B981' : '#2A2A35' }} />}
+                  {n < 3 && <div className="w-8 h-0.5 rounded" style={{ background: step > n ? 'var(--success)' : 'var(--border)' }} />}
                 </div>
               ))}
             </div>
@@ -304,44 +304,44 @@ export default function NewQueuePage() {
           {step === 1 && (
             <div className="space-y-4">
               <div>
-                <h2 className="text-base font-bold text-white mb-1">اختيار العميل</h2>
-                <p className="text-xs text-zinc-500">ابحث عن عميل أو أضف عميلاً جديداً</p>
+                <h2 className="text-base font-bold text-foreground mb-1">اختيار العميل</h2>
+                <p className="text-xs text-muted-foreground">ابحث عن عميل أو أضف عميلاً جديداً</p>
               </div>
 
               {!showNewClient ? (
                 <>
                   {/* Search input — stable DOM node, never remounted */}
                   <div className="relative">
-                    <Search size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none" />
+                    <Search size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
                     <input
                       type="text"
                       autoComplete="off"
                       value={clientSearch}
                       onChange={e => setClientSearch(e.target.value)}
                       placeholder="ابحث بالاسم أو الجوال..."
-                      className="w-full bg-zinc-900 border border-zinc-700 rounded-xl pr-9 pl-4 py-2.5 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/50 transition-colors"
+                      className="w-full bg-card border border-border rounded-xl pr-9 pl-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-ring focus-visible:ring-2 focus-visible:ring-ring transition-colors"
                     />
                     {clientLoading && (
-                      <Loader2 size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 animate-spin pointer-events-none" />
+                      <Loader2 size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground animate-spin pointer-events-none" />
                     )}
                   </div>
 
                   {/* Dropdown results — rendered BELOW input, never replaces it */}
                   {clientResults.length > 0 && !selectedClient && (
-                    <div className="border border-zinc-700 rounded-xl overflow-hidden">
+                    <div className="border border-border rounded-xl overflow-hidden">
                       {clientResults.map(c => (
                         <button
                           key={c.ClientID}
                           type="button"
                           onMouseDown={e => { e.preventDefault(); selectClient(c); }}
-                          className="w-full flex items-center gap-3 px-4 py-3 hover:bg-zinc-800 transition-colors text-right border-b border-zinc-800 last:border-0"
+                          className="w-full flex items-center gap-3 px-4 py-3 hover:bg-muted transition-colors text-right border-b border-border last:border-0"
                         >
-                          <div className="w-8 h-8 rounded-full bg-zinc-700 flex items-center justify-center text-xs font-bold text-white shrink-0">
+                          <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-xs font-bold text-foreground shrink-0">
                             {c.ClientName.charAt(0)}
                           </div>
                           <div>
-                            <p className="text-sm font-semibold text-white">{c.ClientName}</p>
-                            {c.ClientMobile && <p className="text-xs text-zinc-500">{c.ClientMobile}</p>}
+                            <p className="text-sm font-semibold text-foreground">{c.ClientName}</p>
+                            {c.ClientMobile && <p className="text-xs text-muted-foreground">{c.ClientMobile}</p>}
                           </div>
                         </button>
                       ))}
@@ -350,20 +350,20 @@ export default function NewQueuePage() {
 
                   {/* Selected client chip */}
                   {selectedClient && (
-                    <div className="flex items-center gap-3 p-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10">
-                      <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
+                    <div className="flex items-center gap-3 p-3 rounded-xl border border-success/30 bg-success-soft">
+                      <CheckCircle2 size={16} className="text-success shrink-0" />
                       <div className="flex-1">
-                        <p className="text-sm font-semibold text-white">{selectedClient.ClientName}</p>
-                        {selectedClient.ClientMobile && <p className="text-xs text-zinc-400">{selectedClient.ClientMobile}</p>}
+                        <p className="text-sm font-semibold text-foreground">{selectedClient.ClientName}</p>
+                        {selectedClient.ClientMobile && <p className="text-xs text-muted-foreground">{selectedClient.ClientMobile}</p>}
                       </div>
-                      <button type="button" onClick={clearClient} className="text-xs text-zinc-500 hover:text-white">تغيير</button>
+                      <button type="button" onClick={clearClient} className="text-xs text-muted-foreground hover:text-foreground">تغيير</button>
                     </div>
                   )}
 
                   <button
                     type="button"
                     onClick={() => setShowNewClient(true)}
-                    className="flex items-center gap-2 text-sm text-amber-400 hover:text-amber-300 transition-colors"
+                    className="flex items-center gap-2 text-sm text-warning hover:text-warning transition-colors"
                   >
                     <UserPlus size={14} /> إضافة عميل جديد
                   </button>
@@ -371,30 +371,30 @@ export default function NewQueuePage() {
               ) : (
                 <div className="space-y-3">
                   <div>
-                    <label className="text-xs text-zinc-400 mb-1 block">اسم العميل *</label>
+                    <label className="text-xs text-muted-foreground mb-1 block">اسم العميل *</label>
                     <input
                       type="text"
                       value={newClientName}
                       onChange={e => setNewClientName(e.target.value)}
                       placeholder="الاسم الكامل"
-                      className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/50 transition-colors"
+                      className="w-full bg-card border border-border rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-ring focus-visible:ring-2 focus-visible:ring-ring transition-colors"
                     />
                   </div>
                   <div>
-                    <label className="text-xs text-zinc-400 mb-1 block">رقم الجوال (اختياري)</label>
+                    <label className="text-xs text-muted-foreground mb-1 block">رقم الجوال (اختياري)</label>
                     <input
                       type="tel"
                       value={newClientMobile}
                       onChange={e => setNewClientMobile(e.target.value)}
                       placeholder="05XXXXXXXX"
                       dir="ltr"
-                      className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/50 transition-colors"
+                      className="w-full bg-card border border-border rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-ring focus-visible:ring-2 focus-visible:ring-ring transition-colors"
                     />
                   </div>
                   <button
                     type="button"
                     onClick={() => { setShowNewClient(false); setNewClientName(''); setNewClientMobile(''); }}
-                    className="text-xs text-zinc-500 hover:text-zinc-300"
+                    className="text-xs text-muted-foreground hover:text-foreground"
                   >← العودة للبحث</button>
                 </div>
               )}
@@ -405,8 +405,8 @@ export default function NewQueuePage() {
           {step === 2 && (
             <div className="space-y-4">
               <div>
-                <h2 className="text-base font-bold text-white mb-1">اختيار الحلاق</h2>
-                <p className="text-xs text-zinc-500">اختر الحلاق أو اترك بدون تحديد</p>
+                <h2 className="text-base font-bold text-foreground mb-1">اختيار الحلاق</h2>
+                <p className="text-xs text-muted-foreground">اختر الحلاق أو اترك بدون تحديد</p>
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <button
@@ -414,10 +414,10 @@ export default function NewQueuePage() {
                   onClick={() => { setSelectedBarber(null); fetchEstimate(undefined); }}
                   className="flex items-center gap-2 p-3 rounded-xl border text-right transition-all"
                   style={!selectedBarber
-                    ? { borderColor: 'rgba(214,168,79,0.5)', background: 'rgba(214,168,79,0.1)', color: '#D6A84F' }
-                    : { borderColor: '#2A2A35', background: 'transparent', color: '#6B7280' }}
+                    ? { borderColor: 'color-mix(in srgb, var(--primary) 50%, transparent)', background: 'color-mix(in srgb, var(--primary) 10%, transparent)', color: 'var(--primary)' }
+                    : { borderColor: 'var(--border)', background: 'transparent', color: 'var(--muted-foreground)' }}
                 >
-                  <div className="w-8 h-8 rounded-full bg-zinc-700 flex items-center justify-center text-xs">—</div>
+                  <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-xs">—</div>
                   <span className="text-sm font-medium">أي حلاق</span>
                 </button>
                 {barbers.map(b => {
@@ -429,18 +429,18 @@ export default function NewQueuePage() {
                       onClick={() => { setSelectedBarber(b); fetchEstimate(b.EmpID); }}
                       className="flex items-center gap-2 p-3 rounded-xl border text-right transition-all relative"
                       style={selectedBarber?.EmpID === b.EmpID
-                        ? { borderColor: 'rgba(214,168,79,0.5)', background: 'rgba(214,168,79,0.1)', color: '#D6A84F' }
+                        ? { borderColor: 'color-mix(in srgb, var(--primary) 50%, transparent)', background: 'color-mix(in srgb, var(--primary) 10%, transparent)', color: 'var(--primary)' }
                         : isAvail
-                          ? { borderColor: '#2A2A35', background: 'transparent', color: '#D1D5DB' }
-                          : { borderColor: 'rgba(239,68,68,0.25)', background: 'rgba(239,68,68,0.05)', color: '#9CA3AF' }}
+                          ? { borderColor: 'var(--border)', background: 'transparent', color: 'var(--foreground)' }
+                          : { borderColor: 'color-mix(in srgb, var(--destructive) 25%, transparent)', background: 'color-mix(in srgb, var(--destructive) 5%, transparent)', color: 'var(--muted-foreground)' }}
                     >
                       <div
                         className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
-                        style={{ background: selectedBarber?.EmpID === b.EmpID ? 'linear-gradient(135deg,#D6A84F,#B8923A)' : '#2A2A35', color: selectedBarber?.EmpID === b.EmpID ? '#000' : '#fff' }}
+                        style={{ background: selectedBarber?.EmpID === b.EmpID ? 'var(--primary)' : 'var(--border)', color: selectedBarber?.EmpID === b.EmpID ? 'var(--primary-foreground)' : 'var(--foreground)' }}
                       >{b.EmpName.charAt(0)}</div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium truncate">{b.EmpName}</p>
-                        <p className="text-[10px] mt-0.5" style={{ color: isAvail ? '#34D399' : '#F87171' }}>
+                        <p className="text-[10px] mt-0.5" style={{ color: isAvail ? 'var(--success)' : 'var(--destructive)' }}>
                           {b.AvailabilityReason ?? 'متاح'}
                         </p>
                       </div>
@@ -455,8 +455,8 @@ export default function NewQueuePage() {
           {step === 3 && (
             <div className="space-y-4">
               <div>
-                <h2 className="text-base font-bold text-white mb-1">الخدمات</h2>
-                <p className="text-xs text-zinc-500">اختر الخدمات المطلوبة</p>
+                <h2 className="text-base font-bold text-foreground mb-1">الخدمات</h2>
+                <p className="text-xs text-muted-foreground">اختر الخدمات المطلوبة</p>
               </div>
               <div className="space-y-2 max-h-72 overflow-y-auto scrollbar-luxury-v">
                 {services.map(svc => {
@@ -468,21 +468,21 @@ export default function NewQueuePage() {
                       onClick={() => handleServiceToggle(svc)}
                       className="w-full flex items-center gap-3 p-3 rounded-xl border text-right transition-all"
                       style={sel
-                        ? { borderColor: 'rgba(139,92,246,0.4)', background: 'rgba(139,92,246,0.1)' }
-                        : { borderColor: '#2A2A35', background: 'rgba(255,255,255,0.02)' }}
+                        ? { borderColor: 'color-mix(in srgb, var(--brand) 40%, transparent)', background: 'color-mix(in srgb, var(--brand) 10%, transparent)' }
+                        : { borderColor: 'var(--border)', background: 'var(--surface-muted)' }}
                     >
                       <div
                         className="w-8 h-8 rounded-full flex items-center justify-center shrink-0"
-                        style={{ background: sel ? 'rgba(139,92,246,0.2)' : '#2A2A35' }}
+                        style={{ background: sel ? 'color-mix(in srgb, var(--brand) 20%, transparent)' : 'var(--border)' }}
                       >
-                        {sel ? <CheckCircle2 size={14} className="text-purple-400" /> : <Scissors size={14} className="text-zinc-500" />}
+                        {sel ? <CheckCircle2 size={14} className="text-brand" /> : <Scissors size={14} className="text-muted-foreground" />}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-white truncate">{svc.ProName}</p>
+                        <p className="text-sm font-medium text-foreground truncate">{svc.ProName}</p>
                         <div className="flex items-center gap-2 mt-0.5">
-                          <span className="text-xs text-amber-400 font-semibold">{svc.SPrice} ر.س</span>
+                          <span className="text-xs text-warning font-semibold">{svc.SPrice} ر.س</span>
                           {svc.DurationMinutes && (
-                            <span className="text-xs text-zinc-500 flex items-center gap-1">
+                            <span className="text-xs text-muted-foreground flex items-center gap-1">
                               <Clock size={10} />{svc.DurationMinutes} د
                             </span>
                           )}
@@ -493,17 +493,17 @@ export default function NewQueuePage() {
                 })}
               </div>
 
-              <div className="pt-2 border-t border-zinc-800 space-y-3">
+              <div className="pt-2 border-t border-border space-y-3">
                 <label className="flex items-center justify-between cursor-pointer">
-                  <span className="text-sm text-zinc-300 flex items-center gap-1.5">
-                    <Star size={13} className="text-amber-400" /> أولوية عالية
+                  <span className="text-sm text-foreground flex items-center gap-1.5">
+                    <Star size={13} className="text-warning" /> أولوية عالية
                   </span>
                   <div
                     onClick={() => setPriority(p => (p > 0 ? 0 : 1))}
                     className="relative w-10 h-5 rounded-full transition-colors cursor-pointer"
-                    style={{ background: priority > 0 ? '#D6A84F' : '#374151' }}
+                    style={{ background: priority > 0 ? 'var(--primary)' : 'var(--muted)' }}
                   >
-                    <div className="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all" style={{ right: priority > 0 ? 2 : 'auto', left: priority > 0 ? 'auto' : 2 }} />
+                    <div className="absolute top-0.5 w-4 h-4 rounded-full bg-card shadow transition-all" style={{ right: priority > 0 ? 2 : 'auto', left: priority > 0 ? 'auto' : 2 }} />
                   </div>
                 </label>
                 <textarea
@@ -511,15 +511,15 @@ export default function NewQueuePage() {
                   onChange={e => setNotes(e.target.value)}
                   placeholder="ملاحظات (اختياري)"
                   rows={2}
-                  className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/50 resize-none"
+                  className="w-full bg-card border border-border rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-ring focus-visible:ring-2 focus-visible:ring-ring resize-none"
                 />
               </div>
 
               {selectedServices.length > 0 && (
-                <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-3">
+                <div className="rounded-xl bg-card border border-border p-3">
                   <div className="flex items-center justify-between text-xs">
-                    <span className="text-zinc-400">{selectedServices.length} خدمة · {totalDuration} دقيقة تقريباً</span>
-                    <span className="text-amber-400 font-bold text-sm">{totalPrice} ر.س</span>
+                    <span className="text-muted-foreground">{selectedServices.length} خدمة · {totalDuration} دقيقة تقريباً</span>
+                    <span className="text-warning font-bold text-sm">{totalPrice} ر.س</span>
                   </div>
                 </div>
               )}
@@ -529,24 +529,24 @@ export default function NewQueuePage() {
                 <div
                   className="rounded-xl border p-3 space-y-1.5"
                   style={estimateData && !estimateData.ok
-                    ? { borderColor: 'rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.06)' }
-                    : { borderColor: 'rgba(214,168,79,0.3)', background: 'rgba(214,168,79,0.06)' }}
+                    ? { borderColor: 'color-mix(in srgb, var(--destructive) 30%, transparent)', background: 'color-mix(in srgb, var(--destructive) 6%, transparent)' }
+                    : { borderColor: 'color-mix(in srgb, var(--primary) 30%, transparent)', background: 'color-mix(in srgb, var(--primary) 6%, transparent)' }}
                 >
                   {estimating ? (
-                    <div className="flex items-center gap-2 text-xs text-zinc-400">
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
                       <Loader2 size={12} className="animate-spin" /> جاري حساب وقت الانتظار...
                     </div>
                   ) : estimateData ? (
                     <>
                       <div className="flex items-center justify-between">
-                        <span className="text-xs text-zinc-400">عدد المنتظرين قبلك</span>
-                        <span className="text-sm font-bold" style={{ color: '#D6A84F' }}>{estimateData.waitingCount}</span>
+                        <span className="text-xs text-muted-foreground">عدد المنتظرين قبلك</span>
+                        <span className="text-sm font-bold" style={{ color: 'var(--primary)' }}>{estimateData.waitingCount}</span>
                       </div>
                       <div className="flex items-center justify-between">
-                        <span className="text-xs text-zinc-400">انتظار تقريبي</span>
-                        <span className="text-sm font-bold" style={{ color: '#D6A84F' }}>~{estimateData.estimatedWaitMinutes} د</span>
+                        <span className="text-xs text-muted-foreground">انتظار تقريبي</span>
+                        <span className="text-sm font-bold" style={{ color: 'var(--primary)' }}>~{estimateData.estimatedWaitMinutes} د</span>
                       </div>
-                      <div className="text-xs font-semibold mt-1" style={{ color: estimateData.ok ? '#34D399' : '#F87171' }}>
+                      <div className="text-xs font-semibold mt-1" style={{ color: estimateData.ok ? 'var(--success)' : 'var(--destructive)' }}>
                         {estimateData.message}
                       </div>
                     </>
@@ -560,7 +560,7 @@ export default function NewQueuePage() {
 
           {/* Error */}
           {error && (
-            <div className="mt-4 flex items-center gap-2 p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
+            <div className="mt-4 flex items-center gap-2 p-3 rounded-xl bg-destructive-soft border border-destructive/30 text-destructive text-sm">
               <AlertCircle size={15} />{error}
             </div>
           )}
@@ -571,7 +571,7 @@ export default function NewQueuePage() {
               <button
                 type="button"
                 onClick={() => setStep(s => (s - 1) as 1 | 2 | 3)}
-                className="px-4 py-2.5 rounded-xl border border-zinc-700 text-zinc-400 text-sm hover:bg-zinc-800 transition-all"
+                className="px-4 py-2.5 rounded-xl border border-border text-muted-foreground text-sm hover:bg-muted transition-all"
               >السابق</button>
             )}
             {step < 3 ? (
@@ -580,7 +580,7 @@ export default function NewQueuePage() {
                 onClick={() => setStep(s => (s + 1) as 1 | 2 | 3)}
                 disabled={!canGoNext()}
                 className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all disabled:opacity-40"
-                style={{ background: canGoNext() ? 'linear-gradient(135deg,#D6A84F,#B8923A)' : '#2A2A35', color: canGoNext() ? '#000' : '#6B7280' }}
+                style={{ background: canGoNext() ? 'var(--primary)' : 'var(--border)', color: canGoNext() ? 'var(--primary-foreground)' : 'var(--muted-foreground)' }}
               >التالي</button>
             ) : (
               <button
@@ -588,7 +588,7 @@ export default function NewQueuePage() {
                 onClick={handleSubmit}
                 disabled={!canGoNext() || submitting}
                 className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all disabled:opacity-40 flex items-center justify-center gap-2"
-                style={{ background: 'linear-gradient(135deg,#D6A84F,#B8923A)', color: '#000' }}
+                style={{ background: 'var(--primary)', color: 'var(--primary-foreground)' }}
               >
                 {submitting
                   ? <><Loader2 size={15} className="animate-spin" /> جاري الإنشاء...</>

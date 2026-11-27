@@ -83,7 +83,7 @@ export default function ExpenseCategoryBreakdown({
                     {!isTop3 && <span className="text-muted-foreground">{formatArabicNumber(index + 1)}</span>}
                   </td>
                   <td className="py-3 px-2 text-sm font-medium">{category.CatName}</td>
-                  <td className="py-3 px-2 text-sm font-bold text-red-600">
+                  <td className="py-3 px-2 text-sm font-bold text-destructive">
                     {formatCurrency(category.Amount)}
                   </td>
                   <td className="py-3 px-2 text-sm text-muted-foreground">

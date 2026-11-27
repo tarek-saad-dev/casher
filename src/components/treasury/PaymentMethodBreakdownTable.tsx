@@ -33,23 +33,23 @@ export default function PaymentMethodBreakdownTable({
 
   if (loading) {
     return (
-      <div className="bg-gradient-to-br from-zinc-900/90 to-zinc-900/50 backdrop-blur-sm border border-zinc-800/50 rounded-2xl p-5 shadow-xl shadow-black/10">
+      <div className="bg-card border border-border rounded-xl p-3 sm:p-5 shadow-xs">
         <div className="flex items-center gap-3 mb-5">
-          <div className="p-2 bg-amber-500/10 rounded-xl">
-            <Wallet className="h-5 w-5 text-amber-400" />
+          <div className="p-2 bg-warning-soft rounded-xl">
+            <Wallet className="h-5 w-5 text-warning" />
           </div>
-          <h3 className="text-xl font-bold text-white tracking-tight">تفصيل طرق الدفع</h3>
+          <h3 className="text-xl font-bold text-foreground tracking-tight">تفصيل طرق الدفع</h3>
         </div>
         
         <div className="space-y-3">
           {[...Array(3)].map((_, i) => (
-            <div key={i} className="bg-zinc-800/40 border border-zinc-700/30 rounded-xl p-4 animate-pulse">
-              <div className="h-6 bg-zinc-700/30 rounded w-32 mb-3"></div>
+            <div key={i} className="bg-muted border border-border rounded-xl p-4 animate-pulse">
+              <div className="h-6 bg-muted rounded w-32 mb-3"></div>
               <div className="grid grid-cols-4 gap-4">
-                <div className="h-4 bg-zinc-700/30 rounded"></div>
-                <div className="h-4 bg-zinc-700/30 rounded"></div>
-                <div className="h-4 bg-zinc-700/30 rounded"></div>
-                <div className="h-4 bg-zinc-700/30 rounded"></div>
+                <div className="h-4 bg-muted rounded"></div>
+                <div className="h-4 bg-muted rounded"></div>
+                <div className="h-4 bg-muted rounded"></div>
+                <div className="h-4 bg-muted rounded"></div>
               </div>
             </div>
           ))}
@@ -60,14 +60,14 @@ export default function PaymentMethodBreakdownTable({
 
   if (paymentMethods.length === 0) {
     return (
-      <div className="bg-gradient-to-br from-zinc-900/90 to-zinc-900/50 backdrop-blur-sm border border-zinc-800/50 rounded-2xl p-12 shadow-xl shadow-black/10">
+      <div className="bg-card border border-border rounded-2xl p-12 shadow-xs">
         <div className="flex flex-col items-center justify-center gap-4">
-          <div className="p-4 bg-zinc-800/40 rounded-full">
-            <Wallet className="h-12 w-12 text-zinc-600" />
+          <div className="p-4 bg-muted rounded-full">
+            <Wallet className="h-12 w-12 text-muted-foreground" />
           </div>
           <div className="text-center">
-            <h3 className="text-lg font-semibold mb-2 text-white">لا توجد حركات مالية</h3>
-            <p className="text-sm text-zinc-400">
+            <h3 className="text-lg font-semibold mb-2 text-foreground">لا توجد حركات مالية</h3>
+            <p className="text-sm text-muted-foreground">
               لم يتم العثور على حركات مالية للفترة المحددة
             </p>
           </div>
@@ -77,29 +77,29 @@ export default function PaymentMethodBreakdownTable({
   }
 
   return (
-    <div className="bg-gradient-to-br from-zinc-900/90 to-zinc-900/50 backdrop-blur-sm border border-zinc-800/50 rounded-2xl p-5 shadow-xl shadow-black/10">
+    <div className="bg-card border border-border rounded-xl p-3 sm:p-5 shadow-xs">
       <div className="flex items-center gap-3 mb-5">
-        <div className="p-2 bg-amber-500/10 rounded-xl">
-          <Wallet className="h-5 w-5 text-amber-400" />
+        <div className="p-2 bg-warning-soft rounded-xl">
+          <Wallet className="h-5 w-5 text-warning" />
         </div>
-        <h3 className="text-xl font-bold text-white tracking-tight">تفصيل طرق الدفع</h3>
+        <h3 className="text-xl font-bold text-foreground tracking-tight">تفصيل طرق الدفع</h3>
       </div>
 
       <div className="space-y-3">
         {paymentMethods.map((pm) => (
           <div
             key={pm.paymentMethodKey}
-            className="bg-zinc-800/40 border border-zinc-700/30 rounded-xl p-4 hover:border-zinc-700/50 transition-all duration-300"
+            className="bg-muted border border-border rounded-xl p-4 hover:border-border transition-all duration-300"
           >
             {/* Header */}
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
                 <span className="text-2xl">{getPaymentMethodIcon(pm.paymentMethodName)}</span>
                 <div>
-                  <h4 className="text-lg font-bold text-white">{pm.paymentMethodName ?? 'طريقة دفع غير محددة'}</h4>
-                  <p className="text-xs text-zinc-500">{pm.transactionCount} معاملة</p>
+                  <h4 className="text-lg font-bold text-foreground">{pm.paymentMethodName ?? 'طريقة دفع غير محددة'}</h4>
+                  <p className="text-xs text-muted-foreground">{pm.transactionCount} معاملة</p>
                   {(pm.salesInflow > 0 || pm.incomeInflow > 0) && (
-                    <p className="text-xs text-zinc-400 mt-0.5">
+                    <p className="text-xs text-muted-foreground mt-0.5">
                       {pm.salesInflow > 0 && `مبيعات: ${formatCurrency(pm.salesInflow)}`}
                       {pm.salesInflow > 0 && pm.incomeInflow > 0 && ' • '}
                       {pm.incomeInflow > 0 && `إيرادات: ${formatCurrency(pm.incomeInflow)}`}
@@ -112,8 +112,8 @@ export default function PaymentMethodBreakdownTable({
                 {/* Net Badge */}
                 <div className={`px-3 py-1.5 rounded-full border ${
                   pm.net >= 0 
-                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' 
-                    : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                    ? 'bg-success-soft text-success border-success/20' 
+                    : 'bg-destructive-soft text-destructive border-destructive/20'
                 }`}>
                   <span className="text-sm font-bold">{formatCurrency(pm.net)}</span>
                 </div>
@@ -122,7 +122,7 @@ export default function PaymentMethodBreakdownTable({
                 {onViewDetails && (
                   <button
                     onClick={() => onViewDetails(pm.paymentMethodKey, pm.paymentMethodName ?? 'طريقة دفع غير محددة')}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-600/50 bg-zinc-700/40 hover:bg-zinc-700/70 text-zinc-300 hover:text-white text-xs font-medium transition-colors"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-muted hover:bg-muted text-foreground hover:text-foreground text-xs font-medium transition-colors"
                   >
                     <List className="h-3.5 w-3.5" />
                     عرض التفاصيل
@@ -132,18 +132,18 @@ export default function PaymentMethodBreakdownTable({
             </div>
 
             {/* Metrics Grid */}
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 gap-3 min-[480px]:grid-cols-3">
               {/* Inflow */}
-              <div className="bg-emerald-500/5 border border-emerald-500/10 rounded-lg p-3">
+              <div className="bg-success-soft border border-success/10 rounded-lg p-3">
                 <div className="flex items-center gap-1.5 mb-1">
-                  <ArrowUpRight className="h-3.5 w-3.5 text-emerald-400" />
-                  <span className="text-xs text-zinc-400 font-medium">وارد</span>
+                  <ArrowUpRight className="h-3.5 w-3.5 text-success" />
+                  <span className="text-xs text-muted-foreground font-medium">وارد</span>
                 </div>
-                <div className="text-sm font-bold text-emerald-400">
+                <div className="text-sm font-bold text-success">
                   {formatCurrency(pm.inflow)}
                 </div>
                 {(pm.salesInflow > 0 || pm.incomeInflow > 0) && (
-                  <div className="text-[10px] text-zinc-500 mt-1 space-y-0.5">
+                  <div className="text-[10px] text-muted-foreground mt-1 space-y-0.5">
                     {pm.salesInflow > 0 && (
                       <div>مبيعات: {formatCurrency(pm.salesInflow)}</div>
                     )}
@@ -155,23 +155,23 @@ export default function PaymentMethodBreakdownTable({
               </div>
 
               {/* Outflow */}
-              <div className="bg-rose-500/5 border border-rose-500/10 rounded-lg p-3">
+              <div className="bg-destructive-soft border border-destructive/10 rounded-lg p-3">
                 <div className="flex items-center gap-1.5 mb-1">
-                  <ArrowDownRight className="h-3.5 w-3.5 text-rose-400" />
-                  <span className="text-xs text-zinc-400 font-medium">صادر</span>
+                  <ArrowDownRight className="h-3.5 w-3.5 text-destructive" />
+                  <span className="text-xs text-muted-foreground font-medium">صادر</span>
                 </div>
-                <div className="text-sm font-bold text-rose-400">
+                <div className="text-sm font-bold text-destructive">
                   {formatCurrency(pm.outflow)}
                 </div>
               </div>
 
               {/* Percentage */}
-              <div className="bg-zinc-800/60 border border-zinc-700/30 rounded-lg p-3">
+              <div className="bg-muted border border-border rounded-lg p-3">
                 <div className="flex items-center gap-1.5 mb-1">
-                  <TrendingUp className="h-3.5 w-3.5 text-zinc-400" />
-                  <span className="text-xs text-zinc-400 font-medium">النسبة</span>
+                  <TrendingUp className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground font-medium">النسبة</span>
                 </div>
-                <div className="text-sm font-bold text-white">
+                <div className="text-sm font-bold text-foreground">
                   {pm.percentageOfTotal.toFixed(1)}%
                 </div>
               </div>
@@ -180,12 +180,12 @@ export default function PaymentMethodBreakdownTable({
             {/* Progress Bar */}
             {pm.percentageOfTotal > 0 && (
               <div className="mt-3">
-                <div className="relative w-full bg-zinc-800/50 rounded-full h-1.5 overflow-hidden">
+                <div className="relative w-full bg-muted rounded-full h-1.5 overflow-hidden">
                   <div
                     className={`h-full transition-all duration-500 ${
                       pm.net >= 0 
-                        ? 'bg-gradient-to-r from-emerald-500/60 to-green-500/60' 
-                        : 'bg-gradient-to-r from-rose-500/60 to-red-500/60'
+                        ? 'bg-success' 
+                        : 'bg-destructive'
                     }`}
                     style={{ width: `${Math.min(pm.percentageOfTotal, 100)}%` }}
                   />

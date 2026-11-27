@@ -67,11 +67,11 @@ function shortBranchLabel(b: { branchCode: string; branchName: string }): string
 
 /** Row tint + badge per ledger table branch, by index in `tableBranches`. */
 const LEDGER_BRANCH_TONES = [
-  { row: 'bg-sky-950/20', badge: 'border-sky-500/35 bg-sky-500/10 text-sky-300' },
-  { row: 'bg-violet-950/15', badge: 'border-violet-500/35 bg-violet-500/10 text-violet-300' },
-  { row: 'bg-amber-950/15', badge: 'border-amber-500/35 bg-amber-500/10 text-amber-300' },
-  { row: 'bg-emerald-950/15', badge: 'border-emerald-500/35 bg-emerald-500/10 text-emerald-300' },
-  { row: 'bg-rose-950/15', badge: 'border-rose-500/35 bg-rose-500/10 text-rose-300' },
+  { row: 'bg-info-soft', badge: 'border-info/35 bg-info-soft text-info' },
+  { row: 'bg-brand-soft', badge: 'border-brand/35 bg-brand-soft text-brand' },
+  { row: 'bg-warning-soft', badge: 'border-warning/35 bg-warning-soft text-warning' },
+  { row: 'bg-success-soft', badge: 'border-success/35 bg-success-soft text-success' },
+  { row: 'bg-destructive-soft', badge: 'border-destructive/35 bg-destructive-soft text-destructive' },
 ] as const;
 
 function ledgerBranchTone(idx: number) {
@@ -79,9 +79,9 @@ function ledgerBranchTone(idx: number) {
 }
 
 function balanceTone(n: number): string {
-  if (n > 0) return 'text-emerald-400';
-  if (n < 0) return 'text-rose-400';
-  return 'text-zinc-400';
+  if (n > 0) return 'text-success';
+  if (n < 0) return 'text-destructive';
+  return 'text-muted-foreground';
 }
 
 function BranchRowBadge({ branch, idx }: { branch: EmpLedgerTableBranch; idx: number }) {
@@ -100,14 +100,14 @@ function BranchRowBadge({ branch, idx }: { branch: EmpLedgerTableBranch; idx: nu
 function directionBadge(direction: string) {
   if (direction === 'credit') {
     return (
-      <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-400">
+      <span className="inline-flex items-center gap-1 text-xs font-medium text-success">
         <TrendingUp className="w-3 h-3" />
         دائن
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1 text-xs font-medium text-rose-400">
+    <span className="inline-flex items-center gap-1 text-xs font-medium text-destructive">
       <TrendingDown className="w-3 h-3" />
       مدين
     </span>
@@ -133,26 +133,26 @@ function BranchSummaryCard({
         'rounded-xl border p-4 space-y-3',
         highlight
           ? 'border-primary/40 bg-primary/5'
-          : 'border-zinc-800 bg-zinc-900/40',
+          : 'border-border bg-card',
       )}
     >
-      <h4 className="text-sm font-bold text-white">{title}</h4>
+      <h4 className="text-sm font-bold text-foreground">{title}</h4>
       <div className="grid grid-cols-2 gap-2 text-xs">
-        <div className="rounded-lg bg-zinc-950/50 px-2.5 py-2">
-          <p className="text-zinc-500 mb-0.5">إجمالي المستحقات</p>
-          <p className="font-mono text-emerald-400 font-semibold">{fmt(row.accrued)} ج.م</p>
+        <div className="rounded-lg bg-background px-2.5 py-2">
+          <p className="text-muted-foreground mb-0.5">إجمالي المستحقات</p>
+          <p className="font-mono text-success font-semibold">{fmt(row.accrued)} ج.م</p>
         </div>
-        <div className="rounded-lg bg-zinc-950/50 px-2.5 py-2">
-          <p className="text-zinc-500 mb-0.5">المصروف / المدفوع</p>
-          <p className="font-mono text-rose-400 font-semibold">{fmt(row.paid)} ج.م</p>
+        <div className="rounded-lg bg-background px-2.5 py-2">
+          <p className="text-muted-foreground mb-0.5">المصروف / المدفوع</p>
+          <p className="font-mono text-destructive font-semibold">{fmt(row.paid)} ج.م</p>
         </div>
-        <div className="rounded-lg bg-zinc-950/50 px-2.5 py-2">
-          <p className="text-zinc-500 mb-0.5">سلف / خصومات / حركات</p>
-          <p className="font-mono text-amber-300 font-semibold">{fmt(impacting)} ج.م</p>
+        <div className="rounded-lg bg-background px-2.5 py-2">
+          <p className="text-muted-foreground mb-0.5">سلف / خصومات / حركات</p>
+          <p className="font-mono text-warning font-semibold">{fmt(impacting)} ج.م</p>
         </div>
-        <div className="rounded-lg bg-zinc-950/50 px-2.5 py-2">
-          <p className="text-zinc-500 mb-0.5">الرصيد الحالي</p>
-          <p className="font-mono text-amber-400 font-bold">{fmt(row.balance)} ج.م</p>
+        <div className="rounded-lg bg-background px-2.5 py-2">
+          <p className="text-muted-foreground mb-0.5">الرصيد الحالي</p>
+          <p className="font-mono text-warning font-bold">{fmt(row.balance)} ج.م</p>
         </div>
       </div>
     </div>
@@ -467,7 +467,7 @@ export default function EmployeeLedgerPanel() {
             className="w-40 h-9 text-sm bg-surface border-border"
           />
           {isInMonthCloseGraceWindow() ? (
-            <span className="text-[11px] text-amber-400/90 max-w-[220px] leading-snug">
+            <span className="text-[11px] text-warning max-w-[220px] leading-snug">
               حتى {MONTH_CLOSE_GRACE_CUTOFF_HOUR}:00 صباحًا يُحسب اليوم السابق لإقفال الشهر
             </span>
           ) : null}
@@ -560,24 +560,24 @@ export default function EmployeeLedgerPanel() {
       </div>
 
       {successMsg && (
-        <div className="flex items-center gap-2 p-3 rounded-lg border border-emerald-500/30 bg-emerald-500/5 text-emerald-300 text-sm">
+        <div className="flex items-center gap-2 p-3 rounded-lg border border-success/30 bg-success-soft text-success text-sm">
           {successMsg}
         </div>
       )}
 
       {error && (
-        <div className="flex items-center gap-2 p-3 rounded-lg border border-amber-500/30 bg-amber-500/5 text-amber-300 text-sm">
+        <div className="flex items-center gap-2 p-3 rounded-lg border border-warning/30 bg-warning-soft text-warning text-sm">
           <AlertCircle className="w-4 h-4 shrink-0" />
           {error}
         </div>
       )}
 
-      <div className="rounded-lg border border-sky-500/20 bg-sky-500/5 p-4 text-sm text-sky-200/90 space-y-1">
+      <div className="rounded-lg border border-info/20 bg-info-soft p-4 text-sm text-info space-y-1">
         <p>
           مسحوبات الموظف تُصنَّف حسب نوع القيد: أولاً{' '}
-          <span className="text-amber-200">سحب الايراد</span> من تمويل/إيراد الموظف للمحل ·{' '}
-          <span className="text-rose-200">سلفة</span> = سلف الخزنة المسجّلة على الموظف ·{' '}
-          <span className="text-sky-100">صرف</span> = صرف مستحقات فعلي من زر «صرف مستحقات» فقط.
+          <span className="text-warning">سحب الايراد</span> من تمويل/إيراد الموظف للمحل ·{' '}
+          <span className="text-destructive">سلفة</span> = سلف الخزنة المسجّلة على الموظف ·{' '}
+          <span className="text-info">صرف</span> = صرف مستحقات فعلي من زر «صرف مستحقات» فقط.
         </p>
         <p>الرصيد = استحقاقات + تمويل من موظف − سلف − صرف مستحقات − خصومات</p>
         <p>كل حركة تُنسب لفرع القيد الأصلي (BranchID) — ليس فرع التعيين الحالي للموظف.</p>
@@ -586,7 +586,7 @@ export default function EmployeeLedgerPanel() {
         <p>الصرف الحقيقي يتم من زر &quot;صرف مستحقات&quot; — الزر اليدوي «تمويل من موظف» للحالات غير المربوطة فقط.</p>
         <Link
           href="/admin/hr?tab=employee-ledger-reconciliation"
-          className="inline-flex items-center gap-1 text-xs text-sky-300 underline underline-offset-2 hover:text-white mt-1"
+          className="inline-flex items-center gap-1 text-xs text-info underline underline-offset-2 hover:text-foreground mt-1"
         >
           مراجعة تطابق الدفتر مع اليوميات والخزنة
         </Link>
@@ -595,50 +595,50 @@ export default function EmployeeLedgerPanel() {
       {/* Cash required to settle positive employee balances per branch (selected month). */}
       {branchLiquidity.length > 0 && (
         <section
-          className="overflow-hidden rounded-xl border border-emerald-500/25 bg-zinc-900/50"
+          className="overflow-hidden rounded-xl border border-success/25 bg-card"
           aria-label="إجمالي أرصدة الفروع واحتياج السيولة"
         >
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-800 px-4 py-3">
-            <h3 className="flex items-center gap-2 text-sm font-semibold text-zinc-100">
-              <Wallet className="h-4 w-4 text-emerald-400" />
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
+            <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+              <Wallet className="h-4 w-4 text-success" />
               إجمالي أرصدة كل فرع — احتياج السيولة
             </h3>
-            <span className="text-xs text-zinc-400">شهر {month} · كل الموظفين</span>
+            <span className="text-xs text-muted-foreground">شهر {month} · كل الموظفين</span>
           </div>
           <div className="grid grid-cols-1 gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">
             {branchLiquidity.map((row) => (
-              <div key={row.branchId} className="rounded-lg border border-zinc-800 bg-zinc-950/40 p-4">
-                <p className="mb-3 text-sm font-semibold text-zinc-100">
+              <div key={row.branchId} className="rounded-lg border border-border bg-background p-4">
+                <p className="mb-3 text-sm font-semibold text-foreground">
                   {row.label || shortBranchLabel(row)}
                 </p>
-                <p className="text-xs text-zinc-400">المطلوب سحبه من سيولة الفرع</p>
-                <p className="mt-1 font-mono text-2xl font-bold tabular-nums text-emerald-400">
+                <p className="text-xs text-muted-foreground">المطلوب سحبه من سيولة الفرع</p>
+                <p className="mt-1 font-mono text-2xl font-bold tabular-nums text-success">
                   {fmt(row.cashRequired)} <span className="text-sm font-medium">ج.م</span>
                 </p>
-                <div className="mt-3 space-y-1.5 border-t border-zinc-800 pt-3 text-xs">
+                <div className="mt-3 space-y-1.5 border-t border-border pt-3 text-xs">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-zinc-400">رصيد الفرع (الصافي)</span>
+                    <span className="text-muted-foreground">رصيد الفرع (الصافي)</span>
                     <span className={cn('font-mono font-semibold', balanceTone(row.netBalance))}>
                       {fmt(row.netBalance)} ج.م
                     </span>
                   </div>
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-zinc-400">سلف / أرصدة سالبة على الموظفين</span>
-                    <span className="font-mono text-rose-400">{fmt(row.employeeDebt)} ج.م</span>
+                    <span className="text-muted-foreground">سلف / أرصدة سالبة على الموظفين</span>
+                    <span className="font-mono text-destructive">{fmt(row.employeeDebt)} ج.م</span>
                   </div>
                 </div>
               </div>
             ))}
           </div>
-          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-zinc-800 bg-emerald-500/5 px-4 py-3">
-            <span className="text-sm font-medium text-zinc-200">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border bg-success-soft px-4 py-3">
+            <span className="text-sm font-medium text-foreground">
               إجمالي المطلوب من سيولة {branchFilter === 'all' ? 'الفروع' : 'الفرع'}
             </span>
-            <strong className="font-mono text-xl tabular-nums text-emerald-400">
+            <strong className="font-mono text-xl tabular-nums text-success">
               {fmt(totalCashRequired)} ج.م
             </strong>
           </div>
-          <p className="px-4 pb-3 pt-2 text-xs leading-relaxed text-zinc-400">
+          <p className="px-4 pb-3 pt-2 text-xs leading-relaxed text-muted-foreground">
             مجموع الأرصدة الموجبة لكل موظف في كل فرع خلال الشهر المحدد.
             الأرصدة السالبة لا تقلل المبلغ المطلوب للصرف، وتظهر منفصلة.
             هذا تقدير للمستحقات وليس رصيد الخزنة الفعلي.
@@ -662,7 +662,7 @@ export default function EmployeeLedgerPanel() {
 
       {/* KPI cards */}
       {displayTotals && (
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4 2xl:grid-cols-8">
           <KpiCard title="استحقاق راتب" value={`${fmt(displayTotals.salaryCredits)} ج.م`} icon={<TrendingUp className="w-5 h-5" />} variant="success" />
           <KpiCard title="تارجت" value={`${fmt(displayTotals.targetCredits)} ج.م`} icon={<TrendingUp className="w-5 h-5" />} variant="success" />
           <KpiCard title="تمويل من موظف" value={`${fmt(displayTotals.fundingCredits)} ج.م`} icon={<HandCoins className="w-5 h-5" />} variant="primary" />
@@ -675,15 +675,15 @@ export default function EmployeeLedgerPanel() {
       )}
 
       {/* Per-employee summary — one row per tenant branch (summary.tableBranches) */}
-      <div className="rounded-xl border border-zinc-800 overflow-hidden">
-        <div className="px-4 py-3 border-b border-zinc-800 bg-zinc-900/40 flex items-center gap-2">
-          <h3 className="text-sm font-semibold text-zinc-300">أرصدة الموظفين حسب الفرع — {month}</h3>
-          {loadingSummary && <Loader2 className="w-4 h-4 animate-spin text-zinc-500" />}
+      <div className="rounded-xl border border-border overflow-hidden">
+        <div className="px-4 py-3 border-b border-border bg-card flex items-center gap-2">
+          <h3 className="text-sm font-semibold text-foreground">أرصدة الموظفين حسب الفرع — {month}</h3>
+          {loadingSummary && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm min-w-[1100px]">
             <thead>
-              <tr className="border-b border-zinc-800 text-zinc-500 text-xs uppercase tracking-wider">
+              <tr className="border-b border-border text-muted-foreground text-xs uppercase tracking-wider">
                 <th className="px-4 py-3 text-right font-medium">الموظف</th>
                 <th className="px-4 py-3 text-right font-medium">الفرع</th>
                 <th className="px-4 py-3 text-right font-medium">راتب</th>
@@ -701,7 +701,7 @@ export default function EmployeeLedgerPanel() {
             <tbody>
               {summaryRows.length === 0 && !loadingSummary && (
                 <tr>
-                  <td colSpan={12} className="px-4 py-8 text-center text-zinc-500 text-sm">
+                  <td colSpan={12} className="px-4 py-8 text-center text-muted-foreground text-sm">
                     لا توجد قيود في هذا الشهر — الدفتر جاهز لاستقبال البيانات في المراحل القادمة
                   </td>
                 </tr>
@@ -739,7 +739,7 @@ export default function EmployeeLedgerPanel() {
                     <tr
                       key={`${row.empId}-${code}`}
                       className={cn(
-                        'transition-colors cursor-pointer border-b border-zinc-800/50',
+                        'transition-colors cursor-pointer border-b border-border',
                         ledgerBranchTone(idx).row,
                         selected && 'ring-1 ring-inset ring-primary/30',
                         'hover:brightness-110',
@@ -749,7 +749,7 @@ export default function EmployeeLedgerPanel() {
                       {idx === 0 && (
                         <td
                           rowSpan={rowSpan}
-                          className="px-4 py-3 font-medium text-white align-middle border-l border-zinc-800/40"
+                          className="px-4 py-3 font-medium text-foreground align-middle border-l border-border"
                         >
                           {row.empName}
                         </td>
@@ -757,13 +757,13 @@ export default function EmployeeLedgerPanel() {
                       <td className="px-4 py-2.5">
                         <BranchRowBadge branch={tb} idx={idx} />
                       </td>
-                      <td className="px-4 py-2.5 font-mono text-emerald-400">{fmt(br.salary)}</td>
-                      <td className="px-4 py-2.5 font-mono text-emerald-400/80">{fmt(br.target)}</td>
-                      <td className="px-4 py-2.5 font-mono text-sky-400">{fmt(br.funding)}</td>
-                      <td className="px-4 py-2.5 font-mono text-rose-400/80">{fmt(br.payout)}</td>
-                      <td className="px-4 py-2.5 font-mono text-amber-300">{fmt(br.revenueWithdrawal)}</td>
-                      <td className="px-4 py-2.5 font-mono text-rose-400 font-semibold">{fmt(br.advance)}</td>
-                      <td className="px-4 py-2.5 font-mono text-rose-300">{fmt(br.deductions)}</td>
+                      <td className="px-4 py-2.5 font-mono text-success">{fmt(br.salary)}</td>
+                      <td className="px-4 py-2.5 font-mono text-success">{fmt(br.target)}</td>
+                      <td className="px-4 py-2.5 font-mono text-info">{fmt(br.funding)}</td>
+                      <td className="px-4 py-2.5 font-mono text-destructive">{fmt(br.payout)}</td>
+                      <td className="px-4 py-2.5 font-mono text-warning">{fmt(br.revenueWithdrawal)}</td>
+                      <td className="px-4 py-2.5 font-mono text-destructive font-semibold">{fmt(br.advance)}</td>
+                      <td className="px-4 py-2.5 font-mono text-destructive">{fmt(br.deductions)}</td>
                       <td className={cn('px-4 py-2.5 font-mono font-bold', balanceTone(br.balance))}>
                         {fmt(br.balance)}
                       </td>
@@ -771,7 +771,7 @@ export default function EmployeeLedgerPanel() {
                         <td
                           rowSpan={rowSpan}
                           className={cn(
-                            'px-4 py-3 font-mono font-bold align-middle border-r border-zinc-800/40',
+                            'px-4 py-3 font-mono font-bold align-middle border-r border-border',
                             balanceTone(overall),
                           )}
                         >
@@ -821,8 +821,8 @@ export default function EmployeeLedgerPanel() {
                             className={cn(
                               'h-8 gap-1 text-xs',
                               br.balance < 0
-                                ? 'border-emerald-800/60 text-emerald-300'
-                                : 'border-border text-zinc-400',
+                                ? 'border-success/60 text-success'
+                                : 'border-border text-muted-foreground',
                             )}
                             disabled={!dualWriteEnabled || !(br.branchId > 0)}
                             title={
@@ -877,22 +877,22 @@ export default function EmployeeLedgerPanel() {
       </div>
 
       {/* Ledger entries */}
-      <div className="rounded-xl border border-zinc-800 overflow-hidden">
-        <div className="px-4 py-3 border-b border-zinc-800 bg-zinc-900/40 flex items-center justify-between gap-2">
-          <h3 className="text-sm font-semibold text-zinc-300">
+      <div className="rounded-xl border border-border overflow-hidden">
+        <div className="px-4 py-3 border-b border-border bg-card flex items-center justify-between gap-2">
+          <h3 className="text-sm font-semibold text-foreground">
             قيود الدفتر
             {ledger && (
-              <span className="text-zinc-500 font-normal mr-2">
+              <span className="text-muted-foreground font-normal mr-2">
                 ({entries.length} قيد — دائن {fmt(ledger.totalCredits)} / مدين {fmt(ledger.totalDebits)})
               </span>
             )}
           </h3>
-          {loadingEntries && <Loader2 className="w-4 h-4 animate-spin text-zinc-500" />}
+          {loadingEntries && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-zinc-800 text-zinc-500 text-xs uppercase tracking-wider">
+              <tr className="border-b border-border text-muted-foreground text-xs uppercase tracking-wider">
                 <th className="px-4 py-3 text-right font-medium">التاريخ</th>
                 <th className="px-4 py-3 text-right font-medium">الموظف</th>
                 {showBranchColumn && (
@@ -911,10 +911,10 @@ export default function EmployeeLedgerPanel() {
                 <th className="px-4 py-3 text-right font-medium">ملاحظات</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-zinc-800/60">
+            <tbody className="divide-y divide-border">
               {entriesWithBalance.length === 0 && !loadingEntries && (
                 <tr>
-                  <td colSpan={entryColSpan} className="px-4 py-8 text-center text-zinc-500 text-sm">
+                  <td colSpan={entryColSpan} className="px-4 py-8 text-center text-muted-foreground text-sm">
                     لا توجد قيود مسجّلة بعد
                   </td>
                 </tr>
@@ -934,17 +934,17 @@ export default function EmployeeLedgerPanel() {
                 return (
                   <tr
                     key={entry.id}
-                    className={`hover:bg-zinc-800/30 transition-colors ${
+                    className={`hover:bg-surface-muted transition-colors ${
                       isDailyTarget ? 'cursor-pointer' : ''
                     }`}
                     onClick={() => {
                       if (isDailyTarget) setTargetDetailsId(entry.refId);
                     }}
                   >
-                    <td className="px-4 py-3 font-mono text-xs text-zinc-400">{entry.entryDate}</td>
-                    <td className="px-4 py-3 text-white">{entry.empName}</td>
+                    <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{entry.entryDate}</td>
+                    <td className="px-4 py-3 text-foreground">{entry.empName}</td>
                     {showBranchColumn && (
-                      <td className="px-4 py-3 text-xs text-zinc-400">
+                      <td className="px-4 py-3 text-xs text-muted-foreground">
                         {entry.branchCode || entry.branchName
                           ? shortBranchLabel({
                               branchCode: entry.branchCode ?? '',
@@ -954,24 +954,24 @@ export default function EmployeeLedgerPanel() {
                       </td>
                     )}
                     <td className="px-4 py-3">{directionBadge(entry.entryDirection)}</td>
-                    <td className="px-4 py-3 text-zinc-300">{reasonLabel}</td>
+                    <td className="px-4 py-3 text-foreground">{reasonLabel}</td>
                     <td className={`px-4 py-3 font-mono font-medium ${
-                      entry.entryDirection === 'credit' ? 'text-emerald-400' : 'text-rose-400'
+                      entry.entryDirection === 'credit' ? 'text-success' : 'text-destructive'
                     }`}>
                       {fmt(entry.amount)}
                     </td>
                     {showRunningBalance && entry.runningBalance != null && (
                       <td className={`px-4 py-3 font-mono font-bold ${
-                        entry.runningBalance >= 0 ? 'text-amber-400' : 'text-rose-400'
+                        entry.runningBalance >= 0 ? 'text-warning' : 'text-destructive'
                       }`}>
                         {fmt(entry.runningBalance)}
                       </td>
                     )}
-                    <td className="px-4 py-3 font-mono text-xs text-zinc-500">{entry.payrollMonth ?? '—'}</td>
-                    <td className="px-4 py-3 font-mono text-xs text-zinc-500">
+                    <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{entry.payrollMonth ?? '—'}</td>
+                    <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
                       {entry.refType ? `${entry.refType}${entry.refId ? ` #${entry.refId}` : ''}` : '—'}
                     </td>
-                    <td className="px-4 py-3 text-xs text-zinc-500 max-w-[200px] truncate">
+                    <td className="px-4 py-3 text-xs text-muted-foreground max-w-[200px] truncate">
                       {entry.notes ?? '—'}
                     </td>
                   </tr>
@@ -1047,20 +1047,20 @@ export default function EmployeeLedgerPanel() {
       />
 
       {!dualWriteEnabled && (
-        <p className="text-xs text-amber-500/80 px-1">
-          صرف المستحقات وتمويل الموظف والتارجت الإضافي معطّل — فعّل <code className="text-amber-400">EMP_LEDGER_DUAL_WRITE_ENABLED=true</code> لتسجيل الحركات في الدفتر.
+        <p className="text-xs text-warning px-1">
+          صرف المستحقات وتمويل الموظف والتارجت الإضافي معطّل — فعّل <code className="text-warning">EMP_LEDGER_DUAL_WRITE_ENABLED=true</code> لتسجيل الحركات في الدفتر.
         </p>
       )}
 
-      <p className="text-xs text-amber-200/90 px-1" data-testid="dues-settlement-branch-rule">
+      <p className="text-xs text-warning px-1" data-testid="dues-settlement-branch-rule">
         {branchViewMatchesOperating
           ? `صرف المستحقات يُسوّي رصيد شهر ${month} للفرع التشغيلي النشط فقط (${operatingBranchLabel}) بعد تحديث هذا العرض. لا يُستخدم رصيد فرع آخر ولا الرصيد المجمّع.`
           : `صرف المستحقات متوقف حتى تختار الفرع التشغيلي النشط${operatingBranchLabel ? ` (${operatingBranchLabel})` : ''} ويُحدَّث رصيد شهره. عرض «الكل» أو فرع غير فرع الجلسة لا يُسوّي الرصيد المعروض.`}
       </p>
-      <p className="text-xs text-emerald-200/80 px-1" data-testid="advance-repayment-branch-rule">
+      <p className="text-xs text-success px-1" data-testid="advance-repayment-branch-rule">
         رد السلفة متاح لكل صف فرع مصرح به: الاستلام يُسجَّل في خزينة ذلك الفرع فقط، والمديونية تُجلب من الخادم (شاملة المرحّل) دون تجاوزها.
       </p>
-      <p className="text-xs text-zinc-600 px-1">
+      <p className="text-xs text-muted-foreground px-1">
         الرصيد المعروض حسب شهر الرواتب وفلتر الفرع. الإجمالي العام = مجموع أرصدة الفروع بدون تكرار.
       </p>
     </div>

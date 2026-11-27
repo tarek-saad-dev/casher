@@ -150,7 +150,7 @@ export default function ExpenseTransactionsTable({
 
       {deletingExpense && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-card border border-border rounded-lg shadow-lg max-w-sm w-full p-6">
+          <div className="bg-card border border-border rounded-lg shadow-lg max-w-sm w-full max-h-[85dvh] overflow-y-auto p-4 sm:p-6">
             <h3 className="text-lg font-semibold mb-3">تأكيد الحذف</h3>
             <p className="text-sm text-muted-foreground mb-4">
               هل أنت متأكد من حذف المصروف رقم <span className="font-bold">#{formatArabicNumber(deletingExpense.invID)}</span>؟
@@ -232,7 +232,7 @@ export default function ExpenseTransactionsTable({
               <tr
                 key={transaction.ID}
                 className={`border-b border-border hover:bg-muted/50 transition-colors ${
-                  transaction.needsCategorization ? 'bg-amber-500/5' : ''
+                  transaction.needsCategorization ? 'bg-warning-soft' : ''
                 }`}
               >
                 <td className="py-3 px-2 text-sm text-muted-foreground">
@@ -248,17 +248,17 @@ export default function ExpenseTransactionsTable({
                   <div className="flex items-center gap-2">
                     <span className={`inline-flex items-center px-2 py-1 rounded-md text-xs font-medium ${
                       transaction.needsCategorization 
-                        ? 'bg-amber-500/20 text-amber-700 border border-amber-500/50' 
-                        : 'bg-blue-500/10 text-blue-600'
+                        ? 'bg-warning-soft text-warning border border-warning/50' 
+                        : 'bg-info-soft text-info'
                     }`}>
                       {transaction.CatName}
                     </span>
                     {transaction.needsCategorization && (
-                      <span className="text-xs text-amber-600 font-medium">⚠️ يحتاج تصنيف</span>
+                      <span className="text-xs text-warning font-medium">⚠️ يحتاج تصنيف</span>
                     )}
                   </div>
                 </td>
-                <td className="py-3 px-2 text-sm font-bold text-red-600">
+                <td className="py-3 px-2 text-sm font-bold text-destructive">
                   {formatCurrency(transaction.GrandTolal)}
                 </td>
                 <td className="py-3 px-2 text-sm text-muted-foreground">

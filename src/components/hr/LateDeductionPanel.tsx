@@ -260,7 +260,7 @@ export default function LateDeductionPanel() {
         </div>
       )}
       {success && (
-        <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2 text-sm text-emerald-700">
+        <div className="rounded-lg border border-success/30 bg-success-soft px-3 py-2 text-sm text-success">
           {success}
         </div>
       )}
@@ -389,7 +389,7 @@ export default function LateDeductionPanel() {
 
       <div className="space-y-3">
         <h4 className="text-sm font-semibold flex items-center gap-2">
-          <AlertTriangle className="w-4 h-4 text-amber-600" />
+          <AlertTriangle className="w-4 h-4 text-warning" />
           حالات بانتظار قرار المدير ({cases.length})
         </h4>
         {cases.length === 0 ? (
@@ -404,7 +404,7 @@ export default function LateDeductionPanel() {
                 <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
                   <span>موظف #{c.empId}</span>
                   <span>{c.workDate}</span>
-                  <span className="font-medium text-amber-700">{c.lateMinutes} د تأخير</span>
+                  <span className="font-medium text-warning">{c.lateMinutes} د تأخير</span>
                   {c.dailyBasePay != null && (
                     <span className="text-muted-foreground">أساس يومي: {c.dailyBasePay}</span>
                   )}

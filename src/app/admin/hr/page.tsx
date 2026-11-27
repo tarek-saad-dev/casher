@@ -187,7 +187,7 @@ export default function HRPage() {
       />
 
       {/* ── Main Tab Switcher ── */}
-      <div className="flex flex-wrap gap-1 p-1 bg-surface/60 border border-border/60 rounded-xl w-fit mb-6">
+      <div className="flex w-full min-w-0 flex-wrap gap-1 rounded-xl border border-border bg-card p-1 mb-6">
         {MAIN_TABS.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
@@ -601,7 +601,7 @@ function EmployeesPanel() {
       </div>
 
       {/* ── KPI Strip ── */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
         <KpiCard title="إجمالي الموظفين" value={total}        icon={<Users        className="w-5 h-5" />} variant="default" />
         <KpiCard title="نشطون"            value={active}       icon={<Scissors     className="w-5 h-5" />} variant="primary" />
         <KpiCard title="مربوطون بسلفة"    value={advanceMapped} icon={<Link2       className="w-5 h-5" />} variant="success" />
@@ -633,7 +633,7 @@ function EmployeesPanel() {
       )}
 
       {/* ── Table ── */}
-      <div className="rounded-xl border border-border overflow-hidden">
+      <div className="overflow-x-auto rounded-xl border border-border">
         <div className="px-4 py-3 border-b border-border bg-surface/40">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold text-foreground">قائمة الموظفين</h3>
@@ -680,7 +680,7 @@ function EmployeesPanel() {
         )}
 
         {filteredEmployees.length > 0 && (
-          <table className="w-full text-sm">
+          <table className="w-full min-w-[48rem] text-sm">
             <thead>
               <tr className="border-b border-border text-muted-foreground/70 text-xs uppercase tracking-wider">
                 <th className="px-4 py-3 text-right font-medium">#</th>
@@ -799,7 +799,7 @@ function EmployeesPanel() {
                         badge.tone === 'ok'
                           ? 'bg-primary/10 text-primary border-primary/20'
                           : badge.tone === 'warn'
-                            ? 'bg-amber-500/10 text-amber-700 border-amber-500/20'
+                            ? 'bg-warning-soft text-warning border-warning/20'
                             : 'bg-surface-muted text-muted-foreground border-border';
                       return (
                         <span className={`inline-flex max-w-[180px] px-2 py-0.5 rounded-full text-[11px] border ${cls}`}>

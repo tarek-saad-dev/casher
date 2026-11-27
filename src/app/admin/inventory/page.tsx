@@ -77,17 +77,17 @@ type Tab = 'stock' | 'transfers' | 'policy' | 'purchases';
 
 const STATUS_LABEL: Record<StockStatus, string> = { ok: 'متوفر', low: 'منخفض', out: 'نفد' };
 const STATUS_BADGE: Record<StockStatus, string> = {
-  ok: 'border-emerald-500/40 text-emerald-400',
-  low: 'border-amber-500/40 text-amber-400',
-  out: 'border-rose-500/40 text-rose-400',
+  ok: 'border-success/40 text-success',
+  low: 'border-warning/40 text-warning',
+  out: 'border-destructive/40 text-destructive',
 };
 
 const TRANSFER_STATUS: Record<string, { label: string; cls: string }> = {
-  DRAFT: { label: 'مسودة', cls: 'border-zinc-600 text-zinc-300' },
-  IN_TRANSIT: { label: 'في الطريق', cls: 'border-amber-500/40 text-amber-400' },
-  POSTED: { label: 'في الطريق', cls: 'border-amber-500/40 text-amber-400' },
-  RECEIVED: { label: 'تم الاستلام', cls: 'border-emerald-500/40 text-emerald-400' },
-  CANCELLED: { label: 'ملغي', cls: 'border-rose-500/40 text-rose-400' },
+  DRAFT: { label: 'مسودة', cls: 'border-border text-foreground' },
+  IN_TRANSIT: { label: 'في الطريق', cls: 'border-warning/40 text-warning' },
+  POSTED: { label: 'في الطريق', cls: 'border-warning/40 text-warning' },
+  RECEIVED: { label: 'تم الاستلام', cls: 'border-success/40 text-success' },
+  CANCELLED: { label: 'ملغي', cls: 'border-destructive/40 text-destructive' },
 };
 
 const money = (n: number | null | undefined) =>
@@ -163,7 +163,7 @@ export default function AdminInventoryPage() {
   ];
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6" dir="rtl">
+    <div className="min-w-0 p-3 sm:p-6 max-w-7xl mx-auto space-y-6" dir="rtl">
       <PageHeader
         title="المخزون"
         description={
@@ -172,7 +172,7 @@ export default function AdminInventoryPage() {
             : 'مخزون منتجات التجزئة للفرع النشط'
         }
       >
-        <Button variant="outline" className="gap-2 border-zinc-700" onClick={() => void refreshAll()}>
+        <Button variant="outline" className="gap-2 border-border" onClick={() => void refreshAll()}>
           <RefreshCw className="w-4 h-4" />
           تحديث
         </Button>
@@ -213,12 +213,12 @@ export default function AdminInventoryPage() {
       </div>
 
       {notice && (
-        <div className="flex items-center gap-2 p-3 rounded-lg border border-emerald-500/30 bg-emerald-500/5 text-emerald-400 text-sm">
+        <div className="flex items-center gap-2 p-3 rounded-lg border border-success/30 bg-success-soft text-success text-sm">
           <Check className="w-4 h-4 shrink-0" />{notice}
         </div>
       )}
       {error && (
-        <div className="flex items-center gap-3 p-3 rounded-lg border border-rose-500/30 bg-rose-500/5 text-rose-400 text-sm">
+        <div className="flex items-center gap-3 p-3 rounded-lg border border-destructive/30 bg-destructive-soft text-destructive text-sm">
           <X className="w-4 h-4 shrink-0" />
           {error}
           <button type="button" onClick={() => setError('')} className="mr-auto opacity-60 hover:opacity-100">×</button>
@@ -234,8 +234,8 @@ export default function AdminInventoryPage() {
             onClick={() => setTab(t.key)}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
               tab === t.key
-                ? 'bg-amber-600/20 border-amber-500/50 text-amber-300'
-                : 'border-zinc-700 text-zinc-400 hover:border-zinc-600'
+                ? 'bg-warning-soft border-warning/50 text-warning'
+                : 'border-border text-muted-foreground hover:border-border'
             }`}
           >
             {t.icon}{t.label}
@@ -352,12 +352,12 @@ function StockPanel({
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative w-full sm:w-72">
-          <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+          <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="بحث بالاسم أو الكود أو الباركود..."
-            className="bg-zinc-900 border-zinc-700 text-white pr-9"
+            className="bg-card border-border text-foreground pr-9"
           />
         </div>
         <div className="flex items-center gap-1.5 text-xs">
@@ -369,11 +369,11 @@ function StockPanel({
               className={`px-3 py-1.5 rounded-lg border transition-colors font-medium ${
                 filter === f
                   ? f === 'out'
-                    ? 'bg-rose-600/20 border-rose-500/40 text-rose-300'
+                    ? 'bg-destructive-soft border-destructive/40 text-destructive'
                     : f === 'low'
-                      ? 'bg-amber-600/20 border-amber-500/40 text-amber-300'
-                      : 'bg-zinc-700/60 border-zinc-600 text-zinc-200'
-                  : 'border-zinc-800 text-zinc-500 hover:border-zinc-700'
+                      ? 'bg-warning-soft border-warning/40 text-warning'
+                      : 'bg-muted border-border text-foreground'
+                  : 'border-border text-muted-foreground hover:border-border'
               }`}
             >
               {f === 'all' ? 'الكل' : f === 'low' ? 'منخفض' : 'نفد'} ({counts[f]})
@@ -383,45 +383,45 @@ function StockPanel({
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-16 text-zinc-500 gap-3">
+        <div className="flex items-center justify-center py-16 text-muted-foreground gap-3">
           <Loader2 className="w-6 h-6 animate-spin" />جاري التحميل...
         </div>
       ) : filtered.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 text-zinc-600">
+        <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
           <Boxes className="w-10 h-10 mb-3 opacity-30" />
           <p className="text-sm">لا توجد منتجات مطابقة</p>
         </div>
       ) : (
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 overflow-hidden">
+        <div className="rounded-xl border border-border bg-card overflow-hidden">
           <Table>
             <TableHeader>
-              <TableRow className="border-zinc-800 hover:bg-transparent">
-                <TableHead className="text-right text-zinc-400">المنتج</TableHead>
-                <TableHead className="text-right text-zinc-400">الكود</TableHead>
-                <TableHead className="text-right text-zinc-400">الكمية</TableHead>
-                <TableHead className="text-right text-zinc-400">حد إعادة الطلب</TableHead>
-                <TableHead className="text-right text-zinc-400">القيمة بالتكلفة</TableHead>
-                <TableHead className="text-right text-zinc-400">الحالة</TableHead>
-                <TableHead className="text-right text-zinc-400">آخر حركة</TableHead>
-                <TableHead className="text-right text-zinc-400 w-44">إجراءات</TableHead>
+              <TableRow className="border-border hover:bg-transparent">
+                <TableHead className="text-right text-muted-foreground">المنتج</TableHead>
+                <TableHead className="text-right text-muted-foreground">الكود</TableHead>
+                <TableHead className="text-right text-muted-foreground">الكمية</TableHead>
+                <TableHead className="text-right text-muted-foreground">حد إعادة الطلب</TableHead>
+                <TableHead className="text-right text-muted-foreground">القيمة بالتكلفة</TableHead>
+                <TableHead className="text-right text-muted-foreground">الحالة</TableHead>
+                <TableHead className="text-right text-muted-foreground">آخر حركة</TableHead>
+                <TableHead className="text-right text-muted-foreground w-44">إجراءات</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filtered.map((i) => (
-                <TableRow key={i.productId} className="border-zinc-800">
+                <TableRow key={i.productId} className="border-border">
                   <TableCell>
-                    <div className="text-sm font-medium text-white">{i.name}</div>
-                    {i.brand && <div className="text-[11px] text-zinc-500">{i.brand}</div>}
+                    <div className="text-sm font-medium text-foreground">{i.name}</div>
+                    {i.brand && <div className="text-[11px] text-muted-foreground">{i.brand}</div>}
                   </TableCell>
-                  <TableCell className="font-mono text-xs text-zinc-300" dir="ltr">
+                  <TableCell className="font-mono text-xs text-foreground" dir="ltr">
                     <span className="block text-right">{i.productCode ?? '—'}</span>
                   </TableCell>
-                  <TableCell className={`text-sm font-bold ${i.inventory.qtyOnHand <= 0 ? 'text-rose-400' : 'text-white'}`}>
+                  <TableCell className={`text-sm font-bold ${i.inventory.qtyOnHand <= 0 ? 'text-destructive' : 'text-foreground'}`}>
                     {i.inventory.qtyOnHand}
-                    {i.stockUnit && <span className="text-[10px] font-normal text-zinc-500 mr-1">{i.stockUnit}</span>}
+                    {i.stockUnit && <span className="text-[10px] font-normal text-muted-foreground mr-1">{i.stockUnit}</span>}
                   </TableCell>
-                  <TableCell className="text-sm text-zinc-400">{i.inventory.reorderLevel ?? '—'}</TableCell>
-                  <TableCell className="text-sm text-zinc-400">
+                  <TableCell className="text-sm text-muted-foreground">{i.inventory.reorderLevel ?? '—'}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
                     {money(i.inventory.qtyOnHand * Number(i.basePrice ?? 0))}
                   </TableCell>
                   <TableCell>
@@ -429,14 +429,14 @@ function StockPanel({
                       {STATUS_LABEL[i.stockStatus]}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-xs text-zinc-500">{formatDate(i.inventory.lastMovementAt)}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground">{formatDate(i.inventory.lastMovementAt)}</TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1">
-                      <Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1 text-zinc-400 hover:text-amber-400"
+                      <Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1 text-muted-foreground hover:text-warning"
                         onClick={() => open('adjust', i)}>
                         <SlidersHorizontal className="w-3.5 h-3.5" />تسوية
                       </Button>
-                      <Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1 text-zinc-400 hover:text-sky-400"
+                      <Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1 text-muted-foreground hover:text-info"
                         onClick={() => open('count', i)}>
                         <ClipboardCheck className="w-3.5 h-3.5" />جرد
                       </Button>
@@ -450,18 +450,18 @@ function StockPanel({
       )}
 
       <Dialog open={dialog != null} onOpenChange={(o) => { if (!o) setDialog(null); }}>
-        <DialogContent className="bg-zinc-900 border-zinc-700 text-white max-w-sm" dir="rtl">
+        <DialogContent className="bg-card border-border text-foreground max-w-sm" dir="rtl">
           <DialogHeader>
             <DialogTitle>{dialog?.mode === 'adjust' ? 'تسوية يدوية للرصيد' : 'جرد فعلي'}</DialogTitle>
           </DialogHeader>
           {dialog && (
             <div className="space-y-4 pt-2">
-              <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 p-3 text-sm">
+              <div className="rounded-lg border border-border bg-background p-3 text-sm">
                 <div className="font-medium">{dialog.item.name}</div>
-                <div className="text-xs text-zinc-500 mt-0.5">الرصيد الحالي: <span className="text-white font-semibold">{current}</span></div>
+                <div className="text-xs text-muted-foreground mt-0.5">الرصيد الحالي: <span className="text-foreground font-semibold">{current}</span></div>
               </div>
               <div>
-                <Label className="text-zinc-300">
+                <Label className="text-foreground">
                   {dialog.mode === 'adjust' ? 'التغيير في الكمية (+ زيادة / − نقص) *' : 'الكمية المعدودة فعليًا *'}
                 </Label>
                 <Input
@@ -470,31 +470,31 @@ function StockPanel({
                   inputMode="decimal"
                   value={value}
                   onChange={(e) => { setValue(e.target.value); setDialogError(''); }}
-                  className="bg-zinc-800 border-zinc-700 text-white mt-1"
+                  className="bg-muted border-border text-foreground mt-1"
                   placeholder={dialog.mode === 'adjust' ? 'مثال: -2 أو 5' : 'مثال: 12'}
                   autoFocus
                 />
                 {preview != null && (
-                  <p className="text-xs text-zinc-500 mt-1">
-                    الرصيد بعد التنفيذ: <span className={preview < 0 ? 'text-rose-400 font-semibold' : 'text-emerald-400 font-semibold'}>{preview}</span>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    الرصيد بعد التنفيذ: <span className={preview < 0 ? 'text-destructive font-semibold' : 'text-success font-semibold'}>{preview}</span>
                   </p>
                 )}
               </div>
               <div>
-                <Label className="text-zinc-300">السبب *</Label>
+                <Label className="text-foreground">السبب *</Label>
                 <Input
                   value={reason}
                   onChange={(e) => { setReason(e.target.value); setDialogError(''); }}
-                  className="bg-zinc-800 border-zinc-700 text-white mt-1"
+                  className="bg-muted border-border text-foreground mt-1"
                   placeholder={dialog.mode === 'adjust' ? 'مثال: تالف، هدية، تصحيح خطأ' : 'مثال: جرد نهاية الشهر'}
                 />
               </div>
               {dialogError && (
-                <p className="text-sm text-rose-400 flex items-center gap-1"><X className="w-3.5 h-3.5" />{dialogError}</p>
+                <p className="text-sm text-destructive flex items-center gap-1"><X className="w-3.5 h-3.5" />{dialogError}</p>
               )}
               <div className="flex justify-end gap-2 pt-2">
-                <Button variant="outline" className="border-zinc-700" onClick={() => setDialog(null)} disabled={busy}>إلغاء</Button>
-                <Button className="bg-amber-600 hover:bg-amber-700" onClick={submit} disabled={busy}>
+                <Button variant="outline" className="border-border" onClick={() => setDialog(null)} disabled={busy}>إلغاء</Button>
+                <Button className="bg-primary hover:bg-primary/85 text-primary-foreground" onClick={submit} disabled={busy}>
                   {busy ? <><Loader2 className="w-4 h-4 animate-spin ml-1" />جاري التنفيذ...</> : <><Check className="w-4 h-4 ml-1" />تنفيذ</>}
                 </Button>
               </div>
@@ -533,8 +533,8 @@ function LineEditor({
               });
             }}
           >
-            <SelectTrigger className="flex-1 bg-zinc-800 border-zinc-700 text-white"><SelectValue placeholder="اختر المنتج" /></SelectTrigger>
-            <SelectContent className="bg-zinc-800 border-zinc-700 max-h-64">
+            <SelectTrigger className="flex-1 bg-muted border-border text-foreground"><SelectValue placeholder="اختر المنتج" /></SelectTrigger>
+            <SelectContent className="bg-muted border-border max-h-64">
               {items.map((p) => (
                 <SelectItem key={p.productId} value={String(p.productId)}>
                   {p.name}{p.productCode ? ` — ${p.productCode}` : ''}
@@ -545,24 +545,24 @@ function LineEditor({
           <Input
             type="number" min="0" step="0.01" inputMode="decimal" placeholder="الكمية"
             value={l.qty} onChange={(e) => update(idx, { qty: e.target.value })}
-            className="w-24 bg-zinc-800 border-zinc-700 text-white"
+            className="w-24 bg-muted border-border text-foreground"
           />
           {withPrice && (
             <Input
               type="number" min="0" step="0.01" inputMode="decimal" placeholder="سعر الوحدة"
               value={l.unitPrice} onChange={(e) => update(idx, { unitPrice: e.target.value })}
-              className="w-28 bg-zinc-800 border-zinc-700 text-white"
+              className="w-28 bg-muted border-border text-foreground"
             />
           )}
           <Button
-            type="button" variant="ghost" size="sm" className="h-8 w-8 p-0 text-zinc-500 hover:text-rose-400"
+            type="button" variant="ghost" size="sm" className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
             onClick={() => onChange(lines.length > 1 ? lines.filter((_, i) => i !== idx) : [emptyLine()])}
           >
             <Trash2 className="w-4 h-4" />
           </Button>
         </div>
       ))}
-      <Button type="button" variant="outline" size="sm" className="border-zinc-700 gap-1.5"
+      <Button type="button" variant="outline" size="sm" className="border-border gap-1.5"
         onClick={() => onChange([...lines, emptyLine()])}>
         <Plus className="w-4 h-4" />إضافة بند
       </Button>
@@ -702,62 +702,62 @@ function TransfersPanel({
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-sm text-zinc-400">تحويلات المخزون الصادرة من والواردة إلى الفرع النشط.</p>
-        <Button className="gap-2 bg-amber-600 hover:bg-amber-700" onClick={openCreate}>
+        <p className="text-sm text-muted-foreground">تحويلات المخزون الصادرة من والواردة إلى الفرع النشط.</p>
+        <Button className="gap-2 bg-primary hover:bg-primary/85 text-primary-foreground" onClick={openCreate}>
           <Plus className="w-4 h-4" />تحويل جديد
         </Button>
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-12 text-zinc-500 gap-3">
+        <div className="flex items-center justify-center py-12 text-muted-foreground gap-3">
           <Loader2 className="w-5 h-5 animate-spin" />جاري التحميل...
         </div>
       ) : transfers.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-12 text-zinc-600">
+        <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
           <ArrowLeftRight className="w-10 h-10 mb-3 opacity-30" />
           <p className="text-sm">لا توجد تحويلات بعد</p>
         </div>
       ) : (
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 overflow-hidden">
+        <div className="rounded-xl border border-border bg-card overflow-hidden">
           <Table>
             <TableHeader>
-              <TableRow className="border-zinc-800 hover:bg-transparent">
-                <TableHead className="text-right text-zinc-400">#</TableHead>
-                <TableHead className="text-right text-zinc-400">من</TableHead>
-                <TableHead className="text-right text-zinc-400">إلى</TableHead>
-                <TableHead className="text-right text-zinc-400">الحالة</TableHead>
-                <TableHead className="text-right text-zinc-400">التاريخ</TableHead>
-                <TableHead className="text-right text-zinc-400">ملاحظات</TableHead>
-                <TableHead className="text-right text-zinc-400 w-44">إجراءات</TableHead>
+              <TableRow className="border-border hover:bg-transparent">
+                <TableHead className="text-right text-muted-foreground">#</TableHead>
+                <TableHead className="text-right text-muted-foreground">من</TableHead>
+                <TableHead className="text-right text-muted-foreground">إلى</TableHead>
+                <TableHead className="text-right text-muted-foreground">الحالة</TableHead>
+                <TableHead className="text-right text-muted-foreground">التاريخ</TableHead>
+                <TableHead className="text-right text-muted-foreground">ملاحظات</TableHead>
+                <TableHead className="text-right text-muted-foreground w-44">إجراءات</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {transfers.map((t) => {
-                const st = TRANSFER_STATUS[t.status] ?? { label: t.status, cls: 'border-zinc-600 text-zinc-300' };
+                const st = TRANSFER_STATUS[t.status] ?? { label: t.status, cls: 'border-border text-foreground' };
                 const canPost = t.status === 'DRAFT' && t.fromBranchId === branchId;
                 const canCancel = canPost;
                 const canReceive = (t.status === 'IN_TRANSIT' || t.status === 'POSTED') && t.toBranchId === branchId;
                 return (
-                  <TableRow key={t.transferId} className="border-zinc-800">
-                    <TableCell className="text-sm text-zinc-300">#{t.transferId}</TableCell>
+                  <TableRow key={t.transferId} className="border-border">
+                    <TableCell className="text-sm text-foreground">#{t.transferId}</TableCell>
                     <TableCell className="text-sm">{t.fromBranchName ?? t.fromBranchId}</TableCell>
                     <TableCell className="text-sm">{t.toBranchName ?? t.toBranchId}</TableCell>
                     <TableCell><Badge variant="outline" className={`text-[10px] ${st.cls}`}>{st.label}</Badge></TableCell>
-                    <TableCell className="text-xs text-zinc-500">{formatDate(t.receivedAt ?? t.postedAt ?? t.createdAt)}</TableCell>
-                    <TableCell className="text-xs text-zinc-400 max-w-48 truncate">{t.notes ?? '—'}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{formatDate(t.receivedAt ?? t.postedAt ?? t.createdAt)}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground max-w-48 truncate">{t.notes ?? '—'}</TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1">
-                        {actionBusy === t.transferId && <Loader2 className="w-4 h-4 animate-spin text-zinc-500" />}
+                        {actionBusy === t.transferId && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
                         {canPost && (
-                          <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-amber-400 hover:bg-amber-400/10"
+                          <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-warning hover:bg-warning-soft"
                             disabled={actionBusy === t.transferId} onClick={() => act(t, 'post')}>إرسال</Button>
                         )}
                         {canReceive && (
-                          <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-emerald-400 hover:bg-emerald-400/10"
+                          <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-success hover:bg-success-soft"
                             disabled={actionBusy === t.transferId} onClick={() => act(t, 'receive')}>استلام</Button>
                         )}
                         {canCancel && (
-                          <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-rose-400 hover:bg-rose-400/10"
+                          <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-destructive hover:bg-destructive-soft"
                             disabled={actionBusy === t.transferId} onClick={() => act(t, 'cancel')}>إلغاء</Button>
                         )}
                       </div>
@@ -771,41 +771,41 @@ function TransfersPanel({
       )}
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="bg-zinc-900 border-zinc-700 text-white max-w-xl max-h-[90vh] overflow-y-auto" dir="rtl">
+        <DialogContent className="bg-card border-border text-foreground max-w-xl max-h-[90vh] overflow-y-auto" dir="rtl">
           <DialogHeader><DialogTitle>تحويل مخزون جديد</DialogTitle></DialogHeader>
           <div className="space-y-4 pt-2">
             <div>
-              <Label className="text-zinc-300">الفرع المستلم *</Label>
+              <Label className="text-foreground">الفرع المستلم *</Label>
               <Select value={toBranch || undefined} onValueChange={(v) => { setToBranch(v); setFormError(''); }}>
-                <SelectTrigger className="bg-zinc-800 border-zinc-700 text-white mt-1"><SelectValue placeholder="اختر الفرع" /></SelectTrigger>
-                <SelectContent className="bg-zinc-800 border-zinc-700">
+                <SelectTrigger className="bg-muted border-border text-foreground mt-1"><SelectValue placeholder="اختر الفرع" /></SelectTrigger>
+                <SelectContent className="bg-muted border-border">
                   {destinations.map((b) => (
                     <SelectItem key={b.branchId} value={String(b.branchId)}>{b.branchName}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
               {destinations.length === 0 && (
-                <p className="text-xs text-amber-400 mt-1">لا توجد فروع أخرى متاحة للتحويل.</p>
+                <p className="text-xs text-warning mt-1">لا توجد فروع أخرى متاحة للتحويل.</p>
               )}
             </div>
             <div>
-              <Label className="text-zinc-300">البنود *</Label>
+              <Label className="text-foreground">البنود *</Label>
               <div className="mt-1">
                 <LineEditor items={items} lines={lines} onChange={(l) => { setLines(l); setFormError(''); }} />
               </div>
             </div>
             <div>
-              <Label className="text-zinc-300">ملاحظات</Label>
-              <Input value={notes} onChange={(e) => setNotes(e.target.value)} className="bg-zinc-800 border-zinc-700 text-white mt-1" />
+              <Label className="text-foreground">ملاحظات</Label>
+              <Input value={notes} onChange={(e) => setNotes(e.target.value)} className="bg-muted border-border text-foreground mt-1" />
             </div>
-            <label className="flex items-center gap-2 text-sm text-zinc-300 cursor-pointer">
+            <label className="flex items-center gap-2 text-sm text-foreground cursor-pointer">
               <input type="checkbox" className="accent-amber-500 w-4 h-4" checked={sendNow} onChange={(e) => setSendNow(e.target.checked)} />
               إرسال فورًا (خصم الكميات من مخزون هذا الفرع)
             </label>
-            {formError && <p className="text-sm text-rose-400 flex items-center gap-1"><X className="w-3.5 h-3.5" />{formError}</p>}
+            {formError && <p className="text-sm text-destructive flex items-center gap-1"><X className="w-3.5 h-3.5" />{formError}</p>}
             <div className="flex justify-end gap-2 pt-2">
-              <Button variant="outline" className="border-zinc-700" onClick={() => setCreateOpen(false)} disabled={creating}>إلغاء</Button>
-              <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={create} disabled={creating}>
+              <Button variant="outline" className="border-border" onClick={() => setCreateOpen(false)} disabled={creating}>إلغاء</Button>
+              <Button className="bg-success hover:bg-success/85 text-success-foreground" onClick={create} disabled={creating}>
                 {creating ? <><Loader2 className="w-4 h-4 animate-spin ml-1" />جاري الحفظ...</> : <><Check className="w-4 h-4 ml-1" />{sendNow ? 'إرسال التحويل' : 'حفظ كمسودة'}</>}
               </Button>
             </div>
@@ -892,50 +892,50 @@ function PurchasesPanel({
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-sm text-zinc-400">فواتير مشتريات الفرع النشط. الترحيل يضيف الكميات للمخزون.</p>
-        <Button className="gap-2 bg-amber-600 hover:bg-amber-700" onClick={openCreate}>
+        <p className="text-sm text-muted-foreground">فواتير مشتريات الفرع النشط. الترحيل يضيف الكميات للمخزون.</p>
+        <Button className="gap-2 bg-primary hover:bg-primary/85 text-primary-foreground" onClick={openCreate}>
           <Plus className="w-4 h-4" />مشتريات جديدة
         </Button>
       </div>
 
-      {listError && <p className="text-sm text-rose-400">{listError}</p>}
+      {listError && <p className="text-sm text-destructive">{listError}</p>}
 
       {loading ? (
-        <div className="flex items-center justify-center py-12 text-zinc-500 gap-3">
+        <div className="flex items-center justify-center py-12 text-muted-foreground gap-3">
           <Loader2 className="w-5 h-5 animate-spin" />جاري التحميل...
         </div>
       ) : purchases.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-12 text-zinc-600">
+        <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
           <ShoppingCart className="w-10 h-10 mb-3 opacity-30" />
           <p className="text-sm">لا توجد مشتريات مسجلة</p>
         </div>
       ) : (
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 overflow-hidden">
+        <div className="rounded-xl border border-border bg-card overflow-hidden">
           <Table>
             <TableHeader>
-              <TableRow className="border-zinc-800 hover:bg-transparent">
-                <TableHead className="text-right text-zinc-400">رقم الفاتورة</TableHead>
-                <TableHead className="text-right text-zinc-400">التاريخ</TableHead>
-                <TableHead className="text-right text-zinc-400">الإجمالي</TableHead>
-                <TableHead className="text-right text-zinc-400">الحالة</TableHead>
-                <TableHead className="text-right text-zinc-400">ملاحظات</TableHead>
+              <TableRow className="border-border hover:bg-transparent">
+                <TableHead className="text-right text-muted-foreground">رقم الفاتورة</TableHead>
+                <TableHead className="text-right text-muted-foreground">التاريخ</TableHead>
+                <TableHead className="text-right text-muted-foreground">الإجمالي</TableHead>
+                <TableHead className="text-right text-muted-foreground">الحالة</TableHead>
+                <TableHead className="text-right text-muted-foreground">ملاحظات</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {purchases.map((p) => (
-                <TableRow key={p.invID} className="border-zinc-800">
+                <TableRow key={p.invID} className="border-border">
                   <TableCell className="text-sm">#{p.invID}</TableCell>
-                  <TableCell className="text-xs text-zinc-400">{formatDate(p.invDate)}</TableCell>
-                  <TableCell className="text-sm font-semibold text-amber-400">{money(p.GrandTotal)}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground">{formatDate(p.invDate)}</TableCell>
+                  <TableCell className="text-sm font-semibold text-warning">{money(p.GrandTotal)}</TableCell>
                   <TableCell>
                     <Badge variant="outline" className={`text-[10px] ${
-                      p.PostStatus === 'POSTED' ? 'border-emerald-500/40 text-emerald-400'
-                        : p.PostStatus === 'CANCELLED' ? 'border-rose-500/40 text-rose-400'
-                          : 'border-zinc-600 text-zinc-300'}`}>
+                      p.PostStatus === 'POSTED' ? 'border-success/40 text-success'
+                        : p.PostStatus === 'CANCELLED' ? 'border-destructive/40 text-destructive'
+                          : 'border-border text-foreground'}`}>
                       {p.PostStatus === 'POSTED' ? 'مُرحّلة' : p.PostStatus === 'CANCELLED' ? 'ملغاة' : 'مسودة'}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-xs text-zinc-400">{p.Notes ?? '—'}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground">{p.Notes ?? '—'}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -944,29 +944,29 @@ function PurchasesPanel({
       )}
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="bg-zinc-900 border-zinc-700 text-white max-w-2xl max-h-[90vh] overflow-y-auto" dir="rtl">
+        <DialogContent className="bg-card border-border text-foreground max-w-2xl max-h-[90vh] overflow-y-auto" dir="rtl">
           <DialogHeader><DialogTitle>فاتورة مشتريات جديدة</DialogTitle></DialogHeader>
           <div className="space-y-4 pt-2">
             <div>
-              <Label className="text-zinc-300">البنود (منتج، كمية، سعر الوحدة) *</Label>
+              <Label className="text-foreground">البنود (منتج، كمية، سعر الوحدة) *</Label>
               <div className="mt-1">
                 <LineEditor items={items} lines={lines} withPrice onChange={(l) => { setLines(l); setFormError(''); }} />
               </div>
-              <p className="text-xs text-zinc-500 mt-2">الإجمالي: <span className="text-amber-400 font-semibold">{money(total)}</span></p>
+              <p className="text-xs text-muted-foreground mt-2">الإجمالي: <span className="text-warning font-semibold">{money(total)}</span></p>
             </div>
             <div>
-              <Label className="text-zinc-300">ملاحظات</Label>
+              <Label className="text-foreground">ملاحظات</Label>
               <Input value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={100}
-                className="bg-zinc-800 border-zinc-700 text-white mt-1" placeholder="مثال: توريد شهر نوفمبر" />
+                className="bg-muted border-border text-foreground mt-1" placeholder="مثال: توريد شهر نوفمبر" />
             </div>
-            <label className="flex items-center gap-2 text-sm text-zinc-300 cursor-pointer">
+            <label className="flex items-center gap-2 text-sm text-foreground cursor-pointer">
               <input type="checkbox" className="accent-amber-500 w-4 h-4" checked={post} onChange={(e) => setPost(e.target.checked)} />
               ترحيل فورًا وإضافة الكميات للمخزون
             </label>
-            {formError && <p className="text-sm text-rose-400 flex items-center gap-1"><X className="w-3.5 h-3.5" />{formError}</p>}
+            {formError && <p className="text-sm text-destructive flex items-center gap-1"><X className="w-3.5 h-3.5" />{formError}</p>}
             <div className="flex justify-end gap-2 pt-2">
-              <Button variant="outline" className="border-zinc-700" onClick={() => setCreateOpen(false)} disabled={busy}>إلغاء</Button>
-              <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={submit} disabled={busy}>
+              <Button variant="outline" className="border-border" onClick={() => setCreateOpen(false)} disabled={busy}>إلغاء</Button>
+              <Button className="bg-success hover:bg-success/85 text-success-foreground" onClick={submit} disabled={busy}>
                 {busy ? <><Loader2 className="w-4 h-4 animate-spin ml-1" />جاري الحفظ...</> : <><Check className="w-4 h-4 ml-1" />{post ? 'تسجيل وترحيل' : 'حفظ كمسودة'}</>}
               </Button>
             </div>
@@ -1028,7 +1028,7 @@ function PolicyPanel({ onChanged }: { onChanged: (msg: string) => Promise<void> 
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-12 text-zinc-500 gap-3">
+      <div className="flex items-center justify-center py-12 text-muted-foreground gap-3">
         <Loader2 className="w-5 h-5 animate-spin" />جاري التحميل...
       </div>
     );
@@ -1039,13 +1039,13 @@ function PolicyPanel({ onChanged }: { onChanged: (msg: string) => Promise<void> 
   return (
     <div className="space-y-4 max-w-3xl">
       {error && (
-        <div className="flex items-center gap-2 p-3 rounded-lg border border-rose-500/30 bg-rose-500/5 text-rose-400 text-sm">
+        <div className="flex items-center gap-2 p-3 rounded-lg border border-destructive/30 bg-destructive-soft text-destructive text-sm">
           <X className="w-4 h-4 shrink-0" />{error}
         </div>
       )}
 
       {policy && (
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 divide-y divide-zinc-800">
+        <div className="rounded-xl border border-border bg-card divide-y divide-border">
           <PolicyRow
             title="تسجيل المخزون الافتتاحي"
             description="أكّد أنك سجّلت الأرصدة الافتتاحية لكل المنتجات (عبر المشتريات أو الجرد) قبل تفعيل الوضع الصارم."
@@ -1076,12 +1076,12 @@ function PolicyPanel({ onChanged }: { onChanged: (msg: string) => Promise<void> 
           <div className="p-4 flex items-center justify-between gap-4">
             <div>
               <div className="flex items-center gap-2">
-                <span className="text-sm font-semibold text-white">الوضع الصارم (منع الرصيد السالب)</span>
-                <Badge variant="outline" className={`text-[10px] ${strict ? 'border-emerald-500/40 text-emerald-400' : 'border-amber-500/40 text-amber-400'}`}>
+                <span className="text-sm font-semibold text-foreground">الوضع الصارم (منع الرصيد السالب)</span>
+                <Badge variant="outline" className={`text-[10px] ${strict ? 'border-success/40 text-success' : 'border-warning/40 text-warning'}`}>
                   {strict ? 'مفعّل' : 'غير مفعّل'}
                 </Badge>
               </div>
-              <p className="text-xs text-zinc-500 mt-1">
+              <p className="text-xs text-muted-foreground mt-1">
                 {strict
                   ? `مفعّل منذ ${formatDate(policy.strictModeActivatedAt)} — لا يمكن بيع منتج بكمية أكبر من المتاح.`
                   : 'عند التفعيل لن يُسمح ببيع كمية أكبر من الرصيد. يتطلب تسجيل المخزون الافتتاحي وعدم وجود أرصدة سالبة.'}
@@ -1089,7 +1089,7 @@ function PolicyPanel({ onChanged }: { onChanged: (msg: string) => Promise<void> 
             </div>
             {!strict && (
               <Button
-                className="bg-emerald-600 hover:bg-emerald-700 shrink-0"
+                className="bg-success hover:bg-success/85 text-success-foreground shrink-0"
                 disabled={busy || !policy.openingStockRegistered || negatives.length > 0}
                 onClick={() =>
                   post(
@@ -1107,24 +1107,24 @@ function PolicyPanel({ onChanged }: { onChanged: (msg: string) => Promise<void> 
       )}
 
       {negatives.length > 0 && (
-        <div className="rounded-xl border border-rose-500/30 bg-rose-500/5 overflow-hidden">
-          <div className="px-4 py-2 text-sm font-semibold text-rose-300 flex items-center gap-2">
+        <div className="rounded-xl border border-destructive/30 bg-destructive-soft overflow-hidden">
+          <div className="px-4 py-2 text-sm font-semibold text-destructive flex items-center gap-2">
             <AlertTriangle className="w-4 h-4" />الأرصدة السالبة ({negatives.length})
           </div>
           <Table>
             <TableHeader>
-              <TableRow className="border-zinc-800 hover:bg-transparent">
-                <TableHead className="text-right text-zinc-400 h-9">المنتج</TableHead>
-                <TableHead className="text-right text-zinc-400 h-9">الفرع</TableHead>
-                <TableHead className="text-right text-zinc-400 h-9">الرصيد</TableHead>
+              <TableRow className="border-border hover:bg-transparent">
+                <TableHead className="text-right text-muted-foreground h-9">المنتج</TableHead>
+                <TableHead className="text-right text-muted-foreground h-9">الفرع</TableHead>
+                <TableHead className="text-right text-muted-foreground h-9">الرصيد</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {negatives.map((n) => (
-                <TableRow key={`${n.branchId}-${n.proId}`} className="border-zinc-800">
+                <TableRow key={`${n.branchId}-${n.proId}`} className="border-border">
                   <TableCell className="py-2 text-sm">{n.productName}</TableCell>
-                  <TableCell className="py-2 text-sm text-zinc-400">{n.branchName}</TableCell>
-                  <TableCell className="py-2 text-sm font-bold text-rose-400">{n.qtyOnHand}</TableCell>
+                  <TableCell className="py-2 text-sm text-muted-foreground">{n.branchName}</TableCell>
+                  <TableCell className="py-2 text-sm font-bold text-destructive">{n.qtyOnHand}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -1156,8 +1156,8 @@ function PolicyRow({
         onChange={onToggle}
       />
       <div>
-        <div className="text-sm font-semibold text-white">{title}</div>
-        <p className="text-xs text-zinc-500 mt-1">{description}</p>
+        <div className="text-sm font-semibold text-foreground">{title}</div>
+        <p className="text-xs text-muted-foreground mt-1">{description}</p>
       </div>
     </label>
   );

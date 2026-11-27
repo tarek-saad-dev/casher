@@ -118,42 +118,42 @@ export default function DeductionsMonthlyReportPage() {
       />
 
       {/* Controls */}
-      <div className="bg-zinc-900/60 border border-zinc-800/60 rounded-2xl p-5 mb-6">
+      <div className="bg-card border border-border rounded-2xl p-5 mb-6">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Month Selector */}
           <div className="space-y-1.5">
-            <label className="text-xs text-zinc-400">الشهر</label>
+            <label className="text-xs text-muted-foreground">الشهر</label>
             <Input
               type="month"
               value={selectedMonth}
               onChange={(e) => setSelectedMonth(e.target.value)}
-              className="bg-zinc-950 border-zinc-700 text-white"
+              className="bg-background border-border text-foreground"
             />
           </div>
 
           {/* Search */}
           <div className="space-y-1.5">
-            <label className="text-xs text-zinc-400">بحث في الموظفين</label>
+            <label className="text-xs text-muted-foreground">بحث في الموظفين</label>
             <div className="relative">
-              <Search className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-zinc-500" />
+              <Search className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground" />
               <Input
                 placeholder="بحث باسم الموظف أو الوظيفة..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="bg-zinc-950 border-zinc-700 text-white pr-7"
+                className="bg-background border-border text-foreground pr-7"
               />
             </div>
           </div>
 
           {/* Actions */}
           <div className="space-y-1.5">
-            <label className="text-xs text-zinc-400">إجراءات</label>
+            <label className="text-xs text-muted-foreground">إجراءات</label>
             <div className="flex gap-2">
               <Button
                 onClick={loadData}
                 disabled={loading}
                 variant="outline"
-                className="border-zinc-700 text-zinc-300"
+                className="border-border text-foreground"
               >
                 <RefreshCw className={`w-4 h-4 ml-1 ${loading ? 'animate-spin' : ''}`} />
                 تحديث
@@ -162,7 +162,7 @@ export default function DeductionsMonthlyReportPage() {
                 onClick={exportToCSV}
                 disabled={!data || filteredEmployees.length === 0}
                 variant="outline"
-                className="border-zinc-700 text-zinc-300"
+                className="border-border text-foreground"
               >
                 <Download className="w-4 h-4 ml-1" />
                 تصدير
@@ -202,20 +202,20 @@ export default function DeductionsMonthlyReportPage() {
       )}
 
       {/* Content */}
-      <div className="bg-zinc-900/60 border border-zinc-800/60 rounded-2xl overflow-hidden">
+      <div className="bg-card border border-border rounded-2xl overflow-hidden">
         {/* Header */}
-        <div className="px-5 py-4 border-b border-zinc-800/60">
-          <h2 className="text-sm font-bold text-zinc-300">
+        <div className="px-5 py-4 border-b border-border">
+          <h2 className="text-sm font-bold text-foreground">
             {data?.monthName || 'تقرير الشهر'}
           </h2>
-          <p className="text-xs text-zinc-500 mt-1">
+          <p className="text-xs text-muted-foreground mt-1">
             {filteredEmployees.length} موظف {searchTerm && '(تمت فلترة النتائج)'}
           </p>
         </div>
 
         {/* Loading */}
         {loading && (
-          <div className="flex items-center justify-center py-16 text-zinc-500">
+          <div className="flex items-center justify-center py-16 text-muted-foreground">
             <RefreshCw className="w-5 h-5 animate-spin ml-2" />
             <span className="text-sm">جاري التحميل...</span>
           </div>
@@ -223,7 +223,7 @@ export default function DeductionsMonthlyReportPage() {
 
         {/* No Data */}
         {!loading && (!data || data.employees.length === 0) && (
-          <div className="flex flex-col items-center justify-center py-16 text-zinc-600">
+          <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
             <TrendingDown className="w-10 h-10 mb-3 opacity-40" />
             <p className="text-sm">لا توجد خصومات في الشهر المحدد</p>
           </div>
@@ -231,7 +231,7 @@ export default function DeductionsMonthlyReportPage() {
 
         {/* No Search Results */}
         {!loading && data && data.employees.length > 0 && filteredEmployees.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-16 text-zinc-600">
+          <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
             <Search className="w-10 h-10 mb-3 opacity-40" />
             <p className="text-sm">لا توجد نتائج للبحث</p>
           </div>
@@ -242,7 +242,7 @@ export default function DeductionsMonthlyReportPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm" dir="rtl">
               <thead>
-                <tr className="border-b border-zinc-800/60 text-xs text-zinc-500">
+                <tr className="border-b border-border text-xs text-muted-foreground">
                   <th className="px-4 py-3 text-right font-medium">الموظف</th>
                   <th className="px-4 py-3 text-right font-medium">الوظيفة</th>
                   <th className="px-4 py-3 text-center font-medium">عدد الخصومات</th>
@@ -253,20 +253,20 @@ export default function DeductionsMonthlyReportPage() {
               </thead>
               <tbody>
                 {filteredEmployees.map((emp, idx) => (
-                  <tr key={emp.EmpID} className="border-b border-zinc-800/30 hover:bg-zinc-800/20 transition-colors">
+                  <tr key={emp.EmpID} className="border-b border-border hover:bg-surface-muted transition-colors">
                     <td className="px-4 py-3">
-                      <div className="font-medium text-zinc-300">{emp.EmpName}</div>
+                      <div className="font-medium text-foreground">{emp.EmpName}</div>
                     </td>
-                    <td className="px-4 py-3 text-zinc-400 text-xs">{emp.Job || '—'}</td>
+                    <td className="px-4 py-3 text-muted-foreground text-xs">{emp.Job || '—'}</td>
                     <td className="px-4 py-3 text-center">
-                      <span className="inline-block px-2 py-1 rounded-full text-[11px] font-medium bg-red-500/10 text-red-400 border border-red-500/20">
+                      <span className="inline-block px-2 py-1 rounded-full text-[11px] font-medium bg-destructive-soft text-destructive border border-destructive/20">
                         {emp.DeductionCount}
                       </span>
                     </td>
-                    <td className="px-4 py-3 font-bold text-red-400 whitespace-nowrap">
-                      {fmt(emp.TotalDeductions)} <span className="text-[11px] font-normal text-zinc-500">ج.م</span>
+                    <td className="px-4 py-3 font-bold text-destructive whitespace-nowrap">
+                      {fmt(emp.TotalDeductions)} <span className="text-[11px] font-normal text-muted-foreground">ج.م</span>
                     </td>
-                    <td className="px-4 py-3 text-zinc-400 text-xs">
+                    <td className="px-4 py-3 text-muted-foreground text-xs">
                       <div>من: {new Date(emp.FirstDeductionDate).toLocaleDateString('ar-EG')}</div>
                       <div>إلى: {new Date(emp.LastDeductionDate).toLocaleDateString('ar-EG')}</div>
                     </td>
@@ -276,7 +276,7 @@ export default function DeductionsMonthlyReportPage() {
                           onClick={() => toggleEmployeeExpansion(emp.EmpID)}
                           variant="ghost"
                           size="sm"
-                          className="text-xs px-2 py-1 h-7 text-zinc-400 hover:text-zinc-300"
+                          className="text-xs px-2 py-1 h-7 text-muted-foreground hover:text-foreground"
                         >
                           {expandedEmployees.has(emp.EmpID) ? 'إخفاء' : 'تفاصيل'}
                         </Button>
@@ -291,10 +291,10 @@ export default function DeductionsMonthlyReportPage() {
                   {filteredEmployees.map((emp) => 
                     expandedEmployees.has(emp.EmpID) && (
                       <tr key={`details-${emp.EmpID}`}>
-                        <td colSpan={6} className="px-4 py-3 bg-zinc-800/30">
-                          <div className="text-xs text-zinc-400 space-y-2">
-                            <div className="font-medium text-zinc-300">تفاصيل الخصومات:</div>
-                            <div className="bg-zinc-900/50 rounded-lg p-3 text-zinc-300 leading-relaxed">
+                        <td colSpan={6} className="px-4 py-3 bg-muted">
+                          <div className="text-xs text-muted-foreground space-y-2">
+                            <div className="font-medium text-foreground">تفاصيل الخصومات:</div>
+                            <div className="bg-card rounded-lg p-3 text-foreground leading-relaxed">
                               {emp.DeductionDetails}
                             </div>
                           </div>
@@ -307,15 +307,15 @@ export default function DeductionsMonthlyReportPage() {
               {/* Totals row */}
               {data && (
                 <tfoot>
-                  <tr className="border-t-2 border-zinc-700 bg-zinc-800/30">
-                    <td colSpan={2} className="px-4 py-3 text-xs font-bold text-zinc-400">
+                  <tr className="border-t-2 border-border bg-muted">
+                    <td colSpan={2} className="px-4 py-3 text-xs font-bold text-muted-foreground">
                       الإجمالي ({filteredEmployees.length} موظف)
                     </td>
-                    <td className="px-4 py-3 text-center font-bold text-zinc-300">
+                    <td className="px-4 py-3 text-center font-bold text-foreground">
                       {filteredEmployees.reduce((sum, emp) => sum + emp.DeductionCount, 0)}
                     </td>
-                    <td className="px-4 py-3 font-bold text-red-400 text-base whitespace-nowrap">
-                      {fmt(filteredEmployees.reduce((sum, emp) => sum + emp.TotalDeductions, 0))} <span className="text-xs font-normal text-zinc-500">ج.م</span>
+                    <td className="px-4 py-3 font-bold text-destructive text-base whitespace-nowrap">
+                      {fmt(filteredEmployees.reduce((sum, emp) => sum + emp.TotalDeductions, 0))} <span className="text-xs font-normal text-muted-foreground">ج.م</span>
                     </td>
                     <td colSpan={2} />
                   </tr>

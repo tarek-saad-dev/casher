@@ -109,7 +109,7 @@ export default function MonthlyBusinessReportPage() {
     : null;
 
   return (
-    <div className="min-h-screen bg-background p-6">
+    <div className="min-h-full bg-background p-3 sm:p-6">
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -130,7 +130,7 @@ export default function MonthlyBusinessReportPage() {
           <button
             onClick={handleExportPDF}
             disabled={!report || pdfLoading}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-success text-foreground rounded-lg hover:bg-success transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             title="تصدير التقرير PDF للطباعة أو المشاركة"
           >
             {pdfLoading ? (
@@ -232,12 +232,12 @@ export default function MonthlyBusinessReportPage() {
               {/* Revenue Card */}
               <div className="bg-card border border-border rounded-lg p-6">
                 <div className="flex items-center justify-between mb-4">
-                  <div className="p-2 bg-emerald-500/10 rounded-lg">
-                    <TrendingUp className="h-6 w-6 text-emerald-500" />
+                  <div className="p-2 bg-success-soft rounded-lg">
+                    <TrendingUp className="h-6 w-6 text-success" />
                   </div>
                   <span className="text-sm text-muted-foreground">إجمالي الوارد</span>
                 </div>
-                <div className="text-2xl font-bold text-emerald-500">
+                <div className="text-2xl font-bold text-success">
                   {formatCurrency(report.totalRevenue)}
                 </div>
                 <div className="text-xs text-muted-foreground mt-1">Revenue</div>
@@ -246,12 +246,12 @@ export default function MonthlyBusinessReportPage() {
               {/* Expenses Card */}
               <div className="bg-card border border-border rounded-lg p-6">
                 <div className="flex items-center justify-between mb-4">
-                  <div className="p-2 bg-rose-500/10 rounded-lg">
-                    <TrendingDown className="h-6 w-6 text-rose-500" />
+                  <div className="p-2 bg-destructive-soft rounded-lg">
+                    <TrendingDown className="h-6 w-6 text-destructive" />
                   </div>
                   <span className="text-sm text-muted-foreground">إجمالي المصروف</span>
                 </div>
-                <div className="text-2xl font-bold text-rose-500">
+                <div className="text-2xl font-bold text-destructive">
                   {formatCurrency(report.totalExpenses)}
                 </div>
                 <div className="text-xs text-muted-foreground mt-1">Expenses</div>
@@ -260,12 +260,12 @@ export default function MonthlyBusinessReportPage() {
               {/* Net Profit Card */}
               <div className="bg-card border border-border rounded-lg p-6">
                 <div className="flex items-center justify-between mb-4">
-                  <div className="p-2 bg-blue-500/10 rounded-lg">
-                    <Wallet className="h-6 w-6 text-blue-500" />
+                  <div className="p-2 bg-info-soft rounded-lg">
+                    <Wallet className="h-6 w-6 text-info" />
                   </div>
                   <span className="text-sm text-muted-foreground">صافي الربح</span>
                 </div>
-                <div className={`text-2xl font-bold ${report.netProfit >= 0 ? 'text-blue-500' : 'text-amber-500'}`}>
+                <div className={`text-2xl font-bold ${report.netProfit >= 0 ? 'text-info' : 'text-warning'}`}>
                   {formatCurrency(report.netProfit)}
                 </div>
                 <div className="text-xs text-muted-foreground mt-1">Net Profit</div>

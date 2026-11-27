@@ -138,7 +138,7 @@ export default function PosInvoicePanel({
       )}
 
       {saveError && (
-        <div className="flex items-center gap-2 rounded-lg bg-destructive/10 p-2.5 text-sm text-destructive">
+        <div role="alert" className="flex items-center gap-2 rounded-lg border border-destructive/20 bg-destructive-soft p-2.5 text-sm text-destructive">
           <AlertTriangle className="h-4 w-4 shrink-0" />
           {saveError}
         </div>
@@ -170,27 +170,29 @@ export function PosInvoiceSaveActions({ saving, disabled, onSave }: PosInvoiceSa
   return (
     <div className="flex gap-2">
       <Button
-        size="lg"
-        className="min-h-11 flex-1 py-6 text-base font-bold"
+        size="xl"
+        className="flex-1 font-bold"
         type="button"
         onClick={() => onSave(false, 'save-button')}
         disabled={saving || disabled}
+        aria-busy={saving || undefined}
       >
         {saving ? (
           <>
-            <Loader2 className="ml-2 h-5 w-5 animate-spin" />
+            <Loader2 className="size-5 animate-spin" aria-hidden />
             جاري الحفظ...
           </>
         ) : (
           <>
-            <Save className="ml-2 h-5 w-5" />
+            <Save className="size-5" aria-hidden />
             حفظ (F9)
           </>
         )}
       </Button>
       <Button
-        size="lg"
-        className="min-h-11 px-6 py-6 text-base font-bold"
+        size="xl"
+        className="px-5 font-bold"
+        aria-label="حفظ سريع (+)"
         type="button"
         onClick={() => onSave(false, 'plus-button')}
         disabled={saving || disabled}

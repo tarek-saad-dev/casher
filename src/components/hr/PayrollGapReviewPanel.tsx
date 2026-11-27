@@ -32,16 +32,16 @@ const AR_MONTHS = [
 ];
 
 const CATEGORY_TONE: Record<PayrollGapDayCategory, string> = {
-  ok: 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30',
-  future: 'bg-zinc-500/10 text-zinc-400 border-zinc-500/30',
-  schedule_off: 'bg-sky-500/10 text-sky-300 border-sky-500/30',
-  schedule_off_with_payroll: 'bg-rose-500/10 text-rose-300 border-rose-500/30',
-  missing_payroll: 'bg-amber-500/10 text-amber-300 border-amber-500/30',
-  incomplete_attendance: 'bg-orange-500/10 text-orange-300 border-orange-500/30',
-  attendance_no_payroll: 'bg-amber-500/10 text-amber-300 border-amber-500/30',
-  no_attendance: 'bg-zinc-500/10 text-zinc-400 border-zinc-500/30',
-  non_payable_no_payroll: 'bg-violet-500/10 text-violet-300 border-violet-500/30',
-  posted_payroll: 'bg-blue-500/10 text-blue-300 border-blue-500/30',
+  ok: 'bg-success-soft text-success border-success/30',
+  future: 'bg-muted text-muted-foreground border-border',
+  schedule_off: 'bg-info-soft text-info border-info/30',
+  schedule_off_with_payroll: 'bg-destructive-soft text-destructive border-destructive/30',
+  missing_payroll: 'bg-warning-soft text-warning border-warning/30',
+  incomplete_attendance: 'bg-warning-soft text-warning border-warning/30',
+  attendance_no_payroll: 'bg-warning-soft text-warning border-warning/30',
+  no_attendance: 'bg-muted text-muted-foreground border-border',
+  non_payable_no_payroll: 'bg-brand-soft text-brand border-brand/30',
+  posted_payroll: 'bg-info-soft text-info border-info/30',
 };
 
 interface EmployeeOption {
@@ -288,12 +288,12 @@ export default function PayrollGapReviewPanel() {
 
   return (
     <div className="space-y-6">
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4 sm:p-6 space-y-4">
+      <div className="rounded-xl border border-border bg-card p-4 sm:p-6 space-y-4">
         <div className="flex items-start gap-3">
           <ClipboardList className="w-6 h-6 text-primary shrink-0 mt-0.5" />
           <div>
-            <h2 className="text-lg font-bold text-white">مراجعة فجوات اليوميات</h2>
-            <p className="text-sm text-zinc-400 mt-1">
+            <h2 className="text-lg font-bold text-foreground">مراجعة فجوات اليوميات</h2>
+            <p className="text-sm text-muted-foreground mt-1">
               تحليل شهري لموظف في فرع: أيام بدون يوميات، حضور ناقص، أيام إجازته من الجدول الأسبوعي، والأيام المستقبلية.
               التنفيذ التلقائي يطبّق نفس منطق التصحيح اليدوي (إجازة حسب الجدول، إكمال خروج، توليد يوميات).
             </p>
@@ -302,7 +302,7 @@ export default function PayrollGapReviewPanel() {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <div>
-            <label className="text-xs text-zinc-500 mb-1 block">الموظف</label>
+            <label className="text-xs text-muted-foreground mb-1 block">الموظف</label>
             <Select value={empId} onValueChange={setEmpId}>
               <SelectTrigger><SelectValue placeholder="اختر موظفاً" /></SelectTrigger>
               <SelectContent>
@@ -313,7 +313,7 @@ export default function PayrollGapReviewPanel() {
             </Select>
           </div>
           <div>
-            <label className="text-xs text-zinc-500 mb-1 block">الفرع</label>
+            <label className="text-xs text-muted-foreground mb-1 block">الفرع</label>
             <Select value={branchId} onValueChange={setBranchId}>
               <SelectTrigger><SelectValue placeholder="اختر فرعاً" /></SelectTrigger>
               <SelectContent>
@@ -326,7 +326,7 @@ export default function PayrollGapReviewPanel() {
             </Select>
           </div>
           <div>
-            <label className="text-xs text-zinc-500 mb-1 block">السنة</label>
+            <label className="text-xs text-muted-foreground mb-1 block">السنة</label>
             <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
@@ -337,7 +337,7 @@ export default function PayrollGapReviewPanel() {
             </Select>
           </div>
           <div>
-            <label className="text-xs text-zinc-500 mb-1 block">الشهر</label>
+            <label className="text-xs text-muted-foreground mb-1 block">الشهر</label>
             <Select value={String(month)} onValueChange={(v) => setMonth(Number(v))}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
@@ -358,7 +358,7 @@ export default function PayrollGapReviewPanel() {
       </div>
 
       {error && (
-        <div className="flex items-center gap-2 rounded-lg border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-rose-300 text-sm">
+        <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive-soft px-4 py-3 text-destructive text-sm">
           <AlertCircle className="w-4 h-4 shrink-0" />
           {error}
         </div>
@@ -378,25 +378,25 @@ export default function PayrollGapReviewPanel() {
             <KpiCard title="يحتاج إجراء" value={String(review.summary.actionableDays)} icon={<Wrench className="w-5 h-5" />} />
           </div>
 
-          <p className="text-xs text-zinc-500">
-            مراجعة حتى: <span className="text-zinc-300 font-mono">{review.reviewThroughDate}</span>
+          <p className="text-xs text-muted-foreground">
+            مراجعة حتى: <span className="text-foreground font-mono">{review.reviewThroughDate}</span>
             {' · '}
             الأيام بعد هذا التاريخ تُعرض كـ «مستقبلية» ولا تُولَّد تلقائياً.
             {review.employeeOffDaysLabel && (
               <>
                 {' · '}
-                أيام إجازة الموظف: <span className="text-sky-300">{review.employeeOffDaysLabel}</span>
+                أيام إجازة الموظف: <span className="text-info">{review.employeeOffDaysLabel}</span>
               </>
             )}
           </p>
 
           {actionableRows.length > 0 && (
-            <div className="rounded-xl border border-amber-500/25 bg-amber-500/5 p-4 space-y-4">
-              <h3 className="text-sm font-semibold text-amber-200 flex items-center gap-2">
+            <div className="rounded-xl border border-warning/25 bg-warning-soft p-4 space-y-4">
+              <h3 className="text-sm font-semibold text-warning flex items-center gap-2">
                 <Wrench className="w-4 h-4" />
                 إجراءات تلقائية ({actionableRows.length} يوم)
               </h3>
-              <div className="grid sm:grid-cols-2 gap-2 text-sm text-zinc-300">
+              <div className="grid sm:grid-cols-2 gap-2 text-sm text-foreground">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
@@ -424,7 +424,7 @@ export default function PayrollGapReviewPanel() {
               </div>
               <div className="flex flex-wrap items-end gap-3">
                 <div>
-                  <label className="text-xs text-zinc-500 mb-1 block">وقت خروج افتراضي (ليلي)</label>
+                  <label className="text-xs text-muted-foreground mb-1 block">وقت خروج افتراضي (ليلي)</label>
                   <Input
                     value={defaultCheckout}
                     onChange={(e) => setDefaultCheckout(e.target.value)}
@@ -441,7 +441,7 @@ export default function PayrollGapReviewPanel() {
           )}
 
           {applyResult && (
-            <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/5 p-4 text-sm text-emerald-200 space-y-1">
+            <div className="rounded-xl border border-success/25 bg-success-soft p-4 text-sm text-success space-y-1">
               <p className="font-semibold flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4" />
                 تم التنفيذ
@@ -453,21 +453,21 @@ export default function PayrollGapReviewPanel() {
               </p>
               <p>إكمال حضور: {applyResult.summary.attendanceCompleted} · توليد يوميات: {applyResult.summary.payrollGenerated}</p>
               {applyResult.summary.failures.length > 0 && (
-                <p className="text-rose-300">أخطاء: {applyResult.summary.failures.join(' · ')}</p>
+                <p className="text-destructive">أخطاء: {applyResult.summary.failures.join(' · ')}</p>
               )}
             </div>
           )}
 
-          <div className="rounded-xl border border-zinc-800 overflow-hidden">
-            <div className="px-4 py-3 border-b border-zinc-800 bg-zinc-900/40 flex items-center justify-between gap-2">
-              <h3 className="text-sm font-semibold text-zinc-300">
+          <div className="rounded-xl border border-border overflow-hidden">
+            <div className="px-4 py-3 border-b border-border bg-card flex items-center justify-between gap-2">
+              <h3 className="text-sm font-semibold text-foreground">
                 {review.empName} — {review.branchName} — {AR_MONTHS[review.month - 1]} {review.year}
               </h3>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm min-w-[900px]">
                 <thead>
-                  <tr className="border-b border-zinc-800 text-zinc-500 text-xs">
+                  <tr className="border-b border-border text-muted-foreground text-xs">
                     <th className="px-3 py-3 text-right">التاريخ</th>
                     <th className="px-3 py-3 text-right">اليوم</th>
                     <th className="px-3 py-3 text-right">الحالة</th>
@@ -486,15 +486,15 @@ export default function PayrollGapReviewPanel() {
                     <tr
                       key={row.workDate}
                       className={cn(
-                        'border-b border-zinc-800/50',
-                        row.actionable && 'bg-amber-950/20',
+                        'border-b border-border',
+                        row.actionable && 'bg-warning-soft',
                       )}
                     >
-                      <td className="px-3 py-2.5 font-mono text-zinc-300">{row.workDate}</td>
-                      <td className="px-3 py-2.5 text-zinc-400">
+                      <td className="px-3 py-2.5 font-mono text-foreground">{row.workDate}</td>
+                      <td className="px-3 py-2.5 text-muted-foreground">
                         {row.dayNameAr}
                         {row.isScheduledOff && (
-                          <span className="mr-1.5 inline-flex rounded border border-sky-500/30 bg-sky-500/10 px-1.5 py-0.5 text-[10px] text-sky-300">
+                          <span className="mr-1.5 inline-flex rounded border border-info/30 bg-info-soft px-1.5 py-0.5 text-[10px] text-info">
                             إجازة
                           </span>
                         )}
@@ -504,14 +504,14 @@ export default function PayrollGapReviewPanel() {
                           {row.categoryLabelAr}
                         </span>
                       </td>
-                      <td className="px-3 py-2.5 text-zinc-400">{row.attendanceStatus ?? '—'}</td>
+                      <td className="px-3 py-2.5 text-muted-foreground">{row.attendanceStatus ?? '—'}</td>
                       <td className="px-3 py-2.5 font-mono">{row.checkIn ?? '—'}</td>
                       <td className="px-3 py-2.5 font-mono">{row.checkOut ?? '—'}</td>
-                      <td className="px-3 py-2.5 font-mono text-emerald-400">
+                      <td className="px-3 py-2.5 font-mono text-success">
                         {row.dailyWage != null ? fmt(row.dailyWage) : '—'}
                       </td>
                       <td className="px-3 py-2.5 font-mono">{row.actualHours ?? '—'}</td>
-                      <td className="px-3 py-2.5 text-xs text-zinc-400">{row.suggestedActionAr ?? '—'}</td>
+                      <td className="px-3 py-2.5 text-xs text-muted-foreground">{row.suggestedActionAr ?? '—'}</td>
                       <td className="px-3 py-2.5">
                         <Link
                           href={`/admin/hr?tab=daily-payroll&branchId=${review.branchId}&workDate=${row.workDate}`}
@@ -528,7 +528,7 @@ export default function PayrollGapReviewPanel() {
                             assigningDay === row.workDate || generatingDay === row.workDate;
 
                           if (!canAssign && !canGenerate) {
-                            return <span className="text-xs text-zinc-600">—</span>;
+                            return <span className="text-xs text-muted-foreground">—</span>;
                           }
 
                           return (
@@ -571,7 +571,7 @@ export default function PayrollGapReviewPanel() {
                                 <span
                                   className={cn(
                                     'text-[10px] max-w-[140px] leading-tight',
-                                    rowFlash[row.workDate].ok ? 'text-emerald-400' : 'text-rose-400',
+                                    rowFlash[row.workDate].ok ? 'text-success' : 'text-destructive',
                                   )}
                                 >
                                   {rowFlash[row.workDate].message}

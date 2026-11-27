@@ -139,7 +139,7 @@ function dayBranchBadge(
 }
 
 const actionPillClass =
-  'w-full rounded-full bg-amber-400 hover:bg-amber-300 text-black text-[12px] font-semibold leading-snug px-3 py-2.5 disabled:opacity-50 disabled:pointer-events-none';
+  'w-full rounded-full bg-warning hover:bg-warning/85 text-warning-foreground text-[12px] font-semibold leading-snug px-3 py-2.5 disabled:opacity-50 disabled:pointer-events-none';
 
 export default function EmployeeMonthlySheetPanel() {
   const router = useRouter();
@@ -524,22 +524,22 @@ export default function EmployeeMonthlySheetPanel() {
 
   return (
     <div className="space-y-5" dir="rtl">
-      <div className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-4 sm:p-5 space-y-4">
+      <div className="rounded-2xl border border-border bg-card p-4 sm:p-5 space-y-4">
         <div className="mb-1">
-          <h2 className="text-base font-semibold text-white">تقرير الموظف الشهري</h2>
-          <p className="text-xs text-zinc-500 mt-0.5">
+          <h2 className="text-base font-semibold text-foreground">تقرير الموظف الشهري</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">
             كشف شهري يومًا بيوم — حضور · إيرادات · مصاريف · يوميات
           </p>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
           <div className="space-y-1.5 lg:col-span-2">
-            <label className="text-xs text-zinc-400">الموظف</label>
+            <label className="text-xs text-muted-foreground">الموظف</label>
             <Select
               value={employeeId || undefined}
               onValueChange={setEmployeeId}
               disabled={employeesLoading}
             >
-              <SelectTrigger className="bg-zinc-950/80 border-zinc-700">
+              <SelectTrigger className="bg-background border-border">
                 <SelectValue placeholder={employeesLoading ? 'جاري التحميل...' : 'اختر الموظف'} />
               </SelectTrigger>
               <SelectContent>
@@ -553,9 +553,9 @@ export default function EmployeeMonthlySheetPanel() {
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-xs text-zinc-400">الشهر</label>
+            <label className="text-xs text-muted-foreground">الشهر</label>
             <Select value={String(month)} onValueChange={(v) => setMonth(Number(v))}>
-              <SelectTrigger className="bg-zinc-950/80 border-zinc-700">
+              <SelectTrigger className="bg-background border-border">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -569,9 +569,9 @@ export default function EmployeeMonthlySheetPanel() {
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-xs text-zinc-400">السنة</label>
+            <label className="text-xs text-muted-foreground">السنة</label>
             <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
-              <SelectTrigger className="bg-zinc-950/80 border-zinc-700">
+              <SelectTrigger className="bg-background border-border">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -586,12 +586,12 @@ export default function EmployeeMonthlySheetPanel() {
 
           {branches.length > 1 && (
             <div className="space-y-1.5">
-              <label className="text-xs text-zinc-400">الفرع</label>
+              <label className="text-xs text-muted-foreground">الفرع</label>
               <Select
                 value={sessionBranchId ? String(sessionBranchId) : undefined}
                 onValueChange={(v) => void switchBranch(Number(v))}
               >
-                <SelectTrigger className="bg-zinc-950/80 border-zinc-700">
+                <SelectTrigger className="bg-background border-border">
                   <SelectValue placeholder="الفرع" />
                 </SelectTrigger>
                 <SelectContent>
@@ -619,13 +619,13 @@ export default function EmployeeMonthlySheetPanel() {
           <Button
             onClick={handleApply}
             disabled={!employeeId || loading}
-            className="bg-amber-400 hover:bg-amber-300 text-black font-semibold"
+            className="bg-warning hover:bg-warning/85 text-warning-foreground font-semibold"
           >
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4 ml-1" />}
             عرض الشهر
           </Button>
           {sheet && (
-            <span className="text-xs text-zinc-500 flex items-center gap-1 mr-2">
+            <span className="text-xs text-muted-foreground flex items-center gap-1 mr-2">
               <Calendar className="h-3.5 w-3.5" />
               {sheet.employee.name} · {sheet.period.monthLabelAr}
             </span>
@@ -634,27 +634,27 @@ export default function EmployeeMonthlySheetPanel() {
       </div>
 
       {flashMsg && (
-        <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
+        <div className="rounded-xl border border-success/25 bg-success-soft px-4 py-3 text-sm text-success">
           {flashMsg}
         </div>
       )}
 
       {!employeeId && !loading && (
-        <div className="rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/40 p-12 text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full border border-zinc-700 bg-zinc-950">
-            <User className="h-7 w-7 text-zinc-500" />
+        <div className="rounded-2xl border border-dashed border-border bg-card p-12 text-center">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full border border-border bg-background">
+            <User className="h-7 w-7 text-muted-foreground" />
           </div>
-          <p className="text-zinc-300 font-medium">اختر الموظف لعرض كشف الشهر</p>
+          <p className="text-foreground font-medium">اختر الموظف لعرض كشف الشهر</p>
         </div>
       )}
 
       {error && (
-        <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 flex items-start gap-3 text-red-300">
+        <div className="rounded-xl border border-destructive/30 bg-destructive-soft p-4 flex items-start gap-3 text-destructive">
           <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
           <div>
             <p>{error}</p>
             {employeeId && (
-              <Button variant="link" className="text-red-200 p-0 h-auto mt-2" onClick={handleApply}>
+              <Button variant="link" className="text-destructive p-0 h-auto mt-2" onClick={handleApply}>
                 إعادة المحاولة
               </Button>
             )}
@@ -663,18 +663,18 @@ export default function EmployeeMonthlySheetPanel() {
       )}
 
       {loading && employeeId && (
-        <div className="flex items-center justify-center py-16 text-zinc-400">
+        <div className="flex items-center justify-center py-16 text-muted-foreground">
           <Loader2 className="h-7 w-7 animate-spin ml-3" />
           جاري تجهيز كشف الشهر...
         </div>
       )}
 
       {sheet && !loading && (
-        <div className="rounded-xl border border-zinc-800 overflow-hidden bg-zinc-950/40">
+        <div className="rounded-xl border border-border overflow-hidden bg-background">
           <div className="overflow-x-auto max-h-[78vh] overflow-y-auto">
             <table className="w-full min-w-[1100px] text-sm border-collapse">
-              <thead className="sticky top-0 z-10 bg-zinc-900 border-b border-zinc-700">
-                <tr className="text-zinc-300 text-xs">
+              <thead className="sticky top-0 z-10 bg-card border-b border-border">
+                <tr className="text-foreground text-xs">
                   <th className="px-3 py-3.5 text-right font-semibold w-[120px]">اليوم</th>
                   <th className="px-3 py-3.5 text-center font-semibold w-[120px]">ميعاد الحضور</th>
                   <th className="px-3 py-3.5 text-center font-semibold w-[120px]">ميعاد الانصراف</th>
@@ -711,11 +711,11 @@ export default function EmployeeMonthlySheetPanel() {
                         '—';
 
                   const rowClass = [
-                    'border-b border-zinc-800/80 h-[118px]',
+                    'border-b border-border h-[118px]',
                     day.isToday ? 'bg-amber-500/[0.07]' : '',
                     day.isFutureDate ? 'opacity-45' : '',
                     day.attendance.statusCode === 'absent' ? 'bg-red-500/[0.04]' : '',
-                    day.isDayOff && !day.attendance.checkIn ? 'bg-zinc-900/30' : '',
+                    day.isDayOff && !day.attendance.checkIn ? 'bg-card' : '',
                   ]
                     .filter(Boolean)
                     .join(' ');
@@ -723,23 +723,23 @@ export default function EmployeeMonthlySheetPanel() {
                   return (
                     <tr key={day.date} className={rowClass}>
                       <td className="px-3 py-3 align-middle whitespace-nowrap">
-                        <div className="text-zinc-100 font-semibold">
+                        <div className="text-foreground font-semibold">
                           {dayLabelAr(day.dayNumber, sheet.period.month)}
                         </div>
-                        <div className="text-[11px] text-zinc-500 mt-0.5">{day.dayNameAr}</div>
+                        <div className="text-[11px] text-muted-foreground mt-0.5">{day.dayNameAr}</div>
                         {day.isToday && (
-                          <div className="text-[10px] text-amber-300 mt-1">اليوم</div>
+                          <div className="text-[10px] text-warning mt-1">اليوم</div>
                         )}
                         {dayBranchBadge(day.attendance, sessionBranchId, branchCodes)}
                       </td>
-                      <td className="px-3 py-3 align-middle text-center tabular-nums text-zinc-100">
+                      <td className="px-3 py-3 align-middle text-center tabular-nums text-foreground">
                         {checkInDisplay}
                       </td>
-                      <td className="px-3 py-3 align-middle text-center tabular-nums text-zinc-100">
+                      <td className="px-3 py-3 align-middle text-center tabular-nums text-foreground">
                         <span
                           className={
                             day.attendance.statusCode === 'incomplete_checkout'
-                              ? 'text-amber-300'
+                              ? 'text-warning'
                               : undefined
                           }
                         >
@@ -787,7 +787,7 @@ export default function EmployeeMonthlySheetPanel() {
                               <DropdownMenuTrigger asChild>
                                 <button
                                   type="button"
-                                  className="h-8 min-w-[2.5rem] rounded-full border border-zinc-600 bg-zinc-900 text-zinc-200 hover:bg-zinc-800 text-sm font-bold tracking-widest disabled:opacity-50"
+                                  className="h-8 min-w-[2.5rem] rounded-full border border-border bg-card text-foreground hover:bg-surface-muted text-sm font-bold tracking-widest disabled:opacity-50"
                                   title={editDisabledReason ?? 'إجراءات إضافية'}
                                   disabled={Boolean(editDisabledReason)}
                                   aria-label="إجراءات إضافية"
@@ -810,47 +810,47 @@ export default function EmployeeMonthlySheetPanel() {
                           </div>
                         </div>
                       </td>
-                      <td className="px-3 py-3 align-middle text-left tabular-nums text-emerald-300/90 font-medium">
+                      <td className="px-3 py-3 align-middle text-left tabular-nums text-success font-medium">
                         {moneyOrDash(displayedDayRevenue(day))}
                         {day.dailyPayroll.exists &&
                           day.dailyRevenue != null &&
                           day.dailyRevenue > 0 && (
-                            <div className="text-[10px] text-zinc-500 font-normal mt-0.5">
+                            <div className="text-[10px] text-muted-foreground font-normal mt-0.5">
                               مبيعات {formatCurrencyAr(day.dailyRevenue)}
                             </div>
                           )}
                       </td>
-                      <td className="px-3 py-3 align-middle text-left tabular-nums text-rose-300/90 font-medium">
+                      <td className="px-3 py-3 align-middle text-left tabular-nums text-destructive font-medium">
                         {moneyOrDash(day.dailyExpenses)}
                       </td>
                     </tr>
                   );
                 })}
               </tbody>
-              <tfoot className="sticky bottom-0 bg-zinc-900 border-t-2 border-zinc-600">
+              <tfoot className="sticky bottom-0 bg-card border-t-2 border-border">
                 <tr className="text-sm">
-                  <td className="px-3 py-4 text-zinc-400" colSpan={4}>
+                  <td className="px-3 py-4 text-muted-foreground" colSpan={4}>
                     إجمالي الشهر — {sheet.days.length} يوم
                   </td>
                   <td className="px-3 py-4 text-left align-top">
-                    <div className="text-[10px] text-zinc-500 mb-0.5">إجمالي إيرادات الشهر</div>
-                    <div className="tabular-nums font-bold text-emerald-300">
+                    <div className="text-[10px] text-muted-foreground mb-0.5">إجمالي إيرادات الشهر</div>
+                    <div className="tabular-nums font-bold text-success">
                       {formatCurrencyAr(sheet.totals.revenue)}
                     </div>
                   </td>
                   <td className="px-3 py-4 text-left align-top">
-                    <div className="text-[10px] text-zinc-500 mb-0.5">إجمالي مصاريف الشهر</div>
-                    <div className="tabular-nums font-bold text-rose-300">
+                    <div className="text-[10px] text-muted-foreground mb-0.5">إجمالي مصاريف الشهر</div>
+                    <div className="tabular-nums font-bold text-destructive">
                       {formatCurrencyAr(sheet.totals.expenses)}
                     </div>
                   </td>
                 </tr>
-                <tr className="text-sm border-t border-zinc-700/80">
-                  <td className="px-3 py-3 text-zinc-500" colSpan={4} />
+                <tr className="text-sm border-t border-border">
+                  <td className="px-3 py-3 text-muted-foreground" colSpan={4} />
                   <td className="px-3 py-3 text-left" colSpan={2}>
-                    <div className="inline-flex flex-col items-start rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2">
-                      <div className="text-[10px] text-zinc-500 mb-0.5">صافي الموظف</div>
-                      <div className="tabular-nums font-bold text-amber-300 text-base">
+                    <div className="inline-flex flex-col items-start rounded-lg border border-warning/30 bg-warning-soft px-3 py-2">
+                      <div className="text-[10px] text-muted-foreground mb-0.5">صافي الموظف</div>
+                      <div className="tabular-nums font-bold text-warning text-base">
                         {formatCurrencyAr(sheet.totals.employeeNet)}
                       </div>
                     </div>
@@ -859,7 +859,7 @@ export default function EmployeeMonthlySheetPanel() {
               </tfoot>
             </table>
           </div>
-          <p className="px-4 py-3 text-[11px] text-zinc-500 border-t border-zinc-800 leading-relaxed">
+          <p className="px-4 py-3 text-[11px] text-muted-foreground border-t border-border leading-relaxed">
             إيرادات اليوم = صافي اليوم بعد توليد اليومية (أساسي + تارجت − سلف − خصومات)، وقبل التوليد =
             المبيعات المخصّصة. مصاريف اليوم = سلف وخصومات الدفتر. صافي الموظف = monthNet من كشف
             الرواتب — وليس إيراد ناقص مصروف.
@@ -868,33 +868,33 @@ export default function EmployeeMonthlySheetPanel() {
       )}
 
       <Dialog open={Boolean(completePreview)} onOpenChange={(o) => !o && setCompletePreview(null)}>
-        <DialogContent className="bg-zinc-900 border-zinc-700 text-white max-w-md" dir="rtl">
+        <DialogContent className="bg-card border-border text-foreground max-w-md" dir="rtl">
           <DialogHeader>
             <DialogTitle>تأكيد إكمال الحضور</DialogTitle>
-            <DialogDescription className="text-zinc-400 text-sm">
+            <DialogDescription className="text-muted-foreground text-sm">
               سيتم تعبئة الأوقات الناقصة فقط من الإعدادات الافتراضية — بدون استبدال أوقات موجودة.
             </DialogDescription>
           </DialogHeader>
           {completePreview && (
             <div className="space-y-2 text-sm">
-              <p className="text-zinc-200">{completePreview.message}</p>
-              <div className="rounded-lg border border-zinc-700 bg-zinc-950/60 px-3 py-2 tabular-nums">
+              <p className="text-foreground">{completePreview.message}</p>
+              <div className="rounded-lg border border-border bg-background px-3 py-2 tabular-nums">
                 <div>
                   حضور:{' '}
-                  <span className="text-amber-300">
+                  <span className="text-warning">
                     {formatTime12hAr(completePreview.proposedCheckIn) ?? '—'}
                   </span>
                   {completePreview.willFillCheckIn && (
-                    <span className="text-[10px] text-zinc-500 mr-2">جديد</span>
+                    <span className="text-[10px] text-muted-foreground mr-2">جديد</span>
                   )}
                 </div>
                 <div className="mt-1">
                   انصراف:{' '}
-                  <span className="text-amber-300">
+                  <span className="text-warning">
                     {formatTime12hAr(completePreview.proposedCheckOut) ?? '—'}
                   </span>
                   {completePreview.willFillCheckOut && (
-                    <span className="text-[10px] text-zinc-500 mr-2">جديد</span>
+                    <span className="text-[10px] text-muted-foreground mr-2">جديد</span>
                   )}
                 </div>
               </div>
@@ -905,7 +905,7 @@ export default function EmployeeMonthlySheetPanel() {
               إلغاء
             </Button>
             <Button
-              className="bg-amber-400 hover:bg-amber-300 text-black font-semibold"
+              className="bg-warning hover:bg-warning/85 text-warning-foreground font-semibold"
               disabled={!completePreview?.canApply || completeConfirming}
               onClick={() => void confirmCompleteAttendance()}
             >

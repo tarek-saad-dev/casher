@@ -232,27 +232,27 @@ export default function UsersPage() {
     <button
       type="button"
       onClick={() => toggleSort(field)}
-      className="flex items-center gap-1 hover:text-zinc-200 transition-colors"
+      className="flex items-center gap-1 hover:text-foreground transition-colors"
     >
       {label}
       {sortField === field
         ? sortDir === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
-        : <ChevronUp className="w-3 h-3 text-zinc-700" />}
+        : <ChevronUp className="w-3 h-3 text-muted-foreground" />}
     </button>
   );
 
   return (
-    <div className="p-6 max-w-6xl mx-auto space-y-6">
+    <div className="min-w-0 p-3 sm:p-6 max-w-6xl mx-auto space-y-6">
 
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center">
-            <Users className="w-6 h-6 text-blue-400" />
+          <div className="w-12 h-12 rounded-2xl bg-info-soft border border-info/20 flex items-center justify-center">
+            <Users className="w-6 h-6 text-info" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-white">إدارة المستخدمين</h1>
-            <p className="text-sm text-zinc-500 mt-0.5">
+            <h1 className="text-2xl font-bold text-foreground">إدارة المستخدمين</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">
               {users.length} مستخدم نشط
             </p>
           </div>
@@ -263,13 +263,13 @@ export default function UsersPage() {
             size="sm"
             onClick={() => loadData(true)}
             disabled={refreshing}
-            className="border-zinc-700 gap-2"
+            className="border-border gap-2"
           >
             <RefreshCw className={cn('w-3.5 h-3.5', refreshing && 'animate-spin')} />
             تحديث
           </Button>
           {canCreate && (
-            <Button onClick={openCreate} size="sm" className="bg-blue-600 hover:bg-blue-700 gap-2">
+            <Button onClick={openCreate} size="sm" className="bg-primary hover:bg-primary/85 text-primary-foreground gap-2">
               <Plus className="w-4 h-4" />
               مستخدم جديد
             </Button>
@@ -279,7 +279,7 @@ export default function UsersPage() {
 
       {/* Global Error */}
       {globalError && (
-        <div className="flex items-center gap-2 text-sm text-rose-300 bg-rose-950/40 border border-rose-800/30 rounded-lg px-4 py-3">
+        <div className="flex items-center gap-2 text-sm text-destructive bg-destructive-soft border border-destructive/30 rounded-lg px-4 py-3">
           <AlertTriangle className="w-4 h-4 shrink-0" />
           {globalError}
         </div>
@@ -287,17 +287,17 @@ export default function UsersPage() {
 
       {/* Search Bar */}
       <div className="relative">
-        <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+        <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
         <input
           value={search}
           onChange={e => setSearch(e.target.value)}
           placeholder="بحث بالاسم أو اسم الدخول أو الوردية..."
-          className="w-full bg-zinc-900/60 border border-zinc-800 rounded-xl pr-10 pl-4 py-2.5 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:border-zinc-600"
+          className="w-full bg-card border border-border rounded-xl pr-10 pl-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-border"
         />
         {search && (
           <button
             onClick={() => setSearch('')}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
           >
             <X className="w-3.5 h-3.5" />
           </button>
@@ -307,27 +307,27 @@ export default function UsersPage() {
       {/* Users Table */}
       {loading ? (
         <div className="flex justify-center py-16">
-          <Loader2 className="w-7 h-7 animate-spin text-zinc-600" />
+          <Loader2 className="w-7 h-7 animate-spin text-muted-foreground" />
         </div>
       ) : filteredUsers.length === 0 ? (
         <div className="flex flex-col items-center py-16 gap-3 text-center">
-          <div className="w-14 h-14 rounded-2xl bg-zinc-800/60 flex items-center justify-center">
-            <Users className="w-7 h-7 text-zinc-600" />
+          <div className="w-14 h-14 rounded-2xl bg-muted flex items-center justify-center">
+            <Users className="w-7 h-7 text-muted-foreground" />
           </div>
-          <p className="text-zinc-500">{search ? 'لا توجد نتائج للبحث' : 'لا يوجد مستخدمون'}</p>
+          <p className="text-muted-foreground">{search ? 'لا توجد نتائج للبحث' : 'لا يوجد مستخدمون'}</p>
         </div>
       ) : (
-        <div className="rounded-xl border border-zinc-800/50 overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="overflow-x-auto rounded-xl border border-border">
+          <table className="w-full min-w-[44rem] text-sm">
             <thead>
-              <tr className="bg-zinc-900/80 border-b border-zinc-800">
+              <tr className="bg-card border-b border-border">
                 <th className="px-4 py-3 text-right">
-                  <span className="text-xs text-zinc-500 font-medium">#</span>
+                  <span className="text-xs text-muted-foreground font-medium">#</span>
                 </th>
                 <th className="px-4 py-3 text-right">
                   <SortBtn field="UserName" label="الاسم" />
                 </th>
-                <th className="px-4 py-3 text-right text-xs text-zinc-500 font-medium">
+                <th className="px-4 py-3 text-right text-xs text-muted-foreground font-medium">
                   اسم الدخول
                 </th>
                 <th className="px-4 py-3 text-right">
@@ -336,11 +336,11 @@ export default function UsersPage() {
                 <th className="px-4 py-3 text-right">
                   <SortBtn field="ShiftName" label="الوردية" />
                 </th>
-                <th className="px-4 py-3 text-right text-xs text-zinc-500 font-medium">
+                <th className="px-4 py-3 text-right text-xs text-muted-foreground font-medium">
                   الفرع
                 </th>
                 {(canEdit || canDelete) && (
-                  <th className="px-4 py-3 text-center text-xs text-zinc-500 font-medium">إجراءات</th>
+                  <th className="px-4 py-3 text-center text-xs text-muted-foreground font-medium">إجراءات</th>
                 )}
               </tr>
             </thead>
@@ -349,51 +349,51 @@ export default function UsersPage() {
                 <tr
                   key={u.UserID}
                   className={cn(
-                    'border-t border-zinc-800/40 hover:bg-zinc-800/20 transition-colors',
-                    sessionUser?.UserID === u.UserID && 'bg-blue-950/10'
+                    'border-t border-border hover:bg-surface-muted transition-colors',
+                    sessionUser?.UserID === u.UserID && 'bg-info-soft'
                   )}
                 >
-                  <td className="px-4 py-3 text-zinc-600 font-mono text-xs">{u.UserID}</td>
+                  <td className="px-4 py-3 text-muted-foreground font-mono text-xs">{u.UserID}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2.5">
                       <div className={cn(
                         'w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold',
-                        u.UserLevel === 'admin' ? 'bg-emerald-500/15 text-emerald-400' : 'bg-blue-500/15 text-blue-400'
+                        u.UserLevel === 'admin' ? 'bg-success-soft text-success' : 'bg-info-soft text-info'
                       )}>
                         {u.UserName.charAt(0).toUpperCase()}
                       </div>
                       <div>
-                        <p className="font-medium text-white">{u.UserName}</p>
+                        <p className="font-medium text-foreground">{u.UserName}</p>
                         {sessionUser?.UserID === u.UserID && (
-                          <p className="text-xs text-zinc-500">(أنت)</p>
+                          <p className="text-xs text-muted-foreground">(أنت)</p>
                         )}
                       </div>
                     </div>
                   </td>
-                  <td className="px-4 py-3 font-mono text-xs text-zinc-400" dir="ltr">{u.loginName}</td>
+                  <td className="px-4 py-3 font-mono text-xs text-muted-foreground" dir="ltr">{u.loginName}</td>
                   <td className="px-4 py-3">
                     {u.UserLevel === 'admin' ? (
-                      <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                      <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-success-soft text-success border border-success/20">
                         <ShieldCheck className="w-3 h-3" />
                         مسؤول
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                      <span className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full bg-info-soft text-info border border-info/20">
                         <Shield className="w-3 h-3" />
                         مستخدم
                       </span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-zinc-400 text-sm">
+                  <td className="px-4 py-3 text-muted-foreground text-sm">
                     {u.ShiftName || `وردية #${u.ShiftID}`}
                   </td>
                   <td className="px-4 py-3 text-sm">
                     {u.DefaultBranchName || u.DefaultBranchCode ? (
-                      <span className="text-zinc-300">
+                      <span className="text-foreground">
                         {u.DefaultBranchName || u.DefaultBranchCode}
                       </span>
                     ) : (
-                      <span className="text-rose-400 text-xs">بدون فرع</span>
+                      <span className="text-destructive text-xs">بدون فرع</span>
                     )}
                   </td>
                   {(canEdit || canDelete) && (
@@ -403,7 +403,7 @@ export default function UsersPage() {
                           <button
                             title="تعديل"
                             onClick={() => openEdit(u)}
-                            className="w-7 h-7 rounded-lg flex items-center justify-center text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 transition-all"
+                            className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-surface-muted transition-all"
                           >
                             <Pencil className="w-3.5 h-3.5" />
                           </button>
@@ -412,7 +412,7 @@ export default function UsersPage() {
                           <button
                             title="تغيير كلمة المرور"
                             onClick={() => openResetPwd(u)}
-                            className="w-7 h-7 rounded-lg flex items-center justify-center text-zinc-500 hover:text-amber-400 hover:bg-amber-950/30 transition-all"
+                            className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-warning hover:bg-warning-soft transition-all"
                           >
                             <Key className="w-3.5 h-3.5" />
                           </button>
@@ -421,7 +421,7 @@ export default function UsersPage() {
                           <button
                             title="حذف"
                             onClick={() => setDeleteTarget(u)}
-                            className="w-7 h-7 rounded-lg flex items-center justify-center text-zinc-500 hover:text-rose-400 hover:bg-rose-950/30 transition-all"
+                            className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive-soft transition-all"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -439,22 +439,22 @@ export default function UsersPage() {
       {/* ── Create / Edit Drawer ─────────────────────────── */}
       {(drawerMode === 'create' || drawerMode === 'edit') && (
         <Overlay onClose={closeDrawer}>
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 w-full max-w-md space-y-5">
+          <div className="bg-card border border-border rounded-2xl p-4 sm:p-6 w-full max-w-md max-h-[85dvh] overflow-y-auto space-y-5">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className={cn(
                   'w-10 h-10 rounded-xl flex items-center justify-center',
-                  drawerMode === 'create' ? 'bg-blue-500/15' : 'bg-amber-500/15'
+                  drawerMode === 'create' ? 'bg-info-soft' : 'bg-warning-soft'
                 )}>
                   {drawerMode === 'create'
-                    ? <Plus className="w-5 h-5 text-blue-400" />
-                    : <Pencil className="w-5 h-5 text-amber-400" />}
+                    ? <Plus className="w-5 h-5 text-info" />
+                    : <Pencil className="w-5 h-5 text-warning" />}
                 </div>
-                <h2 className="text-lg font-bold text-white">
+                <h2 className="text-lg font-bold text-foreground">
                   {drawerMode === 'create' ? 'مستخدم جديد' : `تعديل: ${drawerUser?.UserName}`}
                 </h2>
               </div>
-              <button onClick={closeDrawer} className="text-zinc-500 hover:text-zinc-300">
+              <button onClick={closeDrawer} className="text-muted-foreground hover:text-foreground">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -462,28 +462,28 @@ export default function UsersPage() {
             <form onSubmit={handleSaveUser} className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <Label className="text-xs text-zinc-400">الاسم الكامل</Label>
+                  <Label className="text-xs text-muted-foreground">الاسم الكامل</Label>
                   <Input
                     value={fUserName}
                     onChange={e => setFUserName(e.target.value)}
                     placeholder="محمد أحمد"
-                    className="bg-zinc-950 border-zinc-700"
+                    className="bg-background border-border"
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs text-zinc-400">اسم الدخول</Label>
+                  <Label className="text-xs text-muted-foreground">اسم الدخول</Label>
                   <Input
                     value={fLoginName}
                     onChange={e => setFLoginName(e.target.value)}
                     placeholder="admin"
                     dir="ltr"
-                    className="bg-zinc-950 border-zinc-700"
+                    className="bg-background border-border"
                   />
                 </div>
               </div>
 
               <div className="space-y-1.5">
-                <Label className="text-xs text-zinc-400">
+                <Label className="text-xs text-muted-foreground">
                   {drawerMode === 'edit' ? 'كلمة مرور جديدة (اتركها فارغة للإبقاء)' : 'كلمة المرور *'}
                 </Label>
                 <div className="relative">
@@ -492,12 +492,12 @@ export default function UsersPage() {
                     value={fPassword}
                     onChange={e => setFPassword(e.target.value)}
                     dir="ltr"
-                    className="bg-zinc-950 border-zinc-700 pl-10"
+                    className="bg-background border-border pl-10"
                   />
                   <button
                     type="button"
                     onClick={() => setFShowPassword(p => !p)}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                   >
                     {fShowPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
@@ -506,22 +506,22 @@ export default function UsersPage() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <Label className="text-xs text-zinc-400">الصلاحية</Label>
+                  <Label className="text-xs text-muted-foreground">الصلاحية</Label>
                   <select
                     value={fUserLevel}
                     onChange={e => setFUserLevel(e.target.value)}
-                    className="w-full h-9 rounded-lg border border-zinc-700 bg-zinc-950 px-3 text-sm text-white focus:outline-none"
+                    className="w-full h-9 rounded-lg border border-border bg-background px-3 text-sm text-foreground focus:outline-none"
                   >
                     <option value="admin">مسؤول (Admin)</option>
                     <option value="user">مستخدم (User)</option>
                   </select>
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs text-zinc-400">الوردية الافتراضية</Label>
+                  <Label className="text-xs text-muted-foreground">الوردية الافتراضية</Label>
                   <select
                     value={fShiftID}
                     onChange={e => setFShiftID(parseInt(e.target.value))}
-                    className="w-full h-9 rounded-lg border border-zinc-700 bg-zinc-950 px-3 text-sm text-white focus:outline-none"
+                    className="w-full h-9 rounded-lg border border-border bg-background px-3 text-sm text-foreground focus:outline-none"
                   >
                     {shifts.map(s => (
                       <option key={s.ShiftID} value={s.ShiftID}>{s.ShiftName}</option>
@@ -531,11 +531,11 @@ export default function UsersPage() {
               </div>
 
               <div className="space-y-1.5">
-                <Label className="text-xs text-zinc-400">فرع البداية</Label>
+                <Label className="text-xs text-muted-foreground">فرع البداية</Label>
                 <select
                   value={fBranchID || ''}
                   onChange={e => setFBranchID(parseInt(e.target.value, 10))}
-                  className="w-full h-9 rounded-lg border border-zinc-700 bg-zinc-950 px-3 text-sm text-white focus:outline-none"
+                  className="w-full h-9 rounded-lg border border-border bg-background px-3 text-sm text-foreground focus:outline-none"
                   required
                 >
                   <option value="" disabled>اختر الفرع</option>
@@ -545,7 +545,7 @@ export default function UsersPage() {
                     </option>
                   ))}
                 </select>
-                <p className="text-[11px] text-zinc-500">
+                <p className="text-[11px] text-muted-foreground">
                   نقطة الدخول الأولى فقط — المستخدم يحصل على كل الفروع النشطة ويقدر ينقل بينها عادي.
                 </p>
               </div>
@@ -553,11 +553,11 @@ export default function UsersPage() {
               {drawerError && <ErrorBox message={drawerError} />}
 
               <div className="flex gap-3 pt-1">
-                <Button type="submit" disabled={drawerLoading} className="flex-1 bg-blue-600 hover:bg-blue-700 gap-2">
+                <Button type="submit" disabled={drawerLoading} className="flex-1 bg-primary hover:bg-primary/85 text-primary-foreground gap-2">
                   {drawerLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
                   {drawerMode === 'create' ? 'إضافة المستخدم' : 'حفظ التعديلات'}
                 </Button>
-                <Button type="button" variant="outline" onClick={closeDrawer} className="border-zinc-700">إلغاء</Button>
+                <Button type="button" variant="outline" onClick={closeDrawer} className="border-border">إلغاء</Button>
               </div>
             </form>
           </div>
@@ -567,25 +567,25 @@ export default function UsersPage() {
       {/* ── Reset Password Drawer ────────────────────────── */}
       {drawerMode === 'reset-password' && (
         <Overlay onClose={closeDrawer}>
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 w-full max-w-sm space-y-5">
+          <div className="bg-card border border-border rounded-2xl p-4 sm:p-6 w-full max-w-sm max-h-[85dvh] overflow-y-auto space-y-5">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-amber-500/15 flex items-center justify-center">
-                  <Key className="w-5 h-5 text-amber-400" />
+                <div className="w-10 h-10 rounded-xl bg-warning-soft flex items-center justify-center">
+                  <Key className="w-5 h-5 text-warning" />
                 </div>
                 <div>
-                  <h2 className="text-base font-bold text-white">تغيير كلمة المرور</h2>
-                  <p className="text-xs text-zinc-500">{drawerUser?.UserName}</p>
+                  <h2 className="text-base font-bold text-foreground">تغيير كلمة المرور</h2>
+                  <p className="text-xs text-muted-foreground">{drawerUser?.UserName}</p>
                 </div>
               </div>
-              <button onClick={closeDrawer} className="text-zinc-500 hover:text-zinc-300">
+              <button onClick={closeDrawer} className="text-muted-foreground hover:text-foreground">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <form onSubmit={handleResetPassword} className="space-y-4">
               <div className="space-y-1.5">
-                <Label className="text-xs text-zinc-400">كلمة المرور الجديدة</Label>
+                <Label className="text-xs text-muted-foreground">كلمة المرور الجديدة</Label>
                 <div className="relative">
                   <Input
                     type={fShowPassword ? 'text' : 'password'}
@@ -593,12 +593,12 @@ export default function UsersPage() {
                     onChange={e => setFPassword(e.target.value)}
                     dir="ltr"
                     placeholder="••••••••"
-                    className="bg-zinc-950 border-zinc-700 pl-10"
+                    className="bg-background border-border pl-10"
                   />
                   <button
                     type="button"
                     onClick={() => setFShowPassword(p => !p)}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                   >
                     {fShowPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
@@ -606,11 +606,11 @@ export default function UsersPage() {
               </div>
               {drawerError && <ErrorBox message={drawerError} />}
               <div className="flex gap-3">
-                <Button type="submit" disabled={drawerLoading} className="flex-1 bg-amber-600 hover:bg-amber-700 gap-2">
+                <Button type="submit" disabled={drawerLoading} className="flex-1 bg-primary hover:bg-primary/85 text-primary-foreground gap-2">
                   {drawerLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Key className="w-4 h-4" />}
                   تغيير كلمة المرور
                 </Button>
-                <Button type="button" variant="outline" onClick={closeDrawer} className="border-zinc-700">إلغاء</Button>
+                <Button type="button" variant="outline" onClick={closeDrawer} className="border-border">إلغاء</Button>
               </div>
             </form>
           </div>
@@ -620,30 +620,30 @@ export default function UsersPage() {
       {/* ── Delete Confirm ───────────────────────────────── */}
       {deleteTarget && (
         <Overlay onClose={() => setDeleteTarget(null)}>
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 w-full max-w-sm space-y-5">
+          <div className="bg-card border border-border rounded-2xl p-4 sm:p-6 w-full max-w-sm max-h-[85dvh] overflow-y-auto space-y-5">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-rose-500/15 flex items-center justify-center">
-                <Trash2 className="w-5 h-5 text-rose-400" />
+              <div className="w-10 h-10 rounded-xl bg-destructive-soft flex items-center justify-center">
+                <Trash2 className="w-5 h-5 text-destructive" />
               </div>
               <div>
-                <h2 className="text-base font-bold text-white">حذف المستخدم</h2>
-                <p className="text-xs text-zinc-500">{deleteTarget.UserName}</p>
+                <h2 className="text-base font-bold text-foreground">حذف المستخدم</h2>
+                <p className="text-xs text-muted-foreground">{deleteTarget.UserName}</p>
               </div>
             </div>
-            <p className="text-sm text-zinc-400">
-              هل أنت متأكد من حذف المستخدم <strong className="text-white">{deleteTarget.UserName}</strong>؟
+            <p className="text-sm text-muted-foreground">
+              هل أنت متأكد من حذف المستخدم <strong className="text-foreground">{deleteTarget.UserName}</strong>؟
               سيتم إخفاؤه ولن يتمكن من تسجيل الدخول.
             </p>
             <div className="flex gap-3">
               <Button
                 onClick={handleDelete}
                 disabled={drawerLoading}
-                className="flex-1 bg-rose-700 hover:bg-rose-600 gap-2"
+                className="flex-1 bg-destructive hover:bg-destructive/85 text-destructive-foreground gap-2"
               >
                 {drawerLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
                 تأكيد الحذف
               </Button>
-              <Button variant="outline" onClick={() => setDeleteTarget(null)} className="border-zinc-700">إلغاء</Button>
+              <Button variant="outline" onClick={() => setDeleteTarget(null)} className="border-border">إلغاء</Button>
             </div>
           </div>
         </Overlay>
@@ -665,7 +665,7 @@ function Overlay({ children, onClose }: { children: React.ReactNode; onClose: ()
 
 function ErrorBox({ message }: { message: string }) {
   return (
-    <div className="flex items-center gap-2 text-sm text-rose-300 bg-rose-950/40 border border-rose-800/30 rounded-lg px-3 py-2.5">
+    <div className="flex items-center gap-2 text-sm text-destructive bg-destructive-soft border border-destructive/30 rounded-lg px-3 py-2.5">
       <AlertTriangle className="w-4 h-4 shrink-0" />
       {message}
     </div>

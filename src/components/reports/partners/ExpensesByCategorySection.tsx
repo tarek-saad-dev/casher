@@ -50,7 +50,7 @@ function TableSkeleton() {
   return (
     <div className="space-y-3">
       {[...Array(5)].map((_, i) => (
-        <div key={i} className="h-14 sm:h-10 bg-zinc-800/40 rounded animate-pulse" />
+        <div key={i} className="h-14 sm:h-10 bg-muted rounded animate-pulse" />
       ))}
     </div>
   );
@@ -62,29 +62,29 @@ function TransactionDetailCard({
   transaction: PartnersExpenseCategoryTransaction;
 }) {
   return (
-    <div className="rounded-lg border border-zinc-800/60 bg-zinc-950/50 p-3 space-y-2.5 min-w-0">
+    <div className="rounded-lg border border-border bg-background p-3 space-y-2.5 min-w-0">
       <div className="flex items-start justify-between gap-2 min-w-0">
-        <span className="text-xs text-zinc-500 shrink-0">التاريخ</span>
-        <span className="text-sm text-zinc-200 tabular-nums text-left">
+        <span className="text-xs text-muted-foreground shrink-0">التاريخ</span>
+        <span className="text-sm text-foreground tabular-nums text-left">
           {formatExpenseDate(transaction.date)}
           {transaction.time ? ` — ${formatExpenseTime(transaction.time)}` : ''}
         </span>
       </div>
       <div className="flex items-start justify-between gap-2 min-w-0">
-        <span className="text-xs text-zinc-500 shrink-0">البيان</span>
-        <span className="text-sm text-zinc-300 text-left break-words min-w-0">
+        <span className="text-xs text-muted-foreground shrink-0">البيان</span>
+        <span className="text-sm text-foreground text-left break-words min-w-0">
           {transaction.notes?.trim() || 'بدون بيان'}
         </span>
       </div>
       <div className="flex items-start justify-between gap-2 min-w-0">
-        <span className="text-xs text-zinc-500 shrink-0">طريقة الدفع</span>
-        <span className="text-sm text-zinc-300 text-left break-words">
+        <span className="text-xs text-muted-foreground shrink-0">طريقة الدفع</span>
+        <span className="text-sm text-foreground text-left break-words">
           {transaction.paymentMethod?.trim() || 'غير محددة'}
         </span>
       </div>
-      <div className="flex items-start justify-between gap-2 min-w-0 border-t border-zinc-800/50 pt-2">
-        <span className="text-xs text-zinc-500 shrink-0">المبلغ</span>
-        <span className="text-base font-bold text-rose-400 tabular-nums">
+      <div className="flex items-start justify-between gap-2 min-w-0 border-t border-border pt-2">
+        <span className="text-xs text-muted-foreground shrink-0">المبلغ</span>
+        <span className="text-base font-bold text-destructive tabular-nums">
           {formatPartnersCurrency(transaction.amount)}
         </span>
       </div>
@@ -112,31 +112,31 @@ function CategoryDetailsPanel({
     loadedTotal != null && !cacheEntry?.loading ? loadedTotal : row.totalAmount;
 
   return (
-    <div className="border-t border-zinc-800/60 bg-zinc-950/60 px-3 py-3 sm:px-4 sm:py-4 animate-in fade-in slide-in-from-top-1 duration-200">
+    <div className="border-t border-border bg-background px-3 py-3 sm:px-4 sm:py-4 animate-in fade-in slide-in-from-top-1 duration-200">
       <div className="mb-3">
-        <p className="text-sm font-semibold text-zinc-200 break-words">
+        <p className="text-sm font-semibold text-foreground break-words">
           تفاصيل فئة: {row.categoryName}
         </p>
-        <p className="text-xs text-zinc-500 mt-1">
+        <p className="text-xs text-muted-foreground mt-1">
           {displayCount} عملية — بإجمالي {formatPartnersCurrency(displayTotal)}
         </p>
       </div>
 
       {cacheEntry?.loading ? (
-        <div className="flex items-center justify-center gap-2 py-6 text-zinc-500">
+        <div className="flex items-center justify-center gap-2 py-6 text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
           <span className="text-sm">جاري تحميل المعاملات...</span>
         </div>
       ) : cacheEntry?.error ? (
         <div className="flex flex-col items-center gap-3 py-4 px-2">
-          <div className="flex items-center gap-2 text-rose-400 text-sm text-center">
+          <div className="flex items-center gap-2 text-destructive text-sm text-center">
             <AlertCircle className="h-4 w-4 shrink-0" aria-hidden />
             <span className="break-words">{cacheEntry.error}</span>
           </div>
           <Button
             type="button"
             variant="outline"
-            className="min-h-11 w-full sm:w-auto border-zinc-700"
+            className="min-h-11 w-full sm:w-auto border-border"
             onClick={(event) => {
               event.stopPropagation();
               onRetry();
@@ -152,7 +152,7 @@ function CategoryDetailsPanel({
           ))}
         </div>
       ) : (
-        <div className="py-4 text-center text-sm text-zinc-500">
+        <div className="py-4 text-center text-sm text-muted-foreground">
           لا توجد معاملات لهذه الفئة في الشهر المحدد
         </div>
       )}
@@ -161,7 +161,7 @@ function CategoryDetailsPanel({
         <div className="hidden md:block print:hidden overflow-x-auto">
           <table className="w-full text-xs min-w-[520px]">
             <thead>
-              <tr className="border-b border-zinc-800/80 text-zinc-500">
+              <tr className="border-b border-border text-muted-foreground">
                 <th className="text-right py-2 px-2 font-medium">التاريخ</th>
                 <th className="text-right py-2 px-2 font-medium">الوقت</th>
                 <th className="text-right py-2 px-2 font-medium">البيان / الملاحظة</th>
@@ -173,21 +173,21 @@ function CategoryDetailsPanel({
               {cacheEntry.transactions.map((transaction) => (
                 <tr
                   key={transaction.id}
-                  className="border-b border-zinc-800/40 last:border-0"
+                  className="border-b border-border last:border-0"
                 >
-                  <td className="py-2 px-2 text-zinc-300 whitespace-nowrap tabular-nums">
+                  <td className="py-2 px-2 text-foreground whitespace-nowrap tabular-nums">
                     {formatExpenseDate(transaction.date)}
                   </td>
-                  <td className="py-2 px-2 text-zinc-400 whitespace-nowrap tabular-nums">
+                  <td className="py-2 px-2 text-muted-foreground whitespace-nowrap tabular-nums">
                     {formatExpenseTime(transaction.time)}
                   </td>
-                  <td className="py-2 px-2 text-zinc-400 break-words max-w-xs">
+                  <td className="py-2 px-2 text-muted-foreground break-words max-w-xs">
                     {transaction.notes?.trim() || 'بدون بيان'}
                   </td>
-                  <td className="py-2 px-2 text-zinc-400 break-words">
+                  <td className="py-2 px-2 text-muted-foreground break-words">
                     {transaction.paymentMethod?.trim() || 'غير محددة'}
                   </td>
-                  <td className="py-2 px-2 text-rose-400 font-semibold tabular-nums whitespace-nowrap">
+                  <td className="py-2 px-2 text-destructive font-semibold tabular-nums whitespace-nowrap">
                     {formatPartnersCurrency(transaction.amount)}
                   </td>
                 </tr>
@@ -291,19 +291,19 @@ export default function ExpensesByCategorySection({
   const totalTransactions = rows.reduce((sum, r) => sum + r.transactionCount, 0);
 
   return (
-    <section className="w-full min-w-0 bg-zinc-900/50 border border-zinc-800/50 rounded-xl p-3 sm:p-4 md:p-6 print:break-inside-avoid print:bg-white print:border-zinc-300">
+    <section className="w-full min-w-0 bg-card border border-border rounded-xl p-3 sm:p-4 md:p-6 print:break-inside-avoid print:bg-white print:border-zinc-300">
       <div className="mb-3 sm:mb-4">
-        <h2 className="text-base sm:text-lg font-bold text-white print:text-black">
+        <h2 className="text-base sm:text-lg font-bold text-foreground print:text-black">
           مصروفات التشغيل الأخرى
         </h2>
-        <p className="text-xs sm:text-sm text-zinc-500 print:text-zinc-600 mt-1">
+        <p className="text-xs sm:text-sm text-muted-foreground print:text-zinc-600 mt-1">
           بعد استبعاد الرواتب والسلف والتسويات الخاصة بالموظفين
         </p>
       </div>
 
       {error ? (
         <div className="flex flex-col items-center gap-4 py-6 px-3 w-full min-w-0">
-          <div className="flex items-center gap-2 text-rose-400 text-sm text-center">
+          <div className="flex items-center gap-2 text-destructive text-sm text-center">
             <AlertCircle className="h-5 w-5 shrink-0" aria-hidden />
             <span className="break-words">{error}</span>
           </div>
@@ -311,7 +311,7 @@ export default function ExpensesByCategorySection({
             type="button"
             variant="outline"
             onClick={onRetry}
-            className="print:hidden min-h-11 w-full sm:w-auto border-zinc-700"
+            className="print:hidden min-h-11 w-full sm:w-auto border-border"
           >
             إعادة المحاولة
           </Button>
@@ -319,7 +319,7 @@ export default function ExpensesByCategorySection({
       ) : loading && rows.length === 0 ? (
         <TableSkeleton />
       ) : rows.length === 0 ? (
-        <div className="text-center py-8 sm:py-10 text-sm text-zinc-500 print:text-zinc-600 px-2">
+        <div className="text-center py-8 sm:py-10 text-sm text-muted-foreground print:text-zinc-600 px-2">
           لا توجد مصروفات تشغيل أخرى في الشهر المحدد
         </div>
       ) : (
@@ -334,14 +334,14 @@ export default function ExpensesByCategorySection({
               return (
                 <div
                   key={cacheKey}
-                  className="w-full min-w-0 rounded-lg border border-zinc-800/70 bg-zinc-950/40 overflow-hidden"
+                  className="w-full min-w-0 rounded-lg border border-border bg-background overflow-hidden"
                 >
                   <button
                     type="button"
                     onClick={() => toggleCategory(row)}
                     aria-expanded={isExpanded}
                     aria-controls={`category-details-${cacheKey}`}
-                    className="w-full min-h-11 flex items-center gap-2 p-3 text-right focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/50 focus-visible:ring-inset"
+                    className="w-full min-h-11 flex items-center gap-2 p-3 text-right focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warning/50 focus-visible:ring-inset"
                   >
                     <span
                       className={`inline-flex shrink-0 transition-transform duration-200 ${
@@ -349,17 +349,17 @@ export default function ExpensesByCategorySection({
                       }`}
                       aria-hidden
                     >
-                      <ChevronDown className="h-5 w-5 text-zinc-400" />
+                      <ChevronDown className="h-5 w-5 text-muted-foreground" />
                     </span>
                     <span className="flex-1 min-w-0 text-right">
-                      <span className="block text-sm font-semibold text-white break-words">
+                      <span className="block text-sm font-semibold text-foreground break-words">
                         {row.categoryName}
                       </span>
-                      <span className="block text-xs text-zinc-500 mt-0.5">
+                      <span className="block text-xs text-muted-foreground mt-0.5">
                         {row.transactionCount} عملية — {formatPartnersPercent(row.percentage)}
                       </span>
                     </span>
-                    <span className="text-base font-bold text-rose-400 tabular-nums shrink-0">
+                    <span className="text-base font-bold text-destructive tabular-nums shrink-0">
                       {formatPartnersCurrency(row.totalAmount)}
                     </span>
                   </button>
@@ -377,14 +377,14 @@ export default function ExpensesByCategorySection({
               );
             })}
 
-            <div className="rounded-lg border border-rose-500/30 bg-rose-500/5 p-3 space-y-1">
+            <div className="rounded-lg border border-destructive/30 bg-destructive-soft p-3 space-y-1">
               <div className="flex justify-between gap-2">
-                <span className="text-sm font-bold text-white">الإجمالي</span>
-                <span className="text-base font-bold text-rose-400 tabular-nums">
+                <span className="text-sm font-bold text-foreground">الإجمالي</span>
+                <span className="text-base font-bold text-destructive tabular-nums">
                   {formatPartnersCurrency(totalOperatingExpenses)}
                 </span>
               </div>
-              <p className="text-xs text-zinc-500">
+              <p className="text-xs text-muted-foreground">
                 {totalTransactions} عملية — {totalOperatingExpenses > 0 ? '100%' : '—'}
               </p>
             </div>
@@ -394,7 +394,7 @@ export default function ExpensesByCategorySection({
           <div className="hidden md:block print:block">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-zinc-800 text-zinc-400 print:border-zinc-300 print:text-zinc-600">
+                <tr className="border-b border-border text-muted-foreground print:border-zinc-300 print:text-zinc-600">
                   <th className="text-right py-3 px-2 font-medium">الفئة</th>
                   <th className="text-right py-3 px-2 font-medium">عدد المعاملات</th>
                   <th className="text-right py-3 px-2 font-medium">المبلغ</th>
@@ -420,9 +420,9 @@ export default function ExpensesByCategorySection({
                             toggleCategory(row);
                           }
                         }}
-                        className="border-b border-zinc-800/60 hover:bg-zinc-800/30 cursor-pointer transition-colors print:break-inside-avoid print:hover:bg-transparent"
+                        className="border-b border-border hover:bg-surface-muted cursor-pointer transition-colors print:break-inside-avoid print:hover:bg-transparent"
                       >
-                        <td className="py-3 px-2 text-white font-medium print:text-black">
+                        <td className="py-3 px-2 text-foreground font-medium print:text-black">
                           <div className="flex items-center gap-2 min-w-0">
                             <span
                               className={`inline-flex shrink-0 transition-transform duration-200 print:hidden ${
@@ -431,29 +431,29 @@ export default function ExpensesByCategorySection({
                               aria-hidden
                             >
                               {isExpanded ? (
-                                <ChevronDown className="h-4 w-4 text-zinc-400" />
+                                <ChevronDown className="h-4 w-4 text-muted-foreground" />
                               ) : (
-                                <ChevronLeft className="h-4 w-4 text-zinc-400" />
+                                <ChevronLeft className="h-4 w-4 text-muted-foreground" />
                               )}
                             </span>
                             <span className="break-words">{row.categoryName}</span>
                           </div>
                         </td>
-                        <td className="py-3 px-2 text-zinc-400 print:text-zinc-600 tabular-nums">
+                        <td className="py-3 px-2 text-muted-foreground print:text-zinc-600 tabular-nums">
                           {row.transactionCount}
                         </td>
-                        <td className="py-3 px-2 text-rose-400 font-bold print:text-rose-700 tabular-nums">
+                        <td className="py-3 px-2 text-destructive font-bold print:text-rose-700 tabular-nums">
                           {formatPartnersCurrency(row.totalAmount)}
                         </td>
                         <td className="py-3 px-2">
                           <div className="flex items-center gap-2 min-w-0">
-                            <div className="flex-1 bg-zinc-800 rounded-full h-2 overflow-hidden print:hidden">
+                            <div className="flex-1 bg-muted rounded-full h-2 overflow-hidden print:hidden">
                               <div
-                                className="h-full bg-rose-500/80"
+                                className="h-full bg-destructive-soft"
                                 style={{ width: `${Math.min(row.percentage, 100)}%` }}
                               />
                             </div>
-                            <span className="text-zinc-400 min-w-[3rem] print:text-zinc-600 tabular-nums">
+                            <span className="text-muted-foreground min-w-[3rem] print:text-zinc-600 tabular-nums">
                               {formatPartnersPercent(row.percentage)}
                             </span>
                           </div>
@@ -462,7 +462,7 @@ export default function ExpensesByCategorySection({
 
                       {isExpanded && (
                         <tr className="print:hidden">
-                          <td colSpan={4} className="p-0 border-b border-zinc-800/60">
+                          <td colSpan={4} className="p-0 border-b border-border">
                             <CategoryDetailsPanel
                               row={row}
                               cacheEntry={cacheEntry}
@@ -474,15 +474,15 @@ export default function ExpensesByCategorySection({
                     </Fragment>
                   );
                 })}
-                <tr className="bg-zinc-800/40 font-bold print:break-inside-avoid print:bg-zinc-100">
-                  <td className="py-3 px-2 text-white print:text-black">الإجمالي</td>
-                  <td className="py-3 px-2 text-zinc-300 print:text-zinc-700 tabular-nums">
+                <tr className="bg-muted font-bold print:break-inside-avoid print:bg-zinc-100">
+                  <td className="py-3 px-2 text-foreground print:text-black">الإجمالي</td>
+                  <td className="py-3 px-2 text-foreground print:text-zinc-700 tabular-nums">
                     {totalTransactions}
                   </td>
-                  <td className="py-3 px-2 text-rose-400 print:text-rose-700 tabular-nums">
+                  <td className="py-3 px-2 text-destructive print:text-rose-700 tabular-nums">
                     {formatPartnersCurrency(totalOperatingExpenses)}
                   </td>
-                  <td className="py-3 px-2 text-zinc-300 print:text-zinc-700">
+                  <td className="py-3 px-2 text-foreground print:text-zinc-700">
                     {totalOperatingExpenses > 0 ? '100%' : '—'}
                   </td>
                 </tr>

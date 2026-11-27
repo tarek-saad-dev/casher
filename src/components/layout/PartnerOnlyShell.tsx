@@ -13,8 +13,8 @@ export default function PartnerOnlyShell({ children }: PartnerOnlyShellProps) {
 
   return (
     <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
-      <header className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-3 py-2 sm:px-4 print:hidden">
-        <p className="text-sm font-medium text-zinc-400 truncate">تقرير الشركاء</p>
+      <header className="flex shrink-0 items-center justify-between gap-2 h-14 border-b border-border bg-card px-3 sm:px-4 print:hidden">
+        <p className="text-sm font-bold text-foreground truncate">تقرير الشركاء</p>
         <Button
           type="button"
           variant="outline"

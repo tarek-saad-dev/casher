@@ -429,16 +429,16 @@ export default function FullDayReportPage() {
       />
 
       {/* Sticky action bar */}
-      <div className="sticky top-2 z-20 rounded-2xl border border-[#D6A84F]/30 bg-zinc-950/90 backdrop-blur p-4 shadow-lg shadow-black/20 space-y-3">
+      <div className="sticky top-2 z-20 rounded-2xl border border-brand/30 bg-background backdrop-blur p-4 shadow-lg shadow-black/20 space-y-3">
         <div className="flex flex-wrap items-end gap-3 justify-between">
           <div className="flex flex-wrap items-end gap-2">
             <div className="space-y-1">
-              <label className="text-[11px] text-zinc-400">تاريخ اليوم</label>
+              <label className="text-[11px] text-muted-foreground">تاريخ اليوم</label>
               <Input
                 type="date"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
-                className="bg-zinc-900 border-zinc-700 w-[160px]"
+                className="bg-card border-border w-[160px]"
               />
             </div>
             <Button variant="outline" size="icon" onClick={() => applyDate(shiftDate(date, -1))} title="يوم سابق">
@@ -450,12 +450,12 @@ export default function FullDayReportPage() {
             <Button
               onClick={() => applyDate(date)}
               disabled={loading}
-              className="bg-[#D6A84F] hover:bg-[#c4983f] text-black"
+              className="bg-primary hover:bg-primary-hover text-primary-foreground"
             >
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4 ml-1" />}
               عرض
             </Button>
-            <Button variant="ghost" onClick={() => applyDate(getCairoTodayStr())} className="text-zinc-400">
+            <Button variant="ghost" onClick={() => applyDate(getCairoTodayStr())} className="text-muted-foreground">
               النهاردة
             </Button>
           </div>
@@ -464,7 +464,7 @@ export default function FullDayReportPage() {
             <Button
               disabled={!report || waBusy || loading}
               onClick={() => void sendWhatsAppSequential()}
-              className="bg-emerald-600 hover:bg-emerald-500 text-white min-w-[180px]"
+              className="bg-success hover:bg-success/85 text-success-foreground min-w-[180px]"
               title="إرسال تقرير اليوم لكل الموظفين الجاهزين"
             >
               {waBusy ? (
@@ -479,7 +479,7 @@ export default function FullDayReportPage() {
               disabled={!report || waBusy || loading || (report?.whatsapp.readyToSend ?? 0) === 0}
               variant="outline"
               onClick={openEmployeePick}
-              className="border-emerald-600/50 text-emerald-400 hover:bg-emerald-600/10 min-w-[140px]"
+              className="border-success/50 text-success hover:bg-success-soft min-w-[140px]"
               title="إرسال تقرير اليوم لموظف واحد فقط"
             >
               <Users className="h-4 w-4 ml-1" />
@@ -489,7 +489,7 @@ export default function FullDayReportPage() {
               disabled={waBusy}
               variant="outline"
               onClick={() => void openRecipients()}
-              className="border-sky-500/40 text-sky-300 hover:bg-sky-500/10"
+              className="border-info/40 text-info hover:bg-info-soft"
               title="مين بيستلم التقرير ودوره في النظام"
             >
               <UserCog className="h-4 w-4 ml-1" />
@@ -499,14 +499,14 @@ export default function FullDayReportPage() {
               disabled={!report || waBusy || loading}
               variant="outline"
               onClick={() => void previewOwnerWhatsApp()}
-              className="border-[#D6A84F]/40 text-[#D6A84F]"
+              className="border-brand/40 text-brand"
             >
               معاينة المالك
             </Button>
             <Button
               disabled={!report || waBusy || loading}
               onClick={() => void sendOwnerWhatsApp()}
-              className="bg-[#D6A84F] hover:bg-[#c4983f] text-black min-w-[160px]"
+              className="bg-primary hover:bg-primary-hover text-primary-foreground min-w-[160px]"
             >
               {waBusy ? (
                 <Loader2 className="h-4 w-4 animate-spin ml-1" />
@@ -519,7 +519,7 @@ export default function FullDayReportPage() {
               disabled={waBusy || loading}
               variant="outline"
               onClick={() => void runNightlyCloseNow(true)}
-              className="border-zinc-600 text-zinc-300"
+              className="border-border text-foreground"
               title="معاينة قفل اليوم بدون حفظ أو إرسال"
             >
               <Moon className="h-4 w-4 ml-1" />
@@ -528,7 +528,7 @@ export default function FullDayReportPage() {
             <Button
               disabled={waBusy || loading}
               onClick={() => void runNightlyCloseNow(false)}
-              className="bg-violet-700 hover:bg-violet-600 text-white min-w-[150px]"
+              className="bg-brand hover:bg-brand/85 text-brand-foreground min-w-[150px]"
               title="يشغّل سكربت قفل اليوم فور الضغط — من غير انتظار الكرون 02:40"
             >
               {waBusy ? (
@@ -542,10 +542,10 @@ export default function FullDayReportPage() {
         </div>
 
         {report && (
-          <p className="text-xs text-zinc-500">
+          <p className="text-xs text-muted-foreground">
             {report.workDateLabelAr}
             {report.whatsapp.missingPhone > 0 && (
-              <span className="text-amber-400/90 mr-2">
+              <span className="text-warning mr-2">
                 · {report.whatsapp.missingPhone} بدون رقم واتساب
               </span>
             )}
@@ -553,19 +553,19 @@ export default function FullDayReportPage() {
         )}
 
         {waError && (
-          <div className="text-xs text-red-300 flex items-start gap-1.5">
+          <div className="text-xs text-destructive flex items-start gap-1.5">
             <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
             <span>{waError}</span>
           </div>
         )}
         {waSuccess && (
-          <div className="text-xs text-emerald-300 flex items-center gap-1.5">
+          <div className="text-xs text-success flex items-center gap-1.5">
             <CheckCircle2 className="h-3.5 w-3.5" />
             {waSuccess}
           </div>
         )}
         {waLog.length > 0 && (
-          <div className="max-h-28 overflow-y-auto rounded-lg border border-zinc-800 bg-zinc-900/80 px-3 py-2 text-[11px] text-zinc-400 space-y-0.5 font-mono">
+          <div className="max-h-28 overflow-y-auto rounded-lg border border-border bg-card px-3 py-2 text-[11px] text-muted-foreground space-y-0.5 font-mono">
             {waLog.map((line, i) => (
               <div key={`${i}-${line}`}>{line}</div>
             ))}
@@ -574,14 +574,14 @@ export default function FullDayReportPage() {
       </div>
 
       {error && (
-        <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-red-300 flex gap-2">
+        <div className="rounded-xl border border-destructive/30 bg-destructive-soft p-4 text-destructive flex gap-2">
           <AlertCircle className="h-5 w-5 shrink-0" />
           {error}
         </div>
       )}
 
       {loading && !report && (
-        <div className="flex items-center justify-center py-20 text-zinc-400">
+        <div className="flex items-center justify-center py-20 text-muted-foreground">
           <Loader2 className="h-7 w-7 animate-spin ml-3" />
           جاري تجهيز تقرير اليوم...
         </div>
@@ -593,28 +593,28 @@ export default function FullDayReportPage() {
           <div
             className={`relative overflow-hidden rounded-2xl border p-6 ${
               report.profit.net >= 0
-                ? 'border-emerald-500/30 bg-gradient-to-l from-emerald-500/10 via-zinc-950 to-zinc-950'
-                : 'border-rose-500/30 bg-gradient-to-l from-rose-500/10 via-zinc-950 to-zinc-950'
+                ? 'border-success/30 bg-gradient-to-l from-success-soft via-card to-card'
+                : 'border-destructive/30 bg-gradient-to-l from-destructive-soft via-card to-card'
             }`}
           >
-            <div className="text-xs text-zinc-400 mb-1">صافي ربح اليوم النهائي</div>
+            <div className="text-xs text-muted-foreground mb-1">صافي ربح اليوم النهائي</div>
             <div
               className={`text-4xl sm:text-5xl font-bold tracking-tight ${
-                report.profit.net >= 0 ? 'text-emerald-300' : 'text-rose-300'
+                report.profit.net >= 0 ? 'text-success' : 'text-destructive'
               }`}
             >
               {formatCurrencyAr(report.profit.net)}
             </div>
-            <div className="mt-4 flex flex-wrap gap-4 text-sm text-zinc-400">
+            <div className="mt-4 flex flex-wrap gap-4 text-sm text-muted-foreground">
               <span>
-                داخل: <strong className="text-zinc-200">{formatCurrencyAr(report.profit.totalIn)}</strong>
+                داخل: <strong className="text-foreground">{formatCurrencyAr(report.profit.totalIn)}</strong>
               </span>
-              <span className="text-zinc-600">−</span>
+              <span className="text-muted-foreground">−</span>
               <span>
-                خارج: <strong className="text-zinc-200">{formatCurrencyAr(report.profit.totalOut)}</strong>
+                خارج: <strong className="text-foreground">{formatCurrencyAr(report.profit.totalOut)}</strong>
               </span>
             </div>
-            <p className="mt-2 text-[11px] text-zinc-500">
+            <p className="mt-2 text-[11px] text-muted-foreground">
               داخل = مبيعات + إيرادات · خارج = مصروفات + أساسي الموظفين + التارجت
             </p>
           </div>
@@ -660,7 +660,7 @@ export default function FullDayReportPage() {
               empty="مفيش إيرادات مسجّلة اليوم"
               total={report.incomes.total}
               lines={report.incomes.lines}
-              accent="text-blue-300"
+              accent="text-info"
             />
             <MoneyList
               title="مصروفات اليوم"
@@ -668,25 +668,25 @@ export default function FullDayReportPage() {
               subtitle="بدون سلف الموظفين (السلف جزء من حساب المرتب)"
               total={report.expenses.total}
               lines={report.expenses.lines}
-              accent="text-rose-300"
+              accent="text-destructive"
             />
           </div>
 
           {/* Staff section */}
-          <section className="rounded-2xl border border-zinc-800 overflow-hidden">
-            <div className="px-4 py-3 border-b border-zinc-800 bg-zinc-900/60 flex flex-wrap items-center justify-between gap-2">
+          <section className="rounded-2xl border border-border overflow-hidden">
+            <div className="px-4 py-3 border-b border-border bg-card flex flex-wrap items-center justify-between gap-2">
               <div>
-                <h3 className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
-                  <Banknote className="h-4 w-4 text-[#D6A84F]" />
+                <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                  <Banknote className="h-4 w-4 text-brand" />
                   مرتبات · تارجت · مواعيد اليوم
                 </h3>
-                <p className="text-[11px] text-zinc-500 mt-0.5">
+                <p className="text-[11px] text-muted-foreground mt-0.5">
                   حضور {report.payroll.presentCount} من {report.payroll.employeeCount} · أساسي{' '}
                   {formatCurrencyAr(report.payroll.wageTotal)} · تارجت{' '}
                   {formatCurrencyAr(report.payroll.targetTotal)}
                 </p>
               </div>
-              <div className="flex gap-3 text-xs text-zinc-400">
+              <div className="flex gap-3 text-xs text-muted-foreground">
                 <span className="inline-flex items-center gap-1">
                   <Clock className="h-3.5 w-3.5" /> مواعيد
                 </span>
@@ -697,13 +697,13 @@ export default function FullDayReportPage() {
             </div>
 
             {report.payroll.employees.length === 0 ? (
-              <div className="p-8 text-center text-zinc-500 text-sm">
+              <div className="p-8 text-center text-muted-foreground text-sm">
                 مفيش يوميات مولَّدة لهذا اليوم — ولّد من تبويب يوميات الموظفين أولاً
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[900px] text-sm">
-                  <thead className="bg-zinc-950 text-zinc-500 text-xs">
+                  <thead className="bg-background text-muted-foreground text-xs">
                     <tr>
                       <th className="px-3 py-2.5 text-right font-medium">الموظف</th>
                       <th className="px-3 py-2.5 text-right font-medium">حضور</th>
@@ -717,23 +717,23 @@ export default function FullDayReportPage() {
                   </thead>
                   <tbody>
                     {report.payroll.employees.map((e) => (
-                      <tr key={e.empId} className="border-t border-zinc-800/80 hover:bg-zinc-900/40">
+                      <tr key={e.empId} className="border-t border-border hover:bg-card">
                         <td className="px-3 py-2.5">
-                          <div className="text-zinc-100 font-medium">{e.empName}</div>
+                          <div className="text-foreground font-medium">{e.empName}</div>
                           {e.attendanceStatus && (
-                            <div className="text-[10px] text-zinc-500">{e.attendanceStatus}</div>
+                            <div className="text-[10px] text-muted-foreground">{e.attendanceStatus}</div>
                           )}
                         </td>
-                        <td className="px-3 py-2.5 text-zinc-300 whitespace-nowrap">
+                        <td className="px-3 py-2.5 text-foreground whitespace-nowrap">
                           {formatTime12hAr(e.checkIn) ?? '—'}
                         </td>
-                        <td className="px-3 py-2.5 text-zinc-300 whitespace-nowrap">
+                        <td className="px-3 py-2.5 text-foreground whitespace-nowrap">
                           {formatTime12hAr(e.checkOut) ?? '—'}
                         </td>
-                        <td className="px-3 py-2.5 text-zinc-300 whitespace-nowrap">
+                        <td className="px-3 py-2.5 text-foreground whitespace-nowrap">
                           {hoursLabel(e.actualHours)}
                         </td>
-                        <td className="px-3 py-2.5 text-zinc-200 whitespace-nowrap">
+                        <td className="px-3 py-2.5 text-foreground whitespace-nowrap">
                           {formatCurrencyAr(e.baseWage)}
                         </td>
                         <td className="px-3 py-2.5 whitespace-nowrap">
@@ -747,34 +747,34 @@ export default function FullDayReportPage() {
                             return (
                               <button
                                 type="button"
-                                className="text-right hover:bg-zinc-800/50 rounded-lg px-1.5 py-1 -mx-1.5 transition-colors"
+                                className="text-right hover:bg-surface-muted rounded-lg px-1.5 py-1 -mx-1.5 transition-colors"
                                 onClick={() => setTargetDetailsEmpId(e.empId)}
                                 title="عرض تفاصيل حساب التارجت"
                               >
                                 {hasMtd ? (
-                                  <div className="text-emerald-300 font-medium">
+                                  <div className="text-success font-medium">
                                     {formatCurrencyAr(mtdTarget)}
-                                    <span className="text-[10px] text-zinc-400 font-normal mr-1">
+                                    <span className="text-[10px] text-muted-foreground font-normal mr-1">
                                       (حتى الآن)
                                     </span>
                                   </div>
                                 ) : (
-                                  <div className="text-emerald-300">
+                                  <div className="text-success">
                                     {formatCurrencyAr(e.targetAmount)}
                                   </div>
                                 )}
                                 {belowTier || (hasMtd && mtdTarget <= 0 && !noSales) ? (
-                                  <div className="text-[10px] text-amber-400/90">
+                                  <div className="text-[10px] text-warning">
                                     لسه متحسبلهوش تارجت
                                   </div>
                                 ) : null}
                                 {e.mtdSales != null && (
-                                  <div className="text-[10px] text-zinc-500">
+                                  <div className="text-[10px] text-muted-foreground">
                                     مبيعات الشهر {formatCurrencyAr(e.mtdSales)}
                                   </div>
                                 )}
                                 {e.targetAmount > 0 && (
-                                  <div className="text-[10px] text-zinc-500">
+                                  <div className="text-[10px] text-muted-foreground">
                                     فرق اليوم {formatCurrencyAr(e.targetAmount)}
                                   </div>
                                 )}
@@ -782,20 +782,20 @@ export default function FullDayReportPage() {
                             );
                           })()}
                         </td>
-                        <td className="px-3 py-2.5 font-semibold text-[#D6A84F] whitespace-nowrap">
+                        <td className="px-3 py-2.5 font-semibold text-brand whitespace-nowrap">
                           {formatCurrencyAr(e.dayTotal)}
                         </td>
                         <td className="px-3 py-2.5">
                           {e.hasPhone ? (
                             <div className="flex items-center gap-2">
-                              <span className="text-[11px] text-emerald-400">جاهز</span>
+                              <span className="text-[11px] text-success">جاهز</span>
                               <Button
                                 type="button"
                                 size="sm"
                                 variant="ghost"
                                 disabled={waBusy || loading}
                                 onClick={() => void sendWhatsAppToEmployee(e.empId, e.empName)}
-                                className="h-7 px-2 text-[11px] text-emerald-400 hover:text-emerald-300 hover:bg-emerald-600/10"
+                                className="h-7 px-2 text-[11px] text-success hover:text-success hover:bg-success-soft"
                                 title={`إرسال التقرير إلى ${e.empName}`}
                               >
                                 <MessageCircle className="h-3 w-3 ml-0.5" />
@@ -803,7 +803,7 @@ export default function FullDayReportPage() {
                               </Button>
                             </div>
                           ) : (
-                            <span className="text-[11px] text-zinc-500 inline-flex items-center gap-0.5">
+                            <span className="text-[11px] text-muted-foreground inline-flex items-center gap-0.5">
                               <MinusCircle className="h-3 w-3" />
                               بدون رقم
                             </span>
@@ -820,12 +820,12 @@ export default function FullDayReportPage() {
           {/* ── Owner section ── */}
           <section className="space-y-4 pt-4">
             <div className="flex items-center gap-2">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#D6A84F]/40 bg-[#D6A84F]/10">
-                <Crown className="h-4 w-4 text-[#D6A84F]" />
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-brand/40 bg-brand-soft">
+                <Crown className="h-4 w-4 text-brand" />
               </div>
               <div>
-                <h2 className="text-lg font-semibold text-zinc-50">تقرير المالك</h2>
-                <p className="text-xs text-zinc-500">
+                <h2 className="text-lg font-semibold text-foreground">تقرير المالك</h2>
+                <p className="text-xs text-muted-foreground">
                   نظرة سريعة: ربح التشغيل الفعلي · وحركة الخزنة بالفلوس الخارجة فعليًا
                 </p>
               </div>
@@ -833,20 +833,20 @@ export default function FullDayReportPage() {
 
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
               {/* Owner day report */}
-              <div className="rounded-2xl border border-[#D6A84F]/25 bg-gradient-to-b from-[#D6A84F]/8 via-zinc-950 to-zinc-950 overflow-hidden">
-                <div className="px-5 py-4 border-b border-[#D6A84F]/15 flex items-center justify-between">
+              <div className="rounded-2xl border border-brand/25 bg-gradient-to-b from-brand-soft via-card to-card overflow-hidden">
+                <div className="px-5 py-4 border-b border-brand/15 flex items-center justify-between">
                   <div>
-                    <div className="text-[11px] text-[#D6A84F]/80 font-medium">تقرير اليوم</div>
-                    <h3 className="text-base font-semibold text-zinc-50 mt-0.5">صافي التشغيل الفعلي</h3>
+                    <div className="text-[11px] text-brand font-medium">تقرير اليوم</div>
+                    <h3 className="text-base font-semibold text-foreground mt-0.5">صافي التشغيل الفعلي</h3>
                   </div>
-                  <Banknote className="h-5 w-5 text-[#D6A84F]/70" />
+                  <Banknote className="h-5 w-5 text-brand" />
                 </div>
                 <div className="p-5 space-y-4">
                   <div>
-                    <div className="text-xs text-zinc-500 mb-1">صافي ربح اليوم</div>
+                    <div className="text-xs text-muted-foreground mb-1">صافي ربح اليوم</div>
                     <div
                       className={`text-3xl font-bold ${
-                        report.ownerDay.net >= 0 ? 'text-emerald-300' : 'text-rose-300'
+                        report.ownerDay.net >= 0 ? 'text-success' : 'text-destructive'
                       }`}
                     >
                       {formatCurrencyAr(report.ownerDay.net)}
@@ -863,59 +863,59 @@ export default function FullDayReportPage() {
                     ]}
                   />
 
-                  <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 px-3 py-2.5 text-[11px] text-zinc-500 leading-relaxed">
+                  <div className="rounded-xl border border-border bg-card px-3 py-2.5 text-[11px] text-muted-foreground leading-relaxed">
                     نفس أرقام السيكشن فوق بالظبط · المصروفات هنا{' '}
-                    <strong className="text-zinc-300">بدون سلف</strong> لأن السلف جزء من حساب المرتب
+                    <strong className="text-foreground">بدون سلف</strong> لأن السلف جزء من حساب المرتب
                   </div>
                 </div>
               </div>
 
               {/* Treasury report */}
-              <div className="rounded-2xl border border-cyan-500/25 bg-gradient-to-b from-cyan-500/10 via-zinc-950 to-zinc-950 overflow-hidden">
-                <div className="px-5 py-4 border-b border-cyan-500/15 flex items-center justify-between">
+              <div className="rounded-2xl border border-info/25 bg-gradient-to-b from-info-soft via-card to-card overflow-hidden">
+                <div className="px-5 py-4 border-b border-info/15 flex items-center justify-between">
                   <div>
-                    <div className="text-[11px] text-cyan-300/80 font-medium">تقرير الخزنة</div>
-                    <h3 className="text-base font-semibold text-zinc-50 mt-0.5">حركة الفلوس نقدًا</h3>
+                    <div className="text-[11px] text-info font-medium">تقرير الخزنة</div>
+                    <h3 className="text-base font-semibold text-foreground mt-0.5">حركة الفلوس نقدًا</h3>
                   </div>
-                  <Landmark className="h-5 w-5 text-cyan-300/70" />
+                  <Landmark className="h-5 w-5 text-info" />
                 </div>
                 <div className="p-5 space-y-4">
                   <div>
-                    <div className="text-xs text-zinc-500 mb-1">صافي الخزنة</div>
+                    <div className="text-xs text-muted-foreground mb-1">صافي الخزنة</div>
                     <div
                       className={`text-3xl font-bold ${
-                        report.treasury.net >= 0 ? 'text-cyan-300' : 'text-rose-300'
+                        report.treasury.net >= 0 ? 'text-info' : 'text-destructive'
                       }`}
                     >
                       {formatCurrencyAr(report.treasury.net)}
                     </div>
-                    <div className="mt-2 flex flex-wrap gap-3 text-xs text-zinc-400">
+                    <div className="mt-2 flex flex-wrap gap-3 text-xs text-muted-foreground">
                       <span>
                         مدخلات{' '}
-                        <strong className="text-zinc-200">
+                        <strong className="text-foreground">
                           {formatCurrencyAr(report.treasury.inflows.total)}
                         </strong>
                       </span>
-                      <span className="text-zinc-600">−</span>
+                      <span className="text-muted-foreground">−</span>
                       <span>
                         مصروفات{' '}
-                        <strong className="text-zinc-200">
+                        <strong className="text-foreground">
                           {formatCurrencyAr(report.treasury.outflows.total)}
                         </strong>
                       </span>
                     </div>
-                    <div className="mt-3 rounded-xl border border-cyan-500/25 bg-cyan-500/5 px-3 py-2.5 flex items-center justify-between gap-3">
-                      <span className="text-xs text-cyan-200/90">
+                    <div className="mt-3 rounded-xl border border-info/25 bg-info-soft px-3 py-2.5 flex items-center justify-between gap-3">
+                      <span className="text-xs text-info">
                         صافي السيولة بالخزنة حتى اليوم
-                        <span className="block text-[10px] text-zinc-500">
+                        <span className="block text-[10px] text-muted-foreground">
                           من أول الشهر ({report.monthToDate.month})
                         </span>
                       </span>
                       <span
                         className={`text-lg font-bold ${
                           report.monthToDate.treasuryNet >= 0
-                            ? 'text-cyan-300'
-                            : 'text-rose-300'
+                            ? 'text-info'
+                            : 'text-destructive'
                         }`}
                       >
                         {formatCurrencyAr(report.monthToDate.treasuryNet)}
@@ -947,17 +947,17 @@ export default function FullDayReportPage() {
                     title="توضيح مصروفات التشغيل"
                     empty="مفيش مصروفات تشغيل"
                     rows={report.treasury.outflows.operatingByCategory}
-                    accent="text-rose-300"
+                    accent="text-destructive"
                   />
 
                   <GroupedBreakdown
                     title="سلف الموظفين (مجمعة لكل موظف)"
                     empty="مفيش سلف النهاردة"
                     rows={report.treasury.outflows.advancesByEmployee}
-                    accent="text-orange-300"
+                    accent="text-warning"
                   />
 
-                  <div className="rounded-xl border border-cyan-500/15 bg-cyan-500/5 px-3 py-2.5 text-[11px] text-zinc-500 leading-relaxed">
+                  <div className="rounded-xl border border-info/15 bg-info-soft px-3 py-2.5 text-[11px] text-muted-foreground leading-relaxed">
                     الخزنة = الفلوس اللي دخلت − الفلوس اللي طلعت فعليًا (بما فيها السلف).  
                     لو الموظف اخد أكثر من سلفة، بتتجمع له في سطر واحد.
                   </div>
@@ -966,14 +966,14 @@ export default function FullDayReportPage() {
             </div>
 
             {/* Employee accounts */}
-            <div className="rounded-2xl border border-violet-500/25 bg-gradient-to-b from-violet-500/10 via-zinc-950 to-zinc-950 overflow-hidden">
-              <div className="px-5 py-4 border-b border-violet-500/15 flex flex-wrap items-center justify-between gap-3">
+            <div className="rounded-2xl border border-brand/25 bg-gradient-to-b from-brand-soft via-card to-card overflow-hidden">
+              <div className="px-5 py-4 border-b border-brand/15 flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <div className="text-[11px] text-violet-300/80 font-medium">حسابات الموظفين</div>
-                  <h3 className="text-base font-semibold text-zinc-50 mt-0.5">
+                  <div className="text-[11px] text-brand font-medium">حسابات الموظفين</div>
+                  <h3 className="text-base font-semibold text-foreground mt-0.5">
                     كل موظف بقى له كام في الحساب
                   </h3>
-                  <p className="text-[11px] text-zinc-500 mt-1">
+                  <p className="text-[11px] text-muted-foreground mt-1">
                     رصيد دفتر الشهر {report.employeeAccounts.payrollMonth} · مع استحقاق اليوم والسلف
                   </p>
                 </div>
@@ -995,13 +995,13 @@ export default function FullDayReportPage() {
               </div>
 
               {report.employeeAccounts.rows.length === 0 ? (
-                <div className="p-8 text-center text-sm text-zinc-500">
+                <div className="p-8 text-center text-sm text-muted-foreground">
                   مفيش ارصدة موظفين لهذا الشهر
                 </div>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[720px] text-sm">
-                    <thead className="bg-zinc-950/80 text-zinc-500 text-xs">
+                    <thead className="bg-background text-muted-foreground text-xs">
                       <tr>
                         <th className="px-4 py-2.5 text-right font-medium">الموظف</th>
                         <th className="px-4 py-2.5 text-right font-medium">اساسي اليوم</th>
@@ -1015,55 +1015,55 @@ export default function FullDayReportPage() {
                       {report.employeeAccounts.rows.map((row) => (
                         <tr
                           key={row.empId}
-                          className="border-t border-zinc-800/80 hover:bg-zinc-900/40"
+                          className="border-t border-border hover:bg-card"
                         >
-                          <td className="px-4 py-2.5 text-zinc-100 font-medium">{row.empName}</td>
-                          <td className="px-4 py-2.5 text-zinc-300 whitespace-nowrap">
+                          <td className="px-4 py-2.5 text-foreground font-medium">{row.empName}</td>
+                          <td className="px-4 py-2.5 text-foreground whitespace-nowrap">
                             {formatCurrencyAr(row.dayBase)}
                           </td>
                           <td className="px-4 py-2.5 whitespace-nowrap">
                             {row.mtdTargetAmount != null ? (
                               <button
                                 type="button"
-                                className="text-right hover:bg-zinc-800/50 rounded-lg px-1.5 py-1 -mx-1.5 transition-colors"
+                                className="text-right hover:bg-surface-muted rounded-lg px-1.5 py-1 -mx-1.5 transition-colors"
                                 onClick={() => setTargetDetailsEmpId(row.empId)}
                                 title="عرض تفاصيل حساب التارجت"
                               >
-                                <div className="text-emerald-300/90 font-medium">
+                                <div className="text-success font-medium">
                                   {formatCurrencyAr(row.mtdTargetAmount)}
                                 </div>
                                 {row.dayTarget > 0 && (
-                                  <div className="text-[10px] text-zinc-500">
+                                  <div className="text-[10px] text-muted-foreground">
                                     فرق اليوم {formatCurrencyAr(row.dayTarget)}
                                   </div>
                                 )}
                               </button>
                             ) : (
-                              <span className="text-emerald-300/90">
+                              <span className="text-success">
                                 {formatCurrencyAr(row.dayTarget)}
                               </span>
                             )}
                           </td>
-                          <td className="px-4 py-2.5 text-[#D6A84F] font-medium whitespace-nowrap">
+                          <td className="px-4 py-2.5 text-brand font-medium whitespace-nowrap">
                             {formatCurrencyAr(row.dayTotal)}
                           </td>
                           <td className="px-4 py-2.5 whitespace-nowrap">
                             {row.advancesToday > 0 ? (
-                              <span className="text-orange-300 font-medium">
+                              <span className="text-warning font-medium">
                                 {formatCurrencyAr(row.advancesToday)}
                               </span>
                             ) : (
-                              <span className="text-zinc-600">—</span>
+                              <span className="text-muted-foreground">—</span>
                             )}
                           </td>
                           <td className="px-4 py-2.5 whitespace-nowrap">
                             <span
                               className={`font-bold ${
                                 row.ledgerBalance > 0
-                                  ? 'text-violet-300'
+                                  ? 'text-brand'
                                   : row.ledgerBalance < 0
-                                    ? 'text-rose-300'
-                                    : 'text-zinc-500'
+                                    ? 'text-destructive'
+                                    : 'text-muted-foreground'
                               }`}
                             >
                               {formatCurrencyAr(row.ledgerBalance)}
@@ -1072,17 +1072,17 @@ export default function FullDayReportPage() {
                         </tr>
                       ))}
                     </tbody>
-                    <tfoot className="bg-zinc-900/70 border-t border-zinc-700">
-                      <tr className="text-xs text-zinc-300">
+                    <tfoot className="bg-card border-t border-border">
+                      <tr className="text-xs text-foreground">
                         <td className="px-4 py-3 font-semibold">الاجمالي</td>
                         <td className="px-4 py-3" colSpan={2} />
-                        <td className="px-4 py-3 font-semibold text-[#D6A84F]">
+                        <td className="px-4 py-3 font-semibold text-brand">
                           {formatCurrencyAr(report.employeeAccounts.totalDayCost)}
                         </td>
-                        <td className="px-4 py-3 font-semibold text-orange-300">
+                        <td className="px-4 py-3 font-semibold text-warning">
                           {formatCurrencyAr(report.employeeAccounts.totalAdvancesToday)}
                         </td>
-                        <td className="px-4 py-3 font-bold text-violet-300">
+                        <td className="px-4 py-3 font-bold text-brand">
                           {formatCurrencyAr(report.employeeAccounts.totalLedgerBalance)}
                         </td>
                       </tr>
@@ -1091,7 +1091,7 @@ export default function FullDayReportPage() {
                 </div>
               )}
 
-              <div className="px-5 py-3 border-t border-violet-500/10 text-[11px] text-zinc-500">
+              <div className="px-5 py-3 border-t border-brand/10 text-[11px] text-muted-foreground">
                 رصيد الحساب = استحقاقات الدفتر (اساسي + تارجت + تمويل) − سلف − صرف مستحقات − خصومات
                 لهذا الشهر.
               </div>
@@ -1113,41 +1113,41 @@ export default function FullDayReportPage() {
               if (!open) setTargetDetailsEmpId(null);
             }}
           >
-            <DialogContent className="max-w-md bg-zinc-950 border-zinc-800" dir="rtl">
+            <DialogContent className="max-w-md bg-background border-border" dir="rtl">
               <DialogHeader>
-                <DialogTitle className="text-zinc-100 flex items-center gap-2">
-                  <Target className="h-4 w-4 text-emerald-400" />
+                <DialogTitle className="text-foreground flex items-center gap-2">
+                  <Target className="h-4 w-4 text-success" />
                   تفاصيل التارجت
                   {emp ? ` — ${emp.empName}` : ''}
                 </DialogTitle>
               </DialogHeader>
               {emp ? (
                 <div className="space-y-3 text-sm">
-                  <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 px-3 py-2.5 space-y-1">
+                  <div className="rounded-xl border border-border bg-card px-3 py-2.5 space-y-1">
                     <div className="flex justify-between gap-2">
-                      <span className="text-zinc-400">مبيعات الشهر حتى الآن</span>
-                      <span className="text-zinc-100 font-medium">
+                      <span className="text-muted-foreground">مبيعات الشهر حتى الآن</span>
+                      <span className="text-foreground font-medium">
                         {emp.mtdSales != null ? formatCurrencyAr(emp.mtdSales) : '—'}
                       </span>
                     </div>
                     <div className="flex justify-between gap-2">
-                      <span className="text-zinc-400">تارجت الشهر (حتى الآن)</span>
-                      <span className="text-emerald-300 font-semibold">
+                      <span className="text-muted-foreground">تارجت الشهر (حتى الآن)</span>
+                      <span className="text-success font-semibold">
                         {emp.mtdTargetAmount != null
                           ? formatCurrencyAr(emp.mtdTargetAmount)
                           : formatCurrencyAr(emp.targetAmount)}
                       </span>
                     </div>
                     <div className="flex justify-between gap-2">
-                      <span className="text-zinc-400">فرق اليوم (استحقاق اليوم)</span>
-                      <span className="text-[#D6A84F] font-medium">
+                      <span className="text-muted-foreground">فرق اليوم (استحقاق اليوم)</span>
+                      <span className="text-brand font-medium">
                         {formatCurrencyAr(emp.targetAmount)}
                       </span>
                     </div>
                     {emp.mtdSales != null &&
                       emp.mtdSales > 0 &&
                       (emp.mtdTargetAmount ?? 0) <= 0 && (
-                        <p className="text-[11px] text-amber-400/90 pt-1">
+                        <p className="text-[11px] text-warning pt-1">
                           لسه متحسبلهوش تارجت — الإجمالي تحت أول شريحة متفق عليها.
                         </p>
                       )}
@@ -1155,27 +1155,27 @@ export default function FullDayReportPage() {
 
                   {emp.targetBreakdown && emp.targetBreakdown.length > 0 ? (
                     <div className="space-y-1.5">
-                      <p className="text-xs text-zinc-400 font-medium">
+                      <p className="text-xs text-muted-foreground font-medium">
                         طريقة الحسبة حسب اتفاق التارجت (إعدادات الموظف في HR)
                       </p>
                       {emp.targetBreakdown.map((row, i) => (
                         <div
                           key={`${row.from}-${i}`}
-                          className="rounded-lg border border-zinc-800 px-3 py-2 text-xs text-zinc-300"
+                          className="rounded-lg border border-border px-3 py-2 text-xs text-foreground"
                         >
                           من {formatCurrencyAr(row.from)}
                           {row.to != null ? ` إلى ${formatCurrencyAr(row.to)}` : ' فأعلى'}
                           {' · '}
                           {row.ratePercent}% على {formatCurrencyAr(row.eligibleAmount)}
                           {' → '}
-                          <span className="text-emerald-300 font-medium">
+                          <span className="text-success font-medium">
                             {formatCurrencyAr(row.targetAmount)}
                           </span>
                         </div>
                       ))}
                     </div>
                   ) : (
-                    <p className="text-xs text-zinc-500">
+                    <p className="text-xs text-muted-foreground">
                       تفاصيل الشرائح تظهر بعد إعادة توليد التارجت بالنظام الشهري التراكمي.
                     </p>
                   )}
@@ -1192,20 +1192,20 @@ export default function FullDayReportPage() {
       })()}
 
       <Dialog open={employeePickOpen} onOpenChange={setEmployeePickOpen}>
-        <DialogContent className="max-w-md bg-zinc-950 border-zinc-800" dir="rtl">
+        <DialogContent className="max-w-md bg-background border-border" dir="rtl">
           <DialogHeader>
-            <DialogTitle className="text-zinc-100">إرسال التقرير لموظف معيّن</DialogTitle>
+            <DialogTitle className="text-foreground">إرسال التقرير لموظف معيّن</DialogTitle>
           </DialogHeader>
-          <p className="text-xs text-zinc-400">
+          <p className="text-xs text-muted-foreground">
             يوم {report?.workDateLabelAr ?? report?.workDate} — هيتبعت لموظف واحد بس، مش للكل.
           </p>
           {report && (
             <div className="space-y-1.5">
-              <label className="text-[11px] text-zinc-400">اختر الموظف</label>
+              <label className="text-[11px] text-muted-foreground">اختر الموظف</label>
               <select
                 value={selectedEmpId}
                 onChange={(e) => setSelectedEmpId(e.target.value)}
-                className="w-full h-10 rounded-md border border-zinc-700 bg-zinc-900 px-3 text-sm text-zinc-100"
+                className="w-full h-10 rounded-md border border-border bg-card px-3 text-sm text-foreground"
               >
                 {report.payroll.employees.filter((e) => e.hasPhone).length === 0 ? (
                   <option value="">مفيش موظفين جاهزين</option>
@@ -1234,7 +1234,7 @@ export default function FullDayReportPage() {
                 if (!emp) return;
                 void sendWhatsAppToEmployee(emp.empId, emp.empName);
               }}
-              className="bg-emerald-600 hover:bg-emerald-500 text-white"
+              className="bg-success hover:bg-success/85 text-success-foreground"
             >
               <MessageCircle className="h-4 w-4 ml-1" />
               إرسال لهذا الموظف
@@ -1244,15 +1244,15 @@ export default function FullDayReportPage() {
       </Dialog>
 
       <Dialog open={ownerPreviewOpen} onOpenChange={setOwnerPreviewOpen}>
-        <DialogContent className="max-w-lg bg-zinc-950 border-zinc-800" dir="rtl">
+        <DialogContent className="max-w-lg bg-background border-border" dir="rtl">
           <DialogHeader>
-            <DialogTitle className="text-zinc-100">
+            <DialogTitle className="text-foreground">
               معاينة تقرير المالك
               {ownerPreview?.ownerName ? ` — ${ownerPreview.ownerName}` : ''}
             </DialogTitle>
           </DialogHeader>
-          <p className="text-xs text-zinc-400">{ownerPreview?.meta}</p>
-          <pre className="whitespace-pre-wrap text-sm text-zinc-200 bg-zinc-900 border border-zinc-800 rounded-lg p-4 max-h-[55vh] overflow-y-auto font-sans leading-relaxed">
+          <p className="text-xs text-muted-foreground">{ownerPreview?.meta}</p>
+          <pre className="whitespace-pre-wrap text-sm text-foreground bg-card border border-border rounded-lg p-4 max-h-[55vh] overflow-y-auto font-sans leading-relaxed">
             {ownerPreview?.message}
           </pre>
           <DialogFooter className="gap-2 sm:gap-2">
@@ -1262,7 +1262,7 @@ export default function FullDayReportPage() {
             <Button
               disabled={!ownerPreview?.canSend || waBusy}
               onClick={() => void sendOwnerWhatsApp()}
-              className="bg-[#D6A84F] hover:bg-[#c4983f] text-black"
+              className="bg-primary hover:bg-primary-hover text-primary-foreground"
             >
               <Crown className="h-4 w-4 ml-1" />
               إرسال الآن
@@ -1272,35 +1272,35 @@ export default function FullDayReportPage() {
       </Dialog>
 
       <Dialog open={recipientsOpen} onOpenChange={setRecipientsOpen}>
-        <DialogContent className="max-w-md bg-zinc-950 border-zinc-800" dir="rtl">
+        <DialogContent className="max-w-md bg-background border-border" dir="rtl">
           <DialogHeader>
-            <DialogTitle className="text-zinc-100 flex items-center gap-2">
-              <UserCog className="h-4 w-4 text-sky-300" />
+            <DialogTitle className="text-foreground flex items-center gap-2">
+              <UserCog className="h-4 w-4 text-info" />
               مستلمو تقرير المالك
             </DialogTitle>
           </DialogHeader>
-          <p className="text-xs text-zinc-400">
+          <p className="text-xs text-muted-foreground">
             التقرير بيتبعت للموظفين اللي دورهم في النظام{' '}
-            <span className="text-sky-300 font-medium">
+            <span className="text-info font-medium">
               {recipients?.roleLabel ?? 'مدير'}
             </span>
             . المستلم الأساسي متعلّم بنجمة.
           </p>
 
           {recipientsLoading ? (
-            <div className="flex items-center justify-center py-8 text-zinc-400 text-sm">
+            <div className="flex items-center justify-center py-8 text-muted-foreground text-sm">
               <Loader2 className="h-5 w-5 animate-spin ml-2" />
               جاري تحميل المستلمين...
             </div>
           ) : recipientsError ? (
-            <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-red-300 text-xs flex gap-2">
+            <div className="rounded-lg border border-destructive/30 bg-destructive-soft p-3 text-destructive text-xs flex gap-2">
               <AlertCircle className="h-4 w-4 shrink-0" />
               {recipientsError}
             </div>
           ) : !recipients || recipients.rows.length === 0 ? (
-            <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 p-4 text-center text-xs text-amber-300 space-y-1">
+            <div className="rounded-lg border border-warning/25 bg-warning-soft p-4 text-center text-xs text-warning space-y-1">
               <p>مفيش أي موظف دوره «مدير» في النظام.</p>
-              <p className="text-zinc-500">
+              <p className="text-muted-foreground">
                 عيّن الوظيفة «مدير» لموظف (زي طارق) من إدارة الموظفين عشان يستلم
                 التقرير.
               </p>
@@ -1312,35 +1312,35 @@ export default function FullDayReportPage() {
                   key={r.empId}
                   className={`rounded-xl border px-3 py-2.5 flex items-center justify-between gap-3 ${
                     r.isPrimary
-                      ? 'border-[#D6A84F]/40 bg-[#D6A84F]/5'
-                      : 'border-zinc-800 bg-zinc-900/50'
+                      ? 'border-brand/40 bg-brand-soft'
+                      : 'border-border bg-card'
                   }`}
                 >
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5">
-                      <span className="text-zinc-100 font-medium truncate">
+                      <span className="text-foreground font-medium truncate">
                         {r.name}
                       </span>
                       {r.isPrimary && (
                         <span
-                          className="text-[#D6A84F] text-xs"
+                          className="text-brand text-xs"
                           title="المستلم الأساسي"
                         >
                           ★
                         </span>
                       )}
                     </div>
-                    <div className="text-[11px] text-zinc-500 mt-0.5">
+                    <div className="text-[11px] text-muted-foreground mt-0.5">
                       {r.phone ? `واتساب: ${r.phone}` : 'بدون رقم واتساب'}
                     </div>
                   </div>
                   <div className="flex flex-col items-end gap-1 shrink-0">
-                    <span className="inline-flex items-center rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-[10px] text-sky-300">
+                    <span className="inline-flex items-center rounded-full border border-info/30 bg-info-soft px-2 py-0.5 text-[10px] text-info">
                       {r.role ?? 'بدون دور'}
                     </span>
                     <span
                       className={`text-[10px] ${
-                        r.hasPhone ? 'text-emerald-400' : 'text-zinc-500'
+                        r.hasPhone ? 'text-success' : 'text-muted-foreground'
                       }`}
                     >
                       {r.hasPhone ? 'جاهز للإرسال' : 'بدون رقم'}
@@ -1361,7 +1361,7 @@ export default function FullDayReportPage() {
                 setRecipientsOpen(false);
                 void previewOwnerWhatsApp();
               }}
-              className="bg-[#D6A84F] hover:bg-[#c4983f] text-black"
+              className="bg-primary hover:bg-primary-hover text-primary-foreground"
             >
               <Crown className="h-4 w-4 ml-1" />
               معاينة التقرير
@@ -1383,13 +1383,13 @@ function OwnerFlowRows({
       {rows.map((r) => (
         <li
           key={r.label}
-          className="flex items-center justify-between gap-3 rounded-lg border border-zinc-800/80 bg-zinc-900/40 px-3 py-2 text-sm"
+          className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-3 py-2 text-sm"
         >
-          <span className="text-zinc-400">
-            <span className={r.sign === '+' ? 'text-emerald-400' : 'text-rose-400'}>{r.sign}</span>{' '}
+          <span className="text-muted-foreground">
+            <span className={r.sign === '+' ? 'text-success' : 'text-destructive'}>{r.sign}</span>{' '}
             {r.label}
           </span>
-          <span className="font-medium text-zinc-100">{formatCurrencyAr(r.amount)}</span>
+          <span className="font-medium text-foreground">{formatCurrencyAr(r.amount)}</span>
         </li>
       ))}
     </ul>
@@ -1408,11 +1408,11 @@ function MiniTile({
   return (
     <div
       className={`rounded-lg border px-3 py-2 ${
-        warn ? 'border-orange-500/25 bg-orange-500/5' : 'border-zinc-800 bg-zinc-900/50'
+        warn ? 'border-warning/25 bg-warning-soft' : 'border-border bg-card'
       }`}
     >
-      <div className="text-[10px] text-zinc-500">{label}</div>
-      <div className={`text-sm font-semibold ${warn ? 'text-orange-300' : 'text-zinc-100'}`}>
+      <div className="text-[10px] text-muted-foreground">{label}</div>
+      <div className={`text-sm font-semibold ${warn ? 'text-warning' : 'text-foreground'}`}>
         {value}
       </div>
     </div>
@@ -1432,20 +1432,20 @@ function GroupedBreakdown({
   badgeEmoji?: boolean;
 }) {
   return (
-    <div className="rounded-xl border border-zinc-800 overflow-hidden">
-      <div className="px-3 py-2 border-b border-zinc-800 bg-zinc-900/50 text-xs font-medium text-zinc-300">
+    <div className="rounded-xl border border-border overflow-hidden">
+      <div className="px-3 py-2 border-b border-border bg-card text-xs font-medium text-foreground">
         {title}
       </div>
       {rows.length === 0 ? (
-        <div className="px-3 py-4 text-center text-[11px] text-zinc-500">{empty}</div>
+        <div className="px-3 py-4 text-center text-[11px] text-muted-foreground">{empty}</div>
       ) : (
-        <ul className="max-h-44 overflow-y-auto divide-y divide-zinc-800/80">
+        <ul className="max-h-44 overflow-y-auto divide-y divide-border">
           {rows.map((row) => (
             <li key={row.key} className="px-3 py-2 flex items-start justify-between gap-3 text-sm">
               <div className="min-w-0">
-                <div className="text-zinc-200 truncate">{row.label}</div>
+                <div className="text-foreground truncate">{row.label}</div>
                 {row.meta && (
-                  <div className="text-[10px] text-zinc-500">{row.meta}</div>
+                  <div className="text-[10px] text-muted-foreground">{row.meta}</div>
                 )}
               </div>
               <div className={`shrink-0 font-semibold ${accent}`}>
@@ -1465,21 +1465,21 @@ function MonthToDateCard({ mtd }: { mtd: FullDayMonthToDate }) {
     <div
       className={`relative overflow-hidden rounded-2xl border p-6 ${
         profitPositive
-          ? 'border-emerald-500/30 bg-gradient-to-l from-emerald-500/10 via-zinc-950 to-zinc-950'
-          : 'border-rose-500/30 bg-gradient-to-l from-rose-500/10 via-zinc-950 to-zinc-950'
+          ? 'border-success/30 bg-gradient-to-l from-success-soft via-card to-card'
+          : 'border-destructive/30 bg-gradient-to-l from-destructive-soft via-card to-card'
       }`}
     >
-      <div className="flex items-center gap-2 text-xs text-zinc-400 mb-2">
-        <CalendarRange className="h-4 w-4 text-emerald-300" />
+      <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
+        <CalendarRange className="h-4 w-4 text-success" />
         صافي الربح من أول الشهر حتى اليوم
-        <span className="text-zinc-600">·</span>
-        <span className="text-zinc-500">
+        <span className="text-muted-foreground">·</span>
+        <span className="text-muted-foreground">
           {mtd.fromDate} ← {mtd.toDate}
         </span>
       </div>
       <div
         className={`text-4xl sm:text-5xl font-bold tracking-tight ${
-          profitPositive ? 'text-emerald-300' : 'text-rose-300'
+          profitPositive ? 'text-success' : 'text-destructive'
         }`}
       >
         {formatCurrencyAr(mtd.netProfit)}
@@ -1501,20 +1501,20 @@ function MonthToDateCard({ mtd }: { mtd: FullDayMonthToDate }) {
         />
       </div>
 
-      <div className="mt-3 rounded-xl border border-cyan-500/25 bg-cyan-500/5 px-4 py-3 flex items-center justify-between gap-3">
-        <span className="text-sm text-cyan-200/90">
+      <div className="mt-3 rounded-xl border border-info/25 bg-info-soft px-4 py-3 flex items-center justify-between gap-3">
+        <span className="text-sm text-info">
           صافي السيولة بالخزنة حتى اليوم
         </span>
         <span
           className={`text-xl font-bold ${
-            mtd.treasuryNet >= 0 ? 'text-cyan-300' : 'text-rose-300'
+            mtd.treasuryNet >= 0 ? 'text-info' : 'text-destructive'
           }`}
         >
           {formatCurrencyAr(mtd.treasuryNet)}
         </span>
       </div>
 
-      <p className="mt-2 text-[11px] text-zinc-500 leading-relaxed">
+      <p className="mt-2 text-[11px] text-muted-foreground leading-relaxed">
         الربح الشهري = (مبيعات + إيرادات) − (مصروفات + أساسي + تارجت) · صافي
         السيولة = (مبيعات + إيرادات) − (مصروفات + سلف) — كله تراكمي من أول الشهر.
       </p>
@@ -1524,39 +1524,39 @@ function MonthToDateCard({ mtd }: { mtd: FullDayMonthToDate }) {
 
 function PaymentMixCard({ mix }: { mix: FullDayPaymentMix }) {
   const barColors = [
-    'bg-emerald-400',
-    'bg-sky-400',
-    'bg-violet-400',
-    'bg-amber-400',
-    'bg-rose-400',
-    'bg-teal-400',
+    'bg-success',
+    'bg-info',
+    'bg-brand',
+    'bg-warning',
+    'bg-destructive',
+    'bg-success',
   ];
   return (
-    <section className="rounded-2xl border border-sky-500/25 bg-gradient-to-b from-sky-500/8 via-zinc-950 to-zinc-950 overflow-hidden">
-      <div className="px-5 py-3.5 border-b border-sky-500/15 flex flex-wrap items-center justify-between gap-2">
+    <section className="rounded-2xl border border-info/25 bg-gradient-to-b from-info-soft via-card to-card overflow-hidden">
+      <div className="px-5 py-3.5 border-b border-info/15 flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h3 className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
-            <CreditCard className="h-4 w-4 text-sky-300" />
+          <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+            <CreditCard className="h-4 w-4 text-info" />
             الفلوس الداخلة متقسمة على طرق الدفع
           </h3>
-          <p className="text-[11px] text-zinc-500 mt-0.5">
+          <p className="text-[11px] text-muted-foreground mt-0.5">
             كام كاش · كام فيزا · وهكذا (مبيعات + إيرادات)
           </p>
         </div>
         <div className="text-left">
-          <div className="text-[10px] text-zinc-500">إجمالي الداخل</div>
-          <div className="text-lg font-bold text-sky-300">
+          <div className="text-[10px] text-muted-foreground">إجمالي الداخل</div>
+          <div className="text-lg font-bold text-info">
             {formatCurrencyAr(mix.total)}
           </div>
         </div>
       </div>
 
       {mix.rows.length === 0 ? (
-        <div className="p-6 text-center text-zinc-500 text-sm">
+        <div className="p-6 text-center text-muted-foreground text-sm">
           مفيش فلوس داخلة مسجّلة اليوم
         </div>
       ) : (
-        <ul className="divide-y divide-zinc-800/80">
+        <ul className="divide-y divide-border">
           {mix.rows.map((row, i) => (
             <li key={row.method} className="px-5 py-3">
               <div className="flex items-center justify-between gap-3 text-sm">
@@ -1566,25 +1566,25 @@ function PaymentMixCard({ mix }: { mix: FullDayPaymentMix }) {
                       barColors[i % barColors.length]
                     }`}
                   />
-                  <span className="text-zinc-100 font-medium truncate">
+                  <span className="text-foreground font-medium truncate">
                     {row.method}
                   </span>
-                  <span className="text-[11px] text-zinc-500 shrink-0">
+                  <span className="text-[11px] text-muted-foreground shrink-0">
                     {row.percent}%
                   </span>
                 </div>
-                <span className="font-semibold text-zinc-50 shrink-0">
+                <span className="font-semibold text-foreground shrink-0">
                   {formatCurrencyAr(row.total)}
                 </span>
               </div>
-              <div className="mt-1.5 h-1.5 w-full rounded-full bg-zinc-800 overflow-hidden">
+              <div className="mt-1.5 h-1.5 w-full rounded-full bg-muted overflow-hidden">
                 <div
                   className={`h-full rounded-full ${barColors[i % barColors.length]}`}
                   style={{ width: `${Math.min(100, Math.max(2, row.percent))}%` }}
                 />
               </div>
               {(row.salesTotal > 0 && row.incomesTotal > 0) && (
-                <div className="mt-1 text-[10px] text-zinc-500">
+                <div className="mt-1 text-[10px] text-muted-foreground">
                   مبيعات {formatCurrencyAr(row.salesTotal)} · إيرادات{' '}
                   {formatCurrencyAr(row.incomesTotal)}
                 </div>
@@ -1611,19 +1611,19 @@ function StatCard({
   tone: 'gold' | 'blue' | 'rose' | 'amber';
 }) {
   const tones = {
-    gold: 'border-[#D6A84F]/25 bg-[#D6A84F]/5 text-[#D6A84F]',
-    blue: 'border-blue-500/25 bg-blue-500/5 text-blue-300',
-    rose: 'border-rose-500/25 bg-rose-500/5 text-rose-300',
-    amber: 'border-amber-500/25 bg-amber-500/5 text-amber-300',
+    gold: 'border-brand/25 bg-brand-soft text-brand',
+    blue: 'border-info/25 bg-info-soft text-info',
+    rose: 'border-destructive/25 bg-destructive-soft text-destructive',
+    amber: 'border-warning/25 bg-warning-soft text-warning',
   };
   return (
     <div className={`rounded-xl border p-4 ${tones[tone]}`}>
       <div className="flex items-center justify-between mb-2 opacity-80">
-        <span className="text-xs text-zinc-400">{title}</span>
+        <span className="text-xs text-muted-foreground">{title}</span>
         {icon}
       </div>
-      <div className="text-xl font-bold text-zinc-50">{value}</div>
-      <div className="text-[11px] text-zinc-500 mt-1 leading-relaxed">{hint}</div>
+      <div className="text-xl font-bold text-foreground">{value}</div>
+      <div className="text-[11px] text-muted-foreground mt-1 leading-relaxed">{hint}</div>
     </div>
   );
 }
@@ -1644,24 +1644,24 @@ function MoneyList({
   accent: string;
 }) {
   return (
-    <div className="rounded-2xl border border-zinc-800 overflow-hidden">
-      <div className="px-4 py-3 border-b border-zinc-800 bg-zinc-900/50 flex items-center justify-between gap-3">
+    <div className="rounded-2xl border border-border overflow-hidden">
+      <div className="px-4 py-3 border-b border-border bg-card flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <h3 className="text-sm font-semibold text-zinc-100">{title}</h3>
-          {subtitle && <p className="text-[11px] text-zinc-500 mt-0.5">{subtitle}</p>}
+          <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+          {subtitle && <p className="text-[11px] text-muted-foreground mt-0.5">{subtitle}</p>}
         </div>
         <span className={`text-sm font-bold shrink-0 ${accent}`}>{formatCurrencyAr(total)}</span>
       </div>
       {lines.length === 0 ? (
-        <div className="p-6 text-center text-zinc-500 text-sm">{empty}</div>
+        <div className="p-6 text-center text-muted-foreground text-sm">{empty}</div>
       ) : (
-        <ul className="divide-y divide-zinc-800/80 max-h-72 overflow-y-auto">
+        <ul className="divide-y divide-border max-h-72 overflow-y-auto">
           {lines.map((line) => (
             <li key={line.id} className="px-4 py-2.5 flex items-start justify-between gap-3 text-sm">
               <div className="min-w-0">
-                <div className="text-zinc-200 truncate">{line.label}</div>
+                <div className="text-foreground truncate">{line.label}</div>
                 {line.meta && (
-                  <div className="text-[11px] text-zinc-500 truncate">{line.meta}</div>
+                  <div className="text-[11px] text-muted-foreground truncate">{line.meta}</div>
                 )}
               </div>
               <div className={`shrink-0 font-medium ${accent}`}>
