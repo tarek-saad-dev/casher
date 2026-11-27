@@ -13,47 +13,47 @@ const fmt = (n: number) =>
   new Intl.NumberFormat('ar-EG', { minimumFractionDigits: 0 }).format(n);
 
 const METHOD_ICONS: Record<string, React.ReactNode> = {
-  كاش: <Coins className="w-4 h-4 text-emerald-400" />,
-  نقدي: <Coins className="w-4 h-4 text-emerald-400" />,
-  فيزا: <CreditCard className="w-4 h-4 text-blue-400" />,
-  'ماستر كارد': <CreditCard className="w-4 h-4 text-orange-400" />,
-  إنستاباي: <CreditCard className="w-4 h-4 text-purple-400" />,
+  كاش: <Coins className="w-4 h-4 text-success" />,
+  نقدي: <Coins className="w-4 h-4 text-success" />,
+  فيزا: <CreditCard className="w-4 h-4 text-info" />,
+  'ماستر كارد': <CreditCard className="w-4 h-4 text-warning" />,
+  إنستاباي: <CreditCard className="w-4 h-4 text-brand" />,
 };
 
 function getIcon(method: string) {
   for (const key of Object.keys(METHOD_ICONS)) {
     if (method?.includes(key)) return METHOD_ICONS[key];
   }
-  return <Wallet className="w-4 h-4 text-zinc-400" />;
+  return <Wallet className="w-4 h-4 text-muted-foreground" />;
 }
 
 export default function TreasurySnapshotCard({ shiftSummary, hasActiveShift }: Props) {
   const netCash = shiftSummary ? shiftSummary.cashIn - shiftSummary.cashOut : 0;
 
   return (
-    <div className="rounded-2xl border border-zinc-800/50 bg-zinc-900/60 p-6 flex flex-col gap-4">
+    <div className="rounded-2xl border border-border bg-card p-4 sm:p-6 flex flex-col gap-4">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <div className="w-11 h-11 rounded-xl bg-amber-500/10 flex items-center justify-center">
-          <Wallet className="w-5 h-5 text-amber-400" />
+        <div className="w-11 h-11 rounded-xl bg-warning-soft flex items-center justify-center">
+          <Wallet className="w-5 h-5 text-warning" />
         </div>
         <div>
-          <p className="text-xs text-zinc-500 font-medium uppercase tracking-wider">الخزنة</p>
-          <h3 className="text-base font-bold text-white mt-0.5">ملخص الوردية</h3>
+          <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">الخزنة</p>
+          <h3 className="text-base font-bold text-foreground mt-0.5">ملخص الوردية</h3>
         </div>
       </div>
 
       {!hasActiveShift || !shiftSummary ? (
         <div className="flex-1 flex items-center justify-center py-6">
-          <p className="text-sm text-zinc-600 text-center">لا توجد وردية مفتوحة</p>
+          <p className="text-sm text-muted-foreground text-center">لا توجد وردية مفتوحة</p>
         </div>
       ) : (
         <div className="space-y-3 flex-1">
           {/* Total revenue */}
-          <div className="bg-zinc-950/50 rounded-xl p-4 border border-zinc-800/50">
-            <p className="text-xs text-zinc-500 mb-1">إجمالي التحصيل</p>
-            <p className="text-2xl font-bold text-amber-400">{fmt(shiftSummary.totalRevenue)}</p>
-            <p className="text-xs text-zinc-600 mt-0.5">{shiftSummary.salesCount} فاتورة</p>
+          <div className="bg-card rounded-xl p-4 border border-border">
+            <p className="text-xs text-muted-foreground mb-1">إجمالي التحصيل</p>
+            <p className="text-2xl font-bold text-warning">{fmt(shiftSummary.totalRevenue)}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">{shiftSummary.salesCount} فاتورة</p>
           </div>
 
           {/* Payment breakdown */}
@@ -62,14 +62,14 @@ export default function TreasurySnapshotCard({ shiftSummary, hasActiveShift }: P
               {shiftSummary.paymentBreakdown.map(p => (
                 <div
                   key={p.method}
-                  className="flex items-center justify-between bg-zinc-950/30 rounded-lg px-3 py-2.5 border border-zinc-800/40"
+                  className="flex items-center justify-between bg-card rounded-lg px-3 py-2.5 border border-border"
                 >
                   <div className="flex items-center gap-2">
                     {getIcon(p.method)}
-                    <span className="text-sm text-zinc-300">{p.method}</span>
-                    <span className="text-xs text-zinc-600">({p.cnt} معاملة)</span>
+                    <span className="text-sm text-foreground">{p.method}</span>
+                    <span className="text-xs text-muted-foreground">({p.cnt} معاملة)</span>
                   </div>
-                  <span className="text-sm font-semibold text-zinc-200 font-mono">{fmt(p.total)}</span>
+                  <span className="text-sm font-semibold text-foreground font-mono">{fmt(p.total)}</span>
                 </div>
               ))}
             </div>
@@ -79,13 +79,13 @@ export default function TreasurySnapshotCard({ shiftSummary, hasActiveShift }: P
           <div className={cn(
             'flex items-center justify-between rounded-lg px-3 py-2.5 border text-sm',
             netCash >= 0
-              ? 'bg-emerald-950/20 border-emerald-800/30'
-              : 'bg-rose-950/20 border-rose-800/30'
+              ? 'bg-success-soft border-success/30'
+              : 'bg-destructive-soft border-destructive/30'
           )}>
-            <span className="text-zinc-400">صافي النقدية</span>
+            <span className="text-muted-foreground">صافي النقدية</span>
             <span className={cn(
               'font-bold font-mono',
-              netCash >= 0 ? 'text-emerald-400' : 'text-rose-400'
+              netCash >= 0 ? 'text-success' : 'text-destructive'
             )}>
               {netCash >= 0 ? '+' : ''}{fmt(netCash)}
             </span>

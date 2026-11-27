@@ -68,14 +68,14 @@ interface Barber {
 
 // ─── Status config ────────────────────────────────────────────────────────────
 const STATUS_CONFIG: Record<TicketStatus, { label: string; color: string; bg: string; dot: string }> = {
-  waiting:    { label: 'انتظار',    color: 'var(--warning)', bg: 'color-mix(in srgb, var(--warning) 12%, transparent)',   dot: 'var(--warning)' },
-  called:     { label: 'تم النداء', color: 'var(--info)', bg: 'var(--info-soft)', dot: 'var(--info)' },
-  arrived:    { label: 'حضر',       color: 'var(--success)', bg: 'color-mix(in srgb, var(--success) 12%, transparent)',   dot: 'var(--success)' },
+  waiting: { label: 'انتظار', color: 'var(--warning)', bg: 'var(--warning-soft)', dot: 'var(--warning)' },
+  called: { label: 'تم النداء', color: 'var(--info)', bg: 'var(--info-soft)', dot: 'var(--info)' },
+  arrived: { label: 'حضر', color: 'var(--success)', bg: 'var(--success-soft)', dot: 'var(--success)' },
   in_service: { label: 'في الخدمة', color: 'var(--brand)', bg: 'var(--brand-soft)', dot: 'var(--brand)' },
-  done:       { label: 'انتهى',     color: 'var(--muted-foreground)', bg: 'rgba(107,114,128,0.10)', dot: 'var(--muted-foreground)' },
-  skipped:    { label: 'تخطى',      color: 'var(--destructive)', bg: 'color-mix(in srgb, var(--destructive) 10%, transparent)',   dot: 'var(--destructive)' },
-  cancelled:  { label: 'ملغي',      color: 'var(--muted-foreground)', bg: 'rgba(107,114,128,0.08)', dot: 'var(--muted-foreground)' },
-  no_show:    { label: 'لم يحضر',   color: '#DC2626', bg: 'rgba(220,38,38,0.10)',   dot: '#DC2626' },
+  done: { label: 'انتهى', color: 'var(--muted-foreground)', bg: 'var(--muted)', dot: 'var(--muted-foreground)' },
+  skipped: { label: 'تخطى', color: 'var(--destructive)', bg: 'var(--destructive-soft)', dot: 'var(--destructive)' },
+  cancelled: { label: 'ملغي', color: 'var(--muted-foreground)', bg: 'var(--muted)', dot: 'var(--muted-foreground)' },
+  no_show: { label: 'لم يحضر', color: 'var(--destructive)', bg: 'var(--destructive-soft)', dot: 'var(--destructive)' },
 };
 
 const LIVE_STATUSES: TicketStatus[] = ['waiting', 'called', 'arrived', 'in_service', 'skipped'];

@@ -78,10 +78,10 @@ export default function OperationsCenterPage() {
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
-        <div className="w-14 h-14 rounded-2xl bg-zinc-800/60 flex items-center justify-center">
-          <Activity className="w-7 h-7 text-amber-500 animate-pulse" />
+        <div className="w-14 h-14 rounded-2xl bg-muted flex items-center justify-center">
+          <Activity className="w-7 h-7 text-warning animate-pulse" />
         </div>
-        <p className="text-zinc-500 text-sm">جاري تحميل مركز التشغيل...</p>
+        <p className="text-muted-foreground text-sm">جاري تحميل مركز التشغيل...</p>
       </div>
     );
   }
@@ -89,8 +89,8 @@ export default function OperationsCenterPage() {
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
-        <p className="text-rose-400 text-sm">{error}</p>
-        <Button onClick={() => load()} variant="outline" className="border-zinc-700">إعادة المحاولة</Button>
+        <p className="text-destructive text-sm">{error}</p>
+        <Button onClick={() => load()} variant="outline" className="border-border">إعادة المحاولة</Button>
       </div>
     );
   }
@@ -101,12 +101,12 @@ export default function OperationsCenterPage() {
       {/* ── Page Header ────────────────────────────────────── */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
-            <Activity className="w-6 h-6 text-amber-400" />
+          <div className="w-12 h-12 rounded-2xl bg-warning-soft border border-warning/20 flex items-center justify-center">
+            <Activity className="w-6 h-6 text-warning" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-white">مركز التشغيل</h1>
-            <p className="text-sm text-zinc-500 mt-0.5">إدارة اليوم والورديات والمتابعة اللحظية</p>
+            <h1 className="text-2xl font-bold text-foreground">مركز التشغيل</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">إدارة اليوم والورديات والمتابعة اللحظية</p>
           </div>
         </div>
 
@@ -116,19 +116,19 @@ export default function OperationsCenterPage() {
             <span className={cn(
               'flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full border',
               hasActiveDay
-                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
-                : 'bg-zinc-800 text-zinc-500 border-zinc-700'
+                ? 'bg-success-soft text-success border-success/30'
+                : 'bg-muted text-muted-foreground border-border'
             )}>
-              <span className={cn('w-1.5 h-1.5 rounded-full', hasActiveDay ? 'bg-emerald-400 animate-pulse' : 'bg-zinc-600')} />
+              <span className={cn('w-1.5 h-1.5 rounded-full', hasActiveDay ? 'bg-success animate-pulse' : 'bg-muted')} />
               {hasActiveDay ? 'يوم نشط' : 'بدون يوم'}
             </span>
             <span className={cn(
               'flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full border',
               hasActiveShift
-                ? 'bg-blue-500/10 text-blue-400 border-blue-500/30'
-                : 'bg-zinc-800 text-zinc-500 border-zinc-700'
+                ? 'bg-info-soft text-info border-info/30'
+                : 'bg-muted text-muted-foreground border-border'
             )}>
-              <span className={cn('w-1.5 h-1.5 rounded-full', hasActiveShift ? 'bg-blue-400 animate-pulse' : 'bg-zinc-600')} />
+              <span className={cn('w-1.5 h-1.5 rounded-full', hasActiveShift ? 'bg-info animate-pulse' : 'bg-muted')} />
               {hasActiveShift ? 'وردية نشطة' : 'بدون وردية'}
             </span>
           </div>
@@ -138,7 +138,7 @@ export default function OperationsCenterPage() {
             size="sm"
             onClick={() => load(true)}
             disabled={refreshing}
-            className="border-zinc-700 gap-2"
+            className="border-border gap-2"
           >
             <RefreshCw className={cn('w-3.5 h-3.5', refreshing && 'animate-spin')} />
             تحديث
@@ -150,26 +150,26 @@ export default function OperationsCenterPage() {
       {status && (hasActiveDay || hasActiveShift) && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <QuickStat
-            icon={<TrendingUp className="w-4 h-4 text-emerald-400" />}
+            icon={<TrendingUp className="w-4 h-4 text-success" />}
             label="مبيعات اليوم"
             value={fmt(status.daySummary?.totalRevenue || 0)}
             sub="ج.م"
           />
           <QuickStat
-            icon={<Clock className="w-4 h-4 text-blue-400" />}
+            icon={<Clock className="w-4 h-4 text-info" />}
             label="فواتير الوردية"
             value={`${status.shiftSummary?.salesCount || 0}`}
             sub="فاتورة"
           />
           <QuickStat
-            icon={<Users className="w-4 h-4 text-amber-400" />}
+            icon={<Users className="w-4 h-4 text-warning" />}
             label="ورديات مفتوحة"
             value={`${status.allOpenShifts.length}`}
             sub="وردية"
             warn={status.allOpenShifts.length > 2}
           />
           <QuickStat
-            icon={<CalendarDays className="w-4 h-4 text-zinc-400" />}
+            icon={<CalendarDays className="w-4 h-4 text-muted-foreground" />}
             label="تاريخ اليوم"
             value={status.day ? new Date(status.day.NewDay).toLocaleDateString('ar-EG', { day: '2-digit', month: '2-digit' }) : '—'}
             sub={status.day ? new Date(status.day.NewDay).toLocaleDateString('ar-EG', { weekday: 'long' }) : 'لا يوجد'}
@@ -183,14 +183,14 @@ export default function OperationsCenterPage() {
           className={cn(
             'rounded-xl border p-4',
             stale
-              ? 'border-amber-500/40 bg-amber-950/20'
-              : 'border-zinc-800/50 bg-zinc-900/40',
+              ? 'border-warning/40 bg-warning-soft'
+              : 'border-border bg-card',
           )}
         >
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <p className="text-sm font-semibold text-white">التشغيل التلقائي لليوم</p>
-              <p className="mt-1 text-xs text-zinc-400">
+              <p className="text-sm font-semibold text-foreground">التشغيل التلقائي لليوم</p>
+              <p className="mt-1 text-xs text-muted-foreground">
                 {stale
                   ? '⚠ تعذر تجهيز يوم العمل الحالي'
                   : needsRollover
@@ -198,7 +198,7 @@ export default function OperationsCenterPage() {
                     : '● يعمل'}
               </p>
             </div>
-            <div className="text-xs text-zinc-500 space-y-0.5 text-left sm:text-right" dir="ltr">
+            <div className="text-xs text-muted-foreground space-y-0.5 text-left sm:text-right" dir="ltr">
               <p>الوقت: 08:00 صباحًا</p>
               {expectedBusinessDate ? (
                 <p>
@@ -210,12 +210,12 @@ export default function OperationsCenterPage() {
                 </p>
               ) : null}
               {viewBranch ? (
-                <p className="text-zinc-600">عرض: {branchDisplayName(viewBranch)}</p>
+                <p className="text-muted-foreground">عرض: {branchDisplayName(viewBranch)}</p>
               ) : null}
             </div>
           </div>
           {stale && reconciliationError ? (
-            <p className="mt-2 text-xs text-amber-400/90">أعد المحاولة من الشريط العلوي أو حدّث الصفحة.</p>
+            <p className="mt-2 text-xs text-warning">أعد المحاولة من الشريط العلوي أو حدّث الصفحة.</p>
           ) : null}
         </div>
       )}
@@ -256,22 +256,22 @@ export default function OperationsCenterPage() {
       {isAdmin && status?.allOpenShifts && status.allOpenShifts.length > 0 && (
         <section className="space-y-3">
           <div className="flex items-center gap-2">
-            <h2 className="text-base font-semibold text-zinc-300">الورديات المفتوحة</h2>
-            <Badge className="bg-blue-500/15 text-blue-400 border border-blue-500/30 text-xs">
+            <h2 className="text-base font-semibold text-foreground">الورديات المفتوحة</h2>
+            <Badge className="bg-info-soft text-info border border-info/30 text-xs">
               {status.allOpenShifts.length}
             </Badge>
           </div>
-          <div className="rounded-xl border border-zinc-800/50 divide-y divide-zinc-800/50 overflow-hidden">
+          <div className="rounded-xl border border-border divide-y divide-border overflow-hidden">
             {status.allOpenShifts.map((s) => {
               const elapsed = formatShiftElapsed(s.StartDate, s.StartTime, now);
               return (
                 <div
                   key={s.ID}
-                  className="flex items-center justify-between gap-3 px-4 py-3 text-sm hover:bg-zinc-800/20"
+                  className="flex items-center justify-between gap-3 px-4 py-3 text-sm hover:bg-surface-muted"
                 >
-                  <span className="font-medium text-white truncate min-w-0">{s.UserName}</span>
-                  <span className="text-zinc-400 truncate">{s.ShiftName}</span>
-                  <span className="text-zinc-500 whitespace-nowrap tabular-nums">
+                  <span className="font-medium text-foreground truncate min-w-0">{s.UserName}</span>
+                  <span className="text-muted-foreground truncate">{s.ShiftName}</span>
+                  <span className="text-muted-foreground whitespace-nowrap tabular-nums">
                     {elapsed || s.StartTime?.trim() || '—'}
                   </span>
                 </div>
@@ -286,7 +286,7 @@ export default function OperationsCenterPage() {
 
       {/* Last refresh indicator */}
       {lastRefresh && (
-        <p className="text-xs text-zinc-700 text-center">
+        <p className="text-xs text-muted-foreground text-center">
           آخر تحديث: {lastRefresh.toLocaleTimeString('ar-EG')}
         </p>
       )}
@@ -307,19 +307,19 @@ function QuickStat({
   return (
     <div className={cn(
       'rounded-xl border p-4 flex items-center gap-3',
-      warn ? 'bg-amber-950/20 border-amber-800/30' : 'bg-zinc-900/50 border-zinc-800/40'
+      warn ? 'bg-warning-soft border-warning/30' : 'bg-card border-border'
     )}>
       <div className={cn(
         'w-9 h-9 rounded-lg flex items-center justify-center',
-        warn ? 'bg-amber-500/10' : 'bg-zinc-800/60'
+        warn ? 'bg-warning-soft' : 'bg-muted'
       )}>
         {icon}
       </div>
       <div>
-        <p className="text-xs text-zinc-500">{label}</p>
+        <p className="text-xs text-muted-foreground">{label}</p>
         <div className="flex items-baseline gap-1 mt-0.5">
-          <span className="text-lg font-bold text-white tabular-nums">{value}</span>
-          <span className="text-xs text-zinc-600">{sub}</span>
+          <span className="text-lg font-bold text-foreground tabular-nums">{value}</span>
+          <span className="text-xs text-muted-foreground">{sub}</span>
         </div>
       </div>
     </div>
@@ -358,15 +358,15 @@ function RecentShiftHistory() {
     <section className="space-y-3">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <h2 className="text-base font-semibold text-zinc-300">سجل الورديات الأخيرة</h2>
-          <History className="w-4 h-4 text-zinc-600" />
+          <h2 className="text-base font-semibold text-foreground">سجل الورديات الأخيرة</h2>
+          <History className="w-4 h-4 text-muted-foreground" />
         </div>
         {history.length > 5 && (
           <Button
             variant="ghost"
             size="sm"
             onClick={() => setExpanded(p => !p)}
-            className="text-xs text-zinc-500 hover:text-zinc-300"
+            className="text-xs text-muted-foreground hover:text-foreground"
           >
             {expanded ? 'عرض أقل' : `عرض الكل (${history.length})`}
           </Button>
@@ -375,50 +375,50 @@ function RecentShiftHistory() {
 
       {loading ? (
         <div className="flex justify-center py-6">
-          <Loader2 className="w-5 h-5 animate-spin text-zinc-600" />
+          <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
         </div>
       ) : history.length === 0 ? (
-        <div className="text-center py-6 text-sm text-zinc-600">لا يوجد سجل ورديات</div>
+        <div className="text-center py-6 text-sm text-muted-foreground">لا يوجد سجل ورديات</div>
       ) : (
-        <div className="rounded-xl border border-zinc-800/50 overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="overflow-x-auto rounded-xl border border-border">
+          <table className="w-full min-w-[32rem] text-sm">
             <thead>
-              <tr className="bg-zinc-900/80 border-b border-zinc-800">
-                <th className="px-4 py-3 text-right text-xs text-zinc-500 font-medium">المستخدم</th>
-                <th className="px-4 py-3 text-right text-xs text-zinc-500 font-medium">الوردية</th>
-                <th className="px-4 py-3 text-right text-xs text-zinc-500 font-medium">التاريخ</th>
-                <th className="px-4 py-3 text-right text-xs text-zinc-500 font-medium hidden sm:table-cell">البداية</th>
-                <th className="px-4 py-3 text-right text-xs text-zinc-500 font-medium hidden sm:table-cell">النهاية</th>
-                <th className="px-4 py-3 text-left text-xs text-zinc-500 font-medium">المبيعات</th>
-                <th className="px-4 py-3 text-center text-xs text-zinc-500 font-medium">الحالة</th>
+              <tr className="bg-card border-b border-border">
+                <th className="px-4 py-3 text-right text-xs text-muted-foreground font-medium">المستخدم</th>
+                <th className="px-4 py-3 text-right text-xs text-muted-foreground font-medium">الوردية</th>
+                <th className="px-4 py-3 text-right text-xs text-muted-foreground font-medium">التاريخ</th>
+                <th className="px-4 py-3 text-right text-xs text-muted-foreground font-medium hidden sm:table-cell">البداية</th>
+                <th className="px-4 py-3 text-right text-xs text-muted-foreground font-medium hidden sm:table-cell">النهاية</th>
+                <th className="px-4 py-3 text-left text-xs text-muted-foreground font-medium">المبيعات</th>
+                <th className="px-4 py-3 text-center text-xs text-muted-foreground font-medium">الحالة</th>
               </tr>
             </thead>
             <tbody>
               {visible.map(row => (
-                <tr key={row.ID} className="border-t border-zinc-800/40 hover:bg-zinc-800/20 transition-colors">
-                  <td className="px-4 py-3 font-medium text-zinc-200">{row.UserName}</td>
-                  <td className="px-4 py-3 text-zinc-400">{row.ShiftName}</td>
-                  <td className="px-4 py-3 text-zinc-500 text-xs">
+                <tr key={row.ID} className="border-t border-border hover:bg-surface-muted transition-colors">
+                  <td className="px-4 py-3 font-medium text-foreground">{row.UserName}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{row.ShiftName}</td>
+                  <td className="px-4 py-3 text-muted-foreground text-xs">
                     {new Date(row.NewDay).toLocaleDateString('ar-EG')}
                   </td>
-                  <td className="px-4 py-3 text-zinc-500 text-xs font-mono hidden sm:table-cell" dir="ltr">
+                  <td className="px-4 py-3 text-muted-foreground text-xs font-mono hidden sm:table-cell" dir="ltr">
                     {row.StartTime?.trim() || '—'}
                   </td>
-                  <td className="px-4 py-3 text-zinc-500 text-xs font-mono hidden sm:table-cell" dir="ltr">
+                  <td className="px-4 py-3 text-muted-foreground text-xs font-mono hidden sm:table-cell" dir="ltr">
                     {row.EndTime?.trim() || '—'}
                   </td>
                   <td className="px-4 py-3 text-left">
-                    <span className="text-emerald-400 font-mono text-xs">{fmt(row.totalRevenue)}</span>
-                    <span className="text-zinc-600 text-xs mr-1">({row.salesCount})</span>
+                    <span className="text-success font-mono text-xs">{fmt(row.totalRevenue)}</span>
+                    <span className="text-muted-foreground text-xs mr-1">({row.salesCount})</span>
                   </td>
                   <td className="px-4 py-3 text-center">
                     {row.Status ? (
-                      <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20">
-                        <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+                      <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-info-soft text-info border border-info/20">
+                        <span className="w-1.5 h-1.5 rounded-full bg-info animate-pulse" />
                         نشطة
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-500 border border-zinc-700">
+                      <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground border border-border">
                         مغلقة
                       </span>
                     )}

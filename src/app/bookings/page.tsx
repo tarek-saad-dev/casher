@@ -37,15 +37,15 @@ interface Booking {
 
 // ─── Status config ────────────────────────────────────────────────────────────
 const STATUS_CONFIG: Record<BookingStatus, { label: string; color: string; bg: string }> = {
-  pending:     { label: 'معلق',          color: 'var(--muted-foreground)', bg: 'rgba(156,163,175,0.12)' },
-  confirmed:   { label: 'مؤكد',          color: 'var(--info)', bg: 'rgba(59,130,246,0.12)'  },
-  arrived:     { label: 'وصل',           color: 'var(--success)', bg: 'color-mix(in srgb, var(--success) 12%, transparent)'  },
-  queued:      { label: 'وصل',           color: 'var(--success)', bg: 'color-mix(in srgb, var(--success) 12%, transparent)'  },
-  in_service:  { label: 'قيد الخدمة',   color: 'var(--brand)', bg: 'color-mix(in srgb, var(--brand) 12%, transparent)'  },
-  completed:   { label: 'مكتمل',         color: '#22C55E', bg: 'rgba(34,197,94,0.10)'   },
-  cancelled:   { label: 'ملغي',          color: 'var(--muted-foreground)', bg: 'rgba(107,114,128,0.10)' },
-  no_show:     { label: 'لم يحضر',       color: 'var(--destructive)', bg: 'color-mix(in srgb, var(--destructive) 10%, transparent)'   },
-  rescheduled: { label: 'أُعيد جدولة',  color: '#6366F1', bg: 'rgba(99,102,241,0.10)'  },
+  pending: { label: 'معلق', color: 'var(--muted-foreground)', bg: 'var(--muted)' },
+  confirmed: { label: 'مؤكد', color: 'var(--info)', bg: 'var(--info-soft)' },
+  arrived: { label: 'وصل', color: 'var(--success)', bg: 'var(--success-soft)' },
+  queued: { label: 'وصل', color: 'var(--success)', bg: 'var(--success-soft)' },
+  in_service: { label: 'قيد الخدمة', color: 'var(--brand)', bg: 'var(--brand-soft)' },
+  completed: { label: 'مكتمل', color: 'var(--success)', bg: 'var(--success-soft)' },
+  cancelled: { label: 'ملغي', color: 'var(--muted-foreground)', bg: 'var(--muted)' },
+  no_show: { label: 'لم يحضر', color: 'var(--destructive)', bg: 'var(--destructive-soft)' },
+  rescheduled: { label: 'أُعيد جدولة', color: 'var(--brand)', bg: 'var(--brand-soft)' },
 };
 
 // ─── Day label helpers ────────────────────────────────────────────────────────
