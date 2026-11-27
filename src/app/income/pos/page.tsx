@@ -173,6 +173,8 @@ export default function PosPage() {
   const decemberKey = JSON.stringify([state.customer?.ClientID,viewBranch,revision,editingSaleId,state.items.map(i=>[i.ProID,i.EmpID,i.SPrice,i.Qty,i.Dis,i.DisVal,!!i.packageMeta])]);
   const decemberKeyRef=useRef(decemberKey);
   decemberKeyRef.current=decemberKey;
+  const decemberHeaderRef=useRef([state.discountPercent,state.discountValue]);
+  decemberHeaderRef.current=[state.discountPercent,state.discountValue];
   const clearDecember=()=>{setDecemberQuote(null);setDiscountPercent(0);setSaveError('');};
   const applyDecember=async()=>{
     if(decemberBusy||editingSaleId!==null||!state.customer||!state.items.length||state.items.some(i=>i.packageMeta)||
@@ -183,7 +185,7 @@ export default function PosPage() {
       const response=await fetch('/api/pos/offers/december/quote',{method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({clientId:state.customer.ClientID,items:state.items.map(i=>({proId:i.ProID,empId:i.EmpID,sPrice:i.SPrice,qty:i.Qty,dis:i.Dis,disVal:i.DisVal}))})});
       const q=await response.json();
-      if(decemberKeyRef.current!==key)return;
+      if(decemberKeyRef.current!==key||decemberHeaderRef.current.some(v=>v!==0))return;
       if(!response.ok||q.ok!==true||q.checkoutAvailable!==true||!Number.isSafeInteger(q.discountMinor)||q.discountMinor<=0||!Number.isInteger(q.percent)||q.percent<=0||q.percent>=100){
         setSaveError(q.ok===true&&!q.checkoutAvailable?'خصم 100% يحتاج تفعيل مسار الفاتورة المجانية أولًا.':'تعذر اعتماد خصم ديسمبر: '+(q.code||'راجع الشروط'));return;
       }
