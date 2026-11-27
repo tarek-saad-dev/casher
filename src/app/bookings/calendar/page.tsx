@@ -30,15 +30,15 @@ interface Booking {
 interface Barber { EmpID: number; EmpName: string; }
 
 const STATUS_CONFIG: Record<BookingStatus, { label: string; color: string; bg: string; border: string }> = {
-  pending: { label: 'معلق', color: '#9CA3AF', bg: '#1F1F2A', border: '#374151' },
-  confirmed: { label: 'مؤكد', color: '#93C5FD', bg: '#1E2A3A', border: '#1D4ED8' },
-  arrived: { label: 'حضر', color: '#6EE7B7', bg: '#1A2E28', border: '#065F46' },
-  queued: { label: 'في الطابور', color: '#FCD34D', bg: '#2A2211', border: '#D97706' },
-  in_service: { label: 'في الخدمة', color: '#C4B5FD', bg: '#211A2E', border: '#7C3AED' },
-  completed: { label: 'مكتمل', color: '#6EE7B7', bg: '#162218', border: '#065F46' },
-  cancelled: { label: 'ملغي', color: '#6B7280', bg: '#1A1A1E', border: '#374151' },
-  no_show: { label: 'لم يحضر', color: '#FCA5A5', bg: '#2A1A1A', border: '#991B1B' },
-  rescheduled: { label: 'أُعيد جدولة', color: '#A5B4FC', bg: '#1E1E32', border: '#4338CA' },
+  pending: { label: 'معلق', color: 'var(--muted-foreground)', bg: 'var(--muted)', border: 'color-mix(in srgb, var(--muted-foreground) 40%, transparent)' },
+  confirmed: { label: 'مؤكد', color: 'var(--info)', bg: 'var(--info-soft)', border: 'color-mix(in srgb, var(--info) 40%, transparent)' },
+  arrived: { label: 'حضر', color: 'var(--success)', bg: 'var(--success-soft)', border: 'color-mix(in srgb, var(--success) 40%, transparent)' },
+  queued: { label: 'في الطابور', color: 'var(--warning)', bg: 'var(--warning-soft)', border: 'color-mix(in srgb, var(--warning) 40%, transparent)' },
+  in_service: { label: 'في الخدمة', color: 'var(--brand)', bg: 'var(--brand-soft)', border: 'color-mix(in srgb, var(--brand) 40%, transparent)' },
+  completed: { label: 'مكتمل', color: 'var(--success)', bg: 'var(--success-soft)', border: 'color-mix(in srgb, var(--success) 40%, transparent)' },
+  cancelled: { label: 'ملغي', color: 'var(--muted-foreground)', bg: 'var(--muted)', border: 'color-mix(in srgb, var(--muted-foreground) 40%, transparent)' },
+  no_show: { label: 'لم يحضر', color: 'var(--destructive)', bg: 'var(--destructive-soft)', border: 'color-mix(in srgb, var(--destructive) 40%, transparent)' },
+  rescheduled: { label: 'أُعيد جدولة', color: 'var(--brand)', bg: 'var(--brand-soft)', border: 'color-mix(in srgb, var(--brand) 40%, transparent)' },
 };
 
 const HOURS = Array.from({ length: 14 }, (_, i) => i + 7); // 7am – 8pm
@@ -82,7 +82,7 @@ function BookingBlock({ booking, onClick }: { booking: Booking; onClick: () => v
           <p className="text-[11px] font-bold truncate" style={{ color: cfg.color }}>
             {formatTime(booking.StartTime)}
           </p>
-          <p className="text-[11px] text-white font-medium truncate leading-tight">
+          <p className="text-[11px] text-foreground font-medium truncate leading-tight">
             {booking.ClientName || 'عميل غير محدد'}
           </p>
         </div>
@@ -117,11 +117,11 @@ function DayColumn({
     <div className="relative flex-1 min-w-[160px]" style={{ height: GRID_HEIGHT }}>
       {/* Hour grid lines */}
       {HOURS.map(h => (
-        <div key={h} className="absolute w-full border-t border-zinc-800/60" style={{ top: `${((h - 7) / 14) * 100}%` }} />
+        <div key={h} className="absolute w-full border-t border-border" style={{ top: `${((h - 7) / 14) * 100}%` }} />
       ))}
       {/* Half-hour lines */}
       {HOURS.map(h => (
-        <div key={`${h}h`} className="absolute w-full border-t border-zinc-800/20" style={{ top: `${((h - 7 + 0.5) / 14) * 100}%` }} />
+        <div key={`${h}h`} className="absolute w-full border-t border-border" style={{ top: `${((h - 7 + 0.5) / 14) * 100}%` }} />
       ))}
 
       {/* Click area */}
@@ -143,18 +143,18 @@ function BookingDrawer({ booking, onClose, onNavigate }: {
   return (
     <div className="fixed inset-0 z-50 flex justify-start" onClick={onClose}>
       <div
-        className="h-full w-80 border-l shadow-2xl p-5 overflow-y-auto scrollbar-luxury-v"
-        style={{ background: '#141418', borderColor: '#2A2A35', marginRight: 'auto' }}
+        className="h-full w-[min(20rem,100vw)] border-l shadow-2xl p-5 overflow-y-auto scrollbar-luxury-v"
+        style={{ background: 'var(--card)', borderColor: 'var(--border)', marginRight: 'auto' }}
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-4">
           <span className="text-xs px-2.5 py-1 rounded-full font-semibold" style={{ color: cfg.color, background: cfg.bg, border: `1px solid ${cfg.border}` }}>
             {cfg.label}
           </span>
-          <button onClick={onClose} className="p-1 rounded-lg hover:bg-zinc-800 text-zinc-500 hover:text-white text-xs">✕</button>
+          <button onClick={onClose} className="p-1 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground text-xs">✕</button>
         </div>
 
-        <h3 className="text-base font-black text-white mb-4">حجز #{booking.BookingID}</h3>
+        <h3 className="text-base font-black text-foreground mb-4">حجز #{booking.BookingID}</h3>
 
         <div className="space-y-3 text-sm">
           <Row icon={<User size={13} />} label="العميل" value={booking.ClientName || '—'} />
@@ -164,16 +164,16 @@ function BookingDrawer({ booking, onClose, onNavigate }: {
         </div>
 
         {booking.Notes && (
-          <div className="mt-4 p-3 rounded-xl bg-zinc-900 border border-zinc-800">
-            <p className="text-xs text-zinc-500 mb-1">ملاحظات</p>
-            <p className="text-xs text-zinc-300">{booking.Notes}</p>
+          <div className="mt-4 p-3 rounded-xl bg-card border border-border">
+            <p className="text-xs text-muted-foreground mb-1">ملاحظات</p>
+            <p className="text-xs text-foreground">{booking.Notes}</p>
           </div>
         )}
 
         <button
           onClick={() => onNavigate(booking.BookingID)}
           className="mt-5 w-full py-2.5 rounded-xl text-sm font-semibold transition-all"
-          style={{ background: 'linear-gradient(135deg,#D6A84F,#B8923A)', color: '#000' }}
+          style={{ background: 'var(--primary)', color: 'var(--primary-foreground)' }}
         >فتح الحجز</button>
       </div>
     </div>
@@ -182,10 +182,10 @@ function BookingDrawer({ booking, onClose, onNavigate }: {
 
 function Row({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
-    <div className="flex items-center gap-2 text-zinc-300">
-      <span className="text-zinc-500 shrink-0">{icon}</span>
-      <span className="text-zinc-500 text-xs">{label}:</span>
-      <span className="text-xs text-white font-medium">{value}</span>
+    <div className="flex items-center gap-2 text-foreground">
+      <span className="text-muted-foreground shrink-0">{icon}</span>
+      <span className="text-muted-foreground text-xs">{label}:</span>
+      <span className="text-xs text-foreground font-medium">{value}</span>
     </div>
   );
 }
@@ -259,23 +259,23 @@ export default function BookingsCalendarPage() {
   };
 
   return (
-    <div className="h-full flex flex-col bg-zinc-950" dir="rtl">
+    <div className="h-full min-h-0 min-w-0 flex flex-col bg-background" dir="rtl">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800 shrink-0">
+      <div className="flex flex-wrap items-center justify-between gap-2 px-3 sm:px-6 py-3 sm:py-4 border-b border-border shrink-0">
         <div>
-          <h1 className="text-lg font-black text-white tracking-tight">تقويم الحجوزات</h1>
-          <p className="text-xs text-zinc-500 mt-0.5">{dateLabel}</p>
+          <h1 className="text-lg font-black text-foreground tracking-tight">تقويم الحجوزات</h1>
+          <p className="text-xs text-muted-foreground mt-0.5">{dateLabel}</p>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={fetchData} className="p-2 rounded-xl border border-zinc-700 text-zinc-400 hover:text-white transition-all">
+          <button onClick={fetchData} className="p-2 rounded-xl border border-border text-muted-foreground hover:text-foreground transition-all">
             <RefreshCw size={15} />
           </button>
           {/* View toggle */}
-          <div className="flex rounded-xl border border-zinc-700 overflow-hidden">
+          <div className="flex rounded-xl border border-border overflow-hidden">
             {(['day', 'week'] as const).map(m => (
               <button key={m} onClick={() => setViewMode(m)}
                 className="px-3 py-1.5 text-xs font-semibold transition-all"
-                style={viewMode === m ? { background: 'rgba(214,168,79,0.15)', color: '#D6A84F' } : { background: 'transparent', color: '#6B7280' }}>
+                style={viewMode === m ? { background: 'color-mix(in srgb, var(--primary) 15%, transparent)', color: 'var(--primary)' } : { background: 'transparent', color: 'var(--muted-foreground)' }}>
                 {m === 'day' ? 'يوم' : 'أسبوع'}
               </button>
             ))}
@@ -284,7 +284,7 @@ export default function BookingsCalendarPage() {
           <select
             value={filterEmpId}
             onChange={e => setFilterEmpId(e.target.value)}
-            className="bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500/50"
+            className="bg-card border border-border rounded-xl px-3 py-1.5 text-xs text-foreground focus:outline-none focus:border-ring focus-visible:ring-2 focus-visible:ring-ring"
           >
             <option value="all">كل الحلاقين</option>
             {barbers.map(b => <option key={b.EmpID} value={b.EmpID}>{b.EmpName}</option>)}
@@ -292,7 +292,7 @@ export default function BookingsCalendarPage() {
           <button
             onClick={() => router.push('/bookings/new')}
             className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all"
-            style={{ background: 'linear-gradient(135deg,#D6A84F,#B8923A)', color: '#000' }}
+            style={{ background: 'var(--primary)', color: 'var(--primary-foreground)' }}
           >
             <Plus size={15} /> حجز جديد
           </button>
@@ -300,23 +300,23 @@ export default function BookingsCalendarPage() {
       </div>
 
       {/* Date navigation */}
-      <div className="flex items-center justify-between px-6 py-2.5 border-b border-zinc-800 shrink-0">
-        <button onClick={() => navigate(-1)} className="p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-white transition-all">
+      <div className="flex flex-wrap items-center justify-between gap-2 px-3 sm:px-6 py-2.5 border-b border-border shrink-0">
+        <button onClick={() => navigate(-1)} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-all">
           <ChevronRight size={16} />
         </button>
         <div className="flex items-center gap-3">
           <button
             onClick={() => setViewDate(format(new Date(), 'yyyy-MM-dd'))}
-            className="text-xs px-3 py-1 rounded-full border border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-600 transition-all"
+            className="text-xs px-3 py-1 rounded-full border border-border text-muted-foreground hover:text-foreground hover:border-border transition-all"
           >اليوم</button>
           <input
             type="date"
             value={viewDate}
             onChange={e => setViewDate(e.target.value)}
-            className="bg-transparent border border-zinc-700 rounded-lg px-3 py-1 text-xs text-white focus:outline-none focus:border-amber-500/50"
+            className="bg-transparent border border-border rounded-lg px-3 py-1 text-xs text-foreground focus:outline-none focus:border-ring focus-visible:ring-2 focus-visible:ring-ring"
           />
         </div>
-        <button onClick={() => navigate(1)} className="p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-white transition-all">
+        <button onClick={() => navigate(1)} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-all">
           <ChevronLeft size={16} />
         </button>
       </div>
@@ -324,29 +324,29 @@ export default function BookingsCalendarPage() {
       {/* Calendar grid */}
       {loading ? (
         <div className="flex-1 flex items-center justify-center">
-          <Loader2 className="animate-spin text-amber-400" size={28} />
+          <Loader2 className="animate-spin text-warning" size={28} />
         </div>
       ) : error ? (
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
-            <AlertCircle className="text-red-400 mx-auto mb-2" size={28} />
-            <p className="text-red-400 text-sm">{error}</p>
+            <AlertCircle className="text-destructive mx-auto mb-2" size={28} />
+            <p className="text-destructive text-sm">{error}</p>
           </div>
         </div>
       ) : (
         <div className="flex-1 overflow-auto scrollbar-luxury">
           <div className="flex" style={{ minWidth: 'max-content' }}>
             {/* Time axis */}
-            <div className="shrink-0 w-14 pt-12 border-l border-zinc-800" style={{ height: GRID_HEIGHT + 48 }}>
+            <div className="shrink-0 w-14 pt-12 border-l border-border" style={{ height: GRID_HEIGHT + 48 }}>
               {HOURS.map(h => (
-                <div key={h} className="text-[10px] text-zinc-600 text-center" style={{ height: 60 }}>
+                <div key={h} className="text-[10px] text-muted-foreground text-center" style={{ height: 60 }}>
                   {String(h).padStart(2, '0')}:00
                 </div>
               ))}
             </div>
 
             {/* Columns */}
-            <div className="flex flex-1 gap-0 divide-x divide-zinc-800/50">
+            <div className="flex flex-1 gap-0 divide-x divide-border">
               {displayBarbers.map(barber => {
                 const barkBookings = filteredBookings.filter(b =>
                   b.AssignedEmpID === barber.EmpID &&
@@ -355,13 +355,13 @@ export default function BookingsCalendarPage() {
                 return (
                   <div key={barber.EmpID} className="flex-1 min-w-[180px]">
                     {/* Barber header */}
-                    <div className="h-12 flex items-center justify-center gap-2 border-b border-zinc-800 px-3 sticky top-0 bg-zinc-950 z-10">
+                    <div className="h-12 flex items-center justify-center gap-2 border-b border-border px-3 sticky top-0 bg-background z-10">
                       <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold"
-                        style={{ background: 'linear-gradient(135deg,#D6A84F,#B8923A)', color: '#000' }}>
+                        style={{ background: 'var(--primary)', color: 'var(--primary-foreground)' }}>
                         {barber.EmpName.charAt(0)}
                       </div>
-                      <span className="text-xs font-semibold text-white truncate">{barber.EmpName}</span>
-                      <span className="text-[10px] text-zinc-500">({barkBookings.length})</span>
+                      <span className="text-xs font-semibold text-foreground truncate">{barber.EmpName}</span>
+                      <span className="text-[10px] text-muted-foreground">({barkBookings.length})</span>
                     </div>
                     {/* Day grid */}
                     <DayColumn
@@ -384,10 +384,10 @@ export default function BookingsCalendarPage() {
                 if (!unassigned.length) return null;
                 return (
                   <div key="unassigned" className="flex-1 min-w-[180px]">
-                    <div className="h-12 flex items-center justify-center gap-2 border-b border-zinc-800 px-3 sticky top-0 bg-zinc-950 z-10">
-                      <div className="w-7 h-7 rounded-full bg-zinc-700 flex items-center justify-center text-xs">—</div>
-                      <span className="text-xs font-semibold text-zinc-500">غير محدد</span>
-                      <span className="text-[10px] text-zinc-600">({unassigned.length})</span>
+                    <div className="h-12 flex items-center justify-center gap-2 border-b border-border px-3 sticky top-0 bg-background z-10">
+                      <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center text-xs">—</div>
+                      <span className="text-xs font-semibold text-muted-foreground">غير محدد</span>
+                      <span className="text-[10px] text-muted-foreground">({unassigned.length})</span>
                     </div>
                     <DayColumn
                       date={viewDate}
@@ -401,7 +401,7 @@ export default function BookingsCalendarPage() {
               })()}
 
               {displayBarbers.length === 0 && (
-                <div className="flex-1 flex items-center justify-center h-48 text-zinc-600 text-sm">
+                <div className="flex-1 flex items-center justify-center h-48 text-muted-foreground text-sm">
                   لا يوجد حلاقون
                 </div>
               )}
@@ -411,11 +411,11 @@ export default function BookingsCalendarPage() {
       )}
 
       {/* Status legend */}
-      <div className="px-6 py-2.5 border-t border-zinc-800 flex flex-wrap gap-3 shrink-0">
+      <div className="px-6 py-2.5 border-t border-border flex flex-wrap gap-3 shrink-0">
         {Object.entries(STATUS_CONFIG).filter(([k]) => !['cancelled', 'no_show', 'rescheduled'].includes(k)).map(([k, v]) => (
           <span key={k} className="flex items-center gap-1.5 text-[11px]">
             <span className="w-2.5 h-2.5 rounded-full" style={{ background: v.color }} />
-            <span className="text-zinc-500">{v.label}</span>
+            <span className="text-muted-foreground">{v.label}</span>
           </span>
         ))}
       </div>

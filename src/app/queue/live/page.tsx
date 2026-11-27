@@ -68,13 +68,13 @@ interface Barber {
 
 // ─── Status config ────────────────────────────────────────────────────────────
 const STATUS_CONFIG: Record<TicketStatus, { label: string; color: string; bg: string; dot: string }> = {
-  waiting:    { label: 'انتظار',    color: '#F59E0B', bg: 'rgba(245,158,11,0.12)',   dot: '#F59E0B' },
-  called:     { label: 'تم النداء', color: '#3B82F6', bg: 'rgba(59,130,246,0.12)',   dot: '#3B82F6' },
-  arrived:    { label: 'حضر',       color: '#10B981', bg: 'rgba(16,185,129,0.12)',   dot: '#10B981' },
-  in_service: { label: 'في الخدمة', color: '#8B5CF6', bg: 'rgba(139,92,246,0.12)',  dot: '#8B5CF6' },
-  done:       { label: 'انتهى',     color: '#6B7280', bg: 'rgba(107,114,128,0.10)', dot: '#6B7280' },
-  skipped:    { label: 'تخطى',      color: '#EF4444', bg: 'rgba(239,68,68,0.10)',   dot: '#EF4444' },
-  cancelled:  { label: 'ملغي',      color: '#6B7280', bg: 'rgba(107,114,128,0.08)', dot: '#6B7280' },
+  waiting:    { label: 'انتظار',    color: 'var(--warning)', bg: 'color-mix(in srgb, var(--warning) 12%, transparent)',   dot: 'var(--warning)' },
+  called:     { label: 'تم النداء', color: 'var(--info)', bg: 'var(--info-soft)', dot: 'var(--info)' },
+  arrived:    { label: 'حضر',       color: 'var(--success)', bg: 'color-mix(in srgb, var(--success) 12%, transparent)',   dot: 'var(--success)' },
+  in_service: { label: 'في الخدمة', color: 'var(--brand)', bg: 'var(--brand-soft)', dot: 'var(--brand)' },
+  done:       { label: 'انتهى',     color: 'var(--muted-foreground)', bg: 'rgba(107,114,128,0.10)', dot: 'var(--muted-foreground)' },
+  skipped:    { label: 'تخطى',      color: 'var(--destructive)', bg: 'color-mix(in srgb, var(--destructive) 10%, transparent)',   dot: 'var(--destructive)' },
+  cancelled:  { label: 'ملغي',      color: 'var(--muted-foreground)', bg: 'rgba(107,114,128,0.08)', dot: 'var(--muted-foreground)' },
   no_show:    { label: 'لم يحضر',   color: '#DC2626', bg: 'rgba(220,38,38,0.10)',   dot: '#DC2626' },
 };
 
@@ -87,24 +87,24 @@ const EFFECTIVE_DONE: Set<string> = new Set(['done', 'cancelled', 'no_show']);
 function getActions(status: TicketStatus): { action: string; label: string; icon: React.ReactNode; color: string }[] {
   const acts = [];
   if (status === 'waiting' || status === 'skipped') {
-    acts.push({ action: 'called',     label: 'نداء',          icon: <PhoneCall size={13} />, color: '#3B82F6' });
-    acts.push({ action: 'in_service', label: 'بدء الخدمة',    icon: <Play size={13} />,      color: '#8B5CF6' });
+    acts.push({ action: 'called',     label: 'نداء',          icon: <PhoneCall size={13} />, color: 'var(--info)' });
+    acts.push({ action: 'in_service', label: 'بدء الخدمة',    icon: <Play size={13} />,      color: 'var(--brand)' });
   }
   if (status === 'called') {
-    acts.push({ action: 'arrived',    label: 'حضر',           icon: <User size={13} />,      color: '#10B981' });
-    acts.push({ action: 'in_service', label: 'بدء الخدمة',    icon: <Play size={13} />,      color: '#8B5CF6' });
-    acts.push({ action: 'skipped',    label: 'تخطى',          icon: <SkipForward size={13}/>, color: '#EF4444' });
+    acts.push({ action: 'arrived',    label: 'حضر',           icon: <User size={13} />,      color: 'var(--success)' });
+    acts.push({ action: 'in_service', label: 'بدء الخدمة',    icon: <Play size={13} />,      color: 'var(--brand)' });
+    acts.push({ action: 'skipped',    label: 'تخطى',          icon: <SkipForward size={13}/>, color: 'var(--destructive)' });
   }
   if (status === 'arrived') {
-    acts.push({ action: 'in_service', label: 'بدء الخدمة',    icon: <Play size={13} />,      color: '#8B5CF6' });
+    acts.push({ action: 'in_service', label: 'بدء الخدمة',    icon: <Play size={13} />,      color: 'var(--brand)' });
   }
   if (status === 'in_service') {
-    acts.push({ action: 'done',       label: 'انتهى',         icon: <CheckCircle2 size={13}/>,color: '#10B981' });
+    acts.push({ action: 'done',       label: 'انتهى',         icon: <CheckCircle2 size={13}/>,color: 'var(--success)' });
   }
   // Transfer always available for active
   if (LIVE_STATUSES.includes(status)) {
-    acts.push({ action: 'transfer',   label: 'نقل حلاق',      icon: <ArrowLeftRight size={13}/>, color: '#F59E0B' });
-    acts.push({ action: 'cancelled',  label: 'إلغاء',         icon: <XCircle size={13}/>,    color: '#EF4444' });
+    acts.push({ action: 'transfer',   label: 'نقل حلاق',      icon: <ArrowLeftRight size={13}/>, color: 'var(--warning)' });
+    acts.push({ action: 'cancelled',  label: 'إلغاء',         icon: <XCircle size={13}/>,    color: 'var(--destructive)' });
   }
   return acts;
 }
@@ -120,12 +120,12 @@ function TransferModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={onClose}>
       <div
-        className="rounded-2xl border p-6 w-80 shadow-2xl"
-        style={{ background: '#1A1A20', borderColor: '#2A2A35' }}
+        className="rounded-2xl border p-6 w-[min(20rem,calc(100vw-2rem))] shadow-lg"
+        style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
         onClick={e => e.stopPropagation()}
       >
-        <h3 className="text-base font-bold text-white mb-1">نقل إلى حلاق آخر</h3>
-        <p className="text-xs text-zinc-400 mb-4">تذكرة: <span className="text-amber-400 font-bold">{ticket.TicketCode}</span> — {ticket.ClientName || 'عميل غير معروف'}</p>
+        <h3 className="text-base font-bold text-foreground mb-1">نقل إلى حلاق آخر</h3>
+        <p className="text-xs text-muted-foreground mb-4">تذكرة: <span className="text-warning font-bold">{ticket.TicketCode}</span> — {ticket.ClientName || 'عميل غير معروف'}</p>
         <div className="flex flex-col gap-2 mb-4 max-h-48 overflow-y-auto">
           {barbers.filter(b => b.EmpID !== ticket.EmpID).map(b => (
             <button
@@ -133,12 +133,12 @@ function TransferModal({
               onClick={() => setSelected(b.EmpID)}
               className="flex items-center gap-3 px-3 py-2.5 rounded-xl border text-right transition-all"
               style={{
-                background: selected === b.EmpID ? 'rgba(245,158,11,0.15)' : 'rgba(255,255,255,0.04)',
-                borderColor: selected === b.EmpID ? 'rgba(245,158,11,0.5)' : 'rgba(255,255,255,0.08)',
-                color: selected === b.EmpID ? '#F59E0B' : '#D1D5DB',
+                background: selected === b.EmpID ? 'color-mix(in srgb, var(--warning) 15%, transparent)' : 'var(--surface-muted)',
+                borderColor: selected === b.EmpID ? 'color-mix(in srgb, var(--warning) 50%, transparent)' : 'var(--border)',
+                color: selected === b.EmpID ? 'var(--warning)' : 'var(--foreground)',
               }}
             >
-              <div className="w-7 h-7 rounded-full bg-zinc-700 flex items-center justify-center text-xs font-bold text-white">
+              <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center text-xs font-bold text-foreground">
                 {b.EmpName.charAt(0)}
               </div>
               <span className="text-sm">{b.EmpName}</span>
@@ -150,9 +150,9 @@ function TransferModal({
             onClick={() => selected && onConfirm(selected)}
             disabled={!selected}
             className="flex-1 py-2 rounded-xl text-sm font-semibold transition-all disabled:opacity-40"
-            style={{ background: selected ? '#F59E0B' : '#333', color: selected ? '#000' : '#888' }}
+            style={{ background: selected ? 'var(--primary)' : 'var(--muted)', color: selected ? 'var(--primary-foreground)' : 'var(--muted-foreground)' }}
           >تأكيد النقل</button>
-          <button onClick={onClose} className="px-4 py-2 rounded-xl text-sm text-zinc-400 hover:text-white border border-zinc-700">إلغاء</button>
+          <button onClick={onClose} className="px-4 py-2 rounded-xl text-sm text-muted-foreground hover:text-foreground border border-border">إلغاء</button>
         </div>
       </div>
     </div>
@@ -211,7 +211,7 @@ function TicketCard({
         className="rounded-xl border transition-all"
         style={{
           background: cfg.bg,
-          borderColor: isDone ? 'rgba(255,255,255,0.05)' : `rgba(${cfg.dot.replace('#','').match(/.{2}/g)?.map(h=>parseInt(h,16)).join(',')},0.35)`,
+          borderColor: isDone ? 'var(--border)' : `color-mix(in srgb, ${cfg.dot} 35%, transparent)`,
           opacity: isDone ? 0.55 : 1,
         }}
       >
@@ -220,41 +220,41 @@ function TicketCard({
           <div className="flex items-center gap-2">
             <span
               className="text-xl font-black tracking-tight"
-              style={{ color: cfg.color, textShadow: `0 0 18px ${cfg.color}66` }}
+              style={{ color: cfg.color }}
             >{ticket.TicketCode}</span>
             {ticket.Priority > 0 && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30">أولوية</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-warning-soft text-warning border border-warning/30">أولوية</span>
             )}
             {ticket.Source === 'booking' && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30">حجز</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-info-soft text-info border border-info/30">حجز</span>
             )}
             {ticket.needsOperatorAction && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-500/20 text-red-400 border border-red-500/30 animate-pulse">
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-destructive-soft text-destructive border border-destructive/30 animate-pulse">
                 {ticket.effectiveStatus === 'overdue_finish_required' ? `متأخر ${ticket.overdueMinutes}د` : 'يحتاج إجراء'}
               </span>
             )}
           </div>
           <span
             className="text-[11px] px-2 py-0.5 rounded-full font-medium"
-            style={{ background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.color}44` }}
+            style={{ background: cfg.bg, color: cfg.color, border: `1px solid color-mix(in srgb, ${cfg.color} 30%, transparent)` }}
           >{cfg.label}</span>
         </div>
 
         {/* Client info */}
         <div className="px-3 pb-2">
-          <p className="text-sm font-semibold text-white leading-tight">
-            {ticket.ClientName || <span className="text-zinc-500">عميل غير محدد</span>}
+          <p className="text-sm font-semibold text-foreground leading-tight">
+            {ticket.ClientName || <span className="text-muted-foreground">عميل غير محدد</span>}
           </p>
           {ticket.ClientMobile && (
-            <p className="text-[11px] text-zinc-500 mt-0.5">{ticket.ClientMobile}</p>
+            <p className="text-[11px] text-muted-foreground mt-0.5">{ticket.ClientMobile}</p>
           )}
         </div>
 
         {/* Timer */}
         {elapsedMin !== null && !isDone && (
           <div className="px-3 pb-2 flex items-center gap-1.5">
-            <Clock size={11} className="text-zinc-500" />
-            <span className="text-[11px] text-zinc-400">{elapsedMin} دقيقة</span>
+            <Clock size={11} className="text-muted-foreground" />
+            <span className="text-[11px] text-muted-foreground">{elapsedMin} دقيقة</span>
           </div>
         )}
 
@@ -268,7 +268,7 @@ function TicketCard({
                   onClick={() => setShowTransfer(true)}
                   disabled={loading}
                   className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium border transition-all disabled:opacity-40"
-                  style={{ color: act.color, borderColor: `${act.color}44`, background: `${act.color}11` }}
+                  style={{ color: act.color, borderColor: `color-mix(in srgb, ${act.color} 30%, transparent)`, background: `color-mix(in srgb, ${act.color} 10%, transparent)` }}
                 >
                   {act.icon}{act.label}
                 </button>
@@ -278,7 +278,7 @@ function TicketCard({
                   onClick={() => onAction(ticket.QueueTicketID, act.action)}
                   disabled={loading}
                   className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium border transition-all disabled:opacity-40"
-                  style={{ color: act.color, borderColor: `${act.color}44`, background: `${act.color}11` }}
+                  style={{ color: act.color, borderColor: `color-mix(in srgb, ${act.color} 30%, transparent)`, background: `color-mix(in srgb, ${act.color} 10%, transparent)` }}
                 >
                   {act.icon}{act.label}
                 </button>
@@ -292,8 +292,8 @@ function TicketCard({
               title={speaking ? 'إيقاف النداء' : 'نداء صوتي'}
               className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium border transition-all disabled:opacity-40"
               style={speaking
-                ? { color: '#EF4444', borderColor: 'rgba(239,68,68,0.4)', background: 'rgba(239,68,68,0.1)' }
-                : { color: '#A78BFA', borderColor: 'rgba(167,139,250,0.35)', background: 'rgba(167,139,250,0.08)' }
+                ? { color: 'var(--destructive)', borderColor: 'color-mix(in srgb, var(--destructive) 40%, transparent)', background: 'color-mix(in srgb, var(--destructive) 10%, transparent)' }
+                : { color: 'var(--brand)', borderColor: 'color-mix(in srgb, var(--brand) 35%, transparent)', background: 'color-mix(in srgb, var(--brand) 8%, transparent)' }
               }
             >
               {speaking
@@ -304,7 +304,7 @@ function TicketCard({
 
             {/* Inline voice error */}
             {voiceError && (
-              <span className="text-[10px] text-red-400 w-full mt-0.5">{voiceError}</span>
+              <span className="text-[10px] text-destructive w-full mt-0.5">{voiceError}</span>
             )}
           </div>
         )}
@@ -337,27 +337,27 @@ function BarberColumn({
   return (
     <div
       className="rounded-2xl border flex flex-col min-w-[260px] flex-shrink-0"
-      style={{ background: '#141418', borderColor: '#2A2A35', width: 280 }}
+      style={{ background: 'var(--card)', borderColor: 'var(--border)', width: 280 }}
     >
       {/* Barber header */}
-      <div className="px-4 py-3 border-b" style={{ borderColor: '#2A2A35' }}>
+      <div className="px-4 py-3 border-b" style={{ borderColor: 'var(--border)' }}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div
               className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-black"
-              style={{ background: 'linear-gradient(135deg,#D6A84F,#B8923A)', color: '#000' }}
+              style={{ background: 'var(--primary)', color: 'var(--primary-foreground)' }}
             >
               {barber.EmpName.charAt(0)}
             </div>
             <div>
-              <p className="text-sm font-bold text-white">{barber.EmpName}</p>
-              <p className="text-[11px] text-zinc-500">
+              <p className="text-sm font-bold text-foreground">{barber.EmpName}</p>
+              <p className="text-[11px] text-muted-foreground">
                 {live.length} في الانتظار · {done.length} انتهى
               </p>
             </div>
           </div>
           {current && (
-            <span className="text-[10px] px-2 py-1 rounded-full bg-purple-500/20 text-purple-400 border border-purple-500/30 animate-pulse">
+            <span className="text-[10px] px-2 py-1 rounded-full bg-brand-soft text-brand border border-brand/30 animate-pulse">
               في الخدمة
             </span>
           )}
@@ -365,9 +365,9 @@ function BarberColumn({
       </div>
 
       {/* Live queue */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-2 scrollbar-luxury-v" style={{ maxHeight: 580 }}>
+      <div className="min-h-0 flex-1 overflow-y-auto p-3 space-y-2 scrollbar-luxury-v" style={{ maxHeight: 'min(580px, 65dvh)' }}>
         {live.length === 0 && done.length === 0 && (
-          <div className="text-center py-8 text-zinc-600 text-sm">لا توجد تذاكر اليوم</div>
+          <div className="text-center py-8 text-muted-foreground text-sm">لا توجد تذاكر اليوم</div>
         )}
         {live.map(t => (
           <TicketCard
@@ -380,7 +380,7 @@ function BarberColumn({
         ))}
         {done.length > 0 && (
           <>
-            <div className="text-[11px] text-zinc-600 pt-1 pb-0.5 font-medium">المنجزون ({done.length})</div>
+            <div className="text-[11px] text-muted-foreground pt-1 pb-0.5 font-medium">المنجزون ({done.length})</div>
             {done.map(t => (
               <TicketCard
                 key={t.QueueTicketID}
@@ -409,20 +409,20 @@ function UnassignedColumn({
   return (
     <div
       className="rounded-2xl border flex flex-col min-w-[260px] flex-shrink-0"
-      style={{ background: '#141418', borderColor: '#2A2A35', width: 280 }}
+      style={{ background: 'var(--card)', borderColor: 'var(--border)', width: 280 }}
     >
-      <div className="px-4 py-3 border-b" style={{ borderColor: '#2A2A35' }}>
+      <div className="px-4 py-3 border-b" style={{ borderColor: 'var(--border)' }}>
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-full flex items-center justify-center bg-zinc-800 border border-zinc-700">
-            <AlertCircle size={16} className="text-zinc-500" />
+          <div className="w-9 h-9 rounded-full flex items-center justify-center bg-muted border border-border">
+            <AlertCircle size={16} className="text-muted-foreground" />
           </div>
           <div>
-            <p className="text-sm font-bold text-zinc-400">غير محدد الحلاق</p>
-            <p className="text-[11px] text-zinc-600">{tickets.length} تذكرة</p>
+            <p className="text-sm font-bold text-muted-foreground">غير محدد الحلاق</p>
+            <p className="text-[11px] text-muted-foreground">{tickets.length} تذكرة</p>
           </div>
         </div>
       </div>
-      <div className="flex-1 overflow-y-auto p-3 space-y-2 scrollbar-luxury-v" style={{ maxHeight: 580 }}>
+      <div className="min-h-0 flex-1 overflow-y-auto p-3 space-y-2 scrollbar-luxury-v" style={{ maxHeight: 'min(580px, 65dvh)' }}>
         {tickets.map(t => (
           <TicketCard key={t.QueueTicketID} ticket={t} barbers={barbers} onAction={onAction} loading={loadingId === t.QueueTicketID} />
         ))}
@@ -513,31 +513,31 @@ export default function QueueLivePage() {
   const doneCount      = tickets.filter(t => t.Status === 'done').length;
 
   return (
-    <div className="h-full flex flex-col bg-zinc-950" dir="rtl">
+    <div className="h-full min-h-0 min-w-0 flex flex-col bg-background" dir="rtl">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800 shrink-0">
+      <div className="flex flex-wrap items-center justify-between gap-2 px-3 sm:px-6 py-3 sm:py-4 border-b border-border shrink-0">
         <div>
-          <h1 className="text-lg font-black text-white tracking-tight">لوحة الانتظار المباشرة</h1>
-          <p className="text-xs text-zinc-500 mt-0.5">
+          <h1 className="text-lg font-black text-foreground tracking-tight">لوحة الانتظار المباشرة</h1>
+          <p className="text-xs text-muted-foreground mt-0.5">
             آخر تحديث: {lastRefresh.toLocaleTimeString('ar-EG')} — {today}
           </p>
         </div>
         <div className="flex items-center gap-3">
           {/* Stats */}
           <div className="hidden sm:flex items-center gap-2">
-            <span className="text-xs px-3 py-1.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/25 font-semibold">
+            <span className="text-xs px-3 py-1.5 rounded-full bg-warning-soft text-warning border border-warning/25 font-semibold">
               {waitingCount} ينتظر
             </span>
-            <span className="text-xs px-3 py-1.5 rounded-full bg-purple-500/15 text-purple-400 border border-purple-500/25 font-semibold">
+            <span className="text-xs px-3 py-1.5 rounded-full bg-brand-soft text-brand border border-brand/25 font-semibold">
               {inServiceCount} في الخدمة
             </span>
-            <span className="text-xs px-3 py-1.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 font-semibold">
+            <span className="text-xs px-3 py-1.5 rounded-full bg-success-soft text-success border border-success/25 font-semibold">
               {doneCount} انتهى
             </span>
           </div>
           <button
             onClick={fetchData}
-            className="p-2 rounded-xl border border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-600 transition-all"
+            className="p-2 rounded-xl border border-border text-muted-foreground hover:text-foreground hover:border-border transition-all"
             title="تحديث"
           >
             <RefreshCw size={15} />
@@ -545,14 +545,14 @@ export default function QueueLivePage() {
           <button
             onClick={() => router.push('/queue/new')}
             className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all"
-            style={{ background: 'linear-gradient(135deg,#D6A84F,#B8923A)', color: '#000' }}
+            style={{ background: 'var(--primary)', color: 'var(--primary-foreground)' }}
           >
             <Plus size={15} />
             تذكرة جديدة
           </button>
           <button
             onClick={() => router.push('/bookings/new')}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border border-blue-500/40 text-blue-400 hover:bg-blue-500/10 transition-all"
+            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border border-info/40 text-info hover:bg-info-soft transition-all"
           >
             <CalendarDays size={15} />
             حجز جديد
@@ -561,7 +561,7 @@ export default function QueueLivePage() {
       </div>
 
       {/* Filter tabs */}
-      <div className="flex items-center gap-2 px-6 py-3 border-b border-zinc-800 shrink-0">
+      <div className="flex flex-wrap items-center gap-2 px-3 sm:px-3 sm:px-6 py-3 border-b border-border shrink-0">
         {[
           { key: 'active', label: 'النشطون' },
           { key: 'done',   label: 'المنجزون' },
@@ -572,8 +572,8 @@ export default function QueueLivePage() {
             onClick={() => setFilterStatus(tab.key)}
             className="px-4 py-1.5 rounded-xl text-xs font-semibold border transition-all"
             style={filterStatus === tab.key
-              ? { background: 'rgba(214,168,79,0.15)', color: '#D6A84F', borderColor: 'rgba(214,168,79,0.4)' }
-              : { background: 'transparent', color: '#6B7280', borderColor: '#2A2A35' }
+              ? { background: 'color-mix(in srgb, var(--primary) 15%, transparent)', color: 'var(--primary)', borderColor: 'color-mix(in srgb, var(--primary) 40%, transparent)' }
+              : { background: 'transparent', color: 'var(--muted-foreground)', borderColor: 'var(--border)' }
             }
           >{tab.label}</button>
         ))}
@@ -582,18 +582,18 @@ export default function QueueLivePage() {
       {/* Body */}
       {loading ? (
         <div className="flex-1 flex items-center justify-center">
-          <Loader2 className="animate-spin text-amber-400" size={32} />
+          <Loader2 className="animate-spin text-warning" size={32} />
         </div>
       ) : error ? (
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
-            <AlertCircle className="text-red-400 mx-auto mb-3" size={32} />
-            <p className="text-red-400 font-semibold">{error}</p>
-            <button onClick={fetchData} className="mt-3 text-xs text-zinc-400 underline">إعادة المحاولة</button>
+            <AlertCircle className="text-destructive mx-auto mb-3" size={32} />
+            <p className="text-destructive font-semibold">{error}</p>
+            <button onClick={fetchData} className="mt-3 text-xs text-muted-foreground underline">إعادة المحاولة</button>
           </div>
         </div>
       ) : (
-        <div className="flex-1 overflow-x-auto overflow-y-hidden scrollbar-luxury">
+        <div className="flex-1 overflow-auto scrollbar-luxury">
           <div className="flex gap-4 p-6 h-full" style={{ minWidth: 'max-content', alignItems: 'flex-start' }}>
             {/* Unassigned */}
             <UnassignedColumn
@@ -620,7 +620,7 @@ export default function QueueLivePage() {
             })}
 
             {barbers.length === 0 && !grouped.get(null)?.length && (
-              <div className="flex-1 flex items-center justify-center text-zinc-600 text-sm">
+              <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
                 لا توجد بيانات لهذا اليوم
               </div>
             )}
