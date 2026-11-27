@@ -138,11 +138,11 @@ export default function ShiftControlPage() {
       </h1>
 
       {/* Current Shift Status */}
-      <div className={`rounded-xl border p-5 ${hasOpenShift ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-border bg-muted/20'}`}>
+      <div className={`rounded-xl border p-5 ${hasOpenShift ? 'border-success/30 bg-success-soft' : 'border-border bg-muted/20'}`}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             {hasOpenShift ? (
-              <CheckCircle2 className="w-6 h-6 text-emerald-500" />
+              <CheckCircle2 className="w-6 h-6 text-success" />
             ) : (
               <XCircle className="w-6 h-6 text-muted-foreground" />
             )}
@@ -194,7 +194,7 @@ export default function ShiftControlPage() {
       {showOpenDialog && (
         <div className="rounded-xl border border-primary/30 bg-primary/5 p-5 space-y-4">
           <h3 className="text-lg font-bold">اختر الوردية</h3>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             {definitions.map((d) => (
               <button
                 key={d.ShiftID}
@@ -202,7 +202,7 @@ export default function ShiftControlPage() {
                 className={`rounded-lg border p-3 text-center text-sm transition-colors ${
                   selectedShiftID === d.ShiftID
                     ? 'border-primary bg-primary/10 text-primary font-medium'
-                    : 'border-border hover:bg-muted/50'
+                    : 'border-border hover:bg-surface-muted/50'
                 }`}
               >
                 {d.ShiftName}
@@ -221,12 +221,12 @@ export default function ShiftControlPage() {
 
       {/* Close Shift Summary */}
       {showSummary && summary && (
-        <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-5 space-y-4">
+        <div className="rounded-xl border border-warning/30 bg-warning-soft p-5 space-y-4">
           <h3 className="text-lg font-bold">ملخص الوردية قبل الإغلاق</h3>
           <p className="text-sm text-muted-foreground">
             {summary.shiftName} — {summary.userName} — من {summary.startTime?.trim()}
           </p>
-          <div className="grid grid-cols-4 gap-4 text-center">
+          <div className="grid grid-cols-2 gap-3 text-center sm:grid-cols-4">
             <div className="rounded-lg bg-muted/40 p-3">
               <p className="text-2xl font-bold">{summary.salesCount}</p>
               <p className="text-xs text-muted-foreground">فواتير</p>
@@ -236,7 +236,7 @@ export default function ShiftControlPage() {
               <p className="text-xs text-muted-foreground">إيرادات</p>
             </div>
             <div className="rounded-lg bg-muted/40 p-3">
-              <p className="text-2xl font-bold text-emerald-500">{summary.cashIn.toLocaleString('ar-EG')}</p>
+              <p className="text-2xl font-bold text-success">{summary.cashIn.toLocaleString('ar-EG')}</p>
               <p className="text-xs text-muted-foreground">وارد</p>
             </div>
             <div className="rounded-lg bg-muted/40 p-3">
@@ -275,8 +275,8 @@ export default function ShiftControlPage() {
         {loading ? (
           <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>
         ) : (
-          <div className="rounded-lg border overflow-hidden">
-            <table className="w-full text-sm">
+          <div className="overflow-x-auto rounded-lg border border-border">
+            <table className="w-full min-w-[36rem] text-sm">
               <thead>
                 <tr className="bg-muted/50 text-muted-foreground">
                   <th className="p-3 text-right">ID</th>
@@ -292,7 +292,7 @@ export default function ShiftControlPage() {
               </thead>
               <tbody>
                 {history.map((s) => (
-                  <tr key={s.ID} className="border-t border-border hover:bg-muted/20">
+                  <tr key={s.ID} className="border-t border-border hover:bg-surface-muted/20">
                     <td className="p-3 font-mono text-xs">{s.ID}</td>
                     <td className="p-3 text-xs">{new Date(s.NewDay).toLocaleDateString('ar-EG', { month: 'short', day: 'numeric' })}</td>
                     <td className="p-3">{s.UserName}</td>
@@ -301,7 +301,7 @@ export default function ShiftControlPage() {
                     <td className="p-3 text-xs font-mono" dir="ltr">{s.EndTime?.trim() || '—'}</td>
                     <td className="p-3 text-center">
                       {s.Status ? (
-                        <span className="inline-flex items-center gap-1 text-emerald-500 text-xs font-medium">
+                        <span className="inline-flex items-center gap-1 text-success text-xs font-medium">
                           <CheckCircle2 className="w-3.5 h-3.5" /> مفتوح
                         </span>
                       ) : (

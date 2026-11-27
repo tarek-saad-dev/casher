@@ -110,7 +110,7 @@ export default function AdminBranchesPage() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl" dir="rtl">
+    <div className="mx-auto max-w-5xl min-w-0 px-3 sm:px-5" dir="rtl">
       <PageHeader
         title="الفروع"
         description="تبديل الفرع النشط في الجلسة، وعرض وتعديل بيانات الفروع وإدارة الإعداد والجاهزية"

@@ -7,7 +7,7 @@ import Link from 'next/link';
 
 export default function SettingsPage() {
   return (
-    <div className="p-6 max-w-7xl mx-auto">
+    <div className="min-w-0 p-3 sm:p-6 max-w-7xl mx-auto">
       <PageHeader
         title="الإعدادات العامة"
         description="إعدادات النظام والصلاحيات والتفضيلات"

@@ -76,13 +76,13 @@ function Toggle({
   return (
     <div className="flex items-start justify-between gap-4">
       <div className="flex-1">
-        <p className="text-sm font-medium text-white">{label}</p>
-        {description && <p className="text-xs text-zinc-500 mt-0.5">{description}</p>}
+        <p className="text-sm font-medium text-foreground">{label}</p>
+        {description && <p className="text-xs text-muted-foreground mt-0.5">{description}</p>}
       </div>
       <button
         onClick={() => onChange(!checked)}
         className="relative w-11 h-6 rounded-full transition-colors shrink-0 mt-0.5"
-        style={{ background: checked ? '#D6A84F' : '#374151' }}
+        style={{ background: checked ? 'var(--primary)' : 'var(--muted-foreground)' }}
       >
         <span
           className="absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-all"
@@ -103,18 +103,18 @@ function NumberInput({
   return (
     <div className="flex items-start justify-between gap-4">
       <div className="flex-1">
-        <p className="text-sm font-medium text-white">{label}</p>
-        {description && <p className="text-xs text-zinc-500 mt-0.5">{description}</p>}
+        <p className="text-sm font-medium text-foreground">{label}</p>
+        {description && <p className="text-xs text-muted-foreground mt-0.5">{description}</p>}
       </div>
       <div className="flex items-center gap-1.5 shrink-0">
         <button
           onClick={() => onChange(Math.max(min, value - 1))}
-          className="w-7 h-7 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-300 hover:bg-zinc-700 transition-all flex items-center justify-center font-bold text-sm"
+          className="w-7 h-7 rounded-lg bg-muted border border-border text-foreground hover:bg-surface-muted transition-all flex items-center justify-center font-bold text-sm"
         >−</button>
-        <span className="w-10 text-center text-sm font-bold text-white">{value}{suffix}</span>
+        <span className="w-10 text-center text-sm font-bold text-foreground">{value}{suffix}</span>
         <button
           onClick={() => onChange(Math.min(max, value + 1))}
-          className="w-7 h-7 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-300 hover:bg-zinc-700 transition-all flex items-center justify-center font-bold text-sm"
+          className="w-7 h-7 rounded-lg bg-muted border border-border text-foreground hover:bg-surface-muted transition-all flex items-center justify-center font-bold text-sm"
         >+</button>
       </div>
     </div>
@@ -123,10 +123,10 @@ function NumberInput({
 
 function Section({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) {
   return (
-    <div className="rounded-2xl border p-5 space-y-4" style={{ background: '#141418', borderColor: '#2A2A35' }}>
-      <div className="flex items-center gap-2 pb-2 border-b border-zinc-800">
-        <div className="text-amber-400">{icon}</div>
-        <h3 className="text-sm font-bold text-white">{title}</h3>
+    <div className="rounded-2xl border p-5 space-y-4" style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
+      <div className="flex items-center gap-2 pb-2 border-b border-border">
+        <div className="text-warning">{icon}</div>
+        <h3 className="text-sm font-bold text-foreground">{title}</h3>
       </div>
       {children}
     </div>
@@ -316,29 +316,29 @@ export default function QueueBookingSettingsPage() {
   const previewCode = `${settings.QueuePrefix}${settings.QueueStartNumber}`;
 
   if (loading) return (
-    <div className="flex items-center justify-center h-full bg-zinc-950">
-      <Loader2 className="animate-spin text-amber-400" size={28} />
+    <div className="flex items-center justify-center h-full bg-background">
+      <Loader2 className="animate-spin text-warning" size={28} />
     </div>
   );
 
   return (
-    <div className="h-full flex flex-col bg-zinc-950" dir="rtl">
+    <div className="h-full min-h-0 min-w-0 flex flex-col bg-background" dir="rtl">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800 shrink-0">
+      <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
         <div className="flex items-center gap-3">
-          <button onClick={() => router.back()} className="p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-500 hover:text-white transition-all">
+          <button onClick={() => router.back()} className="p-1.5 rounded-lg hover:bg-surface-muted text-muted-foreground hover:text-foreground transition-all">
             <ArrowRight size={16} />
           </button>
           <div>
-            <h1 className="text-base font-black text-white">إعدادات الطابور والحجوزات</h1>
-            <p className="text-xs text-zinc-500">تخصيص نظام الانتظار والحجوزات</p>
+            <h1 className="text-base font-black text-foreground">إعدادات الطابور والحجوزات</h1>
+            <p className="text-xs text-muted-foreground">تخصيص نظام الانتظار والحجوزات</p>
           </div>
         </div>
         <button
           onClick={handleSave}
           disabled={saving}
           className="flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-bold transition-all disabled:opacity-50"
-          style={{ background: saved ? '#10B981' : 'linear-gradient(135deg,#D6A84F,#B8923A)', color: saved ? '#fff' : '#000' }}
+          style={{ background: saved ? 'var(--success)' : 'var(--primary)', color: saved ? 'var(--success-foreground)' : 'var(--primary-foreground)' }}
         >
           {saving ? <Loader2 size={14} className="animate-spin" /> :
             saved ? <CheckCircle2 size={14} /> :
@@ -348,38 +348,38 @@ export default function QueueBookingSettingsPage() {
       </div>
 
       {error && (
-        <div className="mx-6 mt-4 flex items-center gap-2 p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-sm shrink-0">
+        <div className="mx-6 mt-4 flex items-center gap-2 p-3 rounded-xl bg-destructive-soft border border-destructive/30 text-destructive text-sm shrink-0">
           <AlertCircle size={14} />{error}
         </div>
       )}
 
       <div className="flex-1 overflow-y-auto scrollbar-luxury-v">
-        <div className="max-w-2xl mx-auto p-6 space-y-5">
+        <div className="max-w-2xl mx-auto p-3 sm:p-6 space-y-5">
 
           {/* Preview */}
           <div
             className="rounded-2xl border p-5 flex items-center justify-between"
-            style={{ background: 'rgba(214,168,79,0.08)', borderColor: 'rgba(214,168,79,0.3)' }}
+            style={{ background: 'color-mix(in srgb, var(--primary) 8%, transparent)', borderColor: 'color-mix(in srgb, var(--primary) 30%, transparent)' }}
           >
             <div>
-              <p className="text-xs text-amber-400/70 mb-1">معاينة — أول تذكرة اليوم</p>
-              <p className="text-4xl font-black" style={{ color: '#D6A84F', textShadow: '0 0 30px rgba(214,168,79,0.4)' }}>
+              <p className="text-xs text-warning mb-1">معاينة — أول تذكرة اليوم</p>
+              <p className="text-4xl font-black" style={{ color: 'var(--primary)', textShadow: 'none' }}>
                 {previewCode}
               </p>
             </div>
             <div className="text-right">
-              <p className="text-xs text-zinc-500">البادئة: <span className="text-white font-bold">{settings.QueuePrefix}</span></p>
-              <p className="text-xs text-zinc-500 mt-1">يبدأ من: <span className="text-white font-bold">{settings.QueueStartNumber}</span></p>
+              <p className="text-xs text-muted-foreground">البادئة: <span className="text-foreground font-bold">{settings.QueuePrefix}</span></p>
+              <p className="text-xs text-muted-foreground mt-1">يبدأ من: <span className="text-foreground font-bold">{settings.QueueStartNumber}</span></p>
             </div>
           </div>
 
           {/* Active branch identity, hours and public launch path */}
           {bookingBranch && (
-            <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 space-y-3">
+            <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
               <div>
-                <p className="text-xs text-zinc-500 mb-1">إعدادات الفرع الحالي</p>
-                <p className="font-semibold text-white">{bookingBranch.branchName}</p>
-                <p className="text-xs text-zinc-400 mt-1">
+                <p className="text-xs text-muted-foreground mb-1">إعدادات الفرع الحالي</p>
+                <p className="font-semibold text-foreground">{bookingBranch.branchName}</p>
+                <p className="text-xs text-muted-foreground mt-1">
                   ساعات العمل: {bookingBranch.defaultOpenTime?.slice(0, 5) || 'غير محدد'} –{' '}
                   {bookingBranch.defaultCloseTime?.slice(0, 5) || 'غير محدد'}
                 </p>
@@ -387,20 +387,20 @@ export default function QueueBookingSettingsPage() {
               <div className="flex flex-wrap gap-2 text-xs">
                 <Link
                   href={`/admin/branches/${bookingBranch.branchId}`}
-                  className="rounded-lg border border-zinc-700 px-3 py-2 text-zinc-200 hover:border-amber-500"
+                  className="rounded-lg border border-border px-3 py-2 text-foreground hover:border-warning/30"
                 >
                   تعديل ساعات العمل
                 </Link>
                 <Link
                   href={`/admin/branches/${bookingBranch.branchId}/readiness`}
-                  className="rounded-lg border border-zinc-700 px-3 py-2 text-zinc-200 hover:border-amber-500"
+                  className="rounded-lg border border-border px-3 py-2 text-foreground hover:border-warning/30"
                 >
                   جاهزية الحجز العام
                 </Link>
-                <Link href="/admin/services" className="rounded-lg border border-zinc-700 px-3 py-2 text-zinc-200">
+                <Link href="/admin/services" className="rounded-lg border border-border px-3 py-2 text-foreground">
                   إدارة الخدمات
                 </Link>
-                <Link href="/admin/employees" className="rounded-lg border border-zinc-700 px-3 py-2 text-zinc-200">
+                <Link href="/admin/employees" className="rounded-lg border border-border px-3 py-2 text-foreground">
                   إدارة الموظفين
                 </Link>
               </div>
@@ -410,12 +410,12 @@ export default function QueueBookingSettingsPage() {
                   <Link
                     href={`/book/${encodeURIComponent(bookingBranch.branchCode)}`}
                     target="_blank"
-                    className="inline-flex text-xs text-emerald-300 underline underline-offset-4"
+                    className="inline-flex text-xs text-success underline underline-offset-4"
                   >
                     فتح صفحة حجز العملاء
                   </Link>
                 ) : (
-                  <p className="text-xs text-amber-200/90">
+                  <p className="text-xs text-warning">
                     الحجز العام لم يُنشر بعد. اضبط الخدمات والموظفين والمواعيد، ثم أكمل مراجعة جاهزية الفرع وتفعيله.
                     تغيير زر الحجز أدناه وحده لا ينشر الفرع.
                   </p>
@@ -435,8 +435,8 @@ export default function QueueBookingSettingsPage() {
             />
 
             {/* Booking Modes */}
-            <div className="border-t border-zinc-800 pt-4 mt-4">
-              <p className="text-sm font-medium text-white mb-3">طرق الحجز المتاحة</p>
+            <div className="border-t border-border pt-4 mt-4">
+              <p className="text-sm font-medium text-foreground mb-3">طرق الحجز المتاحة</p>
               <div className="space-y-3">
                 <Toggle
                   label="السماح باختيار حلاق محدد"
@@ -454,8 +454,8 @@ export default function QueueBookingSettingsPage() {
             </div>
 
             {/* Default Mode */}
-            <div className="border-t border-zinc-800 pt-4 mt-4">
-              <p className="text-sm font-medium text-white mb-2">الوضع الافتراضي</p>
+            <div className="border-t border-border pt-4 mt-4">
+              <p className="text-sm font-medium text-foreground mb-2">الوضع الافتراضي</p>
               <div className="flex gap-2">
                 {[
                   { value: 'nearest', label: 'أقرب حلاق متاح' },
@@ -466,8 +466,8 @@ export default function QueueBookingSettingsPage() {
                     onClick={() => setBooking('defaultMode', opt.value as 'nearest' | 'specific')}
                     className="flex-1 py-2 rounded-xl border text-xs font-medium transition-all"
                     style={bookingSettings.defaultMode === opt.value
-                      ? { borderColor: '#D6A84F', background: 'rgba(214,168,79,0.15)', color: '#D6A84F' }
-                      : { borderColor: '#2A2A35', background: 'transparent', color: '#6B7280' }
+                      ? { borderColor: 'var(--primary)', background: 'color-mix(in srgb, var(--primary) 15%, transparent)', color: 'var(--primary)' }
+                      : { borderColor: 'var(--border)', background: 'transparent', color: 'var(--muted-foreground)' }
                     }
                   >{opt.label}</button>
                 ))}
@@ -475,13 +475,13 @@ export default function QueueBookingSettingsPage() {
             </div>
 
             {/* Time Settings */}
-            <div className="border-t border-zinc-800 pt-4 mt-4 space-y-4">
-              <p className="text-sm font-medium text-white">إعدادات الوقت</p>
+            <div className="border-t border-border pt-4 mt-4 space-y-4">
+              <p className="text-sm font-medium text-foreground">إعدادات الوقت</p>
 
               {/* Min Notice Minutes */}
               <div>
-                <p className="text-xs text-zinc-400 mb-2">أقل مدة قبل الحجز</p>
-                <p className="text-xs text-zinc-600 mb-2">تحدد أقل وقت بين الوقت الحالي وميعاد الحجز</p>
+                <p className="text-xs text-muted-foreground mb-2">أقل مدة قبل الحجز</p>
+                <p className="text-xs text-muted-foreground mb-2">تحدد أقل وقت بين الوقت الحالي وميعاد الحجز</p>
                 <div className="flex gap-2 flex-wrap">
                   {minNoticeOptions.map(opt => (
                     <button
@@ -489,8 +489,8 @@ export default function QueueBookingSettingsPage() {
                       onClick={() => setBooking('minNoticeMinutes', opt.value)}
                       className="px-3 py-1.5 rounded-lg border text-xs font-medium transition-all"
                       style={bookingSettings.minNoticeMinutes === opt.value
-                        ? { borderColor: '#D6A84F', background: 'rgba(214,168,79,0.15)', color: '#D6A84F' }
-                        : { borderColor: '#2A2A35', background: 'transparent', color: '#6B7280' }
+                        ? { borderColor: 'var(--primary)', background: 'color-mix(in srgb, var(--primary) 15%, transparent)', color: 'var(--primary)' }
+                        : { borderColor: 'var(--border)', background: 'transparent', color: 'var(--muted-foreground)' }
                       }
                     >{opt.label}</button>
                   ))}
@@ -499,8 +499,8 @@ export default function QueueBookingSettingsPage() {
 
               {/* Slot Interval */}
               <div>
-                <p className="text-xs text-zinc-400 mb-2">تقسيم المواعيد</p>
-                <p className="text-xs text-zinc-600 mb-2">تحدد شكل تقسيم المواعيد في صفحة الحجز</p>
+                <p className="text-xs text-muted-foreground mb-2">تقسيم المواعيد</p>
+                <p className="text-xs text-muted-foreground mb-2">تحدد شكل تقسيم المواعيد في صفحة الحجز</p>
                 <div className="flex gap-2 flex-wrap">
                   {slotIntervalOptions.map(opt => (
                     <button
@@ -508,8 +508,8 @@ export default function QueueBookingSettingsPage() {
                       onClick={() => setBooking('slotIntervalMinutes', opt.value)}
                       className="px-3 py-1.5 rounded-lg border text-xs font-medium transition-all"
                       style={bookingSettings.slotIntervalMinutes === opt.value
-                        ? { borderColor: '#D6A84F', background: 'rgba(214,168,79,0.15)', color: '#D6A84F' }
-                        : { borderColor: '#2A2A35', background: 'transparent', color: '#6B7280' }
+                        ? { borderColor: 'var(--primary)', background: 'color-mix(in srgb, var(--primary) 15%, transparent)', color: 'var(--primary)' }
+                        : { borderColor: 'var(--border)', background: 'transparent', color: 'var(--muted-foreground)' }
                       }
                     >{opt.label}</button>
                   ))}
@@ -527,35 +527,35 @@ export default function QueueBookingSettingsPage() {
             </div>
 
             {/* Salon Info */}
-            <div className="border-t border-zinc-800 pt-4 mt-4 space-y-3">
-              <p className="text-sm font-medium text-white">بيانات الصالون</p>
+            <div className="border-t border-border pt-4 mt-4 space-y-3">
+              <p className="text-sm font-medium text-foreground">بيانات الصالون</p>
               <div>
-                <label className="text-xs text-zinc-400 block mb-1">اسم الصالون</label>
+                <label className="text-xs text-muted-foreground block mb-1">اسم الصالون</label>
                 <input
                   type="text"
                   value={bookingSettings.salonName}
                   onChange={e => setBooking('salonName', e.target.value)}
-                  className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500/50"
+                  className="w-full bg-card border border-border rounded-xl px-3 py-2 text-sm text-foreground focus:outline-none focus:border-ring"
                 />
               </div>
               <div className="flex gap-3">
                 <div className="flex-1">
-                  <label className="text-xs text-zinc-400 block mb-1">المنطقة الزمنية</label>
+                  <label className="text-xs text-muted-foreground block mb-1">المنطقة الزمنية</label>
                   <input
                     type="text"
                     value={bookingSettings.timezone}
                     onChange={e => setBooking('timezone', e.target.value)}
-                    className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500/50"
+                    className="w-full bg-card border border-border rounded-xl px-3 py-2 text-sm text-foreground focus:outline-none focus:border-ring"
                     placeholder="Africa/Cairo"
                   />
                 </div>
                 <div className="w-24">
-                  <label className="text-xs text-zinc-400 block mb-1">العملة</label>
+                  <label className="text-xs text-muted-foreground block mb-1">العملة</label>
                   <input
                     type="text"
                     value={bookingSettings.currency}
                     onChange={e => setBooking('currency', e.target.value)}
-                    className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-sm text-white text-center focus:outline-none focus:border-amber-500/50"
+                    className="w-full bg-card border border-border rounded-xl px-3 py-2 text-sm text-foreground text-center focus:outline-none focus:border-ring"
                     placeholder="EGP"
                   />
                 </div>
@@ -563,7 +563,7 @@ export default function QueueBookingSettingsPage() {
             </div>
 
             {/* Default Duration */}
-            <div className="border-t border-zinc-800 pt-4 mt-4">
+            <div className="border-t border-border pt-4 mt-4">
               <NumberInput
                 label="مدة الخدمة الافتراضية"
                 description="تستخدم فقط لو خدمة ليس لها مدة محددة"
@@ -574,9 +574,9 @@ export default function QueueBookingSettingsPage() {
             </div>
 
             {/* Save Button */}
-            <div className="border-t border-zinc-800 pt-4 mt-4">
+            <div className="border-t border-border pt-4 mt-4">
               {bookingError && (
-                <div className="mb-3 p-2 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-xs">
+                <div className="mb-3 p-2 rounded-lg bg-destructive-soft border border-destructive/30 text-destructive text-xs">
                   {bookingError}
                 </div>
               )}
@@ -584,7 +584,7 @@ export default function QueueBookingSettingsPage() {
                 onClick={handleSaveBookingSettings}
                 disabled={bookingSaving}
                 className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all disabled:opacity-50"
-                style={{ background: bookingSaved ? '#10B981' : '#D6A84F', color: bookingSaved ? '#fff' : '#000' }}
+                style={{ background: bookingSaved ? 'var(--success)' : 'var(--primary)', color: bookingSaved ? 'var(--success-foreground)' : 'var(--primary-foreground)' }}
               >
                 {bookingSaving ? (
                   <><Loader2 size={14} className="animate-spin" /> جاري حفظ إعدادات الحجز...</>
@@ -601,7 +601,7 @@ export default function QueueBookingSettingsPage() {
           <Section title="إعدادات الطابور" icon={<Hash size={14} />}>
 
             <div className="space-y-1 mb-2">
-              <label className="text-xs text-zinc-400">بادئة رقم الطابور</label>
+              <label className="text-xs text-muted-foreground">بادئة رقم الطابور</label>
               <div className="flex gap-2 flex-wrap">
                 {['A', 'B', 'C', 'Q', '#'].map(p => (
                   <button
@@ -609,8 +609,8 @@ export default function QueueBookingSettingsPage() {
                     onClick={() => set('QueuePrefix', p)}
                     className="w-10 h-10 rounded-xl border font-bold text-sm transition-all"
                     style={settings.QueuePrefix === p
-                      ? { borderColor: '#D6A84F', background: 'rgba(214,168,79,0.15)', color: '#D6A84F' }
-                      : { borderColor: '#2A2A35', background: 'transparent', color: '#6B7280' }
+                      ? { borderColor: 'var(--primary)', background: 'color-mix(in srgb, var(--primary) 15%, transparent)', color: 'var(--primary)' }
+                      : { borderColor: 'var(--border)', background: 'transparent', color: 'var(--muted-foreground)' }
                     }
                   >{p}</button>
                 ))}
@@ -619,7 +619,7 @@ export default function QueueBookingSettingsPage() {
                   onChange={e => set('QueuePrefix', e.target.value.slice(0, 3).toUpperCase() || 'A')}
                   placeholder="مخصص"
                   maxLength={3}
-                  className="w-20 bg-zinc-900 border border-zinc-700 rounded-xl px-3 text-sm text-white text-center focus:outline-none focus:border-amber-500/50"
+                  className="w-20 bg-card border border-border rounded-xl px-3 text-sm text-foreground text-center focus:outline-none focus:border-ring"
                 />
               </div>
             </div>
@@ -675,8 +675,8 @@ export default function QueueBookingSettingsPage() {
             />
 
             <div>
-              <p className="text-sm font-medium text-white mb-1">نظام الأولوية</p>
-              <p className="text-xs text-zinc-500 mb-2">كيف يُرتّب الطابور عند تساوي الوقت</p>
+              <p className="text-sm font-medium text-foreground mb-1">نظام الأولوية</p>
+              <p className="text-xs text-muted-foreground mb-2">كيف يُرتّب الطابور عند تساوي الوقت</p>
               <div className="flex gap-2">
                 {[
                   { value: 'fifo', label: 'الأول يُخدَّم أولاً' },
@@ -688,8 +688,8 @@ export default function QueueBookingSettingsPage() {
                     onClick={() => set('BookingPriorityMode', opt.value)}
                     className="flex-1 py-2 rounded-xl border text-xs font-medium transition-all"
                     style={settings.BookingPriorityMode === opt.value
-                      ? { borderColor: 'rgba(99,102,241,0.5)', background: 'rgba(99,102,241,0.12)', color: '#A5B4FC' }
-                      : { borderColor: '#2A2A35', background: 'transparent', color: '#6B7280' }
+                      ? { borderColor: 'color-mix(in srgb, var(--brand) 50%, transparent)', background: 'color-mix(in srgb, var(--brand) 12%, transparent)', color: 'var(--brand)' }
+                      : { borderColor: 'var(--border)', background: 'transparent', color: 'var(--muted-foreground)' }
                     }
                   >{opt.label}</button>
                 ))}
@@ -699,16 +699,16 @@ export default function QueueBookingSettingsPage() {
 
           {/* Voice test */}
           <Section title="اختبار النداء الصوتي" icon={<Volume2 size={14} />}>
-            <p className="text-xs text-zinc-500 leading-relaxed">
+            <p className="text-xs text-muted-foreground leading-relaxed">
               يُشغَّل النداء باستخدام Azure Speech (ar-EG-SalmaNeural) عبر الخادم.
-              تأكد من ضبط <span className="text-amber-400 font-mono">AZURE_SPEECH_KEY</span> في ملف <span className="font-mono">.env.local</span>.
+              تأكد من ضبط <span className="text-warning font-mono">AZURE_SPEECH_KEY</span> في ملف <span className="font-mono">.env.local</span>.
             </p>
             <div className="flex items-center gap-3 pt-1">
               <button
                 onClick={handleVoiceTest}
                 disabled={voiceTesting}
                 className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border transition-all disabled:opacity-50"
-                style={{ borderColor: 'rgba(167,139,250,0.4)', color: '#A78BFA', background: 'rgba(167,139,250,0.08)' }}
+                style={{ borderColor: 'color-mix(in srgb, var(--brand) 40%, transparent)', color: 'var(--brand)', background: 'color-mix(in srgb, var(--brand) 8%, transparent)' }}
               >
                 {voiceTesting
                   ? <><Loader2 size={13} className="animate-spin" /> جاري التشغيل...</>
@@ -718,8 +718,8 @@ export default function QueueBookingSettingsPage() {
                 <span
                   className="text-xs font-medium px-3 py-1.5 rounded-lg"
                   style={voiceToast.ok
-                    ? { background: 'rgba(16,185,129,0.12)', color: '#34D399', border: '1px solid rgba(16,185,129,0.25)' }
-                    : { background: 'rgba(239,68,68,0.1)', color: '#F87171', border: '1px solid rgba(239,68,68,0.25)' }}
+                    ? { background: 'color-mix(in srgb, var(--success) 12%, transparent)', color: 'var(--success)', border: '1px solid color-mix(in srgb, var(--success) 25%, transparent)' }
+                    : { background: 'color-mix(in srgb, var(--destructive) 10%, transparent)', color: 'var(--destructive)', border: '1px solid color-mix(in srgb, var(--destructive) 25%, transparent)' }}
                 >
                   {voiceToast.msg}
                 </span>
@@ -729,7 +729,7 @@ export default function QueueBookingSettingsPage() {
 
           {/* Migration section */}
           <Section title="جداول قاعدة البيانات" icon={<Database size={14} />}>
-            <p className="text-xs text-zinc-500 leading-relaxed">
+            <p className="text-xs text-muted-foreground leading-relaxed">
               شغّل هذه الميجرشن مرة واحدة لإضافة أعمدة الوقت التقديري إلى جدول التذاكر وإنشاء جدول خدمات التذاكر.
               مواعيد الموظفين موجودة بالفعل في نظام الموارد البشرية. آمنة للتشغيل أكثر من مرة.
             </p>
@@ -738,7 +738,7 @@ export default function QueueBookingSettingsPage() {
                 onClick={handleMigrate}
                 disabled={migrating}
                 className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border transition-all disabled:opacity-50"
-                style={{ borderColor: 'rgba(59,130,246,0.4)', color: '#60A5FA', background: 'rgba(59,130,246,0.08)' }}
+                style={{ borderColor: 'color-mix(in srgb, var(--info) 40%, transparent)', color: 'var(--info)', background: 'color-mix(in srgb, var(--info) 8%, transparent)' }}
               >
                 {migrating
                   ? <><Loader2 size={13} className="animate-spin" /> جاري التنفيذ...</>
@@ -748,8 +748,8 @@ export default function QueueBookingSettingsPage() {
                 <span
                   className="text-xs font-medium px-3 py-1.5 rounded-lg"
                   style={migrateMsg.ok
-                    ? { background: 'rgba(16,185,129,0.12)', color: '#34D399', border: '1px solid rgba(16,185,129,0.25)' }
-                    : { background: 'rgba(239,68,68,0.1)', color: '#F87171', border: '1px solid rgba(239,68,68,0.25)' }}
+                    ? { background: 'color-mix(in srgb, var(--success) 12%, transparent)', color: 'var(--success)', border: '1px solid color-mix(in srgb, var(--success) 25%, transparent)' }
+                    : { background: 'color-mix(in srgb, var(--destructive) 10%, transparent)', color: 'var(--destructive)', border: '1px solid color-mix(in srgb, var(--destructive) 25%, transparent)' }}
                 >
                   {migrateMsg.msg}
                 </span>
@@ -758,12 +758,12 @@ export default function QueueBookingSettingsPage() {
           </Section>
 
           {/* Info box */}
-          <div className="rounded-xl border p-4" style={{ borderColor: '#2A2A35', background: '#141418' }}>
+          <div className="rounded-xl border p-4" style={{ borderColor: 'var(--border)', background: 'var(--card)' }}>
             <div className="flex items-start gap-2">
-              <Shield size={14} className="text-zinc-500 mt-0.5 shrink-0" />
+              <Shield size={14} className="text-muted-foreground mt-0.5 shrink-0" />
               <div>
-                <p className="text-xs font-semibold text-zinc-400 mb-1">ملاحظة</p>
-                <p className="text-xs text-zinc-600 leading-relaxed">
+                <p className="text-xs font-semibold text-muted-foreground mb-1">ملاحظة</p>
+                <p className="text-xs text-muted-foreground leading-relaxed">
                   لا تؤثر تغييرات الإعدادات على البيانات السابقة. يُطبَّق الترقيم الجديد فقط على التذاكر التي تُنشأ بعد الحفظ.
                 </p>
               </div>
