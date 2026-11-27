@@ -115,6 +115,11 @@ describe('V3 service template picker',()=>{
       fireEvent.change(screen.getByLabelText('سعر '+name),{target:{value:'100'}});
     }
     const save=screen.getByRole('button',{name:'حفظ 5 خدمات مختارة'});
+    const price=screen.getByLabelText('سعر حلاقة ذقن');
+    fireEvent.change(price,{target:{value:'100.123'}});
+    expect(save).toBeDisabled();
+    expect(request).not.toHaveBeenCalled();
+    fireEvent.change(price,{target:{value:'100'}});
     expect(save).toBeEnabled();
     fireEvent.click(save);
     await waitFor(()=>expect(onSaved).toHaveBeenCalledTimes(1));
