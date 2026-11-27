@@ -22,7 +22,14 @@ export default function LaunchSetup({ onSaved }: { onSaved: () => Promise<void> 
       .then(async res => {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'تعذر تحميل الورديات.');
-        if (!controller.signal.aborted) setShifts(Array.isArray(data.shifts) ? data.shifts : []);
+        // The current /api/shift/definitions contract is a top-level array.
+        // Also tolerate the legacy wrapped response without accepting malformed rows.
+        const rows: unknown[] = Array.isArray(data) ? data : Array.isArray(data?.shifts) ? data.shifts : [];
+        if (!controller.signal.aborted) setShifts(rows.filter((row): row is { ShiftID: number; ShiftName: string } =>
+          !!row && typeof row === 'object' &&
+          Number.isInteger((row as { ShiftID?: number }).ShiftID) &&
+          Number((row as { ShiftID?: number }).ShiftID) > 0 &&
+          typeof (row as { ShiftName?: string }).ShiftName === 'string'));
       })
       .catch((err: unknown) => {
         if (!controller.signal.aborted) setError(err instanceof Error ? err.message : 'تعذر تحميل الورديات.');
