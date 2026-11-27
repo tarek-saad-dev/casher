@@ -1,0 +1,213 @@
+name: Onboarding — DRVO palette and contrast QA
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [fix/onboarding-drvo-brand-contrast]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  public-registration:
+    if: >-
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.head.repo.full_name == github.repository &&
+       github.event.pull_request.head.ref == 'fix/onboarding-drvo-brand-contrast') ||
+      (github.event_name != 'pull_request' && github.ref == 'refs/heads/fix/onboarding-drvo-brand-contrast')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    env:
+      PUBLIC_SIGNUP_OTP_REQUIRED: 'false'
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Refuse database configuration
+        run: |
+          set -euo pipefail
+          for f in .env .env.local .env.production .env.production.local; do
+            test ! -e "$f" || exit 1
+          done
+          for k in DB_SERVER DB_DATABASE DB_PASSWORD CLOUD_DB_SERVER CLOUD_DB_NAME CLOUD_DB_PASSWORD; do
+            test -z "${!k:-}" || exit 1
+          done
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build
+      - name: Install Chromium runner without modifying lockfile
+        run: |
+          npm install --prefix "$RUNNER_TEMP/onboarding-browser" --no-audit --no-fund playwright@1.58.2
+          "$RUNNER_TEMP/onboarding-browser/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Start local app
+        run: |
+          npm run start -- --hostname 127.0.0.1 --port 5500 > "$RUNNER_TEMP/onboarding-next.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/onboarding-next.pid"
+          for i in {1..60}; do
+            if curl --fail --silent --max-time 3 http://127.0.0.1:5500/start >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/onboarding-next.log"
+          exit 1
+      - name: Verify five registration steps in both themes at four widths
+        shell: bash
+        run: |
+          mkdir -p browser-evidence
+          export NODE_PATH="$RUNNER_TEMP/onboarding-browser/node_modules"
+          node <<'JS'
+          const { chromium } = require('playwright');
+          const assert = require('node:assert/strict');
+          (async () => {
+            const browser = await chromium.launch({headless:true});
+            try {
+              for (const mode of ['light','dark']) for (const width of [320,390,768,1440]) {
+                const context = await browser.newContext({viewport:{width,height:width<768?844:1000},locale:'ar-EG',colorScheme:mode,serviceWorkers:'block'});
+                try {
+                  await context.addCookies([{name:'theme-mode',value:mode,url:'http://127.0.0.1:5500'},{name:'theme-palette',value:'drvo',url:'http://127.0.0.1:5500'}]);
+                  await context.addInitScript(mode=>localStorage.setItem('drvo-theme-v2',JSON.stringify({mode,palette:'drvo'})),mode);
+                  const page = await context.newPage();
+                  const submissions = [];
+                  const signupCalls = [];
+                  await page.route('**/*', async route => {
+                    const url = new URL(route.request().url());
+                    if(url.origin !== 'http://127.0.0.1:5500') return route.abort();
+                    if(url.pathname === '/api/public/signup/complete'){
+                      signupCalls.push(url.pathname);
+                      submissions.push(route.request().postDataJSON());
+                      return route.fulfill({status:201,contentType:'application/json',body:JSON.stringify({ok:true,ownerLoginName:'qa-browser-owner',nextPath:'/setup'})});
+                    }
+                    if(url.pathname.startsWith('/api/public/signup/')) signupCalls.push(url.pathname);
+                    if(url.pathname.startsWith('/api/')) return route.fulfill({status:401,contentType:'application/json',body:JSON.stringify({error:'isolated browser QA'})});
+                    return route.continue();
+                  });
+                  page.on('pageerror', error => console.error('Browser runtime error at '+width+'px:', error.message));
+                  const response = await page.goto('http://127.0.0.1:5500/start',{waitUntil:'load'});
+                  assert.equal(response.status(),200);
+                  const click = name => page.getByRole('button',{name,exact:true}).click();
+                  const headings = {
+                    '01-phone':'خلينا نبدأ برقم موبايلك.',
+                    '02-owner':'خلينا نتعرف عليك.',
+                    '03-industry':'إيه طبيعة شغلك؟',
+                    '04-apps':'اختار الأدوات المناسبة.',
+                    '05-review':'راجع بياناتك وابدأ.',
+                    '06-success':'حسابك اتعمل بنجاح!',
+                  };
+                  async function capture(step) {
+                    const expected = headings[step];
+                    // SSR streaming may briefly insert a hidden duplicate before hydration.
+                    // Wait for the actual visible step; never select the first of duplicates.
+                    // On the initial step the component's mount effect focuses its panel.
+                    try {
+                      await page.waitForFunction(({expected,initial}) => {
+                        const visible = [...document.querySelectorAll('h1')].filter(el =>
+                          el.getClientRects().length > 0 &&
+                          el.checkVisibility({visibilityProperty:true}));
+                        if (visible.length !== 1 || visible[0].textContent.trim() !== expected) return false;
+                        if (!visible[0].closest('main')) return false;
+                        return !initial || (document.activeElement?.getAttribute('tabindex') === '-1' &&
+                          document.activeElement.contains(visible[0]));
+                      }, {expected,initial:step==='01-phone'}, {timeout:15000});
+                    } catch (error) {
+                      const diagnostic = await page.locator('h1').evaluateAll(elements => elements.map(el => ({
+                        text:el.textContent.trim(), visible:el.getClientRects().length > 0 && el.checkVisibility({visibilityProperty:true}),
+                        inMain:!!el.closest('main'),
+                      })));
+                      console.error('Heading state at '+width+'px / '+step+':',JSON.stringify(diagnostic));
+                      await page.screenshot({path:'browser-evidence/'+mode+'-'+width+'-'+step+'-failure.png',fullPage:true}).catch(()=>{});
+                      throw error;
+                    }
+                    assert.equal(await page.getByRole('heading',{level:1,name:expected,exact:true}).count(),1,
+                      'Expected one accessible heading at '+width+' / '+step);
+                    await page.evaluate(() => document.fonts.ready);
+                    await page.waitForFunction(mode=>document.documentElement.dataset.themeMode===mode,mode);
+                    const visual=await page.evaluate(()=>{
+                      const root=document.querySelector('[data-onboarding-surface="registration"]');
+                      const stepper=root.querySelector('[data-onboarding-stepper]');
+                      const canvas=document.createElement('canvas');canvas.width=canvas.height=1;
+                      const ctx=canvas.getContext('2d',{willReadFrequently:true});
+                      const pixel=css=>{ctx.clearRect(0,0,1,1);ctx.fillStyle=css;ctx.fillRect(0,0,1,1);return [...ctx.getImageData(0,0,1,1).data];};
+                      const token=name=>pixel(getComputedStyle(document.documentElement).getPropertyValue(name).trim());
+                      const flatten=(front,back)=>front.slice(0,3).map((v,i)=>v*(front[3]/255)+back[i]*(1-front[3]/255)).concat(255);
+                      const bg=el=>{const layers=[];for(let p=el;p;p=p.parentElement)layers.push(pixel(getComputedStyle(p).backgroundColor));return layers.reverse().reduce((back,front)=>flatten(front,back),[255,255,255,255]);};
+                      const luminance=rgb=>rgb.slice(0,3).map(v=>v/255).map(v=>v<=.04045?v/12.92:((v+.055)/1.055)**2.4).reduce((sum,v,i)=>sum+v*[.2126,.7152,.0722][i],0);
+                      const contrast=(a,b)=>{const l=[luminance(a),luminance(b)].sort((x,y)=>y-x);return(l[0]+.05)/(l[1]+.05);};
+                      const visible=el=>el.getClientRects().length>0&&el.checkVisibility({visibilityProperty:true});
+                      const problems=[];
+                      for(const el of root.querySelectorAll('h1,h2,p,span,b,label,button,input')){
+                        if(!visible(el))continue;
+                        if(el.closest('button:disabled')&&!stepper.contains(el))continue;
+                        const hasText=[...el.childNodes].some(n=>n.nodeType===Node.TEXT_NODE&&n.textContent.trim());
+                        if(!hasText&&el.tagName!=='INPUT')continue;
+                        const style=getComputedStyle(el);
+                        const ratio=contrast(flatten(pixel(style.color),bg(el)),bg(el));
+                        if(ratio<4.5)problems.push({text:(el.innerText||el.getAttribute('placeholder')||el.tagName).slice(0,70),ratio:Number(ratio.toFixed(2)),color:style.color,bg:bg(el)});
+                      }
+                      const fields=[...root.querySelectorAll('input')].filter(visible).map(el=>({actual:pixel(getComputedStyle(el).backgroundColor),expected:token('--surface'),focused:token('--card')}));
+                      return {problems,fields,sidebar:pixel(getComputedStyle(stepper).backgroundColor),expectedSidebar:token('--brand-soft'),activeColor:pixel(getComputedStyle(root.querySelector('button[aria-current="step"] span')||stepper).backgroundColor),expectedPrimary:token('--primary'),card:pixel(getComputedStyle(root).backgroundColor),expectedCard:token('--card')};
+                    });
+                    assert.deepEqual(visual.sidebar,visual.expectedSidebar,'Sidebar must use approved brand surface');
+                    assert.deepEqual(visual.card,visual.expectedCard,'Registration card must use shared theme surface');
+                    if(step!=='06-success')assert.deepEqual(visual.activeColor,visual.expectedPrimary,'Active step must use primary token');
+                    for(const field of visual.fields)assert.ok(JSON.stringify(field.actual)===JSON.stringify(field.expected)||JSON.stringify(field.actual)===JSON.stringify(field.focused),'Field background must match the theme: '+JSON.stringify(field));
+                    assert.deepEqual(visual.problems,[],'Text contrast failures '+mode+' / '+width+' / '+step+': '+JSON.stringify(visual.problems));
+                    const overflow = await page.evaluate(() => {
+                      const root = document.documentElement;
+                      return Math.max(root.scrollWidth,document.body.scrollWidth)-root.clientWidth;
+                    });
+                    assert.ok(overflow <= 2, 'Horizontal page overflow at '+width+' / '+step+': '+overflow);
+                    await page.screenshot({path:'browser-evidence/'+mode+'-'+width+'-'+step+'.png',fullPage:true});
+                  }
+                  await capture('01-phone');
+                  await click('متابعة');
+                  await page.getByRole('alert').filter({hasText:'اكتب رقم موبايل مصري صحيح'}).waitFor();
+                  await page.getByRole('textbox',{name:'رقم الموبايل'}).fill('01012345678');
+                  await click('متابعة');
+                  await capture('02-owner');
+                  await page.getByLabel('الاسم بالكامل').fill('QA Browser Owner');
+                  await page.getByPlaceholder('10 أحرف على الأقل').fill('qa-password-123');
+                  await page.getByLabel('تأكيد كلمة المرور').fill('qa-password-123');
+                  await click('متابعة');
+                  await capture('03-industry');
+                  await page.getByRole('button',{name:/صالون \/ Barbershop/}).click();
+                  await page.getByLabel('اسم المنشأة').fill('QA Salon');
+                  await click('متابعة');
+                  await capture('04-apps');
+                  await click('متابعة');
+                  await capture('05-review');
+                  assert.equal(await page.getByRole('button',{name:'إرسال رمز التحقق'}).count(),0);
+                  assert.deepEqual(signupCalls,[]);
+                  await click('إنشاء الحساب');
+                  await page.getByText('qa-browser-owner',{exact:true}).waitFor();
+                  await capture('06-success');
+                  assert.equal(submissions.length,1);
+                  assert.deepEqual(signupCalls,['/api/public/signup/complete']);
+                  assert.equal(submissions[0].industry,'salon');
+                  assert.equal(submissions[0].phone,'01012345678');
+                  assert.ok(!Object.hasOwn(submissions[0],'otp'));
+                  console.log('PASS '+mode+' '+width+'px registration UI, semantic palette, contrast and mocked signup');
+                } finally { await context.close(); }
+              }
+            } finally { await browser.close(); }
+          })().catch(error=>{console.error(error);process.exitCode=1});
+          JS
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: onboarding-drvo-palette-evidence
+          retention-days: 7
+          path: browser-evidence/
+          if-no-files-found: ignore
+      - name: Stop isolated app
+        if: always()
+        run: |
+          if test -f "$RUNNER_TEMP/onboarding-next.pid"; then
+            kill "$(cat "$RUNNER_TEMP/onboarding-next.pid")" || true
+          fi

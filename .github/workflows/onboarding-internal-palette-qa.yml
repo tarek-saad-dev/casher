@@ -1,0 +1,221 @@
+name: Onboarding — Internal palette QA
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+jobs:
+  components:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'fix/onboarding-drvo-brand-contrast'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Refuse DB credentials and create runner-only fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          for f in .env .env.local .env.production .env.production.local; do
+            test ! -e "$f" || exit 1
+          done
+          for k in DB_SERVER DB_DATABASE DB_PASSWORD CLOUD_DB_SERVER CLOUD_DB_NAME CLOUD_DB_PASSWORD; do
+            test -z "${!k:-}" || exit 1
+          done
+          # Replace only the runner's public /start page; never change auth gates,
+          # real setup routes, or checked-in application source.
+          cat > src/app/start/page.tsx <<'TSX'
+          'use client';
+          import { useEffect,useState } from 'react';
+          import ServiceTemplatePicker from '@/components/onboarding/ServiceTemplatePicker';
+          import SmartTeamSetup from '@/components/onboarding/SmartTeamSetup';
+          import InlineSetupForm from '@/components/onboarding/InlineSetupForm';
+          import OnboardingIdentityForm from '@/components/onboarding/OnboardingIdentityForm';
+          import OperatingSetup from '@/components/onboarding/OperatingSetup';
+          import LaunchSetup from '@/components/onboarding/LaunchSetup';
+          import { SessionContext } from '@/components/session/SessionProvider';
+          import TrainingExperience from '@/components/onboarding/TrainingExperience';
+          export default function Fixture(){
+            const [ready,setReady]=useState(false);
+            const [mode,setMode]=useState('catalog');
+            useEffect(()=>{setMode(new URLSearchParams(window.location.search).get('view')||'catalog');setReady(true)},[]);
+            if(!ready)return null;
+            const saved=async()=>{};
+            const fixtureSession={loading:false,user:{UserID:1},hasActiveDay:true,hasActiveShift:false,hasOpenShift:false,defaultShiftId:1,refresh:async()=>null,openMyShift:async()=>{}} as React.ContextType<typeof SessionContext>;
+            const content=mode==='training'?<TrainingExperience apps={['pos','booking','queue','treasury']}/>:mode==='branch'?<InlineSetupForm step="branch" onSaved={saved}/>:mode==='identity'?<OnboardingIdentityForm/>:mode==='operating'?<OperatingSetup/>:mode==='launch'?<LaunchSetup onSaved={saved}/>:mode==='team'?<SmartTeamSetup employees={[{EmpID:1,EmpName:'Ahmed Hassan',Job:'Barber'},{EmpID:2,EmpName:'Mona Ali',Job:'Reception'}]} payrollAvailable={false} bookingAvailable={false} onSaved={saved}/>:<ServiceTemplatePicker existingNames={['حلاقة شعر']} onSaved={saved}/>;
+            return <main dir="rtl" className="min-h-0 flex-1 overflow-y-auto bg-background p-3 text-foreground sm:p-8"><div data-qa-onboarding="true" className="mx-auto max-w-4xl"><SessionContext.Provider value={fixtureSession}>{content}</SessionContext.Provider></div></main>;
+          }
+          TSX
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build
+      - name: Install isolated Chromium
+        run: |
+          npm install --prefix "$RUNNER_TEMP/onboarding-browser" --no-audit --no-fund playwright@1.58.2
+          "$RUNNER_TEMP/onboarding-browser/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Start loopback-only fixture
+        run: |
+          npm run start -- --hostname 127.0.0.1 --port 5500 > "$RUNNER_TEMP/onboarding-next.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/onboarding-next.pid"
+          for i in {1..60}; do
+            if curl --fail --silent --max-time 3 http://127.0.0.1:5500/start >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/onboarding-next.log"
+          exit 1
+      - name: Exercise real components at mobile and desktop widths
+        shell: bash
+        run: |
+          mkdir -p component-evidence
+          export NODE_PATH="$RUNNER_TEMP/onboarding-browser/node_modules"
+          node <<'JS'
+          const { chromium } = require('playwright');
+          const assert = require('node:assert/strict');
+          (async()=>{
+            const browser=await chromium.launch({headless:true});
+            try {
+              for(const theme of ['light','dark']) for(const width of [390,1440]){
+                for(const mode of ['catalog','team','training','branch','identity','operating','launch']){
+                  const context=await browser.newContext({viewport:{width,height:900},locale:'ar-EG',colorScheme:theme,serviceWorkers:'block'});
+                  try {
+                    await context.addCookies([{name:'theme-mode',value:theme,url:'http://127.0.0.1:5500'},{name:'theme-palette',value:'drvo',url:'http://127.0.0.1:5500'}]);
+                    await context.addInitScript(theme=>localStorage.setItem('drvo-theme-v2',JSON.stringify({mode:theme,palette:'drvo'})),theme);
+                    const page=await context.newPage();
+                    const writes=[];
+                    await page.route('**/*',async route=>{
+                      const req=route.request(),url=new URL(req.url());
+                      if(url.origin!=='http://127.0.0.1:5500')return route.abort();
+                      if(url.pathname.startsWith('/api/')){
+                        if(req.method()!=='GET')writes.push({path:url.pathname,method:req.method(),body:req.postDataJSON()});
+                        if(mode==='catalog'&&url.pathname==='/api/tenant/onboarding/setup-data'&&req.method()==='POST')
+                          return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({ok:true,created:1,existing:0})});
+                        if(req.method()==='GET'){
+                          const json=body=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(body)});
+                          if(url.pathname==='/api/tenant/onboarding/setup-data')return json({editable:true,branch:{name:'QA Branch',address:'QA Address',phone:'01012345678',defaultOpenTime:'10:00',defaultCloseTime:'22:00'},services:[],employees:[]});
+                          if(url.pathname==='/api/tenant/brand')return json({brand:{tenantId:'qa',displayName:'QA Salon',logoUrl:null,primaryColor:'#74536E',accentColor:'#1A7B80',receiptFooter:'QA receipt',phone:null,address:null,timezone:'Africa/Cairo',publicBookingOrigins:[],revision:1}});
+                          if(url.pathname==='/api/tenant/onboarding/operating')return json({ok:true,branchName:'QA Branch',apps:['pos','booking','queue','treasury'],booking:{enabled:false,slotIntervalMinutes:15,minNoticeMinutes:30,maxBookingDaysAhead:14},publicBookingEnabled:false});
+                          if(url.pathname==='/api/payment-methods')return json([{ID:1,Name:'Cash'}]);
+                        }
+                        return route.fulfill({status:401,contentType:'application/json',body:'{}'});
+                      }
+                      return route.continue();
+                    });
+                    const response=await page.goto('http://127.0.0.1:5500/start?view='+mode,{waitUntil:'load'});
+                    assert.equal(response.status(),200);
+                    const click=name=>page.getByRole('button',{name,exact:true}).click();
+                    async function capture(name){
+                      await page.evaluate(()=>document.fonts.ready);
+                      await page.waitForFunction(theme=>document.documentElement.dataset.themeMode===theme,theme);
+                      const audit=await page.evaluate(()=>{
+                        const root=document.querySelector('[data-qa-onboarding]');
+                        const canvas=document.createElement('canvas');canvas.width=canvas.height=1;
+                        const ctx=canvas.getContext('2d',{willReadFrequently:true});
+                        const pixel=css=>{ctx.clearRect(0,0,1,1);ctx.fillStyle=css;ctx.fillRect(0,0,1,1);return [...ctx.getImageData(0,0,1,1).data];};
+                        const token=name=>pixel(getComputedStyle(document.documentElement).getPropertyValue(name).trim());
+                        const flatten=(front,back)=>front.slice(0,3).map((v,i)=>v*(front[3]/255)+back[i]*(1-front[3]/255)).concat(255);
+                        const bg=el=>{const layers=[];for(let p=el;p;p=p.parentElement)layers.push(pixel(getComputedStyle(p).backgroundColor));return layers.reverse().reduce((back,front)=>flatten(front,back),[255,255,255,255]);};
+                        const luminance=rgb=>rgb.slice(0,3).map(v=>v/255).map(v=>v<=.04045?v/12.92:((v+.055)/1.055)**2.4).reduce((sum,v,i)=>sum+v*[.2126,.7152,.0722][i],0);
+                        const contrast=(a,b)=>{const l=[luminance(a),luminance(b)].sort((x,y)=>y-x);return(l[0]+.05)/(l[1]+.05);};
+                        const visible=el=>el.getClientRects().length>0&&el.checkVisibility({visibilityProperty:true});
+                        const problems=[],fields=[];
+                        for(const el of root.querySelectorAll('h1,h2,h3,p,span,b,div,label,button,a,input,select,textarea')){
+                          if(!visible(el)||el.closest('button:disabled,fieldset:disabled,input:disabled,select:disabled,textarea:disabled'))continue;
+                          const isField=el.matches('input:not([type=checkbox]):not([type=radio]):not([type=color]),select,textarea');
+                          const hasText=[...el.childNodes].some(n=>n.nodeType===Node.TEXT_NODE&&n.textContent.trim());
+                          if(!hasText&&!isField)continue;
+                          // The customer's color-preview glyph is not an app UI token.
+                          if(el.style.color)continue;
+                          const style=getComputedStyle(el),back=bg(el);
+                          const ratio=contrast(flatten(pixel(style.color),back),back);
+                          const minimum=parseFloat(style.fontSize)>=24||(parseFloat(style.fontSize)>=18.66&&Number(style.fontWeight)>=700)?3:4.5;
+                          if(ratio<minimum)problems.push({text:(el.innerText||el.getAttribute('placeholder')||el.tagName).slice(0,70),ratio:Number(ratio.toFixed(2)),color:style.color,bg:back});
+                          if(isField){const actual=pixel(style.backgroundColor);if(!['--surface','--card','--muted','--background'].some(k=>JSON.stringify(token(k))===JSON.stringify(actual)))fields.push({label:el.getAttribute('aria-label')||el.tagName,actual});}
+                        }
+                        return {problems,fields};
+                      });
+                      assert.deepEqual(audit.problems,[],'Contrast '+theme+' / '+mode+' / '+name+': '+JSON.stringify(audit.problems));
+                      assert.deepEqual(audit.fields,[],'Unexpected field colors '+JSON.stringify(audit.fields));
+                      const overflow=await page.evaluate(()=>Math.max(document.documentElement.scrollWidth,document.body.scrollWidth)-document.documentElement.clientWidth);
+                      assert.ok(overflow<=2,'Page overflow '+width+' / '+mode+' / '+name+': '+overflow);
+                      await page.screenshot({path:'component-evidence/'+theme+'-'+width+'-'+mode+'-'+name+'.png',fullPage:true});
+                    }
+                    if(mode==='catalog'){
+                      const existing=page.getByRole('checkbox',{name:/حلاقة شعر/});
+                      await existing.waitFor();
+                      assert.ok(await existing.isDisabled());
+                      await click('تحديد كل الخدمات المتاحة');
+                      const save=page.getByRole('button',{name:'حفظ 5 خدمات مختارة'});
+                      assert.ok(await save.isDisabled());
+                      for(const name of ['حلاقة ذقن','تصفيف شعر','تنظيف بشرة','حمام زيت','بروتين شعر'])
+                        await page.getByLabel('سعر '+name).fill('100');
+                      await page.getByLabel('سعر حلاقة ذقن').fill('100.123');
+                      assert.ok(await save.isDisabled());
+                      await page.getByLabel('سعر حلاقة ذقن').fill('100');
+                      await capture('ready');
+                      await save.click();
+                      await page.waitForFunction(()=>[...document.querySelectorAll('button')].some(b=>b.textContent.includes('حفظ 0 خدمات مختارة')));
+                      assert.equal(writes.length,5);
+                      assert.ok(writes.every(w=>w.body.action==='service'&&w.body.price===100&&w.body.name!=='حلاقة شعر'));
+                      await capture('saved');
+                    }else if(mode==='team'){
+                      await page.getByText('Ahmed Hassan',{exact:true}).waitFor();
+                      await page.getByRole('searchbox',{name:'بحث في الفريق'}).fill('reception');
+                      await page.getByText('Mona Ali',{exact:true}).waitFor();
+                      assert.equal(await page.getByText('Ahmed Hassan',{exact:true}).count(),0);
+                      await capture('filter');
+                      await page.getByRole('searchbox',{name:'بحث في الفريق'}).fill('');
+                      await page.getByText('Ahmed Hassan',{exact:true}).waitFor();
+                      assert.equal(writes.length,0);
+                      await capture('roster');
+                    }else if(mode==='training'){
+                      await click('حفظ العميل التدريبي');
+                      await page.getByRole('radio',{name:'بطاقة'}).check();
+                      await capture('sale');
+                      await click('حفظ فاتورة تدريبية');
+                      await click('تأكيد الموعد التدريبي');
+                      await click('إضافة للطابور التدريبي');
+                      await page.getByLabel('النقد الذي عدّيته (ج.م)').fill('200');
+                      await click('مطابقة الخزنة');
+                      await page.getByRole('alert').filter({hasText:'راجع النقد الموجود'}).waitFor();
+                      await page.getByLabel('النقد الذي عدّيته (ج.م)').fill('0');
+                      await click('مطابقة الخزنة');
+                      await click('قفل الوردية التدريبية');
+                      await page.getByText('خلصت التدريب!',{exact:true}).waitFor();
+                      await capture('finished');
+                      assert.equal(writes.length,0);
+                    }
+                    if(mode==='branch'){await page.getByLabel('عنوان الفرع').waitFor();await capture('branch');}
+                    if(mode==='identity'){await page.getByText('معاينة الهوية',{exact:true}).waitFor();await capture('identity');}
+                    if(mode==='operating'){await page.getByText('حفظ إعدادات المواعيد',{exact:true}).waitFor();await capture('operating');}
+                    if(mode==='launch'){await page.getByRole('button',{name:'فتح وردية',exact:true}).waitFor();await capture('launch');}
+                    console.log('PASS '+theme+' '+width+'px '+mode+' component palette fixture');
+                  }finally{await context.close()}
+                }
+              }
+            }finally{await browser.close()}
+          })().catch(error=>{console.error(error);process.exitCode=1});
+          JS
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: onboarding-internal-palette-evidence
+          path: component-evidence/
+          retention-days: 7
+          if-no-files-found: ignore
+      - name: Stop fixture
+        if: always()
+        run: |
+          if test -f "$RUNNER_TEMP/onboarding-next.pid"; then
+            kill "$(cat "$RUNNER_TEMP/onboarding-next.pid")" || true
+          fi

@@ -14,12 +14,12 @@ export default async function SetupLayout({ children }: { children: React.ReactN
     redirect('/403');
   }
   if (!(await isPublicSalonSetupTenant(auth.tenantId, auth.tenant.tenantCode))) redirect('/403');
-  return <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[#eef2f5]">
-    <nav dir="rtl" aria-label="اختصارات تجهيز المنشأة" className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-200 bg-white px-4 py-2 text-xs text-[#102433]">
-      <Link href="/setup" className="font-black text-[#087e7a]">رحلة التجهيز</Link>
-      <Link href="/setup/identity" className="rounded-lg border border-slate-200 px-3 py-1.5 font-bold">هوية المنشأة</Link>
-      <Link href="/setup/operating" className="rounded-lg border border-slate-200 px-3 py-1.5 font-bold">إعدادات التشغيل</Link>
-      <Link href="/setup/training" className="rounded-lg border border-teal-200 bg-teal-50 px-3 py-1.5 font-bold text-teal-800">مساحة التدريب</Link>
+  return <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
+    <nav dir="rtl" aria-label="اختصارات تجهيز المنشأة" className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border bg-card px-4 py-2 text-xs text-foreground">
+      <Link href="/setup" className="font-black text-primary">رحلة التجهيز</Link>
+      <Link href="/setup/identity" className="rounded-lg border border-border px-3 py-1.5 font-bold">هوية المنشأة</Link>
+      <Link href="/setup/operating" className="rounded-lg border border-border px-3 py-1.5 font-bold">إعدادات التشغيل</Link>
+      <Link href="/setup/training" className="rounded-lg border border-primary/30 bg-primary-soft px-3 py-1.5 font-bold text-foreground">مساحة التدريب</Link>
     </nav>
     {children}
   </div>;
