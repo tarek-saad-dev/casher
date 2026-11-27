@@ -14,6 +14,11 @@ on:
       - 'src/lib/__tests__/cutClubMemberOtp.test.ts'
       - 'src/lib/__tests__/cutClubLegacyPublicQuarantine.test.ts'
       - 'src/lib/__tests__/cutClubMemberFlowIsolated.test.ts'
+      - 'src/lib/__tests__/cutClubRewardSettlement.test.ts'
+      - 'src/lib/cut-club/rewardSettlement.ts'
+      - 'src/lib/cut-club/sqlRewardPurchasePort.ts'
+      - 'src/lib/cut-club/memberRewards.ts'
+      - 'db/drvo-migrations/027-cut-club-reward-command/**'
       - 'scripts/cut-club/sql/member-wallet-staging-schema.sql'
       - '.github/workflows/cut-club-member-wallet.yml'
 
@@ -37,6 +42,7 @@ jobs:
           src/lib/__tests__/cutClubMemberOtp.test.ts
           src/lib/__tests__/cutClubLegacyPublicQuarantine.test.ts
           src/lib/__tests__/cutClubMemberFlowIsolated.test.ts
+          src/lib/__tests__/cutClubRewardSettlement.test.ts
       - name: Verify staging migration cannot be applied silently to production
         run: |
           node - <<'NODE'
