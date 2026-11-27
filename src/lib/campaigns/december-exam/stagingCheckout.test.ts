@@ -15,7 +15,7 @@ describe('December staged checkout integration source contract (not SQL acceptan
  });
  it('keeps the quote restricted to staging, authoritative catalog, and verified identity',()=>{
   const s=read('src/lib/campaigns/december-exam/stagingCheckout.ts');
-  for(const x of ["DECEMBER_EXAM_STAGING_CHECKOUT_ENABLED!=='true'","DB_NAME()=N'last132_agent'","SUSER_SNAME()=N'drvo_agent'","DECEMBER_ALREADY_REDEEMED","p.SPrice1","minor(item.sPrice)!==price","DECEMBER_CLUB_POLICY_REQUIRED","INSERT dbo.CutOfferRedemption"])expect(s).toContain(x);
+  for(const x of ["DECEMBER_EXAM_STAGING_CHECKOUT_ENABLED!=='true'","DB_NAME()=N'last132_agent'","SUSER_SNAME()=N'drvo_agent'","DECEMBER_ALREADY_REDEEMED","p.SPrice1","minor(item.sPrice)!==price","a.LinkStatus=\'ACTIVE\'","l.IsActive=1","clubActive:f.ClubLinked===1","INSERT dbo.CutOfferRedemption"])expect(s).toContain(x);
  });
  it('permits zero payment only after verified campaign and zero-payment method guards',()=>{
   const s=read('src/app/api/sales/route.ts');
