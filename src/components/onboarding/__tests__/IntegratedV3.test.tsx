@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import '@testing-library/jest-dom/vitest';
 import PublicSignupFlow from '@/components/public/PublicSignupFlow';
 import TrainingExperience from '@/components/onboarding/TrainingExperience';
+import ServiceTemplatePicker from '@/components/onboarding/ServiceTemplatePicker';
 
 afterEach(()=>{cleanup();vi.unstubAllGlobals();vi.restoreAllMocks();});
 
@@ -95,5 +96,29 @@ describe('V3 training interface',()=>{
     expect(storage).not.toHaveBeenCalled();
     click('إعادة التدريب');
     expect(screen.getByRole('button',{name:'حفظ العميل التدريبي'})).toBeInTheDocument();
+  });
+});
+
+describe('V3 service template picker',()=>{
+  it('excludes existing services from bulk selection and waits for valid prices before saving',async()=>{
+    const onSaved=vi.fn(async()=>{});
+    const request=vi.fn(async (_url:string,_opts?:RequestInit)=>new Response(JSON.stringify({ok:true}),{status:200}));
+    vi.stubGlobal('fetch',request);
+    render(<ServiceTemplatePicker existingNames={['حلاقة شعر']} onSaved={onSaved}/>);
+    const existing=screen.getByRole('checkbox',{name:/حلاقة شعر/});
+    expect(existing).toBeDisabled();
+    fireEvent.click(screen.getByRole('button',{name:'تحديد كل الخدمات المتاحة'}));
+    expect(existing).not.toBeChecked();
+    expect(screen.getByRole('button',{name:'حفظ 5 خدمات مختارة'})).toBeDisabled();
+    for(const name of ['حلاقة ذقن','تصفيف شعر','تنظيف بشرة','حمام زيت','بروتين شعر']){
+      fireEvent.change(screen.getByLabelText('سعر '+name),{target:{value:'100'}});
+    }
+    const save=screen.getByRole('button',{name:'حفظ 5 خدمات مختارة'});
+    expect(save).toBeEnabled();
+    fireEvent.click(save);
+    await waitFor(()=>expect(onSaved).toHaveBeenCalledTimes(1));
+    expect(request).toHaveBeenCalledTimes(5);
+    const payloads=request.mock.calls.map(call=>JSON.parse(String(call[1]?.body)));
+    expect(payloads.every(row=>row.action==='service'&&row.price===100&&row.name!=='حلاقة شعر')).toBe(true);
   });
 });
