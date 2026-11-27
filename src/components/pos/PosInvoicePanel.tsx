@@ -3,6 +3,7 @@
 import { Save, Loader2, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
+import DecemberReception from '@/components/pos/DecemberReception';
 import DecemberGroupLookup from '@/components/pos/DecemberGroupLookup';
 import DecemberEligibilityPreview from '@/components/pos/DecemberEligibilityPreview';
 import CartPanel from '@/components/pos/CartPanel';
@@ -58,6 +59,7 @@ export default function PosInvoicePanel({
 
   return (
     <div className="flex flex-col gap-3 lg:gap-4">
+      {process.env.NEXT_PUBLIC_DECEMBER_EXAM_POS_PREVIEW_ENABLED === 'true' && state.customer && <DecemberReception key={state.customer.ClientID} clientId={state.customer.ClientID}/>}
       {process.env.NEXT_PUBLIC_DECEMBER_EXAM_POS_PREVIEW_ENABLED === "true" && state.customer && <DecemberEligibilityPreview key={state.customer.ClientID} clientId={state.customer.ClientID} />}
       {decemberCheckout && <div className="rounded-lg border p-3 text-sm space-y-2" dir="rtl">
         <strong>خصم امتحان ديسمبر — اختبار Staging</strong>
