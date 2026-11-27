@@ -23,6 +23,10 @@ async function main(){
  INSERT dbo.TblPro(ProID,TenantId,CatID,SPrice1) VALUES(9,@t,1,200),(11,@t,1,100),(99,@t,2,50);
  INSERT dbo.TblClient(ClientID,TenantId,Mobile,Name) VALUES(101,@t,'01000000101',N'Fixture owner'),(102,@t,'01000000102',N'Fixture friend'),(103,@t,'01000000103',N'Fixture old customer'),(104,@t,'01000000104',N'Fixture zero'),(105,@t,'01000000105',N'Fixture other');
  `);
+ // Apply the actual prerequisite profile migration in its original SQL batches.
+ for(const batch of fs.readFileSync('db/drvo-migrations/025-customer-education-occupation-profile/schema.sql','utf8').split(/^GO\s*$/mi)){
+  if(batch.trim())await pool.request().batch(batch);
+ }
  for(const name of ['027-cut-offer-campaign','028-cut-education-catalog','029-cut-offer-operations']){
  await pool.request().query(fs.readFileSync('db/drvo-migrations/'+name+'/schema.sql','utf8'));
  }
