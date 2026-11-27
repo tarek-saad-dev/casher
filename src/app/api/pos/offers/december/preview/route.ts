@@ -1,3 +1,4 @@
+import {decemberPhoneSql,decemberCanonicalPhoneSql} from '@/lib/campaigns/december-exam/phoneSql';
 import { NextRequest,NextResponse } from 'next/server';
 import { requirePageAccess,isAuthResult } from '@/lib/api-auth';
 import { getPool,sql } from '@/lib/db';
@@ -24,8 +25,8 @@ export async function GET(req:NextRequest){
  CASE WHEN EXISTS(SELECT 1 FROM dbo.CutOfferRedemption d WHERE d.TenantId=c.TenantId AND d.CampaignId=c.CampaignId AND d.ClientId=@client) THEN 1 ELSE 0 END Used,
  (SELECT COUNT(*) FROM dbo.TblinvServHead h WHERE h.ClientID=@client AND h.invType=N'مبيعات' AND ISNULL(h.isActive,N'no')=N'no') PriorSales,
  (SELECT COUNT(*) FROM dbo.TblClient x
- CROSS APPLY(SELECT REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(LTRIM(RTRIM(x.Mobile)),N' ',N''),N'-',N''),N'+',N''),N'(',N''),N')',N'') clean) m
- WHERE x.TenantId=@tenant AND CASE WHEN LEN(m.clean)=11 THEN '+2'+m.clean WHEN LEN(m.clean)=14 AND LEFT(m.clean,2)='00' THEN '+'+SUBSTRING(m.clean,3,12) ELSE '+'+m.clean END=p.PhoneNormalized) PhoneMatches,
+ CROSS APPLY(SELECT ${decemberPhoneSql('x.Mobile')} AS clean) m
+ WHERE x.TenantId=@tenant AND ${decemberCanonicalPhoneSql}=p.PhoneNormalized) PhoneMatches,
  CASE WHEN p.StudentVerifiedAtUtc IS NOT NULL THEN 1 ELSE 0 END StudentVerified,
  CASE WHEN EXISTS(SELECT 1 FROM dbo.CutClubMemberAccount a JOIN dbo.TblClientLoyalty l ON l.ClientID=a.LegacyClientID AND l.IsActive=1
  WHERE a.TenantId=@tenant AND a.LegacyClientID=@client AND a.LinkStatus='ACTIVE' AND a.PhoneNormalized=SUBSTRING(p.PhoneNormalized,2,12) AND a.LinkApprovedAtUtc IS NOT NULL AND a.LinkApprovedBy IS NOT NULL) THEN 1 ELSE 0 END ClubLinked,
