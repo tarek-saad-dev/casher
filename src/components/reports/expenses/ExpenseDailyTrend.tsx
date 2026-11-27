@@ -72,7 +72,7 @@ export default function ExpenseDailyTrend({
                 <tr
                   key={day.invDate}
                   className={`border-b border-border hover:bg-muted/50 transition-colors ${
-                    isHighest ? 'bg-amber-500/10' : ''
+                    isHighest ? 'bg-warning-soft' : ''
                   }`}
                 >
                   <td className="py-2 px-2 text-sm">
@@ -81,7 +81,7 @@ export default function ExpenseDailyTrend({
                       month: 'short',
                     })}
                   </td>
-                  <td className={`py-2 px-2 text-sm font-medium ${hasData ? 'text-red-600' : 'text-muted-foreground'}`}>
+                  <td className={`py-2 px-2 text-sm font-medium ${hasData ? 'text-destructive' : 'text-muted-foreground'}`}>
                     {hasData ? formatCurrency(day.Amount) : '—'}
                   </td>
                   <td className="py-2 px-2 text-sm text-muted-foreground">
@@ -98,7 +98,7 @@ export default function ExpenseDailyTrend({
                         </div>
                       )}
                       {isHighest && (
-                        <AlertCircle className="h-4 w-4 text-amber-500" />
+                        <AlertCircle className="h-4 w-4 text-warning" />
                       )}
                     </div>
                   </td>

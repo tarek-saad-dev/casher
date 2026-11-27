@@ -54,7 +54,7 @@ function DrawerContent({
       <DialogPrimitive.Popup
         data-slot="drawer-content"
         className={cn(
-          "fixed z-50 flex h-full w-full flex-col bg-card text-sm text-foreground shadow-xl outline-none duration-200 data-open:animate-in data-closed:animate-out",
+          "fixed z-50 flex h-dvh min-h-0 w-full flex-col bg-card text-sm text-foreground shadow-xl outline-none duration-200 data-open:animate-in data-closed:animate-out",
           width,
           SIDE_CLASS[side],
           className,
@@ -80,7 +80,7 @@ function DrawerHeader({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="drawer-header"
-      className={cn("flex flex-col gap-1 border-b border-border px-5 py-4 pe-12", className)}
+      className={cn("flex shrink-0 flex-col gap-1 border-b border-border px-5 py-4 pe-12", className)}
       {...props}
     />
   )
@@ -94,7 +94,7 @@ function DrawerFooter({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="drawer-footer"
-      className={cn("flex flex-wrap items-center justify-end gap-2 border-t border-border px-5 py-3", className)}
+      className={cn("flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-border px-5 py-3", className)}
       {...props}
     />
   )

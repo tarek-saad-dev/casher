@@ -17,7 +17,7 @@ interface ExpensesKpiCardsProps {
 export default function ExpensesKpiCards({ summary, loading }: ExpensesKpiCardsProps) {
   if (loading) {
     return (
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {[...Array(7)].map((_, i) => (
           <div key={i} className="p-4 bg-card border border-border rounded-lg animate-pulse">
             <div className="h-4 bg-muted rounded w-24 mb-2"></div>
@@ -36,18 +36,18 @@ export default function ExpensesKpiCards({ summary, loading }: ExpensesKpiCardsP
     <div className="space-y-4">
       {/* Warning Card for Uncategorized Expenses */}
       {summary.uncategorizedCount > 0 && (
-        <div className="p-4 bg-amber-500/10 border-2 border-amber-500 rounded-lg">
+        <div className="p-4 bg-warning-soft border-2 border-warning/40 rounded-lg">
           <div className="flex items-start gap-3">
-            <AlertCircle className="h-6 w-6 text-amber-500 flex-shrink-0 mt-0.5" />
+            <AlertCircle className="h-6 w-6 text-warning flex-shrink-0 mt-0.5" />
             <div className="flex-1">
-              <h3 className="font-bold text-amber-900 dark:text-amber-100 mb-1">
+              <h3 className="font-bold text-warning mb-1">
                 ⚠️ تحذير: مصروفات تحتاج تصنيف
               </h3>
-              <p className="text-sm text-amber-800 dark:text-amber-200 mb-2">
+              <p className="text-sm text-warning mb-2">
                 يوجد <span className="font-bold">{formatArabicNumber(summary.uncategorizedCount)}</span> معاملة غير مصنفة بشكل واضح
                 بإجمالي <span className="font-bold">{formatCurrency(summary.uncategorizedAmount)}</span>
               </p>
-              <p className="text-xs text-amber-700 dark:text-amber-300">
+              <p className="text-xs text-warning">
                 المصروفات المصنفة كـ "تحويلات" أو "سلف" أو "مرتبات الصنايعية" أو "اقساط" تحتاج إلى مراجعة وتصنيف دقيق
               </p>
             </div>
@@ -55,14 +55,14 @@ export default function ExpensesKpiCards({ summary, loading }: ExpensesKpiCardsP
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
       {/* Total Expenses */}
       <div className="p-4 bg-card border border-border rounded-lg hover:shadow-md transition-shadow">
         <div className="flex items-center gap-2 mb-2">
-          <DollarSign className="h-5 w-5 text-red-500" />
+          <DollarSign className="h-5 w-5 text-destructive" />
           <span className="text-sm text-muted-foreground">إجمالي المصروفات</span>
         </div>
-        <div className="text-2xl font-bold text-red-600">
+        <div className="text-2xl font-bold text-destructive">
           {formatCurrency(summary.totalExpenses)}
         </div>
       </div>
@@ -70,7 +70,7 @@ export default function ExpensesKpiCards({ summary, loading }: ExpensesKpiCardsP
       {/* Transaction Count */}
       <div className="p-4 bg-card border border-border rounded-lg hover:shadow-md transition-shadow">
         <div className="flex items-center gap-2 mb-2">
-          <Receipt className="h-5 w-5 text-blue-500" />
+          <Receipt className="h-5 w-5 text-info" />
           <span className="text-sm text-muted-foreground">عدد المعاملات</span>
         </div>
         <div className="text-2xl font-bold">
@@ -82,7 +82,7 @@ export default function ExpensesKpiCards({ summary, loading }: ExpensesKpiCardsP
       {/* Average Transaction */}
       <div className="p-4 bg-card border border-border rounded-lg hover:shadow-md transition-shadow">
         <div className="flex items-center gap-2 mb-2">
-          <TrendingUp className="h-5 w-5 text-purple-500" />
+          <TrendingUp className="h-5 w-5 text-brand" />
           <span className="text-sm text-muted-foreground">متوسط المعاملة</span>
         </div>
         <div className="text-2xl font-bold">
@@ -93,7 +93,7 @@ export default function ExpensesKpiCards({ summary, loading }: ExpensesKpiCardsP
       {/* Average Daily Expense */}
       <div className="p-4 bg-card border border-border rounded-lg hover:shadow-md transition-shadow">
         <div className="flex items-center gap-2 mb-2">
-          <Calendar className="h-5 w-5 text-orange-500" />
+          <Calendar className="h-5 w-5 text-warning" />
           <span className="text-sm text-muted-foreground">متوسط يومي</span>
         </div>
         <div className="text-2xl font-bold">
@@ -107,7 +107,7 @@ export default function ExpensesKpiCards({ summary, loading }: ExpensesKpiCardsP
       {/* Top Category */}
       <div className="p-4 bg-card border border-border rounded-lg hover:shadow-md transition-shadow">
         <div className="flex items-center gap-2 mb-2">
-          <Tag className="h-5 w-5 text-green-500" />
+          <Tag className="h-5 w-5 text-success" />
           <span className="text-sm text-muted-foreground">أكبر فئة</span>
         </div>
         {summary.topCategory ? (
@@ -118,7 +118,7 @@ export default function ExpensesKpiCards({ summary, loading }: ExpensesKpiCardsP
             <div className="text-sm text-muted-foreground">
               {formatCurrency(summary.topCategory.Amount)}
             </div>
-            <div className="text-xs text-green-600 font-medium mt-1">
+            <div className="text-xs text-success font-medium mt-1">
               {formatPercentage(summary.topCategory.Percentage)}
             </div>
           </>
@@ -130,7 +130,7 @@ export default function ExpensesKpiCards({ summary, loading }: ExpensesKpiCardsP
       {/* Highest Spend Day */}
       <div className="p-4 bg-card border border-border rounded-lg hover:shadow-md transition-shadow">
         <div className="flex items-center gap-2 mb-2">
-          <AlertCircle className="h-5 w-5 text-amber-500" />
+          <AlertCircle className="h-5 w-5 text-warning" />
           <span className="text-sm text-muted-foreground">أكثر يوم صرفاً</span>
         </div>
         {summary.highestSpendDay ? (

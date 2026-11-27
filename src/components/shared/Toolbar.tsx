@@ -34,7 +34,7 @@ export default function Toolbar({ search, filters, actions, chips, onClearAll, c
     <div className={cn('space-y-2', className)}>
       <div className="flex flex-wrap items-center gap-2">
         {search ? (
-          <label className="relative min-w-[12rem] flex-1 sm:max-w-xs">
+          <label className="relative min-w-0 basis-full sm:basis-auto sm:min-w-[12rem] flex-1 sm:max-w-xs">
             <span className="sr-only">{search.placeholder ?? 'بحث'}</span>
             <Search className="pointer-events-none absolute start-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
             <input
@@ -47,7 +47,7 @@ export default function Toolbar({ search, filters, actions, chips, onClearAll, c
           </label>
         ) : null}
         {filters ? <div className="flex flex-wrap items-center gap-2">{filters}</div> : null}
-        {actions ? <div className="ms-auto flex flex-wrap items-center gap-2">{actions}</div> : null}
+        {actions ? <div className="ms-auto flex min-w-0 flex-wrap items-center gap-2">{actions}</div> : null}
       </div>
       {chips && chips.length > 0 ? (
         <div className="flex flex-wrap items-center gap-1.5">
@@ -69,7 +69,7 @@ export function FilterChip({ label, onRemove }: { label: ReactNode; onRemove: ()
   return (
     <span className="inline-flex items-center gap-1 rounded-full border border-primary/25 bg-primary-soft px-2.5 py-0.5 text-xs text-foreground">
       {label}
-      <button type="button" onClick={onRemove} className="rounded-full p-0.5 hover:bg-primary/15">
+      <button type="button" onClick={onRemove} className="inline-flex min-h-6 min-w-6 items-center justify-center rounded-full hover:bg-primary/15">
         <X className="size-3" aria-hidden />
         <span className="sr-only">إزالة الفلتر</span>
       </button>

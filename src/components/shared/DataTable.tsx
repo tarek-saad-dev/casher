@@ -115,7 +115,7 @@ export default function DataTable<T>({
 
   return (
     <div
-      className={cn('overflow-auto rounded-xl border border-border bg-card', className)}
+      className={cn('min-w-0 overflow-auto rounded-xl border border-border bg-card', className)}
       style={maxHeight ? { maxHeight } : undefined}
     >
       <table className="w-full border-collapse text-sm" aria-busy={loading || undefined}>
@@ -140,7 +140,7 @@ export default function DataTable<T>({
                     <button
                       type="button"
                       onClick={() => toggleSort(c.key)}
-                      className="inline-flex items-center gap-1 hover:text-foreground"
+                      className="inline-flex min-h-8 items-center gap-1 rounded-sm hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
                     >
                       {c.header}
                       {active ? (
@@ -172,9 +172,16 @@ export default function DataTable<T>({
                 <tr
                   key={rowKey(row, i)}
                   onClick={onRowClick ? () => onRowClick(row) : undefined}
+                  tabIndex={onRowClick ? 0 : undefined}
+                  onKeyDown={onRowClick ? (event) => {
+                    if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) {
+                      event.preventDefault();
+                      onRowClick(row);
+                    }
+                  } : undefined}
                   className={cn(
                     'border-b border-border last:border-0',
-                    onRowClick && 'cursor-pointer hover:bg-surface-muted',
+                    onRowClick && 'cursor-pointer hover:bg-surface-muted focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring',
                     rowClassName?.(row),
                   )}
                 >
