@@ -19,7 +19,7 @@ export default function ServiceTemplatePicker({existingNames,onSaved}:{existingN
   const chosen=rows.filter(r=>r.selected&&!saved(r));
   const available=rows.filter(r=>!saved(r));
   const existingCount=rows.length-available.length;
-  const valid=(r:Row)=>!!r.price.trim()&&Number.isFinite(Number(r.price))&&Number(r.price)>=0.01&&Number(r.price)<=1000000&&Number.isInteger(Number(r.duration))&&Number(r.duration)>=5&&Number(r.duration)<=600;
+  const valid=(r:Row)=>!!r.price.trim()&&Number.isFinite(Number(r.price))&&Number(r.price)>=0.01&&Number(r.price)<=1000000&&Math.abs(Number(r.price)*100-Math.round(Number(r.price)*100))<=1e-6&&Number.isInteger(Number(r.duration))&&Number(r.duration)>=5&&Number(r.duration)<=600;
   const readyCount=chosen.filter(valid).length;
   const allSelected=available.length>0&&chosen.length===available.length;
   function patch(index:number,change:Partial<Row>){setRows(old=>old.map((r,i)=>i===index?{...r,...change}:r));}
@@ -59,7 +59,7 @@ export default function ServiceTemplatePicker({existingNames,onSaved}:{existingN
       {r.status&&!saved(r)&&<p role="status" className="col-span-2 text-xs text-rose-700 sm:col-span-3">{r.status}</p>}
     </div>)}</div>
     <button type="button" disabled={busy||!chosen.length||readyCount!==chosen.length} onClick={()=>void save()} className="mt-4 flex min-h-11 items-center gap-2 rounded-xl bg-[#087e7a] px-4 py-2 text-sm font-bold text-white disabled:opacity-50">{busy?<Loader2 className="h-4 w-4 animate-spin"/>:<CheckCircle2 className="h-4 w-4"/>}{busy?'جاري الحفظ…':'حفظ '+chosen.length+' خدمات مختارة'}</button>
-    {chosen.length>readyCount&&<p className="mt-3 text-xs leading-6 text-amber-800">كمّل السعر والمدة الصحيحة لكل خدمة مختارة قبل الحفظ.</p>}
+    {chosen.length>readyCount&&<p className="mt-3 text-xs leading-6 text-amber-800">كمّل السعر (حتى منزلتين عشريتين) والمدة الصحيحة لكل خدمة مختارة قبل الحفظ.</p>}
     {notice&&<p role="status" className="mt-3 rounded-xl bg-slate-50 p-3 text-sm text-slate-700">{notice}</p>}
     </div>
   </section>;
