@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
+import { getStagingZeroPaymentMethod } from "@/lib/campaigns/december-exam/stagingZeroPayment";
 import { quoteDecember, DecemberCheckoutError, type DecemberClaim } from "@/lib/campaigns/december-exam/stagingCheckout";
 import { requirePageAccess, isAuthResult } from "@/lib/api-auth";
 import { getSession } from "@/lib/session";
@@ -138,12 +139,13 @@ export async function POST(req: NextRequest) {
     }
 
     let decemberClaim: DecemberClaim | undefined;
+    let decemberZeroMethod: number | undefined;
     let decemberQuote: Awaited<ReturnType<typeof quoteDecember>> | undefined;
     const requested = (body as CreateSalePayload & {decemberExam?: unknown}).decemberExam;
     if (requested !== undefined) {
       const auth = await requirePageAccess('/income/pos');
       if (!isAuthResult(auth)) return auth;
-      if (auth.tenantId !== sessionUser.TenantId || auth.activeBranchId !== branchId)
+      if (auth.tenantId.toLowerCase() !== String(sessionUser.TenantId).toLowerCase() || auth.activeBranchId !== branchId)
         throw new DecemberCheckoutError('DECEMBER_IDENTITY_REVIEW',403);
       if (!requested || typeof requested !== 'object' || !('expectedDiscountMinor' in requested) ||
         typeof requested.expectedDiscountMinor !== 'number' || !Number.isSafeInteger(requested.expectedDiscountMinor) ||
@@ -154,7 +156,7 @@ export async function POST(req: NextRequest) {
       if (decemberQuote.discountPiasters !== requested.expectedDiscountMinor)
         throw new DecemberCheckoutError('DECEMBER_QUOTE_CHANGED');
       if (decemberQuote.payablePiasters === 0)
-        throw new DecemberCheckoutError('DECEMBER_ZERO_PAYMENT_NOT_READY');
+        decemberZeroMethod = await getStagingZeroPaymentMethod();
       decemberClaim = {tenantId:auth.tenantId,expectedDiscountMinor:requested.expectedDiscountMinor};
     }
     // ──── Server-side totals from line items + optional header discount ────
@@ -217,7 +219,9 @@ export async function POST(req: NextRequest) {
       return isFinite(amt) && amt > 0 && Number.isInteger(pa.paymentMethodId * 1);
     });
 
-    if (activeAllocations.length === 0) {
+    if (decemberZeroMethod !== undefined && (rawAllocations.some(pa=>Number(pa.amount)!==0) || Number(body.payCash??0)!==0 || Number(body.payVisa??0)!==0 || decemberZeroMethod===splitCfg.clearingMethodId))
+      throw new DecemberCheckoutError('DECEMBER_ZERO_PAYMENT_INVALID',400);
+    if (activeAllocations.length === 0 && decemberZeroMethod === undefined) {
       return NextResponse.json(
         { error: "يجب إدخال مبلغ لطريقة دفع واحدة على الأقل" },
         { status: 400 },
@@ -256,9 +260,9 @@ export async function POST(req: NextRequest) {
 
     // For single payment: use the actual payment method
     // For split payment: use the internal clearing account in the header
-    const headerPaymentMethodId = isSplitPayment
+    const headerPaymentMethodId = decemberZeroMethod ?? (isSplitPayment
       ? splitCfg.clearingMethodId
-      : activeAllocations[0].paymentMethodId;
+      : activeAllocations[0].paymentMethodId);
 
     // PayCash / PayVisa backward-compat fields (best-effort by name lookup)
     const payCash = Math.max(0, body.payCash || 0);
