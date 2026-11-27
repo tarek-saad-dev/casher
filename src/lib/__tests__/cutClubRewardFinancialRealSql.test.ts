@@ -15,7 +15,7 @@ let pool:mssql.ConnectionPool;
 const owner=()=>({tenantId:tenant,legacyClientId:7,linkStatus:'ACTIVE'});
 const request=(idempotencyKey=key,opts:Record<string,unknown>={})=>({
   enabled:true,trustedTenantId:tenant,trustedBranchId:1,
-  cookieToken:'mocked-verified-session',
+  cookieToken:'A'.repeat(43),
   nowSeconds:Math.floor(Date.now()/1000),
   itemId:15,idempotencyKey,
   stageReady:()=>stageRewardPoolReady(pool),
@@ -62,6 +62,9 @@ describe.skipIf(!enabled)('CUT CLUB staged reward financial settlement in dispos
       DELETE FROM dbo.CutClubRewardCommand;
       DELETE FROM dbo.TblClientInventory;
       DELETE FROM dbo.TblLoyaltyPointLedger;
+      UPDATE dbo.CutClubMemberAccount SET AccessStatus='ENABLED',LinkStatus='ACTIVE',LegacyClientID=7;
+      UPDATE dbo.CutClubCustomerSession SET RevokedAtUtc=NULL,ExpiresAtUtc=DATEADD(MINUTE,10,SYSUTCDATETIME());
+      UPDATE dbo.TblClient SET Mobile='01000000000' WHERE ClientID=7;
       UPDATE dbo.TblClientLoyalty SET PointsBalance=500 WHERE ClientID=7;
       UPDATE dbo.TblLoyaltyStoreItem
         SET StockQuantity=1,ServiceID=39 WHERE ItemID=15;
@@ -122,6 +125,26 @@ describe.skipIf(!enabled)('CUT CLUB staged reward financial settlement in dispos
     mocked.session.mockResolvedValueOnce({tenantId:tenant,legacyClientId:null,linkStatus:'REVIEW_REQUIRED'});
     expect((await purchaseRewardWithVerifiedSession(request())).ok).toBe(false);
     expect(await financial()).toEqual({Coins:500,Stock:1,Vouchers:0,Movements:0,Commands:0});
+  });
+  it('rejects a stale preflight session when SQL moderation, revocation, expiry or phone changed',async()=>{
+    const original=await financial();
+    const changes=[
+      ["UPDATE dbo.CutClubMemberAccount SET AccessStatus='SUSPENDED'","UPDATE dbo.CutClubMemberAccount SET AccessStatus='ENABLED'"],
+      ["UPDATE dbo.CutClubCustomerSession SET RevokedAtUtc=SYSUTCDATETIME()","UPDATE dbo.CutClubCustomerSession SET RevokedAtUtc=NULL"],
+      ["UPDATE dbo.CutClubCustomerSession SET ExpiresAtUtc=DATEADD(SECOND,-1,SYSUTCDATETIME())","UPDATE dbo.CutClubCustomerSession SET ExpiresAtUtc=DATEADD(MINUTE,10,SYSUTCDATETIME())"],
+      ["UPDATE dbo.TblClient SET Mobile='01200000000' WHERE ClientID=7","UPDATE dbo.TblClient SET Mobile='01000000000' WHERE ClientID=7"],
+    ];
+    for(const [deny,restore] of changes){
+      await pool.request().query(deny);
+      try{
+        expect((await purchaseRewardWithVerifiedSession(request())).ok).toBe(false);
+        expect(await financial()).toEqual(original);
+      }finally{await pool.request().query(restore);}
+    }
+    expect((await purchaseRewardWithVerifiedSession(request())).ok).toBe(true);
+    await pool.request().query("UPDATE dbo.CutClubMemberAccount SET AccessStatus='SUSPENDED'");
+    expect((await purchaseRewardWithVerifiedSession(request())).ok).toBe(false);
+    expect(await financial()).toEqual({Coins:300,Stock:0,Vouchers:1,Movements:1,Commands:1});
   });
   it('disabled flag denies without starting a transaction',async()=>{
     process.env.CUT_CLUB_STAGING_REWARD_PURCHASE_ENABLED='false';

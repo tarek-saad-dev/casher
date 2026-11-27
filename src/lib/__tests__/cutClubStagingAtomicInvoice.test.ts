@@ -109,7 +109,7 @@ describe("CUT CLUB owner-approved live reward-service mappings (STAGING ONLY)", 
     const route=source("src/app/api/sales/[id]/route.ts");
     const src=source("src/lib/cut-club/stagingInvoiceClaim.ts");
     expect(route).toContain("await denyEditOfStagingClaimedSale(transaction, invID)");
-    expect(route).toContain("await reverseStagingClaimBeforeSaleDeletion(transaction, {");
+    expect(route).toMatch(/await reverseStagingClaimBeforeSaleDeletion\(transaction,\s*\{/);
     expect(route).toContain("return isPosPortEnabled()");
     expect(src).toContain("CUT_CLUB_CLAIMED_INVOICE_REQUIRES_CANCEL_REISSUE");
     expect(src).toContain("Status=N'REVERSED'");

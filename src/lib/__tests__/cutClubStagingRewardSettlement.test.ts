@@ -28,6 +28,8 @@ class FakeAtomicStore implements RewardPurchasePort {
   state: MemoryState = initial();
   attempts = 0;
   failLedger = false;
+  sessionChecks=0;
+  denySessionAt=Infinity;
   private tail: Promise<unknown> = Promise.resolve();
   async serializable<T>(work: (tx: RewardPurchaseTransaction) => Promise<T>): Promise<T> {
     const run = async (): Promise<T> => {
@@ -37,6 +39,7 @@ class FakeAtomicStore implements RewardPurchasePort {
         owner.tenantId === tenantId && owner.customerId === 42 && owner.branchId === 7;
       const tx: RewardPurchaseTransaction = {
         async lockMember(owner) { return ownerMatches(owner); },
+        async authorizeSession(owner) { return ownerMatches(owner)&&++thisFake.sessionChecks<thisFake.denySessionAt; },
         async findCommand(owner, key) {
           return ownerMatches(owner) ? pending.commands.get(key) ?? null : null;
         },
@@ -123,6 +126,15 @@ describe('CUT CLUB staged atomic idempotent purchase with current OTP sessions',
     stage.session.mockResolvedValueOnce({tenantId,legacyClientId:null,linkStatus:'REVIEW_REQUIRED'});
     expect((await purchaseRewardWithVerifiedSession(request(fake))).ok).toBe(false);
     expect(fake.attempts).toBe(0);
+  });
+  it('rechecks session inside the transaction and rolls back when it expires before commit',async()=>{
+    const fake=new FakeAtomicStore();
+    fake.denySessionAt=1;
+    expect((await purchaseRewardWithVerifiedSession(request(fake))).ok).toBe(false);
+    expect(fake.state).toEqual(initial());
+    fake.sessionChecks=0;fake.denySessionAt=2;
+    expect((await purchaseRewardWithVerifiedSession(request(fake))).ok).toBe(false);
+    expect(fake.state).toEqual(initial());
   });
   it("atomically spends Coins, decrements stock and issues one owned voucher", async () => {
     const fake = new FakeAtomicStore();

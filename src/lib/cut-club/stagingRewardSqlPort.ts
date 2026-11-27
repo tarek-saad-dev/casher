@@ -7,6 +7,7 @@
  * Tenant->legacy client/salon authority MUST be established by caller.
  */
 import 'server-only';
+import { createHash } from 'node:crypto';
 import sql from "mssql";
 import type {
   MemberBalanceForPurchase, RewardItemForPurchase,
@@ -55,6 +56,39 @@ export function createStageSqlRewardPurchasePort(pool: sql.ConnectionPool): Rewa
                 SELECT @result AS LockResult;
               `);
             return (r.recordset?.length ?? 0) === 1 && Number(r.recordset[0].LockResult) >= 0;
+          },
+
+          async authorizeSession(owner, token) {
+            if (typeof token !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(token)) return false;
+            // Same digest contract as memberOtp.digestToken. Never persist raw tokens.
+            const digest=createHash('sha256').update('cutclub-member-session-v1:').update(token).digest('hex');
+            const r=await new sql.Request(transaction)
+              .input('digest',sql.Char(64),digest)
+              .input('tenant',sql.UniqueIdentifier,owner.tenantId)
+              .input('clientId',sql.Int,owner.customerId)
+              .query<{AccountID:string}>(`
+                SELECT TOP(2) a.AccountID
+                FROM dbo.CutClubCustomerSession s WITH (HOLDLOCK)
+                JOIN dbo.CutClubMemberAccount a WITH (HOLDLOCK)
+                  ON a.AccountID=s.AccountID AND a.TenantId=s.TenantId
+                JOIN dbo.Tenant t WITH (HOLDLOCK) ON t.TenantId=a.TenantId
+                JOIN dbo.TblClient c WITH (HOLDLOCK)
+                  ON c.ClientID=a.LegacyClientID AND c.TenantId=a.TenantId
+                CROSS APPLY (SELECT REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                  LTRIM(RTRIM(c.Mobile)), ' ', ''), '-', ''), '+', ''), '(', ''), ')', '') AS MobileClean) cleaned
+                WHERE s.TokenDigest=@digest AND s.TenantId=@tenant
+                  AND s.RevokedAtUtc IS NULL AND s.ExpiresAtUtc>SYSUTCDATETIME()
+                  AND a.LinkStatus='ACTIVE' AND a.AccessStatus='ENABLED'
+                  AND a.LegacyClientID=@clientId
+                  AND t.Code='CASHER_BOOT' AND t.Status=N'active'
+                  AND a.PhoneNormalized=CASE
+                    WHEN LEN(cleaned.MobileClean)=11 AND cleaned.MobileClean LIKE '01[0125]%'
+                      THEN '2'+cleaned.MobileClean
+                    WHEN LEN(cleaned.MobileClean)=14 AND cleaned.MobileClean LIKE '00201[0125]%'
+                      THEN SUBSTRING(cleaned.MobileClean,3,12)
+                    ELSE cleaned.MobileClean END
+              `);
+            return r.recordset.length===1;
           },
 
           async findCommand(owner, idempotencyKey): Promise<StoredPurchaseCommand | null> {

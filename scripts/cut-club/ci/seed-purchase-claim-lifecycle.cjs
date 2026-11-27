@@ -3,6 +3,8 @@
  * Only disposable localhost SQL 2022 container on GitHub Actions; never a VPS.
  */
 const fs=require('node:fs');
+const {createHash}=require('node:crypto');
+const sessionDigest=createHash('sha256').update('cutclub-member-session-v1:').update('A'.repeat(43)).digest('hex');
 const sql=require('mssql');
 const host='127.0.0.1';
 const saPass=process.env.CUT_CLUB_REWARD_EPHEMERAL_SA_PASSWORD;
@@ -40,7 +42,9 @@ async function run(){
       ALTER ROLE db_owner ADD MEMBER drvo_agent;
       CREATE TABLE dbo.Tenant(TenantId UNIQUEIDENTIFIER NOT NULL PRIMARY KEY,
         Code NVARCHAR(64) NOT NULL,Status NVARCHAR(16) NOT NULL);
-      CREATE TABLE dbo.TblClient(ClientID INT NOT NULL PRIMARY KEY,TenantId UNIQUEIDENTIFIER NOT NULL);
+      CREATE TABLE dbo.TblClient(ClientID INT NOT NULL PRIMARY KEY,TenantId UNIQUEIDENTIFIER NOT NULL,Mobile NVARCHAR(32) NOT NULL DEFAULT '01000000000');
+      CREATE TABLE dbo.CutClubMemberAccount(AccountID UNIQUEIDENTIFIER NOT NULL PRIMARY KEY,TenantId UNIQUEIDENTIFIER NOT NULL,LegacyClientID INT NULL,PhoneNormalized NVARCHAR(20) NOT NULL,LinkStatus VARCHAR(24) NOT NULL,AccessStatus VARCHAR(16) NOT NULL);
+      CREATE TABLE dbo.CutClubCustomerSession(TokenDigest CHAR(64) NOT NULL PRIMARY KEY,TenantId UNIQUEIDENTIFIER NOT NULL,AccountID UNIQUEIDENTIFIER NOT NULL,RevokedAtUtc DATETIME2 NULL,ExpiresAtUtc DATETIME2 NOT NULL);
       CREATE TABLE dbo.TblBranch(BranchID INT NOT NULL PRIMARY KEY,BranchName NVARCHAR(100) NOT NULL);
       CREATE TABLE dbo.TblPro(ProID INT NOT NULL PRIMARY KEY,TenantId UNIQUEIDENTIFIER NOT NULL,isDeleted BIT NOT NULL DEFAULT(0));
       CREATE TABLE dbo.TblLoyaltyTier(TierID INT NOT NULL PRIMARY KEY,SortOrder INT NOT NULL,IsActive BIT NOT NULL);
@@ -66,7 +70,9 @@ async function run(){
         PointsBefore DECIMAL(18,2) NOT NULL,PointsAfter DECIMAL(18,2) NOT NULL,
         IdempotencyKey NVARCHAR(100) NOT NULL,CreatedAt DATETIME NOT NULL);
       INSERT dbo.Tenant VALUES('413d433e-f36b-1410-8820-009ec495c7e1','CASHER_BOOT','active');
-      INSERT dbo.TblClient VALUES(7,'413d433e-f36b-1410-8820-009ec495c7e1'),(8,'413d433e-f36b-1410-8820-009ec495c7e1');
+      INSERT dbo.TblClient(ClientID,TenantId) VALUES(7,'413d433e-f36b-1410-8820-009ec495c7e1'),(8,'413d433e-f36b-1410-8820-009ec495c7e1');
+      INSERT dbo.CutClubMemberAccount VALUES('11111111-1111-4111-8111-111111111111','413d433e-f36b-1410-8820-009ec495c7e1',7,'201000000000','ACTIVE','ENABLED');
+      INSERT dbo.CutClubCustomerSession VALUES('${sessionDigest}','413d433e-f36b-1410-8820-009ec495c7e1','11111111-1111-4111-8111-111111111111',NULL,DATEADD(MINUTE,10,SYSUTCDATETIME()));
       INSERT dbo.TblBranch VALUES(1,N'جليم – سابا باشا');
       INSERT dbo.TblPro VALUES(39,'413d433e-f36b-1410-8820-009ec495c7e1',0);
       INSERT dbo.TblLoyaltyTier VALUES(1,1,1);

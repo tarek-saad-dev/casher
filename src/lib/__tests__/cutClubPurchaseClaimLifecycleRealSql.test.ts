@@ -12,7 +12,7 @@ const tenant='413d433e-f36b-1410-8820-009ec495c7e1';
 const key='CUT_CLUB_LIFECYCLE_20261127_A';
 let pool:sql.ConnectionPool;
 const buy=()=>purchaseRewardWithVerifiedSession({
-  enabled:true,trustedTenantId:tenant,trustedBranchId:1,cookieToken:'test-session',
+  enabled:true,trustedTenantId:tenant,trustedBranchId:1,cookieToken:'A'.repeat(43),
   nowSeconds:Math.floor(Date.now()/1000),itemId:15,idempotencyKey:key,
   stageReady:()=>stageRewardPoolReady(pool),
   verifyOwnedCustomerAndBranch:async owner=>{
@@ -83,6 +83,9 @@ describe.skipIf(!enabled)('CUT CLUB purchase -> invoice -> cancellation -> reuse
       DELETE dbo.TblInventoryUsageLog; DELETE dbo.CutClubVoucherInvoiceClaim;
       DELETE dbo.TblinvServDetail; DELETE dbo.TblinvServHead;
       DELETE dbo.CutClubRewardCommand; DELETE dbo.TblClientInventory; DELETE dbo.TblLoyaltyPointLedger;
+      UPDATE dbo.CutClubMemberAccount SET AccessStatus='ENABLED',LinkStatus='ACTIVE',LegacyClientID=7;
+      UPDATE dbo.CutClubCustomerSession SET RevokedAtUtc=NULL,ExpiresAtUtc=DATEADD(MINUTE,10,SYSUTCDATETIME());
+      UPDATE dbo.TblClient SET Mobile='01000000000' WHERE ClientID=7;
       UPDATE dbo.TblClientLoyalty SET PointsBalance=500 WHERE ClientID=7;
       UPDATE dbo.TblLoyaltyStoreItem SET StockQuantity=1,ServiceID=39 WHERE ItemID=15;`);
   });

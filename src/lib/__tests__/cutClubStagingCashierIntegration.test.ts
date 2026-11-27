@@ -19,11 +19,11 @@ describe("CUT CLUB staging-only POS real invoice entrypoint", () => {
   });
   it("real POS cashier UI sends voucher with POST /api/sales only if staged, customer selected, new invoice", () => {
     const pos=source("src/app/income/pos/page.tsx");
-    expect(pos).toContain('fetch('/api/pos/cut-club/staging-mode'');
+    expect(pos).toContain("fetch('/api/pos/cut-club/staging-mode'");
     expect(pos).toContain('d?.enabled===true');
     expect(pos).toContain('cutClubStagingEnabled&&state.customer&&editingSaleId===null');
     expect(pos).toContain('cutClubVoucherCode:cutClubStagingEnabled&&editingSaleId===null');
-    expect(pos).toContain("setCutClubVoucherCode(\"\")");
+    expect(pos).toMatch(/setCutClubVoucherCode\((?:''|"")\)/);
     expect(pos).toContain("setCustomerBase(c)");
     expect(pos).toContain("cutClubVoucherCode");
     expect(pos).toContain("const url = isEditing ? `/api/sales/${editingSaleId}` : '/api/sales'");

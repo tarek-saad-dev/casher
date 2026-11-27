@@ -41,6 +41,8 @@ export type StoredPurchaseCommand = Readonly<{
 export interface RewardPurchaseTransaction {
   /** Exclusive transaction-scoped lock keyed on owner, serializes spend. */
   lockMember(owner: RewardOwner): Promise<boolean>;
+  /** Revalidate the exact opaque session and linked owner on the transaction connection. */
+  authorizeSession(owner: RewardOwner, token: unknown): Promise<boolean>;
   findCommand(owner: RewardOwner, idempotencyKey: string): Promise<StoredPurchaseCommand | null>;
   findPublishedItem(owner: RewardOwner, itemId: number): Promise<RewardItemForPurchase | null>;
   lockMemberBalance(owner: RewardOwner): Promise<MemberBalanceForPurchase | null>;
@@ -120,9 +122,11 @@ export async function purchaseRewardWithVerifiedSession(input: Readonly<{
     if (await input.verifyOwnedCustomerAndBranch(owner) !== true) return failed();
     return await input.port.serializable(async tx => {
       if (!await tx.lockMember(owner)) throw Error("CUT_LOCK_UNAVAILABLE");
+      if (!await tx.authorizeSession(owner, input.cookieToken)) throw Error("CUT_SESSION_CHANGED");
       const previous = await tx.findCommand(owner, input.idempotencyKey);
       if (previous) {
         if (previous.itemId !== input.itemId) throw Error("CUT_IDEMPOTENCY_CONFLICT");
+        if (!await tx.authorizeSession(owner, input.cookieToken)) throw Error("CUT_SESSION_CHANGED");
         return { ok: true, replayed: true, receipt: previous.receipt } as const;
       }
       const item = await tx.findPublishedItem(owner, input.itemId);
@@ -160,6 +164,8 @@ export async function purchaseRewardWithVerifiedSession(input: Readonly<{
       });
       if (!await tx.recordCommand(owner, input.idempotencyKey, receipt))
         throw Error("CUT_SETTLEMENT_NOT_RECORDED");
+      // Locks protect session/owner state; recheck expiry again just before commit.
+      if (!await tx.authorizeSession(owner, input.cookieToken)) throw Error("CUT_SESSION_CHANGED");
       return { ok: true, replayed: false, receipt } as const;
     });
   } catch {
