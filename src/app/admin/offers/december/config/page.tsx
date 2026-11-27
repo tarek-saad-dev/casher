@@ -12,7 +12,7 @@ export default function DecemberConfig(){
  }
  return <main dir="rtl" className="mx-auto max-w-3xl p-5 space-y-5">
  <header><p className="text-red-600 font-bold text-sm">CUT / DECEMBER EXAM</p><h1 className="text-3xl font-black">إعدادات الخصومات</h1><p className="text-muted-foreground mt-2">1–31 ديسمبر 2026 · توقيت القاهرة. حفظ المسودة لا ينشر الحملة أو يفعل الخصومات.</p></header>
- <a href="/admin/offers/december" className="underline text-sm">مراجعة المشاركين</a>
+ <a href="/admin/offers/december/analytics" className="underline text-sm ml-4">نتائج الحملة</a><a href="/admin/offers/december" className="underline text-sm">مراجعة المشاركين</a>
  <p>الحالة: {status||'غير متاحة'}</p>
  <form onSubmit={save} className="rounded-xl border p-5 space-y-4">
  {fields.map(([k,label])=><label key={k} className="flex items-center justify-between gap-4">{label}<span className="flex gap-2 items-center"><input required type="number" min={0} max={100} step={1} disabled={busy||status!=='DRAFT'} value={values[k]??''} onChange={e=>{setValues(v=>({...v,[k]:e.target.value}));setSaved(false);}} className="border bg-background p-2 rounded w-24"/>%</span></label>)}
