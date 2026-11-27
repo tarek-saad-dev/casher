@@ -166,36 +166,75 @@ async function main(){
     console.log('PASS real branch and employee setup isolation');
 
     const launchPage=ownerA.pages()[0];
+    // Operational bootstrap may reconcile a missing day automatically; opening it
+    // a second time is not a valid UI action. Verify the server state first.
+    const bootstrapPath='/api/operations/bootstrap';
+    const beforeLaunch=await read(ownerA,bootstrapPath);
+    assert.ok(beforeLaunch.user?.userId,'Authenticated operational session must load');
+    assert.equal(beforeLaunch.view?.branch?.branchCode,accounts[0].tenantCode+'_MAIN');
+    assert.equal(beforeLaunch.stale,false,'Operational state must not be stale');
+    assert.equal(beforeLaunch.operational?.shift,null,'Fresh owner must not already have an open shift');
+    const initialDay=beforeLaunch.view?.businessDay??beforeLaunch.activeBranchState?.businessDay;
+    console.log('Launch bootstrap: '+JSON.stringify({dayOpen:initialDay?.status===true,reconciliationAction:beforeLaunch.reconciliationAction,hasShift:!!beforeLaunch.operational?.shift}));
+    const beforeB=(await read(ownerB,'/api/tenant/onboarding')).journey;
     await launchPage.goto(base+'/setup/launch',{waitUntil:'load',timeout:120000});
     const day=launchPage.getByRole('button',{name:'فتح يوم العمل',exact:true});
-    await day.waitFor({timeout:90000});
-    const beforeB=(await read(ownerB,'/api/tenant/onboarding')).journey;
+    const shift=launchPage.getByRole('button',{name:'فتح وردية',exact:true});
     allowLaunchWrites=true;
     try{
-      await day.click();
-      await launchPage.waitForFunction(()=>![...document.querySelectorAll('button')].some(b=>b.textContent?.trim()==='فتح يوم العمل'||b.textContent?.trim()==='جاري فتح اليوم…'),null,{timeout:120000});
-      const shift=launchPage.getByRole('button',{name:'فتح وردية',exact:true});
+      await launchPage.getByRole('heading',{name:'تشغيل الفرع الحالي الآن',exact:true}).waitFor({timeout:90000});
+      const current=await read(ownerA,bootstrapPath);
+      assert.equal(current.stale,false);
+      const currentDay=current.view?.businessDay??current.activeBranchState?.businessDay;
+      if(currentDay?.status===true){
+        assert.equal(currentDay.branchId,current.view.branch.branchId);
+        if(initialDay?.status===true)assert.equal(currentDay.id,initialDay.id,'Bootstrap must not duplicate the current day');
+        await launchPage.waitForFunction(()=>![...document.querySelectorAll('button')].some(b=>b.textContent?.trim()==='فتح يوم العمل'),null,{timeout:15000});
+        console.log('PASS current business day already open via operational state; no duplicate day request');
+      }else{
+        await day.waitFor({timeout:15000});
+        const response=launchPage.waitForResponse((res:any)=>new URL(res.url()).pathname==='/api/day/open'&&res.request().method()==='POST',{timeout:120000});
+        await day.click();
+        assert.equal((await response).status(),201,'Explicit day open must succeed');
+        console.log('PASS explicit business day open');
+      }
       await shift.waitFor({timeout:90000});
+      const readyDay=await read(ownerA,bootstrapPath);
+      assert.equal((readyDay.view?.businessDay??readyDay.activeBranchState?.businessDay)?.status,true,'Business day must be open before shift');
       const select=launchPage.getByRole('combobox',{name:'اختيار الوردية'});
-      // Some owners have a default shift, others need to choose an actual definition.
       if(await shift.isDisabled()){
         await select.waitFor({timeout:90000});
         const value=await select.locator('option').evaluateAll((options:any[])=>options.map(o=>o.value).find(v=>v));
         assert.ok(value,'At least one real shift definition is required');
         await select.selectOption(value);
       }
+      const shiftResponse=launchPage.waitForResponse((res:any)=>new URL(res.url()).pathname==='/api/shift/open'&&res.request().method()==='POST',{timeout:120000});
       await shift.click();
+      assert.equal((await shiftResponse).status(),201,'Explicit shift open must succeed');
       await launchPage.getByText('اليوم وورديتك مفتوحان',{exact:true}).waitFor({timeout:120000});
-      assert.equal(await launchPage.getByRole('button',{name:'فتح يوم العمل',exact:true}).count(),0);
-      assert.equal(await launchPage.getByRole('button',{name:'فتح وردية',exact:true}).count(),0);
+      const launched=await read(ownerA,bootstrapPath);
+      assert.equal(launched.operational?.shift?.status,true);
+      assert.equal(launched.operational?.shift?.branchId,launched.view.branch.branchId);
+      assert.equal(launched.operational?.shift?.userId,launched.user.userId);
+      assert.equal(await day.count(),0);
+      assert.equal(await shift.count(),0);
       await launchPage.screenshot({path:'authenticated-evidence/0-launch-ready.png',fullPage:true});
+    }catch(error){
+      const diagnostic=await ownerA.request.get(base+bootstrapPath,{timeout:30000}).catch(()=>null);
+      if(diagnostic){
+        const state=await diagnostic.json().catch(()=>({}));
+        console.error('Launch diagnostic:',JSON.stringify({status:diagnostic.status(),code:state.code,stale:state.stale,dayOpen:state.view?.businessDay?.status,shiftOpen:state.operational?.shift?.status,action:state.reconciliationAction}));
+      }
+      console.error('Launch UI:',JSON.stringify(await launchPage.getByRole('button').allTextContents()));
+      await launchPage.screenshot({path:'authenticated-evidence/0-launch-failure.png',fullPage:true}).catch(()=>{});
+      throw error;
     }finally{allowLaunchWrites=false;}
     const afterA=(await read(ownerA,'/api/tenant/onboarding')).journey,afterB=(await read(ownerB,'/api/tenant/onboarding')).journey;
     assert.equal(afterA.steps.find((x:any)=>x.id==='launch').complete,true);
     assert.notEqual(afterA.firstSaleStatus,'done','Launch must not create an invoice');
     assert.equal(afterB.steps.find((x:any)=>x.id==='launch').complete,beforeB.steps.find((x:any)=>x.id==='launch').complete);
     assert.equal(afterB.firstSaleStatus,beforeB.firstSaleStatus);
-    console.log('PASS real day and shift launch, no implicit first sale, tenant isolation');
+    console.log('PASS real business day state and explicit shift launch, no implicit first sale, tenant isolation');
     const anonymous=await browser.newContext();
     const denied=await anonymous.request.get(base+'/api/tenant/onboarding/setup-data');
     assert.equal(denied.status(),401);
