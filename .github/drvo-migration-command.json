@@ -1,10 +1,14 @@
 {
-  "action": "PLAN",
+  "action": "APPLY",
   "requested_by": "tarek-saad-dev",
   "pr_number": 390,
   "target_sha": "427831fb37c3a8842e6f3ea99d0270879b982ad6",
-  "manifest_digest": "",
-  "migrations": [],
-  "backup_reference": "",
-  "approval": ""
+  "manifest_digest": "e4563887ea5badd7556259de0028ad4302868ae0d20be966a7bb602caee0c67e",
+  "migrations": [
+    "cut-offer-campaign",
+    "cut-education-catalog",
+    "cut-offer-operations"
+  ],
+  "backup_reference": "/var/opt/mssql/backup/last132_20261127T200208Z.bak",
+  "approval": "TAREK_APPROVED_PRODUCTION_MIGRATION"
 }
