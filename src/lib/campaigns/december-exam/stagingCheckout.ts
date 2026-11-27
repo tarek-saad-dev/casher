@@ -1,3 +1,4 @@
+import {decemberProductionConfigured,decemberProductionLogin} from './releaseMode';
 import {decemberPhoneSql,decemberCanonicalPhoneSql} from './phoneSql';
 import 'server-only';
 import type { Transaction } from 'mssql';
@@ -17,15 +18,15 @@ const deny=(code:string):never=>{throw new DecemberCheckoutError(code);};
 function minor(value:number){if(typeof value!=='number'||!Number.isFinite(value)||value<0||value>99999999.99||Math.abs(value*100-Math.round(value*100))>0.00001)deny('DECEMBER_INVALID_AMOUNT');return Math.round(value*100);}
 export async function quoteDecemberInTransaction(tx:Transaction,input:DecemberCheckoutInput){
  const tenant=process.env.DECEMBER_EXAM_TENANT_ID;
- if(process.env.DECEMBER_EXAM_STAGING_CHECKOUT_ENABLED!=='true'||!tenant||tenant.toLowerCase()!==input.tenantId.toLowerCase())
+ if((process.env.DECEMBER_EXAM_STAGING_CHECKOUT_ENABLED!=='true'&&!decemberProductionConfigured())||!tenant||tenant.toLowerCase()!==input.tenantId.toLowerCase())
   throw new DecemberCheckoutError('DECEMBER_CHECKOUT_DISABLED',503);
  const ids=(process.env.DECEMBER_EXAM_ELIGIBLE_SERVICE_IDS||'').split(',').map(Number);
  if(!ids.length||ids.length>100||ids.some(n=>!Number.isSafeInteger(n)||n<=0||n>2147483647))deny('DECEMBER_SERVICE_POLICY_REQUIRED');
  if(!input.clientId||!Number.isSafeInteger(input.clientId)||input.clientId>2147483647||input.clientId<=0||!input.items.length||input.items.length>100)deny('DECEMBER_INVALID_CART');
  const q=()=>new sql.Request(tx).input('tenant',sql.UniqueIdentifier,tenant).input('branch',sql.Int,input.branchId)
-  .input('client',sql.Int,input.clientId).input('code',sql.VarChar(48),DECEMBER_CAMPAIGN_CODE);
+  .input('productionLogin',sql.NVarChar(128),decemberProductionLogin()).input('client',sql.Int,input.clientId).input('code',sql.VarChar(48),DECEMBER_CAMPAIGN_CODE);
  const guard=await q().query<{ok:number}>(`
- SELECT CASE WHEN DB_NAME()=N'last132_agent' AND SUSER_SNAME()=N'drvo_agent'
+ SELECT CASE WHEN ((DB_NAME()=N'last132_agent' AND SUSER_SNAME()=N'drvo_agent') OR (DB_NAME()=N'last132' AND @productionLogin IS NOT NULL AND SUSER_SNAME()=@productionLogin))
  AND EXISTS(SELECT 1 FROM dbo.Tenant WHERE TenantId=@tenant AND Code=N'CASHER_BOOT' AND Status=N'active')
  AND EXISTS(SELECT 1 FROM dbo.Location WHERE TenantId=@tenant AND LegacyBranchId=@branch AND Status=N'active')
  THEN 1 ELSE 0 END AS ok
