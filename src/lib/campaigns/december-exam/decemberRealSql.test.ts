@@ -1,5 +1,13 @@
 import {beforeAll,afterAll,beforeEach,describe,it,expect,vi} from 'vitest';
 import mssql from 'mssql';
+import {NextRequest} from 'next/server';
+const authFixture=vi.hoisted(()=>({tenantId:'413d433e-f36b-1410-8820-009ec495c7e1',userId:1,activeBranchId:1,userLevel:'admin',roles:['admin'],isSuperAdmin:true}));
+vi.mock('@/lib/api-auth',()=>({requireAdmin:async()=>authFixture,requirePageAccess:async()=>authFixture,isAuthResult:(v:unknown)=>v===authFixture}));
+import {POST as publicRegister} from '@/app/api/public/offers/december/register/route';
+import {GET as publicSession} from '@/app/api/public/offers/december/session/route';
+import {GET as staffFind,POST as staffApprove} from '@/app/api/admin/offers/december/participants/route';
+import {POST as staffRecover} from '@/app/api/admin/offers/december/recover/route';
+import {POST as posQuote} from '@/app/api/pos/offers/december/quote/route';
 let pool:mssql.ConnectionPool|null=null;
 vi.mock('@/lib/db',async()=>({sql:(await import('mssql')).default,getPool:async()=>{if(!pool)throw Error('POOL_REQUIRED');return pool;}}));
 import {registerDecemberParticipant} from './registrationRepository';
@@ -112,5 +120,41 @@ describe.skipIf(!enabled)('December actual SQL domain integration on disposable 
   const independent=await register(103);expect(independent.referralStatus).toBeNull();
   const r=await pool!.request().query('SELECT COUNT(*) n FROM dbo.CutOfferReferral');expect(r.recordset[0].n).toBe(1);
  });
+
+ it('runs registration, student approval, recovery, invitation, quote and redemption through actual route handlers',async()=>{
+  const key='disposable-sql-only-test-key-1234567890';
+  const origin='http://localhost:3000';
+  Object.assign(process.env,{DECEMBER_EXAM_INTERNAL_REGISTRATION_ENABLED:'true',DECEMBER_EXAM_BFF_SHARED_KEY:key,DECEMBER_EXAM_STAFF_ENABLED:'true',DECEMBER_EXAM_CASHER_PUBLIC_ORIGIN:origin});
+  const post=(path:string,body:unknown,authorization?:string)=>{
+   const raw=JSON.stringify(body);
+   return new NextRequest(origin+path,{method:'POST',headers:{origin,'content-type':'application/json','content-length':String(Buffer.byteLength(raw)),...(authorization?{authorization}:{})},body:raw});
+  };
+  const registerPath='/api/public/offers/december/register',participantPath='/api/admin/offers/december/participants',sessionPath='/api/public/offers/december/session';
+  const student={name:'API student',phone:'01000000101',student:true,education:{type:'UNIVERSITY',university:'Fixture university',faculty:'Fixture faculty'}};
+  expect((await publicRegister(post(registerPath,student,'Bearer wrong'))).status).toBe(401);
+  const response=await publicRegister(post(registerPath,student,'Bearer '+key));expect(response.status).toBe(201);
+  const owner=await response.json();
+  const session=(token:string)=>publicSession(new NextRequest(origin+sessionPath,{headers:{authorization:'Bearer '+key,'x-december-session':token}}));
+  const initial=await session(owner.sessionToken);expect(initial.status).toBe(200);expect(await initial.json()).toMatchObject({redeemed:false,counts:{confirmed:0,pending:0,rejected:0}});
+  const find=await staffFind(new NextRequest(origin+participantPath+'?code='+owner.referralCode));expect(find.status).toBe(200);
+  const record=(await find.json()).items[0];expect(record.PhoneMasked).toContain('****');expect(record.PhoneNormalized).toBeUndefined();
+  const wrong=await staffApprove(post(participantPath,{participantId:record.ParticipantId,clientId:102,confirmedInPerson:true,studentCardChecked:true}));expect(wrong.status).toBe(409);
+  const verified=await staffApprove(post(participantPath,{participantId:record.ParticipantId,clientId:101,confirmedInPerson:true,studentCardChecked:true}));expect(verified.status).toBe(200);
+  const profile=await pool!.request().query('SELECT CustomerCategory,InstitutionName,FacultyName FROM dbo.TblClient WHERE ClientID=101');
+  expect(profile.recordset[0]).toMatchObject({CustomerCategory:'student',InstitutionName:'Fixture university',FacultyName:'Fixture faculty'});
+  const recovered=await staffRecover(post('/api/admin/offers/december/recover',{participantId:record.ParticipantId,confirmedInPerson:true,reason:'Verified fixture identity'}));expect(recovered.status).toBe(200);
+  const replacement=(await recovered.json()).recoveryToken;expect(replacement).not.toBe(owner.sessionToken);
+  expect((await session(owner.sessionToken)).status).toBe(401);expect((await session(replacement)).status).toBe(200);
+  const friendResponse=await publicRegister(post(registerPath,{name:'API friend',phone:'01000000102',student:false,referralCode:owner.referralCode},'Bearer '+key));expect(friendResponse.status).toBe(201);
+  const friend=await friendResponse.json();const foundFriend=await staffFind(new NextRequest(origin+participantPath+'?code='+friend.referralCode));
+  const friendId=(await foundFriend.json()).items[0].ParticipantId;
+  expect((await staffApprove(post(participantPath,{participantId:friendId,clientId:102,confirmedInPerson:true,studentCardChecked:false}))).status).toBe(200);
+  await atomic(async tx=>{await invoice(tx,5040,102,2,0);await confirmStagingDecemberReferral(tx,{invoiceId:5040,clientId:102,branchId:2});});
+  const quoteResponse=await posQuote(post('/api/pos/offers/december/quote',{clientId:101,items:[line]}));expect(quoteResponse.status).toBe(200);
+  expect(await quoteResponse.json()).toMatchObject({percent:40,discountMinor:8000,payableMinor:12000,checkoutAvailable:true});
+  await atomic(async tx=>{const q=await quoteDecemberInTransaction(tx,input(101));await invoice(tx,5041,101,1,q.discountPiasters/100);await persistDecemberRedemption(tx,q,5041);});
+  const finished=await session(replacement);expect(await finished.json()).toMatchObject({redeemed:true,counts:{confirmed:1,pending:0,rejected:0}});
+  expect((await posQuote(post('/api/pos/offers/december/quote',{clientId:101,items:[line]}))).status).toBe(409);
+ },30000);
 
 });
