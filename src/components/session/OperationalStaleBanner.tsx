@@ -27,12 +27,12 @@ export default function OperationalStaleBanner() {
   return (
     <div
       role="alert"
-      className="border-b border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-sm"
+      className="border-b border-warning/25 bg-warning-soft px-3 py-2.5 text-sm"
       dir="rtl"
     >
       <div className="mx-auto flex max-w-5xl flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-start gap-2 min-w-0">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
           <div className="min-w-0">
             <p className="font-semibold text-foreground">تعذر تجهيز يوم العمل الحالي</p>
             <p className="text-xs text-muted-foreground mt-0.5">
@@ -44,11 +44,11 @@ export default function OperationalStaleBanner() {
         <Button
           size="sm"
           variant="outline"
-          className="shrink-0 border-amber-500/40"
+          className="shrink-0 border-warning/40"
           onClick={() => void handleRetry()}
           disabled={retrying}
         >
-          {retrying ? <Loader2 className="ml-2 h-3.5 w-3.5 animate-spin" /> : null}
+          {retrying ? <Loader2 className="me-2 h-3.5 w-3.5 animate-spin" /> : null}
           إعادة المحاولة
         </Button>
       </div>
