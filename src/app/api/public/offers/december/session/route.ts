@@ -16,8 +16,9 @@ export async function GET(req:NextRequest){
  try{
   const r=await (await getPool()).request().input('tenant',sql.UniqueIdentifier,tenant)
    .input('code',sql.VarChar(48),DECEMBER_CAMPAIGN_CODE).input('digest',sql.Char(64),campaignSessionDigest(token))
-   .query<{ReferralCode:string;CampaignStatus:string;Pending:number;Confirmed:number;Rejected:number}>(`
+   .query<{ReferralCode:string;CampaignStatus:string;Pending:number;Confirmed:number;Rejected:number;Redeemed:number}>(`
     SELECT p.ReferralCode,
+      CASE WHEN EXISTS(SELECT 1 FROM dbo.CutOfferRedemption d WHERE d.TenantId=p.TenantId AND d.CampaignId=p.CampaignId AND d.ParticipantId=p.ParticipantId) THEN 1 ELSE 0 END AS Redeemed,
       CASE WHEN c.Status='ACTIVE' AND c.StartsAtUtc<=SYSUTCDATETIME() AND c.EndsAtUtc>SYSUTCDATETIME() THEN 'ACTIVE' ELSE 'UNAVAILABLE' END AS CampaignStatus,
       (SELECT COUNT(*) FROM dbo.CutOfferReferral r WHERE r.TenantId=p.TenantId AND r.CampaignId=p.CampaignId AND r.InviterId=p.ParticipantId AND r.Status='PENDING') AS Pending,
       (SELECT COUNT(*) FROM dbo.CutOfferReferral r WHERE r.TenantId=p.TenantId AND r.CampaignId=p.CampaignId AND r.InviterId=p.ParticipantId AND r.Status='CONFIRMED') AS Confirmed,
@@ -29,8 +30,8 @@ export async function GET(req:NextRequest){
    `);
   const p=r.recordset[0];
   if(!p)return reply({ok:false,code:'SESSION_REQUIRED'},401);
-  // No phone, names, legacy client IDs, wallet, prior history or personal eligibility.
-  return reply({ok:true,referralCode:p.ReferralCode,campaignStatus:p.CampaignStatus,
+  // Only campaign consumption state; no phone, names, IDs, invoice amounts, wallet or prior history.
+  return reply({ok:true,referralCode:p.ReferralCode,campaignStatus:p.CampaignStatus,redeemed:p.Redeemed===1,
     counts:{pending:p.Pending,confirmed:p.Confirmed,rejected:p.Rejected}});
  }catch{return reply({ok:false,code:'CAMPAIGN_UNAVAILABLE'},503);}
 }
