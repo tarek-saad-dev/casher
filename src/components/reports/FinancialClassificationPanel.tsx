@@ -34,9 +34,9 @@ function ClassifiedCard({
 }) {
   const toneClasses = {
     default: 'border-border bg-card',
-    positive: 'border-emerald-500/30 bg-emerald-500/5',
-    warning: 'border-amber-500/30 bg-amber-500/5',
-    neutral: 'border-sky-500/30 bg-sky-500/5',
+    positive: 'border-success/30 bg-success-soft',
+    warning: 'border-warning/30 bg-warning-soft',
+    neutral: 'border-info/30 bg-info-soft',
   };
 
   return (
@@ -106,7 +106,7 @@ export default function FinancialClassificationPanel({
 
   return (
     <div className="space-y-4">
-      <div className="p-4 bg-sky-500/10 border border-sky-500/40 rounded-lg text-sm text-sky-950 dark:text-sky-100">
+      <div className="p-4 bg-info-soft border border-info/40 rounded-lg text-sm text-info dark:text-info">
         {CLASSIFICATION_BANNER_TEXT}
       </div>
 
@@ -141,13 +141,13 @@ export default function FinancialClassificationPanel({
       </div>
 
       {uncategorizedTotal > 0 && (
-        <div className="p-4 bg-amber-500/10 border border-amber-500/40 rounded-lg flex items-start gap-3">
-          <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
+        <div className="p-4 bg-warning-soft border border-warning/40 rounded-lg flex items-start gap-3">
+          <AlertTriangle className="h-5 w-5 text-warning flex-shrink-0 mt-0.5" />
           <div>
-            <p className="font-semibold text-amber-900 dark:text-amber-100">
+            <p className="font-semibold text-warning dark:text-warning">
               حركات تحتاج مراجعة تصنيف
             </p>
-            <p className="text-sm text-amber-800 dark:text-amber-200">
+            <p className="text-sm text-warning dark:text-warning">
               {formatArabicNumber(totals.uncategorizedCashIn + totals.uncategorizedCashOut > 0 ? 1 : 0)} فئة —
               {' '}{fmt(uncategorizedTotal)} (واردة: {fmt(totals.uncategorizedCashIn)} / صادرة: {fmt(totals.uncategorizedCashOut)})
             </p>
@@ -171,7 +171,7 @@ export function IncomeRowClassificationBadge({
 
   if (reportClassification.isRealRevenue) {
     return (
-      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-emerald-500/15 text-emerald-800 dark:text-emerald-200">
+      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-success-soft text-success dark:text-success">
         {reportClassification.label}
       </span>
     );
@@ -179,7 +179,7 @@ export function IncomeRowClassificationBadge({
 
   return (
     <span
-      className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-amber-500/15 text-amber-900 dark:text-amber-100"
+      className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-warning-soft text-warning dark:text-warning"
       title={reportClassification.treasuryLabel}
     >
       {reportClassification.treasuryLabel ?? reportClassification.label}

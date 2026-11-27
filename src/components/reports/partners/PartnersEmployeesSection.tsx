@@ -13,7 +13,7 @@ function TableSkeleton() {
   return (
     <div className="space-y-3">
       {[...Array(5)].map((_, i) => (
-        <div key={i} className="h-16 sm:h-10 bg-zinc-800/40 rounded animate-pulse" />
+        <div key={i} className="h-16 sm:h-10 bg-muted rounded animate-pulse" />
       ))}
     </div>
   );
@@ -22,7 +22,7 @@ function TableSkeleton() {
 function MobileValueRow({
   label,
   value,
-  valueClassName = 'text-white',
+  valueClassName = 'text-foreground',
 }: {
   label: string;
   value: React.ReactNode;
@@ -30,7 +30,7 @@ function MobileValueRow({
 }) {
   return (
     <div className="flex items-start justify-between gap-3 min-w-0">
-      <span className="text-sm text-zinc-400 shrink-0">{label}</span>
+      <span className="text-sm text-muted-foreground shrink-0">{label}</span>
       <span className={`text-base font-medium tabular-nums text-left break-words ${valueClassName}`}>
         {value}
       </span>
@@ -44,16 +44,16 @@ export default function PartnersEmployeesSection({
   loading,
 }: PartnersEmployeesSectionProps) {
   return (
-    <section className="w-full min-w-0 bg-zinc-900/50 border border-zinc-800/50 rounded-xl p-3 sm:p-4 md:p-6 print:break-inside-avoid">
-      <h2 className="text-base sm:text-lg font-bold text-white mb-1 sm:mb-2">الموظفون</h2>
-      <p className="text-xs text-zinc-500 mb-3 sm:mb-4">
+    <section className="w-full min-w-0 bg-card border border-border rounded-xl p-3 sm:p-4 md:p-6 print:break-inside-avoid">
+      <h2 className="text-base sm:text-lg font-bold text-foreground mb-1 sm:mb-2">الموظفون</h2>
+      <p className="text-xs text-muted-foreground mb-3 sm:mb-4">
         استلم راتب = استحقاق الدفتر فقط (راتب + تارجت). سلف = السحب الزائد بعد خصم الاستحقاق والتمويل والتسوية بين الفروع — التسوية لا تزيد الراتب.
       </p>
 
       {loading && rows.length === 0 ? (
         <TableSkeleton />
       ) : rows.length === 0 ? (
-        <div className="text-center py-8 sm:py-10 text-sm sm:text-base text-zinc-500 px-2">
+        <div className="text-center py-8 sm:py-10 text-sm sm:text-base text-muted-foreground px-2">
           لا توجد بيانات موظفين في الشهر المحدد
         </div>
       ) : (
@@ -63,9 +63,9 @@ export default function PartnersEmployeesSection({
             {rows.map((row) => (
               <article
                 key={row.employeeId}
-                className="w-full min-w-0 rounded-lg border border-zinc-800/70 bg-zinc-950/40 p-3 sm:p-4 space-y-3"
+                className="w-full min-w-0 rounded-lg border border-border bg-background p-3 sm:p-4 space-y-3"
               >
-                <h3 className="text-base font-bold text-white break-words border-b border-zinc-800/60 pb-2">
+                <h3 className="text-base font-bold text-foreground break-words border-b border-border pb-2">
                   {row.employeeName}
                 </h3>
                 <MobileValueRow
@@ -73,13 +73,13 @@ export default function PartnersEmployeesSection({
                   value={
                     <span className="flex flex-col items-end gap-0.5">
                       <span>{formatPartnersCurrency(row.salaryAndTarget)}</span>
-                      <span className="text-[11px] font-normal text-zinc-500">
+                      <span className="text-[11px] font-normal text-muted-foreground">
                         راتب {formatPartnersCurrency(row.ledgerSalary)} + تارجت{' '}
                         {formatPartnersCurrency(row.ledgerTarget)}
                       </span>
                     </span>
                   }
-                  valueClassName="text-amber-400"
+                  valueClassName="text-warning"
                 />
                 <MobileValueRow
                   label="سلف"
@@ -87,25 +87,25 @@ export default function PartnersEmployeesSection({
                     row.advanceExcess > 0 ? (
                       formatPartnersCurrency(row.advanceExcess)
                     ) : (
-                      <span className="text-zinc-500">—</span>
+                      <span className="text-muted-foreground">—</span>
                     )
                   }
-                  valueClassName="text-rose-400"
+                  valueClassName="text-destructive"
                 />
               </article>
             ))}
 
-            <article className="w-full min-w-0 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3 sm:p-4 space-y-3">
-              <h3 className="text-base font-bold text-white">الإجمالي</h3>
+            <article className="w-full min-w-0 rounded-lg border border-success/30 bg-success-soft p-3 sm:p-4 space-y-3">
+              <h3 className="text-base font-bold text-foreground">الإجمالي</h3>
               <MobileValueRow
                 label="إجمالي استلم راتب (راتب + تارجت)"
                 value={formatPartnersCurrency(totals.totalSalaryAndTarget ?? 0)}
-                valueClassName="text-amber-400"
+                valueClassName="text-warning"
               />
               <MobileValueRow
                 label="إجمالي السلف"
                 value={formatPartnersCurrency(totals.totalAdvanceExcess ?? 0)}
-                valueClassName="text-rose-400"
+                valueClassName="text-destructive"
               />
             </article>
           </div>
@@ -114,7 +114,7 @@ export default function PartnersEmployeesSection({
           <div className="hidden md:block print:block">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-zinc-800 text-zinc-400 print:border-zinc-300 print:text-zinc-600">
+                <tr className="border-b border-border text-muted-foreground print:border-zinc-300 print:text-zinc-600">
                   <th className="text-right py-3 px-2 font-medium">الموظف</th>
                   <th className="text-right py-3 px-2 font-medium">استلم راتب (راتب + تارجت)</th>
                   <th
@@ -129,46 +129,46 @@ export default function PartnersEmployeesSection({
                 {rows.map((row) => (
                   <tr
                     key={row.employeeId}
-                    className="border-b border-zinc-800/60 hover:bg-zinc-800/30 print:break-inside-avoid print:border-zinc-300"
+                    className="border-b border-border hover:bg-surface-muted print:break-inside-avoid print:border-zinc-300"
                   >
-                    <td className="py-3 px-2 text-white font-medium break-words">
+                    <td className="py-3 px-2 text-foreground font-medium break-words">
                       {row.employeeName}
                     </td>
                     <td className="py-3 px-2 tabular-nums">
-                      <span className="block text-amber-400 font-medium">
+                      <span className="block text-warning font-medium">
                         {formatPartnersCurrency(row.salaryAndTarget)}
                       </span>
-                      <span className="block text-[10px] text-zinc-500 font-normal print:text-zinc-600">
+                      <span className="block text-[10px] text-muted-foreground font-normal print:text-zinc-600">
                         راتب {formatPartnersCurrency(row.ledgerSalary)} + تارجت{' '}
                         {formatPartnersCurrency(row.ledgerTarget)}
                       </span>
                     </td>
                     <td className="py-3 px-2 tabular-nums">
                       {row.advanceExcess > 0 ? (
-                        <span className="text-rose-400 font-medium print:text-rose-700">
+                        <span className="text-destructive font-medium print:text-rose-700">
                           {formatPartnersCurrency(row.advanceExcess)}
                         </span>
                       ) : (
-                        <span className="text-zinc-500">—</span>
+                        <span className="text-muted-foreground">—</span>
                       )}
                     </td>
                   </tr>
                 ))}
-                <tr className="bg-zinc-800/40 font-bold print:break-inside-avoid print:bg-zinc-100">
-                  <td className="py-3 px-2 text-white print:text-black">الإجمالي</td>
+                <tr className="bg-muted font-bold print:break-inside-avoid print:bg-zinc-100">
+                  <td className="py-3 px-2 text-foreground print:text-black">الإجمالي</td>
                   <td className="py-3 px-2 tabular-nums">
-                    <span className="block text-[10px] text-zinc-500 font-normal print:text-zinc-600 mb-0.5">
+                    <span className="block text-[10px] text-muted-foreground font-normal print:text-zinc-600 mb-0.5">
                       إجمالي استلم راتب (راتب + تارجت)
                     </span>
-                    <span className="text-amber-400 print:text-amber-700">
+                    <span className="text-warning print:text-amber-700">
                       {formatPartnersCurrency(totals.totalSalaryAndTarget ?? 0)}
                     </span>
                   </td>
                   <td className="py-3 px-2 tabular-nums">
-                    <span className="block text-[10px] text-zinc-500 font-normal print:text-zinc-600 mb-0.5">
+                    <span className="block text-[10px] text-muted-foreground font-normal print:text-zinc-600 mb-0.5">
                       إجمالي السلف
                     </span>
-                    <span className="text-rose-400 print:text-rose-700">
+                    <span className="text-destructive print:text-rose-700">
                       {formatPartnersCurrency(totals.totalAdvanceExcess ?? 0)}
                     </span>
                   </td>
