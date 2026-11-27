@@ -86,11 +86,44 @@ jobs:
                     if(url.pathname.startsWith('/api/')) return route.fulfill({status:401,contentType:'application/json',body:JSON.stringify({error:'isolated browser QA'})});
                     return route.continue();
                   });
-                  const response = await page.goto('http://127.0.0.1:5500/start');
+                  page.on('pageerror', error => console.error('Browser runtime error at '+width+'px:', error.message));
+                  const response = await page.goto('http://127.0.0.1:5500/start',{waitUntil:'load'});
                   assert.equal(response.status(),200);
                   const click = name => page.getByRole('button',{name,exact:true}).click();
+                  const headings = {
+                    '01-phone':'خلينا نبدأ برقم موبايلك.',
+                    '02-owner':'خلينا نتعرف عليك.',
+                    '03-industry':'إيه طبيعة شغلك؟',
+                    '04-apps':'اختار الأدوات المناسبة.',
+                    '05-review':'راجع بياناتك وابدأ.',
+                    '06-success':'حسابك اتعمل بنجاح!',
+                  };
                   async function capture(step) {
-                    await page.locator('h1').waitFor();
+                    const expected = headings[step];
+                    // SSR streaming may briefly insert a hidden duplicate before hydration.
+                    // Wait for the actual visible step; never select the first of duplicates.
+                    // On the initial step the component's mount effect focuses its panel.
+                    try {
+                      await page.waitForFunction(({expected,initial}) => {
+                        const visible = [...document.querySelectorAll('h1')].filter(el =>
+                          el.getClientRects().length > 0 &&
+                          el.checkVisibility({visibilityProperty:true}));
+                        if (visible.length !== 1 || visible[0].textContent.trim() !== expected) return false;
+                        if (!visible[0].closest('main')) return false;
+                        return !initial || (document.activeElement?.getAttribute('tabindex') === '-1' &&
+                          document.activeElement.contains(visible[0]));
+                      }, {expected,initial:step==='01-phone'}, {timeout:15000});
+                    } catch (error) {
+                      const diagnostic = await page.locator('h1').evaluateAll(elements => elements.map(el => ({
+                        text:el.textContent.trim(), visible:el.getClientRects().length > 0 && el.checkVisibility({visibilityProperty:true}),
+                        inMain:!!el.closest('main'),
+                      })));
+                      console.error('Heading state at '+width+'px / '+step+':',JSON.stringify(diagnostic));
+                      await page.screenshot({path:'browser-evidence/'+width+'-'+step+'-failure.png',fullPage:true}).catch(()=>{});
+                      throw error;
+                    }
+                    assert.equal(await page.getByRole('heading',{level:1,name:expected,exact:true}).count(),1,
+                      'Expected one accessible heading at '+width+' / '+step);
                     await page.evaluate(() => document.fonts.ready);
                     const overflow = await page.evaluate(() => {
                       const root = document.documentElement;
