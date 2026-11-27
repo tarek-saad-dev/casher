@@ -52,15 +52,30 @@ describe('platform signup OTP', () => {
   });
 });
 
-import { operatorOtpConfig, operatorOtpStatus } from '@/platform/publicSignup/otpOperator';
+import { enforceOperatorOtpRate, operatorOtpConfig, operatorOtpStatus } from '@/platform/publicSignup/otpOperator';
 import { readFileSync } from 'node:fs';
 
 describe('platform operator OTP diagnostics', () => {
   const env = { PUBLIC_SIGNUP_OTP_BASE_URL: 'https://otp.example.test', PUBLIC_SIGNUP_OTP_API_KEY: 'a'.repeat(40), PUBLIC_SIGNUP_OTP_SIGNING_KEY: 'b'.repeat(40), PUBLIC_SIGNUP_OTP_EDGE_RATE_LIMIT_READY: 'true' };
   it('reports only booleans and does not infer live connectivity', () => {
-    expect(operatorOtpStatus(env)).toEqual({ required:false, configured:true, senderKeyPresent:true, independentSigningKeyPresent:true, edgeRateLimitDeclared:true, providerUrlPresent:true });
+    expect(operatorOtpStatus(env)).toEqual({ required:false, configured:true, publicConfigured:true, senderKeyPresent:true, independentSigningKeyPresent:true, edgeRateLimitDeclared:true, providerUrlPresent:true });
     expect(operatorOtpStatus({})).toMatchObject({ required:false, configured:false, senderKeyPresent:false });
     expect(JSON.stringify(operatorOtpStatus(env))).not.toContain(env.PUBLIC_SIGNUP_OTP_API_KEY);
+  });
+  it('allows isolated operator testing without declaring public edge protection', () => {
+    const unprotected = { ...env, PUBLIC_SIGNUP_OTP_EDGE_RATE_LIMIT_READY: 'false' };
+    expect(operatorOtpStatus(unprotected)).toMatchObject({ required:false, configured:true, publicConfigured:false, edgeRateLimitDeclared:false });
+    expect(() => signupOtpConfig(unprotected)).toThrow();
+    const cfg = operatorOtpConfig(unprotected);
+    expect(cfg.signingKey).not.toBe(env.PUBLIC_SIGNUP_OTP_SIGNING_KEY);
+    expect(() => operatorOtpConfig({ ...unprotected, PUBLIC_SIGNUP_OTP_BASE_URL: 'http://otp.example.test' })).toThrow();
+    expect(() => operatorOtpConfig({ ...unprotected, PUBLIC_SIGNUP_OTP_API_KEY: '' })).toThrow();
+  });
+  it('limits authenticated operators independently of IP and resets after a minute', () => {
+    for (let i=0;i<3;i++) enforceOperatorOtpRate('test-operator', 'send', 1000);
+    expect(() => enforceOperatorOtpRate('test-operator', 'send', 1000)).toThrow();
+    expect(() => enforceOperatorOtpRate('other-operator', 'send', 1000)).not.toThrow();
+    expect(() => enforceOperatorOtpRate('test-operator', 'send', 61000)).not.toThrow();
   });
   it('separates operator test signatures from public signup signatures', () => {
     const cfg = operatorOtpConfig(env);
