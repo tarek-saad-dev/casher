@@ -63,13 +63,21 @@ describe('V3 registration interface',()=>{
     expect(revisited).toBeDefined();
     expect(revisited).toHaveAttribute('aria-pressed',selected==='true'?'false':'true');
   });
-  it('does not require an OTP or request one when the server flag is off',()=>{
-    const fetchMock=vi.fn();vi.stubGlobal('fetch',fetchMock);
+  it('submits account creation without requesting or sending an OTP when the server flag is off',async()=>{
+    const fetchMock=vi.fn(async (_url:string,_opts?:RequestInit)=>new Response(JSON.stringify({ok:true,ownerLoginName:'owner-no-otp',nextPath:'/setup'}),{status:201}));vi.stubGlobal('fetch',fetchMock);
     render(<PublicSignupFlow otpRequired={false}/>);
     advanceSignup();
     expect(screen.queryByRole('button',{name:'إرسال رمز التحقق'})).not.toBeInTheDocument();
-    expect(screen.getByRole('button',{name:'إنشاء الحساب'})).toBeEnabled();
+    const submit=screen.getByRole('button',{name:'إنشاء الحساب'});
+    expect(submit).toBeEnabled();
     expect(fetchMock).not.toHaveBeenCalled();
+    fireEvent.click(submit);
+    await waitFor(()=>expect(screen.getByText('owner-no-otp')).toBeInTheDocument());
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/public/signup/complete');
+    const body=JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
+    expect(body).toMatchObject({industry:'salon',phone:'01012345678'});
+    expect(body).not.toHaveProperty('otp');
   });
 });
 describe('V3 training interface',()=>{
