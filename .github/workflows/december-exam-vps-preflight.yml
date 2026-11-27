@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/december-exam-vps-preflight.yml'
       - 'scripts/drvo/december-exam-staging-preflight.ts'
+      - 'scripts/drvo/december-exam-staging-migrate.ts'
       - 'db/drvo-migrations/027-cut-offer-campaign/**'
       - 'db/drvo-migrations/028-cut-education-catalog/**'
       - 'db/drvo-migrations/029-cut-offer-operations/**'
@@ -15,7 +16,7 @@ concurrency:
   group: december-vps-preflight
   cancel-in-progress: true
 jobs:
-  read-only:
+  staging-schema:
     if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'feat/december-exam-foundation'
     runs-on: ubuntu-latest
     environment: drvo-staging
@@ -30,10 +31,12 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci --no-audit --no-fund
-      - name: Read-only staging identity and schema verification
+      - name: Apply only December migrations to isolated staging and verify
         env:
           DRVO_STAGING_SSH_HOST: ${{ secrets.DRVO_STAGING_SSH_HOST || secrets.STAGING_HOST || secrets.VPS_HOST }}
           DRVO_STAGING_SSH_KEY: ${{ secrets.DRVO_STAGING_SSH_KEY }}
+          DECEMBER_STAGING_SCHEMA_APPLY: 'true'
+          DEPLOY_COMMIT_SHA: ${{ github.event.pull_request.head.sha }}
           DRVO_STAGING_DB_PASSWORD: ${{ secrets.DRVO_STAGING_DB_PASSWORD }}
         run: |
           set -euo pipefail
@@ -61,4 +64,5 @@ jobs:
             sleep 1
           done
           nc -z 127.0.0.1 14330
+          npx tsx scripts/drvo/december-exam-staging-migrate.ts
           npx tsx scripts/drvo/december-exam-staging-preflight.ts
