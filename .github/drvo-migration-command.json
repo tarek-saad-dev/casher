@@ -1,10 +1,10 @@
 {
-  "action": "APPLY",
+  "action": "PLAN",
   "requested_by": "tarek-saad-dev",
-  "pr_number": 323,
-  "target_sha": "73d6b6d5c40eb78fc40650a754e0dd9b2be57aea",
-  "manifest_digest": "babd8d61ec7316f35303f376366f971e792ea55cea85f71b768628d9ef79f91c",
-  "migrations": ["cut-club-member-wallet-auth"],
-  "backup_reference": "/var/opt/mssql/backup/last132_20261120T175545Z.bak",
-  "approval": "TAREK_APPROVED_PRODUCTION_MIGRATION"
+  "pr_number": 329,
+  "target_sha": "70dfaea24ec5a0e6c5647b672a06a9d2ce999fe2",
+  "manifest_digest": "",
+  "migrations": [],
+  "backup_reference": "",
+  "approval": ""
 }
