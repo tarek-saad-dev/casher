@@ -1,0 +1,34 @@
+name: December Exam Validation
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/lib/campaigns/december-exam/**'
+      - 'src/app/**/offers/december/**'
+      - 'src/app/api/sales/**'
+      - 'src/app/income/pos/**'
+      - 'src/components/pos/**'
+      - 'src/lib/sales/**'
+      - 'src/apps/pos/**'
+      - 'scripts/drvo/**'
+      - 'db/drvo-migrations/**'
+      - '.github/workflows/december-exam-validation.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      INCLUDE_DB_INTEGRATION_TESTS: '0'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npx vitest run src/lib/campaigns/december-exam scripts/drvo/__tests__/migrationManifest.test.ts
