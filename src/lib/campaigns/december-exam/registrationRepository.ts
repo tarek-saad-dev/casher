@@ -62,8 +62,10 @@ export async function registerDecemberParticipant(tenantId:string, input:unknown
     if(registration.referralCode){
       const inviter=await request().input('referral',sql.VarChar(32),registration.referralCode)
         .input('phone',sql.VarChar(16),registration.phone).query<{ParticipantId:string}>(`
-          SELECT ParticipantId FROM dbo.CutOfferParticipant WITH (HOLDLOCK)
-          WHERE TenantId=@tenant AND CampaignId=@campaign AND ReferralCode=@referral AND PhoneNormalized<>@phone
+          SELECT p.ParticipantId FROM dbo.CutOfferParticipant p WITH (UPDLOCK,HOLDLOCK)
+          WHERE p.TenantId=@tenant AND p.CampaignId=@campaign AND p.ReferralCode=@referral AND p.PhoneNormalized<>@phone
+          AND NOT EXISTS(SELECT 1 FROM dbo.CutOfferRedemption d WITH(UPDLOCK,HOLDLOCK)
+            WHERE d.TenantId=p.TenantId AND d.CampaignId=p.CampaignId AND d.ParticipantId=p.ParticipantId)
         `);
       inviterId=inviter.recordset[0]?.ParticipantId;
       if(!inviterId)throw new DecemberRegistrationError('INVALID_REFERRAL_CODE',400);
