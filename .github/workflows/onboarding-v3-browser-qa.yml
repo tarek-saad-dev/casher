@@ -1,6 +1,9 @@
 name: Onboarding V3 — Browser QA (isolated)
 
 on:
+  pull_request:
+    branches: [feat/onboarding-v3-premium-polish]
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [qa/onboarding-v3-browser]
   workflow_dispatch:
@@ -10,7 +13,11 @@ permissions:
 
 jobs:
   public-registration:
-    if: github.ref == 'refs/heads/qa/onboarding-v3-browser'
+    if: >-
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.head.repo.full_name == github.repository &&
+       github.event.pull_request.head.ref == 'qa/onboarding-v3-browser') ||
+      (github.event_name != 'pull_request' && github.ref == 'refs/heads/qa/onboarding-v3-browser')
     runs-on: ubuntu-latest
     timeout-minutes: 12
     env:
@@ -20,6 +27,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -128,6 +136,7 @@ jobs:
         if: always()
         with:
           name: onboarding-registration-browser-evidence
+          retention-days: 7
           path: browser-evidence/
           if-no-files-found: ignore
       - name: Stop isolated app
