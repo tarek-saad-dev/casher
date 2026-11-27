@@ -104,4 +104,13 @@ describe.skipIf(!enabled)('December actual SQL domain integration on disposable 
   }finally{await pool!.request().query("UPDATE dbo.TblClient SET Mobile='01000000105' WHERE ClientID=105");}
  });
 
+ it('closes old invitation links after inviter redemption without blocking independent registration',async()=>{
+  const owner=await register(101);await approve(101);
+  await register(102,owner.referralCode);
+  await atomic(async tx=>{const q=await quoteDecemberInTransaction(tx,input(101));await invoice(tx,5030,101,1,q.discountPiasters/100);await persistDecemberRedemption(tx,q,5030);});
+  await expect(register(103,owner.referralCode)).rejects.toThrow('INVALID_REFERRAL_CODE');
+  const independent=await register(103);expect(independent.referralStatus).toBeNull();
+  const r=await pool!.request().query('SELECT COUNT(*) n FROM dbo.CutOfferReferral');expect(r.recordset[0].n).toBe(1);
+ });
+
 });
