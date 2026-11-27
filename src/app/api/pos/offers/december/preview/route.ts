@@ -2,12 +2,13 @@ import { NextRequest,NextResponse } from 'next/server';
 import { requirePageAccess,isAuthResult } from '@/lib/api-auth';
 import { getPool,sql } from '@/lib/db';
 import { DECEMBER_CAMPAIGN_CODE } from '@/lib/campaigns/december-exam/registrationRepository';
+import { normalizeEgyptianMobile } from '@/lib/campaigns/december-exam/registration';
 import { evaluateDecember } from '@/lib/campaigns/december-exam/rules';
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 const reply=(body:unknown,status=200)=>NextResponse.json(body,{status,headers:{'Cache-Control':'private,no-store','X-Robots-Tag':'noindex'}});
 type Facts={FirstVisitPct:number;StudentPct:number;ClubPct:number;MultiServicePct:number;Friend1Pct:number;Friend2Pct:number;Friend3Pct:number;
- Active:number;Registered:number;Used:number;PriorSales:number;PhoneMatches:number;StudentVerified:number;ClubLinked:number;Confirmed:number;Pending:number};
+ Mobile:string|null;PhoneNormalized:string|null;Active:number;Registered:number;Used:number;PriorSales:number;PhoneMatches:number;StudentVerified:number;ClubLinked:number;Confirmed:number;Pending:number};
 export async function GET(req:NextRequest){
  if(process.env.DECEMBER_EXAM_POS_PREVIEW_ENABLED!=='true')return reply({ok:false,code:'CAMPAIGN_UNAVAILABLE'},503);
  const auth=await requirePageAccess('/income/pos');if(!isAuthResult(auth))return auth;
@@ -17,7 +18,7 @@ export async function GET(req:NextRequest){
  try{
  const r=await (await getPool()).request().input('tenant',sql.UniqueIdentifier,auth.tenantId).input('client',sql.Int,client)
  .input('code',sql.VarChar(48),DECEMBER_CAMPAIGN_CODE).query<Facts>(`
- SELECT c.FirstVisitPct,c.StudentPct,c.ClubPct,c.MultiServicePct,c.Friend1Pct,c.Friend2Pct,c.Friend3Pct,
+ SELECT cl.Mobile,p.PhoneNormalized,c.FirstVisitPct,c.StudentPct,c.ClubPct,c.MultiServicePct,c.Friend1Pct,c.Friend2Pct,c.Friend3Pct,
  CASE WHEN c.Status='ACTIVE' AND c.StartsAtUtc<=SYSUTCDATETIME() AND c.EndsAtUtc>SYSUTCDATETIME() THEN 1 ELSE 0 END Active,
  CASE WHEN p.IdentityVerifiedAtUtc IS NOT NULL THEN 1 ELSE 0 END Registered,
  CASE WHEN EXISTS(SELECT 1 FROM dbo.CutOfferRedemption d WHERE d.TenantId=c.TenantId AND d.CampaignId=c.CampaignId AND d.ClientId=@client) THEN 1 ELSE 0 END Used,
@@ -37,7 +38,9 @@ export async function GET(req:NextRequest){
  WHERE c.TenantId=@tenant AND c.Code=@code
  `);
  const f=r.recordset[0];if(!f)return reply({ok:false,code:'NOT_FOUND'},404);
- const registered=f.Registered===1&&f.PhoneMatches===1;
+ let matchesSelected=false;
+ try{matchesSelected=normalizeEgyptianMobile(f.Mobile)===f.PhoneNormalized;}catch{/* invalid legacy phone */}
+ const registered=f.Registered===1&&f.PhoneMatches===1&&matchesSelected;
  // Club and cart service rules stay excluded until authoritative suspension/catalog
  // policies are verified; expose observed link only, not granted eligibility.
  const evaluation=evaluateDecember({active:f.Active===1,registered,alreadyRedeemed:f.Used===1,
