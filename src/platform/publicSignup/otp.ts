@@ -22,11 +22,17 @@ export function signupOtpRequired(env: NodeJS.ProcessEnv = process.env): boolean
 
 /** Dedicated platform pairing only. Never resolve a tenant/CUT CLUB integration or legacy fallback. */
 export function signupOtpConfig(env: NodeJS.ProcessEnv = process.env): Config {
+  if (env.PUBLIC_SIGNUP_OTP_EDGE_RATE_LIMIT_READY !== 'true') throw unavailable();
+  return signupOtpProviderConfig(env);
+}
+
+/** Shared provider credentials validation only. Public callers must use signupOtpConfig. */
+export function signupOtpProviderConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const apiKey = env.PUBLIC_SIGNUP_OTP_API_KEY?.trim();
   const signingKey = env.PUBLIC_SIGNUP_OTP_SIGNING_KEY?.trim();
   const raw = env.PUBLIC_SIGNUP_OTP_BASE_URL?.trim();
   if (!apiKey || apiKey.length < 32 || !signingKey || signingKey.length < 32 || apiKey === signingKey ||
-      !raw || env.PUBLIC_SIGNUP_OTP_EDGE_RATE_LIMIT_READY !== 'true') throw unavailable();
+      !raw) throw unavailable();
   let url: URL;
   try { url = new URL(raw); } catch { throw unavailable(); }
   if (url.protocol !== 'https:' || url.username || url.password || url.pathname !== '/' || url.search || url.hash)

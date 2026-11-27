@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { CheckCircle2, CircleAlert, Loader2, MessageCircle, ShieldCheck } from 'lucide-react';
 
 const endpoint = '/api/admin/platform/authentication/otp';
-type Status = { required:boolean; configured:boolean; senderKeyPresent:boolean; independentSigningKeyPresent:boolean; edgeRateLimitDeclared:boolean; providerUrlPresent:boolean };
+type Status = { required:boolean; configured:boolean; publicConfigured:boolean; senderKeyPresent:boolean; independentSigningKeyPresent:boolean; edgeRateLimitDeclared:boolean; providerUrlPresent:boolean };
 type Challenge = { ticket:string; phone:string; expiresAtUtc:string };
 const button = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#087e7a] px-4 py-2 text-sm font-bold text-white disabled:opacity-50';
 const field = 'w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-[#102433] outline-none focus:ring-2 focus:ring-teal-200';
@@ -59,9 +59,9 @@ export default function PlatformOtpPanel() {
     <header className="rounded-2xl bg-[#102433] p-5 text-white"><div className="flex items-center gap-2 text-sm text-[#66e0da]"><ShieldCheck className="h-5 w-5"/> أمان المنصة</div><h2 className="mt-2 text-2xl font-black">التحقق من رقم الموبايل</h2><p className="mt-2 text-sm text-slate-200">إعدادات تسجيل المنشآت الجديدة — DRVO AutoResponse.</p></header>
     <div className="grid gap-4 lg:grid-cols-2">
       <section className="rounded-2xl border border-slate-200 bg-white p-5">
-        <h3 className="font-black">جاهزية الإعدادات</h3><p className="mt-1 text-xs leading-6 text-slate-600">حالة الإعداد لا تعني أن رقم واتساب متصل؛ اختبار إرسال وتحقق فعلي هو الدليل.</p>
+        <h3 className="font-black">جاهزية الإعدادات</h3><p className="mt-1 text-xs leading-6 text-slate-600">اختبار الإدارة لا يفعّل التسجيل العام. حالة الإعداد لا تعني أن رقم واتساب متصل؛ اختبار فعلي هو الدليل.</p>
         {status?<><div className="mt-4 divide-y divide-slate-100">{([
-          ['رابط المزود موجود',status.providerUrlPresent],['مفتاح حساب الإرسال موجود',status.senderKeyPresent],['مفتاح توقيع مستقل',status.independentSigningKeyPresent],['إقرار تهيئة حماية الطلبات',status.edgeRateLimitDeclared],['الإعدادات تستوفي الشروط',status.configured]
+          ['رابط المزود موجود',status.providerUrlPresent],['مفتاح حساب الإرسال موجود',status.senderKeyPresent],['مفتاح توقيع مستقل',status.independentSigningKeyPresent],['جاهزية اختبار الإدارة',status.configured],['حماية طلبات التسجيل العام',status.edgeRateLimitDeclared],['جاهزية التسجيل العام',status.publicConfigured]
         ] as const).map(([label,ok])=><div key={label} className="flex items-center justify-between gap-3 py-3 text-sm"><span>{label}</span><span className={'flex items-center gap-1 text-xs font-bold '+(ok?'text-emerald-700':'text-amber-800')}>{ok?<CheckCircle2 className="h-4 w-4"/>:<CircleAlert className="h-4 w-4"/>}{ok?'موجود':'ناقص'}</span></div>)}</div><div className="mt-4 rounded-xl bg-slate-50 p-3 text-sm font-bold">التحقق الإلزامي للتسجيل: {status.required?'مفعّل في إعدادات السيرفر':'غير مفعّل'}</div></>:<p role="status" className="mt-4 text-sm text-slate-600">الإعدادات غير محملة.</p>}
         <button type="button" onClick={()=>void load()} disabled={busy} className="mt-4 rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold">تحديث الحالة</button>
       </section>
@@ -74,6 +74,6 @@ export default function PlatformOtpPanel() {
         {error&&<p role="alert" className="mt-3 rounded-xl bg-red-50 p-3 text-sm text-red-800">{error}</p>}
       </section>
     </div>
-    <section className="rounded-2xl border border-slate-200 bg-white p-5"><h3 className="font-black">ربط رقم الإرسال</h3><ol className="mt-3 list-decimal space-y-2 pe-4 text-sm leading-7 text-slate-700"><li>افتح DRVO AutoResponse واختار حساب DRVO المخصص للتحقق واربط رقم واتساب عبر QR.</li><li>جهز مفتاح الربط الخاص بالمنصة، وليس مفتاح أي منشأة عميلة. خزّنه في إعدادات السيرفر مع مفتاح توقيع مستقل.</li><li>بعد تهيئة حماية الطلبات، نفّذ اختبار الإرسال والتحقق على بيئة الاختبار قبل التفعيل.</li></ol><p className="mt-4 text-xs leading-6 text-slate-600">لا يمكن تغيير المفاتيح أو تفعيل الإلزام من الصفحة الحالية. لا تعرض اللوحة أي قيمة سرية.</p><a href="https://app.drvotech.com/dashboard/integrations" target="_blank" rel="noreferrer" className="mt-3 inline-block text-sm font-bold text-teal-700 underline">فتح تكاملات DRVO AutoResponse</a></section>
+    <section className="rounded-2xl border border-slate-200 bg-white p-5"><h3 className="font-black">ربط رقم الإرسال</h3><ol className="mt-3 list-decimal space-y-2 pe-4 text-sm leading-7 text-slate-700"><li>افتح DRVO AutoResponse واختار حساب DRVO المخصص للتحقق واربط رقم واتساب عبر QR.</li><li>جهز مفتاح الربط الخاص بالمنصة، وليس مفتاح أي منشأة عميلة. خزّنه في إعدادات السيرفر مع مفتاح توقيع مستقل.</li><li>نفّذ اختبار الإرسال والتحقق من حساب مشغل المنصة. تظل حماية الطلبات شرطًا مستقلًا للتسجيل العام.</li></ol><p className="mt-4 text-xs leading-6 text-slate-600">لا يمكن تغيير المفاتيح أو تفعيل الإلزام من الصفحة الحالية. لا تعرض اللوحة أي قيمة سرية.</p><a href="https://app.drvotech.com/dashboard/integrations" target="_blank" rel="noreferrer" className="mt-3 inline-block text-sm font-bold text-teal-700 underline">فتح تكاملات DRVO AutoResponse</a></section>
   </section>;
 }

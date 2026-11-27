@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { isAuthResult, requirePlatformOperator } from '@/lib/api-auth';
 import { enforceSignupOtpRate, sendSignupOtp, verifySignupOtp, SignupOtpError } from '@/platform/publicSignup/otp';
-import { operatorOtpConfig, operatorOtpStatus } from '@/platform/publicSignup/otpOperator';
+import { enforceOperatorOtpRate, operatorOtpConfig, operatorOtpStatus } from '@/platform/publicSignup/otpOperator';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -17,7 +17,8 @@ export async function GET() {
 export async function POST(req: Request) {
   const auth = await requirePlatformOperator();
   if (!isAuthResult(auth)) return auth;
-  if (req.headers.get('sec-fetch-site') === 'cross-site' || !req.headers.get('content-type')?.startsWith('application/json'))
+  const fetchSite = req.headers.get('sec-fetch-site');
+  if ((fetchSite && fetchSite !== 'same-origin' && fetchSite !== 'none') || !req.headers.get('content-type')?.startsWith('application/json'))
     return reply({ error: 'طلب غير صالح.' }, 415);
   try {
     const body = await req.json().catch(() => null);
@@ -27,6 +28,7 @@ export async function POST(req: Request) {
     const action: 'send' | 'verify' = body.action;
     if (Object.keys(body).some(k => !(action === 'send' ? ['action','phone'] : ['action','phone','ticket','code']).includes(k)))
       return reply({ error: 'بيانات الاختبار غير صالحة.' }, 400);
+    enforceOperatorOtpRate(auth.userId, action);
     enforceSignupOtpRate(req, action);
     const config = operatorOtpConfig();
     if (action === 'send') return reply({ ok: true, ...await sendSignupOtp(body.phone, config) });
