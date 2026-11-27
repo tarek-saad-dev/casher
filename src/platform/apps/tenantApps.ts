@@ -143,7 +143,7 @@ async function setAppInstalled(
       BEGIN
         UPDATE dbo.TenantAppEntitlement
         SET Enabled = 1, Status = N'installed', Source = @source,
-            InstalledAt = ISNULL(InstalledAt, @now), UpdatedAt = @now
+            InstalledAt = ISNULL(InstalledAt, @now), DisabledAt = NULL, UpdatedAt = @now
         WHERE TenantId = @tenantId AND AppCode = @code;
         SET @outcome = N'reinstalled';
       END
