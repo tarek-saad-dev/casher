@@ -186,7 +186,7 @@ export default function PosPage() {
         body:JSON.stringify({clientId:state.customer.ClientID,items:state.items.map(i=>({proId:i.ProID,empId:i.EmpID,sPrice:i.SPrice,qty:i.Qty,dis:i.Dis,disVal:i.DisVal}))})});
       const q=await response.json();
       if(decemberKeyRef.current!==key||decemberHeaderRef.current.some(v=>v!==0))return;
-      if(!response.ok||q.ok!==true||q.checkoutAvailable!==true||!Number.isSafeInteger(q.discountMinor)||q.discountMinor<=0||!Number.isInteger(q.percent)||q.percent<=0||q.percent>=100){
+      if(!response.ok||q.ok!==true||q.checkoutAvailable!==true||!Number.isSafeInteger(q.discountMinor)||q.discountMinor<=0||!Number.isInteger(q.percent)||q.percent<=0||q.percent>100){
         setSaveError(q.ok===true&&!q.checkoutAvailable?'خصم 100% يحتاج تفعيل مسار الفاتورة المجانية أولًا.':'تعذر اعتماد خصم ديسمبر: '+(q.code||'راجع الشروط'));return;
       }
       setDecemberQuote({key,percent:q.percent,discountMinor:q.discountMinor});
@@ -621,7 +621,8 @@ export default function PosPage() {
     console.log('[POS SAVE] START', { requestId, source });
 
     if (state.items.length === 0) { setSaveError('يجب إضافة خدمة واحدة على الأقل'); saveLockRef.current = false; setSaving(false); return; }
-    if (state.paymentMethodId === null) { setSaveError('اختر طريقة الدفع'); saveLockRef.current = false; setSaving(false); return; }
+    const decemberZero = !!decemberQuote && totals.grandTotal === 0 && decemberQuote.percent===100;
+    if (state.paymentMethodId === null && !decemberZero) { setSaveError('اختر طريقة الدفع'); saveLockRef.current = false; setSaving(false); return; }
 
     if(decemberBusy || (decemberQuote && (editingSaleId!==null || decemberQuote.key!==decemberKey ||
       state.discountPercent!==decemberQuote.percent || Math.round(totals.headerDiscountValue*100)!==decemberQuote.discountMinor))){
@@ -639,8 +640,8 @@ export default function PosPage() {
 
     // Determine main payment method (largest amount)
     const sortedAllocations = [...state.paymentAllocations].sort((a, b) => b.amount - a.amount);
-    const mainPayment = sortedAllocations[0];
-    if (!mainPayment || mainPayment.amount <= 0) {
+    const mainPayment = sortedAllocations[0] ?? (decemberZero?{paymentMethodId:0,amount:0}:undefined);
+    if (!mainPayment || (!decemberZero && mainPayment.amount <= 0)) {
       setSaveError('يجب إدخال مبلغ لطريقة دفع واحدة على الأقل');
       saveLockRef.current = false; setSaving(false);
       return;
@@ -688,7 +689,7 @@ export default function PosPage() {
         grandTotal: totals.grandTotal,
         totalBonus: totals.totalBonus,
         totalQty: totals.totalQty,
-        paymentMethodId: mainPayment.paymentMethodId,
+        paymentMethodId: decemberZero ? null : mainPayment.paymentMethodId,
         paymentAllocations: activeAllocations,
         payCash,
         payVisa,
@@ -737,7 +738,7 @@ export default function PosPage() {
       invalidateRecentInvoicesCache();
       void loadRetailProducts(); // stock changed after sale
 
-      if (forcePrint || isEditing) {
+      if (forcePrint || isEditing || decemberZero) {
         // Double-click (forcePrint) or edit always opens the browser modal directly
         setPrintOpen(true);
       } else {
