@@ -3,6 +3,7 @@
 import { Save, Loader2, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
+import DecemberEligibilityPreview from '@/components/pos/DecemberEligibilityPreview';
 import CartPanel from '@/components/pos/CartPanel';
 import InvoiceSummary from '@/components/pos/InvoiceSummary';
 import PaymentMethodSelect from '@/components/pos/PaymentMethodSelect';
@@ -54,6 +55,7 @@ export default function PosInvoicePanel({
 
   return (
     <div className="flex flex-col gap-3 lg:gap-4">
+      {process.env.NEXT_PUBLIC_DECEMBER_EXAM_POS_PREVIEW_ENABLED === "true" && state.customer && <DecemberEligibilityPreview key={state.customer.ClientID} clientId={state.customer.ClientID} />}
       <CartPanel
         items={state.items}
         barbers={barbers}
