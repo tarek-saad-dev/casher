@@ -5,6 +5,7 @@ import '@testing-library/jest-dom/vitest';
 import PublicSignupFlow from '@/components/public/PublicSignupFlow';
 import TrainingExperience from '@/components/onboarding/TrainingExperience';
 import ServiceTemplatePicker from '@/components/onboarding/ServiceTemplatePicker';
+import SmartTeamSetup from '@/components/onboarding/SmartTeamSetup';
 
 afterEach(()=>{cleanup();vi.unstubAllGlobals();vi.restoreAllMocks();});
 
@@ -120,5 +121,23 @@ describe('V3 service template picker',()=>{
     expect(request).toHaveBeenCalledTimes(5);
     const payloads=request.mock.calls.map(call=>JSON.parse(String(call[1]?.body)));
     expect(payloads.every(row=>row.action==='service'&&row.price===100&&row.name!=='حلاقة شعر')).toBe(true);
+  });
+});
+
+describe('V3 smart team setup',()=>{
+  it('filters the current branch roster without sending requests or changing staff',()=>{
+    const request=vi.fn();vi.stubGlobal('fetch',request);
+    render(<SmartTeamSetup employees={[{EmpID:1,EmpName:'Ahmed Hassan',Job:'Barber'},{EmpID:2,EmpName:'Mona Ali',Job:'Reception'}]} payrollAvailable={false} bookingAvailable={false} onSaved={async()=>{}}/>);
+    expect(screen.getByText('Ahmed Hassan')).toBeInTheDocument();
+    expect(screen.getByText('Mona Ali')).toBeInTheDocument();
+    const search=screen.getByRole('searchbox',{name:'بحث في الفريق'});
+    fireEvent.change(search,{target:{value:'reception'}});
+    expect(screen.queryByText('Ahmed Hassan')).not.toBeInTheDocument();
+    expect(screen.getByText('Mona Ali')).toBeInTheDocument();
+    fireEvent.change(search,{target:{value:'unknown'}});
+    expect(screen.getByText('مفيش موظفين مطابقين للبحث.')).toBeInTheDocument();
+    fireEvent.change(search,{target:{value:''}});
+    expect(screen.getByText('Ahmed Hassan')).toBeInTheDocument();
+    expect(request).not.toHaveBeenCalled();
   });
 });
