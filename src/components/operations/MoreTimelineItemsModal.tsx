@@ -159,11 +159,11 @@ export function MoreTimelineItemsModal({ open, onClose, items, barberName, hourL
 
   const getStatusBadge = (status: string) => {
     const statusMap: Record<string, { label: string; color: string; bg: string }> = {
-      confirmed: { label: 'مؤكد', color: '#22c55e', bg: 'rgba(34, 197, 94, 0.15)' },
-      arrived: { label: 'واصل', color: '#3b82f6', bg: 'rgba(59, 130, 246, 0.15)' },
-      waiting: { label: 'منتظر', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.15)' },
-      called: { label: 'تم النداء', color: '#8b5cf6', bg: 'rgba(139, 92, 246, 0.15)' },
-      in_service: { label: 'قيد الخدمة', color: '#ec4899', bg: 'rgba(236, 72, 153, 0.15)' },
+      confirmed: { label: 'مؤكد', color: 'var(--success)', bg: 'var(--success-soft)' },
+      arrived: { label: 'واصل', color: 'var(--info)', bg: 'var(--info-soft)' },
+      waiting: { label: 'منتظر', color: 'var(--warning)', bg: 'var(--warning-soft)' },
+      called: { label: 'تم النداء', color: 'var(--brand)', bg: 'var(--brand-soft)' },
+      in_service: { label: 'قيد الخدمة', color: 'var(--warning)', bg: 'var(--warning-soft)' },
     };
 
     const mapped = statusMap[status.toLowerCase()];
@@ -182,34 +182,33 @@ export function MoreTimelineItemsModal({ open, onClose, items, barberName, hourL
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-foreground/25 backdrop-blur-sm">
       <div
-        className="w-full max-w-lg max-h-[80vh] flex flex-col rounded-lg overflow-hidden"
+        className="w-full max-w-lg max-h-[80vh] flex flex-col rounded-lg overflow-hidden shadow-lg"
         style={{
-          background: 'linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)',
-          border: '1px solid rgba(212, 175, 55, 0.3)',
-          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+          background: 'var(--card)',
+          border: '1px solid var(--border)',
         }}
       >
         {/* Header */}
         <div
           className="flex items-center justify-between px-4 py-3 border-b"
-          style={{ borderColor: 'rgba(212, 175, 55, 0.2)' }}
+          style={{ borderColor: 'var(--border)' }}
         >
           <div className="flex items-center gap-2">
-            <Calendar className="w-4 h-4" style={{ color: '#d4af37' }} />
-            <h2 className="text-base font-bold text-white">
+            <Calendar className="w-4 h-4" style={{ color: 'var(--primary)' }} />
+            <h2 className="text-base font-bold text-foreground">
               {hourLabel ? `العناصر في ${hourLabel}` : 'العناصر في هذا الوقت'}
             </h2>
             {barberName && (
-              <span className="text-xs text-gray-400">({barberName})</span>
+              <span className="text-xs text-muted-foreground">({barberName})</span>
             )}
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-full hover:bg-white/10 transition-colors"
+            className="p-1.5 rounded-full hover:bg-surface-muted transition-colors"
           >
-            <X className="w-5 h-5 text-gray-400" />
+            <X className="w-5 h-5 text-muted-foreground" />
           </button>
         </div>
 
@@ -225,14 +224,12 @@ export function MoreTimelineItemsModal({ open, onClose, items, barberName, hourL
             return (
               <div
                 key={index}
-                className="p-3 rounded-lg border transition-all hover:border-yellow-500/40"
+                className="p-3 rounded-lg border transition-all hover:border-primary/40"
                 style={{
                   background: isBooking
-                    ? 'linear-gradient(135deg, rgba(34, 197, 94, 0.08) 0%, rgba(34, 197, 94, 0.02) 100%)'
-                    : 'linear-gradient(135deg, rgba(59, 130, 246, 0.08) 0%, rgba(59, 130, 246, 0.02) 100%)',
-                  borderColor: isBooking
-                    ? 'rgba(34, 197, 94, 0.2)'
-                    : 'rgba(59, 130, 246, 0.2)',
+                    ? 'var(--card)'
+                    : 'var(--surface-muted)',
+                  borderColor: 'var(--border)',
                 }}
               >
                 {/* Badge and Code */}
@@ -241,13 +238,13 @@ export function MoreTimelineItemsModal({ open, onClose, items, barberName, hourL
                     <span
                       className="text-[10px] px-1.5 py-0.5 rounded font-medium"
                       style={{
-                        background: isBooking ? 'rgba(34, 197, 94, 0.2)' : 'rgba(59, 130, 246, 0.2)',
-                        color: isBooking ? '#22c55e' : '#3b82f6',
+                        background: isBooking ? 'var(--success-soft)' : 'var(--info-soft)',
+                        color: isBooking ? 'var(--success)' : 'var(--info)',
                       }}
                     >
                       {isBooking ? 'حجز' : 'دور'}
                     </span>
-                    <span className="text-sm font-bold text-white">
+                    <span className="text-sm font-bold text-foreground">
                       {isBooking ? booking?.BookingCode || item.label : queue?.TicketCode || item.ticketCode || item.label}
                     </span>
                   </div>
@@ -256,10 +253,10 @@ export function MoreTimelineItemsModal({ open, onClose, items, barberName, hourL
 
                 {/* Customer Name */}
                 <div className="flex items-center gap-2 mb-1.5">
-                  <User className="w-3.5 h-3.5 text-gray-400" />
-                  <span className="text-sm text-gray-200">
+                  <User className="w-3.5 h-3.5 text-muted-foreground" />
+                  <span className="text-sm text-foreground">
                     {isLoading ? (
-                      <span className="text-gray-500">جاري التحميل...</span>
+                      <span className="text-muted-foreground">جاري التحميل...</span>
                     ) : isBooking ? (
                       booking?.ClientName || item.customerName || '—'
                     ) : (
@@ -270,38 +267,38 @@ export function MoreTimelineItemsModal({ open, onClose, items, barberName, hourL
 
                 {/* Time */}
                 <div className="flex items-center gap-2 mb-1.5">
-                  <Clock className="w-3.5 h-3.5 text-gray-400" />
-                  <span className="text-xs text-gray-400">
+                  <Clock className="w-3.5 h-3.5 text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">
                     {formatTimeRange(item.startTime, item.endTime)}
                   </span>
                 </div>
 
                 {/* Barber */}
                 <div className="flex items-center gap-2 mb-1.5">
-                  <Receipt className="w-3.5 h-3.5 text-gray-400" />
-                  <span className="text-xs text-gray-400">
+                  <Receipt className="w-3.5 h-3.5 text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">
                     الحلاق: {isBooking ? booking?.BarberName || barberName : barberName}
                   </span>
                 </div>
 
                 {isBooking && item.packageName && (
                   <div className="flex items-center gap-2 mb-1.5">
-                    <Tag className="w-3.5 h-3.5 text-gray-400" />
-                    <span className="text-xs font-semibold text-gray-200">{item.packageName}</span>
+                    <Tag className="w-3.5 h-3.5 text-muted-foreground" />
+                    <span className="text-xs font-semibold text-foreground">{item.packageName}</span>
                   </div>
                 )}
 
                 {/* Services */}
                 {((isBooking ? booking?.services?.length : queue?.serviceNames?.length) || 0) > 0 && (
                   <div className="flex items-start gap-2 mb-2">
-                    <Scissors className="w-3.5 h-3.5 text-gray-400 mt-0.5" />
+                    <Scissors className="w-3.5 h-3.5 text-muted-foreground mt-0.5" />
                     <div className="flex flex-wrap gap-1">
                       {(isBooking ? booking?.services?.map(s => s.ProName) : queue?.serviceNames)
                         ?.filter((s): s is string => Boolean(s))
                         .map((svc, i) => (
                           <span
                             key={i}
-                            className="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-gray-300"
+                            className="text-[10px] px-1.5 py-0.5 rounded bg-surface-muted text-muted-foreground"
                           >
                             {svc}
                           </span>
@@ -311,11 +308,11 @@ export function MoreTimelineItemsModal({ open, onClose, items, barberName, hourL
                 )}
 
                 {/* Actions */}
-                <div className="flex items-center gap-2 mt-3 pt-2 border-t border-white/5">
+                <div className="flex items-center gap-2 mt-3 pt-2 border-t border-border">
                   <button
                     onClick={() => onOpenDetails?.(item)}
-                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-all hover:bg-white/10"
-                    style={{ color: '#d4af37' }}
+                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-all hover:bg-surface-muted"
+                    style={{ color: 'var(--primary)' }}
                   >
                     <FileText className="w-3.5 h-3.5" />
                     تفاصيل
@@ -325,8 +322,8 @@ export function MoreTimelineItemsModal({ open, onClose, items, barberName, hourL
                     <button
                       onClick={() => handlePrintBooking(item)}
                       disabled={isPrinting || !booking}
-                      className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-all hover:bg-white/10 disabled:opacity-50"
-                      style={{ color: '#22c55e' }}
+                      className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-all hover:bg-surface-muted disabled:opacity-50"
+                      style={{ color: 'var(--success)' }}
                     >
                       {isPrinting ? (
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -340,8 +337,8 @@ export function MoreTimelineItemsModal({ open, onClose, items, barberName, hourL
                   {!isBooking && (
                     <button
                       onClick={() => onOpenDetails?.(item)}
-                      className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-all hover:bg-white/10"
-                      style={{ color: '#3b82f6' }}
+                      className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-all hover:bg-surface-muted"
+                      style={{ color: 'var(--info)' }}
                     >
                       <Ticket className="w-3.5 h-3.5" />
                       ورقة الدور
@@ -356,9 +353,9 @@ export function MoreTimelineItemsModal({ open, onClose, items, barberName, hourL
         {/* Footer */}
         <div
           className="px-4 py-2 border-t text-center"
-          style={{ borderColor: 'rgba(212, 175, 55, 0.2)' }}
+          style={{ borderColor: 'var(--border)' }}
         >
-          <span className="text-xs text-gray-500">
+          <span className="text-xs text-muted-foreground">
             {items.length} عنصر في هذا الوقت
           </span>
         </div>

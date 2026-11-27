@@ -314,7 +314,7 @@ export function OperationsControlPanel({
               onClick={onTemporaryTransfer}
               className={cn(
                 toolbarAdminBtn,
-                'border-amber-500/30 bg-amber-500/10 text-amber-200 hover:bg-amber-500/15',
+                'border-warning/30 bg-warning-soft text-warning hover:bg-warning-soft',
               )}
               title="نقل موظف ليوم واحد لفرع آخر بدون تعديل الجدول الأسبوعي"
             >
@@ -330,7 +330,7 @@ export function OperationsControlPanel({
               onClick={onAffectedBookings}
               className={cn(
                 toolbarAdminBtn,
-                'border-orange-500/35 bg-orange-500/10 text-orange-100 hover:bg-orange-500/15',
+                'border-warning/35 bg-warning-soft text-warning hover:bg-warning-soft',
               )}
               title="الحجوزات التي تحتاج إجراء بسبب غياب أو تعديل جدول"
             >
@@ -338,7 +338,7 @@ export function OperationsControlPanel({
               <span className="hidden min-[1100px]:inline">حجوزات تحتاج إجراء</span>
               <span className="min-[1100px]:hidden">حجوزات</span>
               {typeof affectedBookingsCount === 'number' && affectedBookingsCount > 0 ? (
-                <span className="rounded-full bg-orange-500/30 px-1 text-[9px] font-bold">
+                <span className="rounded-full bg-warning-soft px-1 text-[9px] font-bold">
                   {affectedBookingsCount}
                 </span>
               ) : null}

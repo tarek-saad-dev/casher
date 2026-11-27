@@ -22,22 +22,22 @@ const STATE_STYLES = {
     labelColor: 'text-muted-foreground',
   },
   available: {
-    border: 'border-teal-500/70',
-    bg: 'bg-teal-950/40',
+    border: 'border-success/70',
+    bg: 'bg-success-soft',
     label: 'متاح',
-    labelColor: 'text-teal-400',
+    labelColor: 'text-success',
   },
   conflict: {
     border: 'border-destructive/70',
-    bg: 'bg-destructive/10',
+    bg: 'bg-destructive-soft',
     label: 'غير متاح',
     labelColor: 'text-destructive',
   },
   outside: {
-    border: 'border-amber-500/70',
-    bg: 'bg-amber-950/30',
+    border: 'border-warning/70',
+    bg: 'bg-warning-soft',
     label: 'خارج وقت العمل',
-    labelColor: 'text-amber-400',
+    labelColor: 'text-warning',
   },
 } as const;
 
@@ -88,7 +88,7 @@ export function BookingDragPreview({ drag }: Props) {
         </div>
 
         {drag.previewMessage && drag.previewState !== 'available' && (
-          <div className="truncate text-[10px] text-destructive/90">{drag.previewMessage}</div>
+          <div className="truncate text-[10px] text-destructive">{drag.previewMessage}</div>
         )}
       </div>
     </div>
