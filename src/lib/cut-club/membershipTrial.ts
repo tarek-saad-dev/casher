@@ -13,3 +13,13 @@ export function parseTrialInput(v:unknown,now=new Date()):TrialInput|null{
  !(Date.parse(x.expiresAt)>now.getTime())||Date.parse(x.expiresAt)>now.getTime()+365*86400000)return null;
  return {...x,accountId:x.accountId.toLowerCase(),reason:x.reason.trim()} as TrialInput;
 }
+
+export type ApplicationTrialInput={applicationId:string;action:'CHECK'|'ISSUE';expectedTrialRevision:number;expiresAt:string;reason:string};
+export function parseApplicationTrialInput(v:unknown,now=new Date()):ApplicationTrialInput|null{
+ if(!v||typeof v!=='object'||Array.isArray(v))return null;
+ const x=v as Record<string,unknown>;
+ if(Object.keys(x).sort().join(',')!=='action,applicationId,expectedTrialRevision,expiresAt,reason'||
+ typeof x.applicationId!=='string'||!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(x.applicationId))return null;
+ const checked=parseTrialInput({action:x.action,accountId:x.applicationId,programCode:'CHECK',programRevision:1,branchId:1,expectedTrialRevision:x.expectedTrialRevision,expiresAt:x.expiresAt,reason:x.reason},now);
+ return checked?{applicationId:x.applicationId.toLowerCase(),action:checked.action,expectedTrialRevision:checked.expectedTrialRevision,expiresAt:checked.expiresAt,reason:checked.reason}:null;
+}

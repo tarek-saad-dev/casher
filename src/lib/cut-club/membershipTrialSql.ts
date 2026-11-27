@@ -2,7 +2,7 @@ import 'server-only';
 import sql from 'mssql';
 import {pilotTenant} from './membershipDraft';
 import {evaluateMembershipEligibility,type MembershipKind,type MemberFacts} from './membershipPolicy';
-import {parseTrialInput,type TrialResult} from './membershipTrial';
+import {parseTrialInput,parseApplicationTrialInput,type TrialInput,type ApplicationTrialInput,type TrialResult} from './membershipTrial';
 export class TrialError extends Error{constructor(public code:string,public status:number){super(code);}}
 type Scope={tenantId:string;staffId:number};
 async function gate(r:sql.Request,s:Scope){
@@ -14,11 +14,37 @@ async function gate(r:sql.Request,s:Scope){
 }
 export async function membershipTrial(pool:sql.ConnectionPool,s:Scope,raw:unknown):Promise<TrialResult>{
  const v=parseTrialInput(raw);if(!v)throw new TrialError('INVALID_TRIAL',400);
+ return runTrial(pool,s,v,null);
+}
+export async function membershipTrialFromApplication(pool:sql.ConnectionPool,s:Scope,raw:unknown):Promise<TrialResult>{
+ const input=parseApplicationTrialInput(raw);if(!input)throw new TrialError('INVALID_TRIAL',400);
+ return runTrial(pool,s,null,input);
+}
+async function runTrial(pool:sql.ConnectionPool,s:Scope,manual:TrialInput|null,application:ApplicationTrialInput|null):Promise<TrialResult>{
  await gate(pool.request(),s);
  const tx=new sql.Transaction(pool);await tx.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
  try{
  await gate(new sql.Request(tx),s);
  const q=()=>new sql.Request(tx).input('tenant',sql.UniqueIdentifier,s.tenantId);
+ let v=manual;let applicationClient:number|null=null;
+ if(application){
+  if(process.env.CUT_CLUB_STAGING_MEMBERSHIP_APPLICATION_ENABLED!=='true'||process.env.CUT_CLUB_STAGING_MEMBERSHIP_PUBLICATION_ENABLED!=='true'||process.env.CUT_CLUB_STAGING_MEMBERSHIP_APPLICATION_ISSUE_ENABLED!=='true')throw new TrialError('APPLICATION_ISSUE_NOT_RELEASED',403);
+  const lock=await new sql.Request(tx).input('lock',sql.NVarChar(200),'CUTCLUB:MEMBERSHIP_DRAFT:'+s.tenantId.toLowerCase()).query<{Result:number}>(`DECLARE @r INT; EXEC @r=sp_getapplock @Resource=@lock,@LockMode='Exclusive',@LockOwner='Transaction',@LockTimeout=3000; SELECT @r AS Result;`);
+  if(lock.recordset[0]?.Result===undefined||lock.recordset[0].Result<0)throw new TrialError('APPLICATION_BUSY',409);
+  const rr=await q().input('id',sql.UniqueIdentifier,application.applicationId).query<{AccountID:string;LegacyClientID:number;ProgramCode:string;ProgramRevision:number;BranchID:1|3;Consumed:number}>(`
+   SELECT a.AccountID,a.LegacyClientID,a.ProgramCode,p.ProgramRevision,a.BranchID,
+   CASE WHEN f.ApplicationID IS NULL THEN 0 ELSE 1 END AS Consumed
+   FROM dbo.CutClubMembershipApplication a WITH(UPDLOCK,HOLDLOCK)
+   JOIN dbo.CutClubMembershipApplicationDecision d WITH(HOLDLOCK) ON d.TenantId=a.TenantId AND d.ApplicationID=a.ApplicationID AND d.Decision='ACCEPTED_FOR_REVIEW'
+   CROSS APPLY(SELECT TOP(1) Revision,ProgramRevision,Action FROM dbo.CutClubMembershipPublication WITH(HOLDLOCK) WHERE TenantId=a.TenantId AND ProgramCode=a.ProgramCode ORDER BY Revision DESC) p
+   LEFT JOIN dbo.CutClubMembershipApplicationFulfillment f WITH(HOLDLOCK) ON f.TenantId=a.TenantId AND f.ApplicationID=a.ApplicationID
+   WHERE a.TenantId=@tenant AND a.ApplicationID=@id AND p.Action='PUBLISH' AND p.Revision=a.PublicationRevision`);
+  if(rr.recordset.length!==1)throw new TrialError('APPLICATION_NOT_ACCEPTED_OR_CURRENT',409);
+  const a=rr.recordset[0];if(a.Consumed===1)throw new TrialError('APPLICATION_ALREADY_FULFILLED',409);
+  applicationClient=a.LegacyClientID;
+  v={action:application.action,accountId:a.AccountID,programCode:a.ProgramCode,programRevision:a.ProgramRevision,branchId:a.BranchID,expectedTrialRevision:application.expectedTrialRevision,expiresAt:application.expiresAt,reason:application.reason};
+ }
+ if(!v)throw new TrialError('INVALID_TRIAL',400);
  const ar=await q().input('account',sql.UniqueIdentifier,v.accountId).query<{LegacyClientID:number|null;Eligible:number}>(`
  SELECT a.LegacyClientID,CASE WHEN a.LinkStatus='ACTIVE' AND a.AccessStatus='ENABLED' AND EXISTS(
  SELECT 1 FROM dbo.TblClient c WITH(HOLDLOCK)
@@ -28,6 +54,7 @@ export async function membershipTrial(pool:sql.ConnectionPool,s:Scope,raw:unknow
  FROM dbo.CutClubMemberAccount a WITH(UPDLOCK,HOLDLOCK) WHERE a.TenantId=@tenant AND a.AccountID=@account`);
  if(ar.recordset.length!==1)throw new TrialError('ACCOUNT_NOT_FOUND',404);
  const a=ar.recordset[0];
+ if(application&&a.LegacyClientID!==applicationClient)throw new TrialError('APPLICATION_ACCOUNT_CHANGED',409);
  const dr=await q().input('code',sql.VarChar(40),v.programCode).query<{Revision:number;Kind:MembershipKind;MinimumVisits:number;Gleem:boolean;CampShizar:boolean;PartnerCode:string|null}>(`
  SELECT TOP(1) Revision,Kind,MinimumVisits,Gleem,CampShizar,PartnerCode FROM dbo.CutClubMembershipProgramDraft WITH(HOLDLOCK)
  WHERE TenantId=@tenant AND ProgramCode=@code ORDER BY Revision DESC`);
@@ -69,6 +96,7 @@ export async function membershipTrial(pool:sql.ConnectionPool,s:Scope,raw:unknow
  INSERT dbo.CutClubMembershipTrial(TenantId,AccountID,ProgramCode,Revision,ProgramRevision,LegacyClientID,BranchID,ProofRevision,ExpiresAtUtc,StaffID,Reason)
  SELECT @tenant,@account,@code,@rev,@programRev,@client,@branch,@proofRev,@expires,@staff,@reason WHERE @expires>SYSUTCDATETIME()`);
  if(written.rowsAffected[0]!==1)throw new TrialError('TRIAL_EXPIRED',409);
+ if(application){const f=await q().input('id',sql.UniqueIdentifier,application.applicationId).input('account',sql.UniqueIdentifier,v.accountId).input('code',sql.VarChar(40),v.programCode).input('revision',sql.Int,revision+1).query(`INSERT dbo.CutClubMembershipApplicationFulfillment(TenantId,ApplicationID,AccountID,ProgramCode,TrialRevision) VALUES(@tenant,@id,@account,@code,@revision)`);if(f.rowsAffected[0]!==1)throw new TrialError('APPLICATION_FULFILLMENT_FAILED',503);}
  await tx.commit();return {...result,trialRevision:revision+1,status:'CURRENT',issued:true};
  }catch(e){await tx.rollback().catch(()=>{});throw e;}
 }

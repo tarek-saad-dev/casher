@@ -10,7 +10,7 @@ type DbRow={ApplicationID:string;ProgramCode:string;Title:string;PublicationRevi
 const enabled=()=>process.env.CUT_CLUB_STAGING_MEMBERSHIP_APPLICATION_ENABLED==='true';
 async function gate(r:sql.Request){
  if(!enabled())throw new ApplicationError('APPLICATIONS_NOT_RELEASED',403);
- const x=await r.input('tenant',sql.UniqueIdentifier,pilotTenant).query<{Ready:number}>(`SELECT CASE WHEN DB_NAME()='last132_agent' AND SUSER_SNAME()='drvo_agent' AND OBJECT_ID(N'dbo.CutClubMembershipApplicationDecision',N'U') IS NOT NULL AND EXISTS(SELECT 1 FROM dbo.Tenant WHERE TenantId=@tenant AND Code='CASHER_BOOT' AND Status='active') THEN 1 ELSE 0 END AS Ready`);
+ const x=await r.input('tenant',sql.UniqueIdentifier,pilotTenant).query<{Ready:number}>(`SELECT CASE WHEN DB_NAME()='last132_agent' AND SUSER_SNAME()='drvo_agent' AND OBJECT_ID(N'dbo.CutClubMembershipApplicationDecision',N'U') IS NOT NULL AND OBJECT_ID(N'dbo.CutClubMembershipApplicationFulfillment',N'U') IS NOT NULL AND EXISTS(SELECT 1 FROM dbo.Tenant WHERE TenantId=@tenant AND Code='CASHER_BOOT' AND Status='active') THEN 1 ELSE 0 END AS Ready`);
  if(x.recordset[0]?.Ready!==1)throw new ApplicationError('APPLICATIONS_NOT_RELEASED',403);
 }
 const q=(tx:sql.Transaction)=>new sql.Request(tx).input('tenant',sql.UniqueIdentifier,pilotTenant);
@@ -36,12 +36,13 @@ async function publicationLock(tx:sql.Transaction){
 }
 const projection=(r:DbRow):ApplicationRow=>({id:r.ApplicationID.toLowerCase(),code:r.ProgramCode,title:r.Title,publicationRevision:r.PublicationRevision,branchId:r.BranchID,status:r.Status,createdAt:r.CreatedAtUtc.toISOString()});
 const selection=`SELECT TOP(101) x.ApplicationID,x.AccountID,x.ProgramCode,d.Title,x.PublicationRevision,x.BranchID,x.CreatedAtUtc,
- CASE WHEN decision.Decision='REJECTED' THEN 'REJECTED' WHEN latest.Revision<>x.PublicationRevision OR latest.Action<>'PUBLISH' THEN 'PROGRAM_CHANGED' ELSE COALESCE(decision.Decision,'PENDING') END AS Status
+ CASE WHEN decision.Decision='REJECTED' THEN 'REJECTED' WHEN latest.Revision<>x.PublicationRevision OR latest.Action<>'PUBLISH' THEN 'PROGRAM_CHANGED' WHEN fulfillment.ApplicationID IS NOT NULL THEN 'TRIAL_ISSUED' ELSE COALESCE(decision.Decision,'PENDING') END AS Status
  FROM dbo.CutClubMembershipApplication x WITH(HOLDLOCK)
  JOIN dbo.CutClubMembershipPublication p ON p.TenantId=x.TenantId AND p.ProgramCode=x.ProgramCode AND p.Revision=x.PublicationRevision
  JOIN dbo.CutClubMembershipProgramDraft d ON d.TenantId=p.TenantId AND d.ProgramCode=p.ProgramCode AND d.Revision=p.ProgramRevision
  CROSS APPLY(SELECT TOP(1) Revision,Action FROM dbo.CutClubMembershipPublication WITH(HOLDLOCK) WHERE TenantId=x.TenantId AND ProgramCode=x.ProgramCode ORDER BY Revision DESC) latest
- LEFT JOIN dbo.CutClubMembershipApplicationDecision decision WITH(HOLDLOCK) ON decision.TenantId=x.TenantId AND decision.ApplicationID=x.ApplicationID WHERE x.TenantId=@tenant`;
+ LEFT JOIN dbo.CutClubMembershipApplicationDecision decision WITH(HOLDLOCK) ON decision.TenantId=x.TenantId AND decision.ApplicationID=x.ApplicationID
+ LEFT JOIN dbo.CutClubMembershipApplicationFulfillment fulfillment WITH(HOLDLOCK) ON fulfillment.TenantId=x.TenantId AND fulfillment.ApplicationID=x.ApplicationID WHERE x.TenantId=@tenant`;
 export async function listMemberApplications(pool:sql.ConnectionPool,token:unknown){
  return transaction(pool,async tx=>{
  const a=await owner(tx,token);

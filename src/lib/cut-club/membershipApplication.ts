@@ -1,4 +1,4 @@
-export type ApplicationStatus='PENDING'|'ACCEPTED_FOR_REVIEW'|'REJECTED'|'PROGRAM_CHANGED';
+export type ApplicationStatus='PENDING'|'ACCEPTED_FOR_REVIEW'|'REJECTED'|'PROGRAM_CHANGED'|'TRIAL_ISSUED';
 export type ApplicationRow={id:string;code:string;title:string;publicationRevision:number;branchId:1|3;status:ApplicationStatus;createdAt:string};
 export type ApplicationSubmission={code:string;publicationRevision:number;branchId:1|3};
 export type ApplicationDecision={id:string;decision:'ACCEPTED_FOR_REVIEW'|'REJECTED';reason:string};
