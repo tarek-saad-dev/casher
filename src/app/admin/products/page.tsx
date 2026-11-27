@@ -81,9 +81,9 @@ const FALLBACK_IMAGE = '/services/basic.jpeg';
 
 const STOCK_LABEL: Record<StockStatus, string> = { ok: 'متوفر', low: 'منخفض', out: 'نفد' };
 const STOCK_BADGE: Record<StockStatus, string> = {
-  ok: 'border-emerald-500/40 text-emerald-400',
-  low: 'border-amber-500/40 text-amber-400',
-  out: 'border-rose-500/40 text-rose-400',
+  ok: 'border-success/40 text-success',
+  low: 'border-warning/40 text-warning',
+  out: 'border-destructive/40 text-destructive',
 };
 
 
@@ -92,10 +92,10 @@ const IMPORT_STATUS_LABEL: Record<ImportRow['status'], string> = {
   new: 'جديد', existing: 'موجود', invalid: 'غير صالح', duplicate: 'مكرر',
 };
 const IMPORT_STATUS_BADGE: Record<ImportRow['status'], string> = {
-  new: 'border-emerald-500/40 text-emerald-400',
-  existing: 'border-sky-500/40 text-sky-400',
-  invalid: 'border-rose-500/40 text-rose-400',
-  duplicate: 'border-amber-500/40 text-amber-400',
+  new: 'border-success/40 text-success',
+  existing: 'border-info/40 text-info',
+  invalid: 'border-destructive/40 text-destructive',
+  duplicate: 'border-warning/40 text-warning',
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -527,20 +527,20 @@ export default function AdminProductsPage() {
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6" dir="rtl">
+    <div className="min-w-0 p-3 sm:p-6 max-w-7xl mx-auto space-y-6" dir="rtl">
       <PageHeader
         title="المنتجات"
         description="كتالوج منتجات التجزئة — الأسعار، الصور، والمخزون"
       >
-        <Button variant="outline" className="gap-2 border-zinc-700" onClick={handleExport} disabled={displayed.length === 0}>
+        <Button variant="outline" className="gap-2 border-border" onClick={handleExport} disabled={displayed.length === 0}>
           <Download className="w-4 h-4" />
           تصدير CSV
         </Button>
-        <Button variant="outline" className="gap-2 border-zinc-700" onClick={openImport}>
+        <Button variant="outline" className="gap-2 border-border" onClick={openImport}>
           <FileSpreadsheet className="w-4 h-4" />
           استيراد
         </Button>
-        <Button className="gap-2 bg-amber-600 hover:bg-amber-700" onClick={openCreate}>
+        <Button className="gap-2 bg-primary hover:bg-primary/85 text-primary-foreground" onClick={openCreate}>
           <Plus className="w-4 h-4" />
           منتج جديد
         </Button>
@@ -549,18 +549,18 @@ export default function AdminProductsPage() {
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative w-full sm:w-72">
-          <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+          <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="بحث بالاسم أو الكود أو الباركود..."
-            className="bg-zinc-900 border-zinc-700 text-white pr-9"
+            className="bg-card border-border text-foreground pr-9"
           />
         </div>
 
         <Select value={catFilter} onValueChange={setCatFilter}>
-          <SelectTrigger className="w-40 bg-zinc-900 border-zinc-700 text-white"><SelectValue placeholder="التصنيف" /></SelectTrigger>
-          <SelectContent className="bg-zinc-800 border-zinc-700">
+          <SelectTrigger className="w-40 bg-card border-border text-foreground"><SelectValue placeholder="التصنيف" /></SelectTrigger>
+          <SelectContent className="bg-muted border-border">
             <SelectItem value="all">كل التصنيفات</SelectItem>
             {categoryOptions.map((c) => (
               <SelectItem key={c.CatID} value={String(c.CatID)}>{c.CatName}</SelectItem>
@@ -569,16 +569,16 @@ export default function AdminProductsPage() {
         </Select>
 
         <Select value={brandFilter} onValueChange={setBrandFilter}>
-          <SelectTrigger className="w-40 bg-zinc-900 border-zinc-700 text-white"><SelectValue placeholder="العلامة" /></SelectTrigger>
-          <SelectContent className="bg-zinc-800 border-zinc-700">
+          <SelectTrigger className="w-40 bg-card border-border text-foreground"><SelectValue placeholder="العلامة" /></SelectTrigger>
+          <SelectContent className="bg-muted border-border">
             <SelectItem value="all">كل العلامات</SelectItem>
             {brandOptions.map((b) => (<SelectItem key={b} value={b}>{b}</SelectItem>))}
           </SelectContent>
         </Select>
 
         <Select value={stockFilter} onValueChange={(v) => setStockFilter(v as 'all' | StockStatus)}>
-          <SelectTrigger className="w-40 bg-zinc-900 border-zinc-700 text-white"><SelectValue placeholder="المخزون" /></SelectTrigger>
-          <SelectContent className="bg-zinc-800 border-zinc-700">
+          <SelectTrigger className="w-40 bg-card border-border text-foreground"><SelectValue placeholder="المخزون" /></SelectTrigger>
+          <SelectContent className="bg-muted border-border">
             <SelectItem value="all">كل حالات المخزون</SelectItem>
             <SelectItem value="ok">متوفر</SelectItem>
             <SelectItem value="low">منخفض</SelectItem>
@@ -595,9 +595,9 @@ export default function AdminProductsPage() {
               className={`px-3 py-1.5 rounded-lg border transition-colors font-medium ${
                 statusFilter === f
                   ? f === 'active'
-                    ? 'bg-emerald-600/20 border-emerald-500/40 text-emerald-400'
-                    : 'bg-zinc-700/60 border-zinc-600 text-zinc-300'
-                  : 'border-zinc-800 text-zinc-500 hover:border-zinc-700'
+                    ? 'bg-success-soft border-success/40 text-success'
+                    : 'bg-muted border-border text-foreground'
+                  : 'border-border text-muted-foreground hover:border-border'
               }`}
             >
               {f === 'active' ? 'نشط' : f === 'inactive' ? 'متوقف' : 'الكل'}
@@ -607,12 +607,12 @@ export default function AdminProductsPage() {
       </div>
 
       {notice && (
-        <div className="flex items-center gap-2 p-3 rounded-lg border border-emerald-500/30 bg-emerald-500/5 text-emerald-400 text-sm">
+        <div className="flex items-center gap-2 p-3 rounded-lg border border-success/30 bg-success-soft text-success text-sm">
           <Check className="w-4 h-4 shrink-0" />{notice}
         </div>
       )}
       {error && (
-        <div className="flex items-center gap-3 p-3 rounded-lg border border-rose-500/30 bg-rose-500/5 text-rose-400 text-sm">
+        <div className="flex items-center gap-3 p-3 rounded-lg border border-destructive/30 bg-destructive-soft text-destructive text-sm">
           <X className="w-4 h-4 shrink-0" />
           {error}
           <button type="button" onClick={() => setError('')} className="mr-auto opacity-60 hover:opacity-100">×</button>
@@ -620,40 +620,40 @@ export default function AdminProductsPage() {
       )}
 
       {loading ? (
-        <div className="flex items-center justify-center py-16 text-zinc-500 gap-3">
+        <div className="flex items-center justify-center py-16 text-muted-foreground gap-3">
           <Loader2 className="w-6 h-6 animate-spin" />
           جاري التحميل...
         </div>
       ) : displayed.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 text-zinc-600">
+        <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
           <Package className="w-10 h-10 mb-3 opacity-30" />
           <p className="text-sm">لا توجد منتجات مطابقة</p>
-          <Button size="sm" className="mt-4 bg-amber-600 hover:bg-amber-700" onClick={openCreate}>
+          <Button size="sm" className="mt-4 bg-primary hover:bg-primary/85 text-primary-foreground" onClick={openCreate}>
             <Plus className="w-4 h-4 ml-1" />
             إضافة منتج
           </Button>
         </div>
       ) : (
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 overflow-hidden">
+        <div className="rounded-xl border border-border bg-card overflow-hidden">
           <Table>
             <TableHeader>
-              <TableRow className="border-zinc-800 hover:bg-transparent">
-                <TableHead className="text-right text-zinc-400 w-16">الصورة</TableHead>
-                <TableHead className="text-right text-zinc-400">المنتج</TableHead>
-                <TableHead className="text-right text-zinc-400">الكود</TableHead>
-                <TableHead className="text-right text-zinc-400">التصنيف</TableHead>
-                <TableHead className="text-right text-zinc-400">سعر البيع</TableHead>
-                <TableHead className="text-right text-zinc-400">سعر الشراء</TableHead>
-                <TableHead className="text-right text-zinc-400">المخزون</TableHead>
-                <TableHead className="text-right text-zinc-400">الحالة</TableHead>
-                <TableHead className="text-right text-zinc-400 w-40">إجراءات</TableHead>
+              <TableRow className="border-border hover:bg-transparent">
+                <TableHead className="text-right text-muted-foreground w-16">الصورة</TableHead>
+                <TableHead className="text-right text-muted-foreground">المنتج</TableHead>
+                <TableHead className="text-right text-muted-foreground">الكود</TableHead>
+                <TableHead className="text-right text-muted-foreground">التصنيف</TableHead>
+                <TableHead className="text-right text-muted-foreground">سعر البيع</TableHead>
+                <TableHead className="text-right text-muted-foreground">سعر الشراء</TableHead>
+                <TableHead className="text-right text-muted-foreground">المخزون</TableHead>
+                <TableHead className="text-right text-muted-foreground">الحالة</TableHead>
+                <TableHead className="text-right text-muted-foreground w-40">إجراءات</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {displayed.map((p) => {
                 const s = stock[p.productId];
                 return (
-                  <TableRow key={p.productId} className={`border-zinc-800 ${p.isActive ? '' : 'opacity-60'}`}>
+                  <TableRow key={p.productId} className={`border-border ${p.isActive ? '' : 'opacity-60'}`}>
                     <TableCell>
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
@@ -663,57 +663,57 @@ export default function AdminProductsPage() {
                         onError={(e) => {
                           if (!e.currentTarget.src.endsWith(FALLBACK_IMAGE)) e.currentTarget.src = FALLBACK_IMAGE;
                         }}
-                        className="w-11 h-11 rounded-lg object-cover border border-zinc-700 bg-zinc-800"
+                        className="w-11 h-11 rounded-lg object-cover border border-border bg-muted"
                       />
                     </TableCell>
                     <TableCell>
-                      <div className="text-sm font-medium text-white">{p.nameAr}</div>
-                      {p.brand && <div className="text-[11px] text-zinc-500">{p.brand}</div>}
+                      <div className="text-sm font-medium text-foreground">{p.nameAr}</div>
+                      {p.brand && <div className="text-[11px] text-muted-foreground">{p.brand}</div>}
                     </TableCell>
-                    <TableCell className="font-mono text-xs text-zinc-300" dir="ltr">
+                    <TableCell className="font-mono text-xs text-foreground" dir="ltr">
                       <div className="text-right">{p.productCode ?? '—'}</div>
-                      {p.barcode && <div className="text-right text-[10px] text-zinc-500">{p.barcode}</div>}
+                      {p.barcode && <div className="text-right text-[10px] text-muted-foreground">{p.barcode}</div>}
                     </TableCell>
-                    <TableCell className="text-sm text-zinc-300">{p.catName ?? '—'}</TableCell>
-                    <TableCell className="text-sm font-semibold text-amber-400">{money(p.sellingPrice)}</TableCell>
-                    <TableCell className="text-sm text-zinc-400">{money(p.purchaseCost)}</TableCell>
+                    <TableCell className="text-sm text-foreground">{p.catName ?? '—'}</TableCell>
+                    <TableCell className="text-sm font-semibold text-warning">{money(p.sellingPrice)}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{money(p.purchaseCost)}</TableCell>
                     <TableCell>
                       {s ? (
                         <div className="flex items-center gap-2">
-                          <span className="text-sm text-white">{s.qty}</span>
+                          <span className="text-sm text-foreground">{s.qty}</span>
                           <Badge variant="outline" className={`text-[10px] ${STOCK_BADGE[s.status]}`}>
                             {STOCK_LABEL[s.status]}
                           </Badge>
                         </div>
                       ) : (
-                        <span className="text-xs text-zinc-600">—</span>
+                        <span className="text-xs text-muted-foreground">—</span>
                       )}
                     </TableCell>
                     <TableCell>
                       <span className={`inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full border ${
                         p.isActive
-                          ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
-                          : 'bg-zinc-700/30 border-zinc-700 text-zinc-500'
+                          ? 'bg-success-soft border-success/30 text-success'
+                          : 'bg-muted border-border text-muted-foreground'
                       }`}>
-                        <span className={`w-1.5 h-1.5 rounded-full ${p.isActive ? 'bg-emerald-400' : 'bg-zinc-600'}`} />
+                        <span className={`w-1.5 h-1.5 rounded-full ${p.isActive ? 'bg-success' : 'bg-muted-foreground/40'}`} />
                         {p.isActive ? 'نشط' : 'متوقف'}
                       </span>
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1">
-                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-zinc-400 hover:text-sky-400"
+                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground hover:text-info"
                           title="التفاصيل والحركات" onClick={() => openDetail(p)}>
                           <Eye className="w-3.5 h-3.5" />
                         </Button>
-                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-zinc-400 hover:text-amber-400"
+                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground hover:text-warning"
                           title="تعديل" onClick={() => openEdit(p)}>
                           <Edit2 className="w-3.5 h-3.5" />
                         </Button>
                         <Button
                           variant="ghost" size="sm"
                           className={`h-7 px-2 text-xs gap-1 ${p.isActive
-                            ? 'text-zinc-400 hover:text-rose-400 hover:bg-rose-400/10'
-                            : 'text-zinc-500 hover:text-emerald-400 hover:bg-emerald-400/10'}`}
+                            ? 'text-muted-foreground hover:text-destructive hover:bg-destructive-soft'
+                            : 'text-muted-foreground hover:text-success hover:bg-success-soft'}`}
                           onClick={() => handleToggle(p)}
                           disabled={toggling === p.productId}
                           title={p.isActive ? 'إيقاف المنتج' : 'إعادة تفعيل المنتج'}
@@ -733,7 +733,7 @@ export default function AdminProductsPage() {
               })}
             </TableBody>
           </Table>
-          <div className="px-4 py-2 text-xs text-zinc-500 border-t border-zinc-800">
+          <div className="px-4 py-2 text-xs text-muted-foreground border-t border-border">
             عرض {displayed.length} من {products.length} منتج — النشط: {activeCount}
           </div>
         </div>
@@ -741,7 +741,7 @@ export default function AdminProductsPage() {
 
       {/* ───────── Add / Edit dialog ───────── */}
       <Dialog open={formOpen} onOpenChange={setFormOpen}>
-        <DialogContent className="bg-zinc-900 border-zinc-700 text-white max-w-xl max-h-[90vh] overflow-y-auto" dir="rtl">
+        <DialogContent className="bg-card border-border text-foreground max-w-xl max-h-[90vh] overflow-y-auto" dir="rtl">
           <DialogHeader>
             <DialogTitle>{editing ? 'تعديل المنتج' : 'منتج جديد'}</DialogTitle>
           </DialogHeader>
@@ -749,15 +749,15 @@ export default function AdminProductsPage() {
           <div className="space-y-4 pt-2">
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label htmlFor="pCode" className="text-zinc-300">كود المنتج *</Label>
+                <Label htmlFor="pCode" className="text-foreground">كود المنتج *</Label>
                 <Input id="pCode" dir="ltr" value={form.productCode} onChange={(e) => setField('productCode', e.target.value)}
-                  className="bg-zinc-800 border-zinc-700 text-white mt-1 font-mono" placeholder="LH.5097" autoFocus />
+                  className="bg-muted border-border text-foreground mt-1 font-mono" placeholder="LH.5097" autoFocus />
               </div>
               <div>
-                <Label className="text-zinc-300">التصنيف</Label>
+                <Label className="text-foreground">التصنيف</Label>
                 <Select value={form.catId} onValueChange={(v) => setField('catId', v)}>
-                  <SelectTrigger className="bg-zinc-800 border-zinc-700 text-white mt-1"><SelectValue /></SelectTrigger>
-                  <SelectContent className="bg-zinc-800 border-zinc-700">
+                  <SelectTrigger className="bg-muted border-border text-foreground mt-1"><SelectValue /></SelectTrigger>
+                  <SelectContent className="bg-muted border-border">
                     <SelectItem value="none">بدون تصنيف</SelectItem>
                     {categoryOptions.map((c) => (
                       <SelectItem key={c.CatID} value={String(c.CatID)}>{c.CatName}</SelectItem>
@@ -768,45 +768,45 @@ export default function AdminProductsPage() {
             </div>
 
             <div>
-              <Label htmlFor="pName" className="text-zinc-300">اسم المنتج (عربي) *</Label>
+              <Label htmlFor="pName" className="text-foreground">اسم المنتج (عربي) *</Label>
               <Input id="pName" value={form.nameAr} onChange={(e) => setField('nameAr', e.target.value)}
-                className="bg-zinc-800 border-zinc-700 text-white mt-1" placeholder="مثال: شامبو للعناية بالشعر" />
+                className="bg-muted border-border text-foreground mt-1" placeholder="مثال: شامبو للعناية بالشعر" />
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label htmlFor="pSell" className="text-zinc-300">سعر البيع (ج.م) *</Label>
+                <Label htmlFor="pSell" className="text-foreground">سعر البيع (ج.م) *</Label>
                 <Input id="pSell" type="number" min="0" step="0.01" inputMode="decimal" value={form.sellingPrice}
-                  onChange={(e) => setField('sellingPrice', e.target.value)} className="bg-zinc-800 border-zinc-700 text-white mt-1" />
+                  onChange={(e) => setField('sellingPrice', e.target.value)} className="bg-muted border-border text-foreground mt-1" />
               </div>
               <div>
-                <Label htmlFor="pCost" className="text-zinc-300">سعر الشراء (ج.م)</Label>
+                <Label htmlFor="pCost" className="text-foreground">سعر الشراء (ج.م)</Label>
                 <Input id="pCost" type="number" min="0" step="0.01" inputMode="decimal" value={form.purchaseCost}
-                  onChange={(e) => setField('purchaseCost', e.target.value)} className="bg-zinc-800 border-zinc-700 text-white mt-1" />
+                  onChange={(e) => setField('purchaseCost', e.target.value)} className="bg-muted border-border text-foreground mt-1" />
               </div>
             </div>
 
             <button
               type="button"
               onClick={() => setShowAdvanced((v) => !v)}
-              className="flex items-center gap-1.5 text-xs font-medium text-amber-400 hover:text-amber-300"
+              className="flex items-center gap-1.5 text-xs font-medium text-warning hover:text-warning"
             >
               {showAdvanced ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
               {showAdvanced ? 'إخفاء الخيارات المتقدمة' : 'خيارات متقدمة (باركود، علامة، صورة، حد إعادة الطلب...)'}
             </button>
 
             {showAdvanced && (
-              <div className="space-y-4 rounded-xl border border-zinc-800 bg-zinc-950/40 p-4">
+              <div className="space-y-4 rounded-xl border border-border bg-background p-4">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <Label className="text-zinc-300">الباركود</Label>
+                    <Label className="text-foreground">الباركود</Label>
                     <Input dir="ltr" value={form.barcode} onChange={(e) => setField('barcode', e.target.value)}
-                      className="bg-zinc-800 border-zinc-700 text-white mt-1 font-mono" />
+                      className="bg-muted border-border text-foreground mt-1 font-mono" />
                   </div>
                   <div>
-                    <Label className="text-zinc-300">العلامة التجارية</Label>
+                    <Label className="text-foreground">العلامة التجارية</Label>
                     <Input value={form.brand} onChange={(e) => setField('brand', e.target.value)}
-                      className="bg-zinc-800 border-zinc-700 text-white mt-1" list="brand-suggestions" />
+                      className="bg-muted border-border text-foreground mt-1" list="brand-suggestions" />
                     <datalist id="brand-suggestions">
                       {brandOptions.map((b) => (<option key={b} value={b} />))}
                     </datalist>
@@ -814,54 +814,54 @@ export default function AdminProductsPage() {
                 </div>
 
                 <div>
-                  <Label className="text-zinc-300">الوصف</Label>
+                  <Label className="text-foreground">الوصف</Label>
                   <Textarea value={form.description} onChange={(e) => setField('description', e.target.value)}
-                    className="bg-zinc-800 border-zinc-700 text-white mt-1 min-h-[64px]" />
+                    className="bg-muted border-border text-foreground mt-1 min-h-[64px]" />
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <Label className="text-zinc-300">وحدة المخزون</Label>
+                    <Label className="text-foreground">وحدة المخزون</Label>
                     <Input value={form.stockUnit} onChange={(e) => setField('stockUnit', e.target.value)}
-                      className="bg-zinc-800 border-zinc-700 text-white mt-1" placeholder="قطعة / علبة / كارت" list="unit-suggestions" />
+                      className="bg-muted border-border text-foreground mt-1" placeholder="قطعة / علبة / كارت" list="unit-suggestions" />
                     <datalist id="unit-suggestions">
                       <option value="قطعة" /><option value="علبة" /><option value="كارت" /><option value="كرتونة" />
                     </datalist>
                   </div>
                   <div>
-                    <Label className="text-zinc-300">عدد الوحدات في العبوة</Label>
+                    <Label className="text-foreground">عدد الوحدات في العبوة</Label>
                     <Input type="number" min="0" step="1" value={form.unitsPerPack}
-                      onChange={(e) => setField('unitsPerPack', e.target.value)} className="bg-zinc-800 border-zinc-700 text-white mt-1" />
+                      onChange={(e) => setField('unitsPerPack', e.target.value)} className="bg-muted border-border text-foreground mt-1" />
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <Label className="text-zinc-300">السعر المقترح للمستهلك</Label>
+                    <Label className="text-foreground">السعر المقترح للمستهلك</Label>
                     <Input type="number" min="0" step="0.01" value={form.suggestedRetailPrice}
-                      onChange={(e) => setField('suggestedRetailPrice', e.target.value)} className="bg-zinc-800 border-zinc-700 text-white mt-1" />
+                      onChange={(e) => setField('suggestedRetailPrice', e.target.value)} className="bg-muted border-border text-foreground mt-1" />
                   </div>
                   <div>
-                    <Label className="text-zinc-300">حد إعادة الطلب</Label>
+                    <Label className="text-foreground">حد إعادة الطلب</Label>
                     <Input type="number" min="0" step="1" value={form.minStockThreshold}
-                      onChange={(e) => setField('minStockThreshold', e.target.value)} className="bg-zinc-800 border-zinc-700 text-white mt-1" />
+                      onChange={(e) => setField('minStockThreshold', e.target.value)} className="bg-muted border-border text-foreground mt-1" />
                   </div>
                 </div>
 
                 <div>
-                  <Label className="text-zinc-300">مرجع المورد</Label>
+                  <Label className="text-foreground">مرجع المورد</Label>
                   <Input value={form.supplierRef} onChange={(e) => setField('supplierRef', e.target.value)}
-                    className="bg-zinc-800 border-zinc-700 text-white mt-1" />
+                    className="bg-muted border-border text-foreground mt-1" />
                 </div>
 
                 <div>
-                  <Label className="text-zinc-300">صورة المنتج</Label>
+                  <Label className="text-foreground">صورة المنتج</Label>
                   <div className="mt-1 flex items-center gap-3">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={form.imageUrl || FALLBACK_IMAGE}
                       alt="معاينة"
-                      className="w-16 h-16 rounded-lg object-cover border border-zinc-700 bg-zinc-800"
+                      className="w-16 h-16 rounded-lg object-cover border border-border bg-muted"
                     />
                     <div className="flex-1 space-y-2">
                       <input
@@ -871,14 +871,14 @@ export default function AdminProductsPage() {
                         className="hidden"
                         onChange={(e) => handleUpload(e.target.files?.[0])}
                       />
-                      <Button type="button" variant="outline" size="sm" className="border-zinc-700 gap-1.5"
+                      <Button type="button" variant="outline" size="sm" className="border-border gap-1.5"
                         onClick={() => fileRef.current?.click()} disabled={uploading}>
                         {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
                         {uploading ? 'جاري الرفع...' : 'رفع صورة'}
                       </Button>
                       <Input dir="ltr" value={form.imageUrl} onChange={(e) => setField('imageUrl', e.target.value)}
-                        placeholder="أو الصق رابط الصورة" className="bg-zinc-800 border-zinc-700 text-white text-xs" />
-                      <p className="text-[11px] text-zinc-500 flex items-center gap-1">
+                        placeholder="أو الصق رابط الصورة" className="bg-muted border-border text-foreground text-xs" />
+                      <p className="text-[11px] text-muted-foreground flex items-center gap-1">
                         <ImageIcon className="w-3 h-3" />JPG / PNG / WebP — حتى 5 ميجابايت
                       </p>
                     </div>
@@ -888,18 +888,18 @@ export default function AdminProductsPage() {
             )}
 
             {formError && (
-              <p className="text-sm text-rose-400 flex items-center gap-1">
+              <p className="text-sm text-destructive flex items-center gap-1">
                 <X className="w-3.5 h-3.5" />{formError}
               </p>
             )}
           </div>
 
           <div className="flex justify-end gap-2 pt-4">
-            <Button variant="outline" className="border-zinc-700" onClick={() => setFormOpen(false)} disabled={saving}>
+            <Button variant="outline" className="border-border" onClick={() => setFormOpen(false)} disabled={saving}>
               إلغاء
             </Button>
             <Button
-              className={editing ? 'bg-amber-600 hover:bg-amber-700' : 'bg-emerald-600 hover:bg-emerald-700'}
+              className={editing ? 'bg-primary hover:bg-primary/85 text-primary-foreground' : 'bg-success hover:bg-success/85 text-success-foreground'}
               onClick={handleSave}
               disabled={saving || uploading}
             >
@@ -913,23 +913,23 @@ export default function AdminProductsPage() {
 
       {/* ───────── Detail dialog ───────── */}
       <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
-        <DialogContent className="bg-zinc-900 border-zinc-700 text-white max-w-3xl max-h-[90vh] overflow-y-auto" dir="rtl">
+        <DialogContent className="bg-card border-border text-foreground max-w-3xl max-h-[90vh] overflow-y-auto" dir="rtl">
           <DialogHeader>
             <DialogTitle>{detail?.product.nameAr ?? 'تفاصيل المنتج'}</DialogTitle>
           </DialogHeader>
 
           {detailLoading ? (
-            <div className="flex items-center justify-center py-12 text-zinc-500 gap-3">
+            <div className="flex items-center justify-center py-12 text-muted-foreground gap-3">
               <Loader2 className="w-5 h-5 animate-spin" />جاري التحميل...
             </div>
           ) : detailError ? (
-            <p className="text-sm text-rose-400">{detailError}</p>
+            <p className="text-sm text-destructive">{detailError}</p>
           ) : detail ? (
             <div className="space-y-5 pt-2">
               <div className="flex gap-4">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={detail.product.imageUrl || FALLBACK_IMAGE} alt={detail.product.nameAr}
-                  className="w-24 h-24 rounded-xl object-cover border border-zinc-700 bg-zinc-800" />
+                  className="w-24 h-24 rounded-xl object-cover border border-border bg-muted" />
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-2 text-sm flex-1">
                   <Info label="الكود" value={detail.product.productCode} mono />
                   <Info label="الباركود" value={detail.product.barcode} mono />
@@ -944,26 +944,26 @@ export default function AdminProductsPage() {
               </div>
 
               <section>
-                <h3 className="text-sm font-semibold text-zinc-300 mb-2">المخزون حسب الفرع</h3>
-                <div className="rounded-lg border border-zinc-800 overflow-hidden">
+                <h3 className="text-sm font-semibold text-foreground mb-2">المخزون حسب الفرع</h3>
+                <div className="rounded-lg border border-border overflow-hidden">
                   <Table>
                     <TableHeader>
-                      <TableRow className="border-zinc-800 hover:bg-transparent">
-                        <TableHead className="text-right text-zinc-400 h-9">الفرع</TableHead>
-                        <TableHead className="text-right text-zinc-400 h-9">الكمية</TableHead>
-                        <TableHead className="text-right text-zinc-400 h-9">حد إعادة الطلب</TableHead>
+                      <TableRow className="border-border hover:bg-transparent">
+                        <TableHead className="text-right text-muted-foreground h-9">الفرع</TableHead>
+                        <TableHead className="text-right text-muted-foreground h-9">الكمية</TableHead>
+                        <TableHead className="text-right text-muted-foreground h-9">حد إعادة الطلب</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {detail.stockByBranch.length === 0 ? (
-                        <TableRow><TableCell colSpan={3} className="text-center text-zinc-500 text-sm">لا توجد فروع</TableCell></TableRow>
+                        <TableRow><TableCell colSpan={3} className="text-center text-muted-foreground text-sm">لا توجد فروع</TableCell></TableRow>
                       ) : detail.stockByBranch.map((b) => (
-                        <TableRow key={b.branchId} className="border-zinc-800">
+                        <TableRow key={b.branchId} className="border-border">
                           <TableCell className="py-2 text-sm">{b.branchName}</TableCell>
-                          <TableCell className={`py-2 text-sm font-semibold ${Number(b.qtyOnHand) <= 0 ? 'text-rose-400' : 'text-white'}`}>
+                          <TableCell className={`py-2 text-sm font-semibold ${Number(b.qtyOnHand) <= 0 ? 'text-destructive' : 'text-foreground'}`}>
                             {Number(b.qtyOnHand)}
                           </TableCell>
-                          <TableCell className="py-2 text-sm text-zinc-400">{b.reorderLevel ?? '—'}</TableCell>
+                          <TableCell className="py-2 text-sm text-muted-foreground">{b.reorderLevel ?? '—'}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -972,30 +972,30 @@ export default function AdminProductsPage() {
               </section>
 
               <section>
-                <h3 className="text-sm font-semibold text-zinc-300 mb-2">آخر حركات المخزون</h3>
-                <div className="rounded-lg border border-zinc-800 overflow-hidden max-h-72 overflow-y-auto">
+                <h3 className="text-sm font-semibold text-foreground mb-2">آخر حركات المخزون</h3>
+                <div className="rounded-lg border border-border overflow-hidden max-h-72 overflow-y-auto">
                   <Table>
                     <TableHeader>
-                      <TableRow className="border-zinc-800 hover:bg-transparent">
-                        <TableHead className="text-right text-zinc-400 h-9">التاريخ</TableHead>
-                        <TableHead className="text-right text-zinc-400 h-9">النوع</TableHead>
-                        <TableHead className="text-right text-zinc-400 h-9">التغيير</TableHead>
-                        <TableHead className="text-right text-zinc-400 h-9">الرصيد بعد</TableHead>
-                        <TableHead className="text-right text-zinc-400 h-9">السبب</TableHead>
+                      <TableRow className="border-border hover:bg-transparent">
+                        <TableHead className="text-right text-muted-foreground h-9">التاريخ</TableHead>
+                        <TableHead className="text-right text-muted-foreground h-9">النوع</TableHead>
+                        <TableHead className="text-right text-muted-foreground h-9">التغيير</TableHead>
+                        <TableHead className="text-right text-muted-foreground h-9">الرصيد بعد</TableHead>
+                        <TableHead className="text-right text-muted-foreground h-9">السبب</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {detail.movements.length === 0 ? (
-                        <TableRow><TableCell colSpan={5} className="text-center text-zinc-500 text-sm">لا توجد حركات</TableCell></TableRow>
+                        <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground text-sm">لا توجد حركات</TableCell></TableRow>
                       ) : detail.movements.map((m) => (
-                        <TableRow key={m.movementId} className="border-zinc-800">
-                          <TableCell className="py-2 text-xs text-zinc-400">{formatDate(m.createdAt)}</TableCell>
+                        <TableRow key={m.movementId} className="border-border">
+                          <TableCell className="py-2 text-xs text-muted-foreground">{formatDate(m.createdAt)}</TableCell>
                           <TableCell className="py-2 text-xs">{movementTypeLabel(m.movementType)}</TableCell>
-                          <TableCell className={`py-2 text-sm font-semibold ${Number(m.quantityDelta) < 0 ? 'text-rose-400' : 'text-emerald-400'}`} dir="ltr">
+                          <TableCell className={`py-2 text-sm font-semibold ${Number(m.quantityDelta) < 0 ? 'text-destructive' : 'text-success'}`} dir="ltr">
                             <span className="block text-right">{Number(m.quantityDelta) > 0 ? '+' : ''}{Number(m.quantityDelta)}</span>
                           </TableCell>
                           <TableCell className="py-2 text-sm">{m.quantityAfter ?? '—'}</TableCell>
-                          <TableCell className="py-2 text-xs text-zinc-400">{m.reason ?? '—'}</TableCell>
+                          <TableCell className="py-2 text-xs text-muted-foreground">{m.reason ?? '—'}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -1009,18 +1009,18 @@ export default function AdminProductsPage() {
 
       {/* ───────── Import dialog ───────── */}
       <Dialog open={importOpen} onOpenChange={setImportOpen}>
-        <DialogContent className="bg-zinc-900 border-zinc-700 text-white max-w-3xl max-h-[90vh] overflow-y-auto" dir="rtl">
+        <DialogContent className="bg-card border-border text-foreground max-w-3xl max-h-[90vh] overflow-y-auto" dir="rtl">
           <DialogHeader>
             <DialogTitle>استيراد كتالوج المنتجات</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4 pt-2">
-            <div className="flex items-start gap-2 p-3 rounded-lg border border-amber-500/30 bg-amber-500/5 text-amber-300 text-xs">
+            <div className="flex items-start gap-2 p-3 rounded-lg border border-warning/30 bg-warning-soft text-warning text-xs">
               <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
               <span>ابدأ بالمعاينة أولًا. لا يتم تعديل أي بيانات إلا بعد الضغط على «تأكيد الاستيراد». الاستيراد لا يسجّل أرصدة مخزون.</span>
             </div>
 
-            <label className="flex items-center gap-2 text-sm text-zinc-300 cursor-pointer">
+            <label className="flex items-center gap-2 text-sm text-foreground cursor-pointer">
               <input type="checkbox" className="accent-amber-500 w-4 h-4" checked={importUseReference}
                 onChange={(e) => { setImportUseReference(e.target.checked); setImportPreview(null); setImportSummary(null); }} />
               استخدام كتالوج المورد المرجعي (19 صنفًا)
@@ -1028,55 +1028,55 @@ export default function AdminProductsPage() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <Label className="text-zinc-300">تصنيف كل المنتجات في الدفعة</Label>
+                <Label className="text-foreground">تصنيف كل المنتجات في الدفعة</Label>
                 <Input
                   value={importCategoryName}
                   onChange={(e) => { setImportCategoryName(e.target.value); setImportPreview(null); setImportSummary(null); }}
                   placeholder="مثال: شركة لورد"
                   maxLength={100}
-                  className="bg-zinc-800 border-zinc-700 text-white mt-1"
+                  className="bg-muted border-border text-foreground mt-1"
                 />
               </div>
               <div>
-                <Label className="text-zinc-300">العلامة التجارية (اختياري)</Label>
+                <Label className="text-foreground">العلامة التجارية (اختياري)</Label>
                 <Input
                   value={importBrand}
                   onChange={(e) => { setImportBrand(e.target.value); setImportPreview(null); setImportSummary(null); }}
                   placeholder="مثال: Lord"
                   maxLength={100}
-                  className="bg-zinc-800 border-zinc-700 text-white mt-1"
+                  className="bg-muted border-border text-foreground mt-1"
                 />
               </div>
             </div>
-            <p className="text-xs text-zinc-400">
+            <p className="text-xs text-muted-foreground">
               التصنيف والبراند المختاران يطبقان على كل صفوف الاستيراد. يُنشأ تصنيف المنتجات عند التأكيد فقط إن لم يكن موجوداً.
             </p>
 
             {!importUseReference && (
               <div>
-                <Label className="text-zinc-300">الصفوف (كود، اسم، سعر البيع، تكلفة المورد، الوحدة)</Label>
+                <Label className="text-foreground">الصفوف (كود، اسم، سعر البيع، تكلفة المورد، الوحدة)</Label>
                 <Textarea
                   dir="ltr"
                   value={importText}
                   onChange={(e) => { setImportText(e.target.value); setImportPreview(null); setImportSummary(null); }}
-                  className="bg-zinc-800 border-zinc-700 text-white mt-1 min-h-[120px] font-mono text-xs"
+                  className="bg-muted border-border text-foreground mt-1 min-h-[120px] font-mono text-xs"
                   placeholder={'LH.5097, ماكينة حلاقة لورد, 625, 250, card\nML147#, شفرات لورد, 200, 81, piece'}
                 />
               </div>
             )}
 
-            <label className="flex items-center gap-2 text-sm text-zinc-300 cursor-pointer">
+            <label className="flex items-center gap-2 text-sm text-foreground cursor-pointer">
               <input type="checkbox" className="accent-amber-500 w-4 h-4" checked={importUpdateExisting}
                 onChange={(e) => setImportUpdateExisting(e.target.checked)} />
               تحديث الأسعار للمنتجات الموجودة
             </label>
 
             {importError && (
-              <p className="text-sm text-rose-400 flex items-center gap-1"><X className="w-3.5 h-3.5" />{importError}</p>
+              <p className="text-sm text-destructive flex items-center gap-1"><X className="w-3.5 h-3.5" />{importError}</p>
             )}
 
             {importResult && (
-              <div className="p-3 rounded-lg border border-emerald-500/30 bg-emerald-500/5 text-emerald-400 text-sm">
+              <div className="p-3 rounded-lg border border-success/30 bg-success-soft text-success text-sm">
                 تم الاستيراد: {importResult.created} جديد، {importResult.updated} محدّث، {importResult.skipped} متجاهَل.
               </div>
             )}
@@ -1092,29 +1092,29 @@ export default function AdminProductsPage() {
             )}
 
             {importPreview && (
-              <div className="rounded-lg border border-zinc-800 overflow-hidden max-h-72 overflow-y-auto">
+              <div className="rounded-lg border border-border overflow-hidden max-h-72 overflow-y-auto">
                 <Table>
                   <TableHeader>
-                    <TableRow className="border-zinc-800 hover:bg-transparent">
-                      <TableHead className="text-right text-zinc-400 h-9">الكود</TableHead>
-                      <TableHead className="text-right text-zinc-400 h-9">الاسم</TableHead>
-                      <TableHead className="text-right text-zinc-400 h-9">سعر البيع</TableHead>
-                      <TableHead className="text-right text-zinc-400 h-9">التكلفة</TableHead>
-                      <TableHead className="text-right text-zinc-400 h-9">الحالة</TableHead>
+                    <TableRow className="border-border hover:bg-transparent">
+                      <TableHead className="text-right text-muted-foreground h-9">الكود</TableHead>
+                      <TableHead className="text-right text-muted-foreground h-9">الاسم</TableHead>
+                      <TableHead className="text-right text-muted-foreground h-9">سعر البيع</TableHead>
+                      <TableHead className="text-right text-muted-foreground h-9">التكلفة</TableHead>
+                      <TableHead className="text-right text-muted-foreground h-9">الحالة</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {importPreview.map((r, i) => (
-                      <TableRow key={`${r.code}-${i}`} className="border-zinc-800">
+                      <TableRow key={`${r.code}-${i}`} className="border-border">
                         <TableCell className="py-2 font-mono text-xs" dir="ltr"><span className="block text-right">{r.code}</span></TableCell>
                         <TableCell className="py-2 text-sm">{r.nameAr}</TableCell>
                         <TableCell className="py-2 text-sm">{money(r.consumerPrice)}</TableCell>
-                        <TableCell className="py-2 text-sm text-zinc-400">{money(r.netSupplierCost)}</TableCell>
+                        <TableCell className="py-2 text-sm text-muted-foreground">{money(r.netSupplierCost)}</TableCell>
                         <TableCell className="py-2">
                           <Badge variant="outline" className={`text-[10px] ${IMPORT_STATUS_BADGE[r.status]}`}>
                             {IMPORT_STATUS_LABEL[r.status]}
                           </Badge>
-                          {r.message && <div className="text-[10px] text-zinc-500 mt-0.5">{r.message}</div>}
+                          {r.message && <div className="text-[10px] text-muted-foreground mt-0.5">{r.message}</div>}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -1125,15 +1125,15 @@ export default function AdminProductsPage() {
           </div>
 
           <div className="flex justify-end gap-2 pt-4">
-            <Button variant="outline" className="border-zinc-700" onClick={() => setImportOpen(false)} disabled={importBusy !== null}>
+            <Button variant="outline" className="border-border" onClick={() => setImportOpen(false)} disabled={importBusy !== null}>
               إغلاق
             </Button>
-            <Button variant="outline" className="border-zinc-700 gap-1.5" onClick={() => runImport('preview')} disabled={importBusy !== null}>
+            <Button variant="outline" className="border-border gap-1.5" onClick={() => runImport('preview')} disabled={importBusy !== null}>
               {importBusy === 'preview' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
               معاينة
             </Button>
             <Button
-              className="bg-emerald-600 hover:bg-emerald-700 gap-1.5"
+              className="bg-success hover:bg-success/85 text-success-foreground gap-1.5"
               onClick={() => {
                 if (confirm(`سيتم استيراد ${importableCount} صنف. هل تريد التأكيد؟`)) void runImport('commit');
               }}
@@ -1152,8 +1152,8 @@ export default function AdminProductsPage() {
 function Info({ label, value, mono }: { label: string; value: string | number | null | undefined; mono?: boolean }) {
   return (
     <div className="min-w-0">
-      <div className="text-[11px] text-zinc-500">{label}</div>
-      <div className={`text-sm text-zinc-200 truncate ${mono ? 'font-mono' : ''}`} dir={mono ? 'ltr' : undefined}>
+      <div className="text-[11px] text-muted-foreground">{label}</div>
+      <div className={`text-sm text-foreground truncate ${mono ? 'font-mono' : ''}`} dir={mono ? 'ltr' : undefined}>
         {value == null || value === '' ? '—' : value}
       </div>
     </div>

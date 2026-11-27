@@ -720,21 +720,21 @@ export default function ServicesManagementPage() {
     : 0;
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6" dir="rtl">
+    <div className="min-w-0 p-3 sm:p-6 max-w-7xl mx-auto space-y-6" dir="rtl">
       {/* Barber Duration Modal */}
       <Dialog open={barberDurModal} onOpenChange={setBarberDurModal}>
-        <DialogContent className="bg-zinc-900 border-zinc-700 text-white max-w-2xl">
+        <DialogContent className="bg-card border-border text-foreground max-w-2xl">
           <DialogHeader>
             <DialogTitle className="text-xl flex items-center gap-2">
-              <Users className="w-5 h-5 text-amber-400" />
+              <Users className="w-5 h-5 text-warning" />
               مدة الخدمة حسب الصنايعي — {barberDurService?.ProName}
             </DialogTitle>
           </DialogHeader>
-          <p className="text-xs text-zinc-400 -mt-2">
+          <p className="text-xs text-muted-foreground -mt-2">
             مدة الصنايعي تؤثر على المواعيد المتاحة في الحجز الإلكتروني. اترك الحقل فارغًا لاستخدام مدة الخدمة الافتراضية.
           </p>
           {barberDurLoading ? (
-            <div className="py-10 text-center text-zinc-500">
+            <div className="py-10 text-center text-muted-foreground">
               <Loader2 className="w-6 h-6 mx-auto animate-spin mb-2" />
               <p className="text-sm">جاري التحميل...</p>
             </div>
@@ -742,11 +742,11 @@ export default function ServicesManagementPage() {
             <div className="max-h-96 overflow-y-auto">
               <Table>
                 <TableHeader>
-                  <TableRow className="border-zinc-800">
-                    <TableHead className="text-right text-zinc-400">الصنايعي</TableHead>
-                    <TableHead className="text-right text-zinc-400">مدة مخصصة</TableHead>
-                    <TableHead className="text-right text-zinc-400">المدة الفعلية</TableHead>
-                    <TableHead className="text-right text-zinc-400">المصدر</TableHead>
+                  <TableRow className="border-border">
+                    <TableHead className="text-right text-muted-foreground">الصنايعي</TableHead>
+                    <TableHead className="text-right text-muted-foreground">مدة مخصصة</TableHead>
+                    <TableHead className="text-right text-muted-foreground">المدة الفعلية</TableHead>
+                    <TableHead className="text-right text-muted-foreground">المصدر</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -759,8 +759,8 @@ export default function ServicesManagementPage() {
                       b.durationSource === 'EMP_SERVICE_OVERRIDE' ? 'مخصصة' :
                       b.durationSource === 'SERVICE_DEFAULT' ? 'الافتراضية' : 'النظام';
                     return (
-                      <TableRow key={b.empId} className="border-zinc-800">
-                        <TableCell className="text-white font-medium">{b.empName}</TableCell>
+                      <TableRow key={b.empId} className="border-border">
+                        <TableCell className="text-foreground font-medium">{b.empName}</TableCell>
                         <TableCell>
                           <div className="flex items-center gap-1">
                             <Input
@@ -773,16 +773,16 @@ export default function ServicesManagementPage() {
                                 updated[i] = { ...updated[i], pendingValue: e.target.value };
                                 setBarberDurItems(updated);
                               }}
-                              className="w-20 bg-zinc-800 border-zinc-700 text-white text-center h-8"
+                              className="w-20 bg-muted border-border text-foreground text-center h-8"
                             />
-                            <span className="text-xs text-zinc-400">دقيقة</span>
+                            <span className="text-xs text-muted-foreground">دقيقة</span>
                           </div>
                         </TableCell>
-                        <TableCell className="text-zinc-300 text-sm">{effective} دقيقة</TableCell>
+                        <TableCell className="text-foreground text-sm">{effective} دقيقة</TableCell>
                         <TableCell>
                           <Badge
                             variant={src === 'مخصصة' ? 'default' : 'secondary'}
-                            className={`text-xs ${src === 'مخصصة' ? 'bg-amber-600/20 text-amber-300 border-amber-600/30' : 'bg-zinc-700 text-zinc-400'}`}
+                            className={`text-xs ${src === 'مخصصة' ? 'bg-warning-soft text-warning border-warning/30' : 'bg-muted text-muted-foreground'}`}
                           >
                             {src}
                           </Badge>
@@ -794,12 +794,12 @@ export default function ServicesManagementPage() {
               </Table>
             </div>
           )}
-          <p className="text-xs text-zinc-500">
+          <p className="text-xs text-muted-foreground">
             مدة الخدمة الافتراضية تُستخدم إذا لم يتم تحديد مدة خاصة للصنايعي.
           </p>
           <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setBarberDurModal(false)} className="border-zinc-700 hover:bg-zinc-800">إلغاء</Button>
-            <Button onClick={saveBarberDurations} disabled={barberDurSaving} className="bg-amber-600 hover:bg-amber-700">
+            <Button variant="outline" onClick={() => setBarberDurModal(false)} className="border-border hover:bg-surface-muted">إلغاء</Button>
+            <Button onClick={saveBarberDurations} disabled={barberDurSaving} className="bg-primary hover:bg-primary/85 text-primary-foreground">
               {barberDurSaving ? <><Loader2 className="w-4 h-4 ml-2 animate-spin" />جاري الحفظ...</> : 'حفظ مدد الصنايعية'}
             </Button>
           </div>
@@ -813,14 +813,14 @@ export default function ServicesManagementPage() {
         <div className="flex gap-2">
           <Button
             variant="outline"
-            className="gap-2 border-zinc-700 hover:bg-zinc-800"
+            className="gap-2 border-border hover:bg-surface-muted"
             onClick={() => openCategoryModal()}
           >
             <FolderPlus className="w-4 h-4" />
             فئة جديدة
           </Button>
           <Button
-            className="gap-2 bg-amber-600 hover:bg-amber-700"
+            className="gap-2 bg-primary hover:bg-primary/85 text-primary-foreground"
             onClick={() => openServiceModal()}
           >
             <Plus className="w-4 h-4" />
@@ -839,9 +839,9 @@ export default function ServicesManagementPage() {
 
       {/* Error Display */}
       {error && (
-        <div className="flex items-start gap-3 p-4 rounded-xl border border-rose-500/30 bg-rose-500/5">
-          <span className="text-sm text-rose-400">{error}</span>
-          <button onClick={() => setError('')} className="text-rose-500 hover:text-rose-400">
+        <div className="flex items-start gap-3 p-4 rounded-xl border border-destructive/30 bg-destructive-soft">
+          <span className="text-sm text-destructive">{error}</span>
+          <button onClick={() => setError('')} className="text-destructive hover:text-destructive">
             ×
           </button>
         </div>
@@ -850,32 +850,32 @@ export default function ServicesManagementPage() {
       {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-4 items-center">
         <div className="relative flex-1 max-w-md">
-          <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 text-zinc-400 w-4 h-4" />
+          <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
           <Input
             placeholder="البحث عن خدمة..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="pr-10 bg-zinc-800 border-zinc-700 text-white placeholder:text-zinc-400"
+            className="pr-10 bg-muted border-border text-foreground placeholder:text-muted-foreground"
           />
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <label className="text-sm text-zinc-400">الفئة:</label>
+          <label className="text-sm text-muted-foreground">الفئة:</label>
           {isClient ? (
             <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-              <SelectTrigger className="w-48 bg-zinc-800 border-zinc-700 text-white">
+              <SelectTrigger className="w-48 bg-muted border-border text-foreground">
                 <SelectValue placeholder="جميع الفئات" />
               </SelectTrigger>
-              <SelectContent className="bg-zinc-800 border-zinc-700">
-                <SelectItem value="all" className="text-white">جميع الفئات</SelectItem>
+              <SelectContent className="bg-muted border-border">
+                <SelectItem value="all" className="text-foreground">جميع الفئات</SelectItem>
                 {categories.map(cat => (
-                  <SelectItem key={cat.CatID} value={cat.CatID.toString()} className="text-white">
+                  <SelectItem key={cat.CatID} value={cat.CatID.toString()} className="text-foreground">
                     {cat.CatName} ({cat.ServiceCount})
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           ) : (
-            <div className="w-48 h-10 bg-zinc-800 border-zinc-700 text-white flex items-center px-3 rounded">
+            <div className="w-48 h-10 bg-muted border-border text-foreground flex items-center px-3 rounded">
               جميع الفئات
             </div>
           )}
@@ -884,10 +884,10 @@ export default function ServicesManagementPage() {
             variant="outline"
             size="sm"
             onClick={() => setShowDeleted((v) => !v)}
-            className={`gap-1.5 border-zinc-700 ${
+            className={`gap-1.5 border-border ${
               showDeleted
-                ? 'bg-zinc-700/60 text-zinc-200 border-zinc-600'
-                : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'
+                ? 'bg-muted text-foreground border-border'
+                : 'bg-muted text-muted-foreground hover:text-foreground'
             }`}
           >
             {showDeleted ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
@@ -901,18 +901,18 @@ export default function ServicesManagementPage() {
       </div>
 
       {/* Services Table */}
-      <div className="rounded-xl border border-zinc-800 overflow-hidden">
-        <div className="px-4 py-3 border-b border-zinc-800 bg-zinc-900/40">
-          <h3 className="text-sm font-semibold text-zinc-300">قائمة الخدمات</h3>
+      <div className="rounded-xl border border-border overflow-hidden">
+        <div className="px-4 py-3 border-b border-border bg-card">
+          <h3 className="text-sm font-semibold text-foreground">قائمة الخدمات</h3>
         </div>
 
         {loading ? (
-          <div className="p-12 text-center text-zinc-500">
+          <div className="p-12 text-center text-muted-foreground">
             <Loader2 className="w-8 h-8 mx-auto mb-3 animate-spin" />
             <p className="text-sm">جاري التحميل...</p>
           </div>
         ) : filteredServices.length === 0 ? (
-          <div className="p-12 text-center text-zinc-500">
+          <div className="p-12 text-center text-muted-foreground">
             <Scissors className="w-10 h-10 mx-auto mb-3 opacity-30" />
             <p className="text-sm">
               {searchTerm || selectedCategory ? 'لا توجد خدمات مطابقة للبحث' : 'لا توجد خدمات بعد'}
@@ -921,34 +921,34 @@ export default function ServicesManagementPage() {
         ) : (
           <Table>
             <TableHeader>
-              <TableRow className="border-zinc-800">
-                <TableHead className="text-right text-zinc-400">#</TableHead>
-                <TableHead className="text-right text-zinc-400">الخدمة</TableHead>
-                <TableHead className="text-right text-zinc-400 w-14">صورة</TableHead>
-                <TableHead className="text-right text-zinc-400">الفئة</TableHead>
-                <TableHead className="text-right text-zinc-400">السعر</TableHead>
-                <TableHead className="text-right text-zinc-400">العمولة</TableHead>
-                <TableHead className="text-right text-zinc-400">مدة الخدمة</TableHead>
-                <TableHead className="text-right text-zinc-400">المبيعات</TableHead>
-                <TableHead className="text-right text-zinc-400">الحالة</TableHead>
-                <TableHead className="text-right text-zinc-400">إجراءات</TableHead>
+              <TableRow className="border-border">
+                <TableHead className="text-right text-muted-foreground">#</TableHead>
+                <TableHead className="text-right text-muted-foreground">الخدمة</TableHead>
+                <TableHead className="text-right text-muted-foreground w-14">صورة</TableHead>
+                <TableHead className="text-right text-muted-foreground">الفئة</TableHead>
+                <TableHead className="text-right text-muted-foreground">السعر</TableHead>
+                <TableHead className="text-right text-muted-foreground">العمولة</TableHead>
+                <TableHead className="text-right text-muted-foreground">مدة الخدمة</TableHead>
+                <TableHead className="text-right text-muted-foreground">المبيعات</TableHead>
+                <TableHead className="text-right text-muted-foreground">الحالة</TableHead>
+                <TableHead className="text-right text-muted-foreground">إجراءات</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredServices.map((service) => (
-                <TableRow key={service.ProID} className="border-zinc-800 hover:bg-zinc-800/30">
-                  <TableCell className="text-zinc-500 font-mono text-xs">{service.ProID}</TableCell>
+                <TableRow key={service.ProID} className="border-border hover:bg-surface-muted">
+                  <TableCell className="text-muted-foreground font-mono text-xs">{service.ProID}</TableCell>
                   <TableCell>
                     <div>
-                      <span className="font-medium text-white">{service.ProName}</span>
+                      <span className="font-medium text-foreground">{service.ProName}</span>
                       {service.ProNameAr && (
-                        <div className="text-sm text-zinc-400 mt-1">{service.ProNameAr}</div>
+                        <div className="text-sm text-muted-foreground mt-1">{service.ProNameAr}</div>
                       )}
                     </div>
                   </TableCell>
                   <TableCell>
                     {service.ImageUrl ? (
-                      <div className="h-10 w-10 rounded-md overflow-hidden border border-zinc-700 bg-zinc-800">
+                      <div className="h-10 w-10 rounded-md overflow-hidden border border-border bg-muted">
                         <img
                           src={service.ImageUrl}
                           alt={service.ProName}
@@ -956,16 +956,16 @@ export default function ServicesManagementPage() {
                         />
                       </div>
                     ) : (
-                      <div className="h-10 w-10 rounded-md border border-dashed border-zinc-700 bg-zinc-800/50 flex items-center justify-center">
-                        <ImageIcon className="w-4 h-4 text-zinc-600" />
+                      <div className="h-10 w-10 rounded-md border border-dashed border-border bg-muted flex items-center justify-center">
+                        <ImageIcon className="w-4 h-4 text-muted-foreground" />
                       </div>
                     )}
                   </TableCell>
                   <TableCell>
                     <CategoryBadge name={service.CatName} size="sm" />
                   </TableCell>
-                  <TableCell className="text-zinc-300">{service.SPrice1} جنيه</TableCell>
-                  <TableCell className="text-zinc-300">{service.Bonus} جنيه</TableCell>
+                  <TableCell className="text-foreground">{service.SPrice1} جنيه</TableCell>
+                  <TableCell className="text-foreground">{service.Bonus} جنيه</TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1.5">
                       <Input
@@ -974,21 +974,21 @@ export default function ServicesManagementPage() {
                         placeholder="افتراضي"
                         value={durationEdits[service.ProID] ?? (service.DurationMinutes !== null && service.DurationMinutes !== undefined ? String(service.DurationMinutes) : '')}
                         onChange={e => setDurationEdits(prev => ({ ...prev, [service.ProID]: e.target.value }))}
-                        className="w-20 h-7 text-xs bg-zinc-800 border-zinc-700 text-white text-center"
+                        className="w-20 h-7 text-xs bg-muted border-border text-foreground text-center"
                       />
-                      <span className="text-xs text-zinc-500">د</span>
+                      <span className="text-xs text-muted-foreground">د</span>
                       {durationEdits[service.ProID] !== undefined && durationEdits[service.ProID] !== String(service.DurationMinutes ?? '') && (
                         <button
                           onClick={() => saveDurationMinutes(service)}
                           disabled={!!durationSaving[service.ProID]}
-                          className="text-xs text-amber-400 hover:text-amber-300 disabled:opacity-50"
+                          className="text-xs text-warning hover:text-warning disabled:opacity-50"
                         >
                           {durationSaving[service.ProID] ? <Loader2 className="w-3 h-3 animate-spin" /> : '✓'}
                         </button>
                       )}
                     </div>
                   </TableCell>
-                  <TableCell className="text-zinc-300">{service.SalesCount}</TableCell>
+                  <TableCell className="text-foreground">{service.SalesCount}</TableCell>
                   <TableCell>
                     <div className="flex flex-wrap gap-1 items-center">
                       <Badge 
@@ -1002,21 +1002,21 @@ export default function ServicesManagementPage() {
                         return (
                           <>
                             {q.isProduct ? (
-                              <Badge variant="outline" className="text-[10px] border-sky-700 text-sky-300">
+                              <Badge variant="outline" className="text-[10px] border-info/30 text-info">
                                 منتج
                               </Badge>
                             ) : (
-                              <Badge variant="outline" className="text-[10px] border-zinc-600 text-zinc-300">
+                              <Badge variant="outline" className="text-[10px] border-border text-foreground">
                                 خدمة
                               </Badge>
                             )}
                             {q.missingDuration && (
-                              <Badge variant="outline" className="text-[10px] border-amber-700 text-amber-300">
+                              <Badge variant="outline" className="text-[10px] border-warning/30 text-warning">
                                 بلا مدة
                               </Badge>
                             )}
                             {q.invalidPrice && (
-                              <Badge variant="outline" className="text-[10px] border-rose-700 text-rose-300">
+                              <Badge variant="outline" className="text-[10px] border-destructive/30 text-destructive">
                                 سعر غير صالح
                               </Badge>
                             )}
@@ -1024,8 +1024,8 @@ export default function ServicesManagementPage() {
                               variant="outline"
                               className={
                                 q.publicBookable
-                                  ? 'text-[10px] border-emerald-700 text-emerald-300'
-                                  : 'text-[10px] border-zinc-700 text-zinc-500'
+                                  ? 'text-[10px] border-success/30 text-success'
+                                  : 'text-[10px] border-border text-muted-foreground'
                               }
                             >
                               {q.publicBookable ? 'حجز عام' : 'غير عام'}
@@ -1042,17 +1042,17 @@ export default function ServicesManagementPage() {
                           <MoreVertical className="h-4 w-4" />
                         </Button>
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="bg-zinc-800 border-zinc-700">
+                      <DropdownMenuContent align="end" className="bg-muted border-border">
                         <DropdownMenuItem
                           onClick={() => openServiceModal(service)}
-                          className="text-white hover:bg-zinc-700"
+                          className="text-foreground hover:bg-surface-muted"
                         >
                           <Edit2 className="w-4 h-4 ml-2" />
                           تعديل
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           onClick={() => openBarberDurModal(service)}
-                          className="text-amber-400 hover:bg-amber-500/10"
+                          className="text-warning hover:bg-warning-soft"
                         >
                           <Clock className="w-4 h-4 ml-2" />
                           تخصيص مدة الصنايعية
@@ -1060,7 +1060,7 @@ export default function ServicesManagementPage() {
                         {isServiceSoftDeleted(service) ? (
                           <DropdownMenuItem
                             onClick={() => openRestoreConfirm(service)}
-                            className="text-emerald-400 hover:bg-emerald-500/10"
+                            className="text-success hover:bg-success-soft"
                           >
                             <RotateCcw className="w-4 h-4 ml-2" />
                             استعادة
@@ -1068,7 +1068,7 @@ export default function ServicesManagementPage() {
                         ) : (
                           <DropdownMenuItem
                             onClick={() => deleteService(service.ProID)}
-                            className="text-rose-400 hover:bg-rose-500/10"
+                            className="text-destructive hover:bg-destructive-soft"
                           >
                             <Trash2 className="w-4 h-4 ml-2" />
                             حذف
@@ -1085,11 +1085,11 @@ export default function ServicesManagementPage() {
       </div>
 
       {/* Categories Section */}
-      <div className="rounded-xl border border-zinc-800 overflow-hidden">
-        <div className="px-4 py-3 border-b border-zinc-800 bg-zinc-900/40 flex items-center justify-between gap-3">
+      <div className="rounded-xl border border-border overflow-hidden">
+        <div className="px-4 py-3 border-b border-border bg-card flex items-center justify-between gap-3">
           <div>
-            <h3 className="text-sm font-semibold text-zinc-300">الفئات وترتيب العرض</h3>
-            <p className="text-xs text-zinc-500 mt-0.5">
+            <h3 className="text-sm font-semibold text-foreground">الفئات وترتيب العرض</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">
               الأسهم أو رقم الظهور (1 = أول فئة). اكتب الرقم ثم Enter أو اخرج من الحقل
               {reorderSaving ? ' — جاري الحفظ...' : ''}
             </p>
@@ -1097,7 +1097,7 @@ export default function ServicesManagementPage() {
           <Button
             variant="outline"
             size="sm"
-            className="gap-2 border-zinc-700 hover:bg-zinc-800 shrink-0"
+            className="gap-2 border-border hover:bg-surface-muted shrink-0"
             onClick={() => openCategoryModal()}
           >
             <FolderPlus className="w-4 h-4" />
@@ -1106,7 +1106,7 @@ export default function ServicesManagementPage() {
         </div>
 
         {categories.length === 0 ? (
-          <div className="p-12 text-center text-zinc-500">
+          <div className="p-12 text-center text-muted-foreground">
             <FolderOpen className="w-10 h-10 mx-auto mb-3 opacity-30" />
             <p className="text-sm">لا توجد فئات بعد</p>
           </div>
@@ -1135,7 +1135,7 @@ export default function ServicesManagementPage() {
                           size="sm"
                           disabled={isFirst || reorderSaving}
                           onClick={() => moveCategory(category.CatID, 'up')}
-                          className="h-7 w-7 p-0 text-zinc-300 hover:bg-zinc-800 disabled:opacity-30"
+                          className="h-7 w-7 p-0 text-foreground hover:bg-surface-muted disabled:opacity-30"
                           title="تحريك لأعلى (يعرض أولاً)"
                         >
                           <ChevronUp className="h-4 w-4" />
@@ -1146,14 +1146,14 @@ export default function ServicesManagementPage() {
                           size="sm"
                           disabled={isLast || reorderSaving}
                           onClick={() => moveCategory(category.CatID, 'down')}
-                          className="h-7 w-7 p-0 text-zinc-300 hover:bg-zinc-800 disabled:opacity-30"
+                          className="h-7 w-7 p-0 text-foreground hover:bg-surface-muted disabled:opacity-30"
                           title="تحريك لأسفل"
                         >
                           <ChevronDown className="h-4 w-4" />
                         </Button>
                       </div>
                       <div className="flex flex-col items-center gap-0.5 shrink-0">
-                        <span className="text-[10px] text-zinc-500">ترتيب</span>
+                        <span className="text-[10px] text-muted-foreground">ترتيب</span>
                         <Input
                           type="number"
                           min={1}
@@ -1172,7 +1172,7 @@ export default function ServicesManagementPage() {
                               e.currentTarget.blur();
                             }
                           }}
-                          className="w-14 h-8 text-center bg-zinc-800 border-zinc-700 text-white text-sm font-mono px-1"
+                          className="w-14 h-8 text-center bg-muted border-border text-foreground text-sm font-mono px-1"
                           title={`اكتب رقم من 1 إلى ${sorted.length}`}
                           aria-label={`ترتيب ظهور ${category.CatName}`}
                         />
@@ -1185,10 +1185,10 @@ export default function ServicesManagementPage() {
                       </div>
                       <div className="min-w-0">
                         <h4 style={{ fontWeight: 700, fontSize: 14, color: theme.color }}>{category.CatName}</h4>
-                        <p className="text-xs text-zinc-500 mt-0.5">
+                        <p className="text-xs text-muted-foreground mt-0.5">
                           <span style={{ fontWeight: 600, color: theme.color }}>{category.ServiceCount}</span>
                           {' '}خدمة
-                          <span className="text-zinc-600 mx-1">·</span>
+                          <span className="text-muted-foreground mx-1">·</span>
                           موضع {index + 1} من {sorted.length}
                         </p>
                       </div>
@@ -1199,17 +1199,17 @@ export default function ServicesManagementPage() {
                           <MoreVertical className="h-4 w-4" />
                         </Button>
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="bg-zinc-800 border-zinc-700">
+                      <DropdownMenuContent align="end" className="bg-muted border-border">
                         <DropdownMenuItem
                           onClick={() => openCategoryModal(category)}
-                          className="text-white hover:bg-zinc-700"
+                          className="text-foreground hover:bg-surface-muted"
                         >
                           <Edit2 className="w-4 h-4 ml-2" />
                           تعديل
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           onClick={() => deleteCategory(category.CatID)}
-                          className="text-rose-400 hover:bg-rose-500/10"
+                          className="text-destructive hover:bg-destructive-soft"
                         >
                           <Trash2 className="w-4 h-4 ml-2" />
                           حذف
@@ -1226,7 +1226,7 @@ export default function ServicesManagementPage() {
 
       {/* Service Modal */}
       <Dialog open={serviceModalOpen} onOpenChange={setServiceModalOpen}>
-        <DialogContent className="bg-zinc-900 border-zinc-700 text-white max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="bg-card border-border text-foreground max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-xl">
               {editingService ? 'تعديل الخدمة' : 'خدمة جديدة'}
@@ -1239,7 +1239,7 @@ export default function ServicesManagementPage() {
                 id="serviceName"
                 value={serviceFormData.ProName}
                 onChange={(e) => setServiceFormData({...serviceFormData, ProName: e.target.value})}
-                className="bg-zinc-800 border-zinc-700 text-white"
+                className="bg-muted border-border text-foreground"
                 placeholder="أدخل اسم الخدمة"
               />
             </div>
@@ -1249,7 +1249,7 @@ export default function ServicesManagementPage() {
                 id="serviceNameAr"
                 value={serviceFormData.ProNameAr}
                 onChange={(e) => setServiceFormData({...serviceFormData, ProNameAr: e.target.value})}
-                className="bg-zinc-800 border-zinc-700 text-white"
+                className="bg-muted border-border text-foreground"
                 placeholder="أدخل اسم الخدمة بالعربي"
               />
             </div>
@@ -1261,7 +1261,7 @@ export default function ServicesManagementPage() {
                   type="number"
                   value={serviceFormData.SPrice1}
                   onChange={(e) => setServiceFormData({...serviceFormData, SPrice1: parseFloat(e.target.value) || 0})}
-                  className="bg-zinc-800 border-zinc-700 text-white"
+                  className="bg-muted border-border text-foreground"
                   placeholder="0"
                 />
               </div>
@@ -1272,7 +1272,7 @@ export default function ServicesManagementPage() {
                   type="number"
                   value={serviceFormData.Bonus}
                   onChange={(e) => setServiceFormData({...serviceFormData, Bonus: parseFloat(e.target.value) || 0})}
-                  className="bg-zinc-800 border-zinc-700 text-white"
+                  className="bg-muted border-border text-foreground"
                   placeholder="0"
                 />
               </div>
@@ -1284,20 +1284,20 @@ export default function ServicesManagementPage() {
                   value={serviceFormData.CatID?.toString() || 'none'} 
                   onValueChange={(value) => setServiceFormData({...serviceFormData, CatID: value === 'none' ? null : parseInt(value)})}
                 >
-                  <SelectTrigger className="bg-zinc-800 border-zinc-700 text-white">
+                  <SelectTrigger className="bg-muted border-border text-foreground">
                     <SelectValue placeholder="اختر الفئة" />
                   </SelectTrigger>
-                  <SelectContent className="bg-zinc-800 border-zinc-700">
-                    <SelectItem value="none" className="text-white">بدون فئة</SelectItem>
+                  <SelectContent className="bg-muted border-border">
+                    <SelectItem value="none" className="text-foreground">بدون فئة</SelectItem>
                     {categories.map(cat => (
-                      <SelectItem key={cat.CatID} value={cat.CatID.toString()} className="text-white">
+                      <SelectItem key={cat.CatID} value={cat.CatID.toString()} className="text-foreground">
                         {cat.CatName}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               ) : (
-                <div className="w-full h-10 bg-zinc-800 border-zinc-700 text-white flex items-center px-3 rounded">
+                <div className="w-full h-10 bg-muted border-border text-foreground flex items-center px-3 rounded">
                   اختر الفئة
                 </div>
               )}
@@ -1305,7 +1305,7 @@ export default function ServicesManagementPage() {
             <div className="space-y-3">
               <div className="flex items-center justify-between gap-2">
                 <Label htmlFor="imageUrl" className="flex items-center gap-2">
-                  <ImageIcon className="w-4 h-4 text-amber-400" />
+                  <ImageIcon className="w-4 h-4 text-warning" />
                   صورة الخدمة
                 </Label>
                 {serviceFormData.ImageUrl.trim() && (
@@ -1314,7 +1314,7 @@ export default function ServicesManagementPage() {
                     variant="ghost"
                     size="sm"
                     onClick={() => setServiceFormData({ ...serviceFormData, ImageUrl: '' })}
-                    className="h-7 px-2 text-xs text-zinc-400 hover:text-rose-400 hover:bg-rose-500/10"
+                    className="h-7 px-2 text-xs text-muted-foreground hover:text-destructive hover:bg-destructive-soft"
                   >
                     <X className="w-3.5 h-3.5 ml-1" />
                     مسح الصورة
@@ -1325,7 +1325,7 @@ export default function ServicesManagementPage() {
                 id="imageUrl"
                 value={serviceFormData.ImageUrl}
                 onChange={(e) => setServiceFormData({ ...serviceFormData, ImageUrl: e.target.value })}
-                className="bg-zinc-800 border-zinc-700 text-white font-mono text-xs"
+                className="bg-muted border-border text-foreground font-mono text-xs"
                 placeholder="https://res.cloudinary.com/... أو /services/haircut.jpg"
                 dir="ltr"
               />
@@ -1333,14 +1333,14 @@ export default function ServicesManagementPage() {
               <div className="flex flex-wrap items-center gap-2">
                 <Label
                   htmlFor="serviceImageFile"
-                  className={`inline-flex items-center gap-2 rounded-md border border-zinc-600 px-3 py-2 text-xs cursor-pointer hover:bg-zinc-800 ${
+                  className={`inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 text-xs cursor-pointer hover:bg-surface-muted ${
                     uploadingServiceImage || serviceSaving ? 'opacity-60 pointer-events-none' : ''
                   }`}
                 >
                   {uploadingServiceImage ? (
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
                   ) : (
-                    <ImageIcon className="w-3.5 h-3.5 text-amber-400" />
+                    <ImageIcon className="w-3.5 h-3.5 text-warning" />
                   )}
                   {uploadingServiceImage ? 'جاري الرفع على Cloudinary...' : 'رفع صورة من الجهاز'}
                 </Label>
@@ -1356,20 +1356,20 @@ export default function ServicesManagementPage() {
                     void handleServiceImageUpload(file);
                   }}
                 />
-                <span className="text-[11px] text-zinc-500">JPG / PNG / WebP — حتى 5MB</span>
+                <span className="text-[11px] text-muted-foreground">JPG / PNG / WebP — حتى 5MB</span>
               </div>
               {serviceImageUploadError && (
-                <p className="text-xs text-rose-400">{serviceImageUploadError}</p>
+                <p className="text-xs text-destructive">{serviceImageUploadError}</p>
               )}
-              <p className="text-xs text-zinc-500 leading-relaxed">
+              <p className="text-xs text-muted-foreground leading-relaxed">
                 ارفع صورة من الجهاز (Cloudinary) أو الصق رابط https — أو اختر من صور المشروع أدناه.
                 بعد الحفظ تظهر في API الحجز العام.
               </p>
 
               {serviceFormData.ImageUrl.trim() ? (
-                <div className="rounded-lg border border-zinc-700 overflow-hidden bg-zinc-800/50">
-                  <div className="px-3 py-2 border-b border-zinc-700 text-xs text-zinc-400">معاينة الصورة</div>
-                  <div className="relative h-36 bg-zinc-900">
+                <div className="rounded-lg border border-border overflow-hidden bg-muted">
+                  <div className="px-3 py-2 border-b border-border text-xs text-muted-foreground">معاينة الصورة</div>
+                  <div className="relative h-36 bg-card">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={serviceFormData.ImageUrl.trim()}
@@ -1380,12 +1380,12 @@ export default function ServicesManagementPage() {
                       }}
                     />
                   </div>
-                  <div className="px-3 py-2 text-xs text-zinc-500 font-mono truncate" dir="ltr">
+                  <div className="px-3 py-2 text-xs text-muted-foreground font-mono truncate" dir="ltr">
                     {serviceFormData.ImageUrl.trim()}
                   </div>
                 </div>
               ) : (
-                <div className="flex h-24 items-center justify-center rounded-lg border border-dashed border-zinc-700 bg-zinc-800/30 text-zinc-500">
+                <div className="flex h-24 items-center justify-center rounded-lg border border-dashed border-border bg-muted text-muted-foreground">
                   <div className="flex flex-col items-center gap-1 text-xs">
                     <ImageIcon className="w-5 h-5 opacity-50" />
                     <span>لا توجد صورة محددة</span>
@@ -1394,7 +1394,7 @@ export default function ServicesManagementPage() {
               )}
 
               <div className="space-y-2">
-                <Label className="text-xs text-zinc-400">اختيار سريع من الصور المتاحة (محلي)</Label>
+                <Label className="text-xs text-muted-foreground">اختيار سريع من الصور المتاحة (محلي)</Label>
                 <div className="grid grid-cols-4 gap-2">
                   {SERVICE_IMAGE_PRESETS.map((preset) => {
                     const isSelected = serviceFormData.ImageUrl.trim() === preset.path;
@@ -1406,11 +1406,11 @@ export default function ServicesManagementPage() {
                         onClick={() => setServiceFormData({ ...serviceFormData, ImageUrl: preset.path })}
                         className={`group relative overflow-hidden rounded-lg border transition-all ${
                           isSelected
-                            ? 'border-amber-500 ring-1 ring-amber-500/50'
-                            : 'border-zinc-700 hover:border-zinc-500'
+                            ? 'border-warning/30 ring-1 ring-warning/50'
+                            : 'border-border hover:border-border'
                         }`}
                       >
-                        <div className="aspect-4/3 bg-zinc-800">
+                        <div className="aspect-4/3 bg-muted">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
                             src={preset.path}
@@ -1429,12 +1429,12 @@ export default function ServicesManagementPage() {
             </div>
 
             {/* Execution steps */}
-            <div className="space-y-3 border-t border-zinc-800 pt-4">
+            <div className="space-y-3 border-t border-border pt-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
-                  <ListOrdered className="w-4 h-4 text-amber-400" />
+                  <ListOrdered className="w-4 h-4 text-warning" />
                   <Label className="text-base">خطوات التنفيذ</Label>
-                  <Badge variant="outline" className="text-[10px] border-zinc-600 text-zinc-300">
+                  <Badge variant="outline" className="text-[10px] border-border text-foreground">
                     {executionSteps.length} مرحلة
                   </Badge>
                 </div>
@@ -1445,7 +1445,7 @@ export default function ServicesManagementPage() {
                     size="sm"
                     disabled={executionSteps.length === 0 || stepsLoading}
                     onClick={() => setStepsPreviewOpen(true)}
-                    className="h-8 px-2 text-xs text-zinc-300 hover:text-white hover:bg-zinc-800"
+                    className="h-8 px-2 text-xs text-foreground hover:text-foreground hover:bg-surface-muted"
                   >
                     <Eye className="w-3.5 h-3.5 ml-1" />
                     استعراض
@@ -1456,24 +1456,24 @@ export default function ServicesManagementPage() {
                     size="sm"
                     disabled={stepsLoading || serviceSaving}
                     onClick={() => setExecutionSteps((prev) => [...prev, emptyExecutionStep()])}
-                    className="h-8 border-zinc-700 text-xs hover:bg-zinc-800"
+                    className="h-8 border-border text-xs hover:bg-surface-muted"
                   >
                     <Plus className="w-3.5 h-3.5 ml-1" />
                     إضافة مرحلة
                   </Button>
                 </div>
               </div>
-              <p className="text-xs text-zinc-500 leading-relaxed">
+              <p className="text-xs text-muted-foreground leading-relaxed">
                 عرّف مراحل تنفيذ الخدمة بالتفصيل (عنوان + وصف) لاستعراضها داخلياً من الأدمن.
               </p>
 
               {stepsLoading ? (
-                <div className="flex items-center gap-2 text-sm text-zinc-400 py-4 justify-center">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground py-4 justify-center">
                   <Loader2 className="w-4 h-4 animate-spin" />
                   جاري تحميل الخطوات...
                 </div>
               ) : executionSteps.length === 0 ? (
-                <div className="rounded-lg border border-dashed border-zinc-700 bg-zinc-800/30 px-4 py-6 text-center text-xs text-zinc-500">
+                <div className="rounded-lg border border-dashed border-border bg-muted px-4 py-6 text-center text-xs text-muted-foreground">
                   لا توجد مراحل بعد — أضف مرحلة لبدء توثيق خطوات التنفيذ
                 </div>
               ) : (
@@ -1481,10 +1481,10 @@ export default function ServicesManagementPage() {
                   {executionSteps.map((step, index) => (
                     <div
                       key={step.key}
-                      className="rounded-lg border border-zinc-800 bg-zinc-950/50 p-3 space-y-3"
+                      className="rounded-lg border border-border bg-background p-3 space-y-3"
                     >
                       <div className="flex items-center justify-between gap-2">
-                        <span className="text-xs font-medium text-amber-400/90">
+                        <span className="text-xs font-medium text-warning">
                           المرحلة {index + 1}
                         </span>
                         <div className="flex items-center gap-0.5">
@@ -1494,7 +1494,7 @@ export default function ServicesManagementPage() {
                             size="sm"
                             disabled={index === 0}
                             onClick={() => moveExecutionStep(index, -1)}
-                            className="h-7 w-7 p-0 text-zinc-400 hover:text-white"
+                            className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
                             title="تحريك لأعلى"
                           >
                             <ChevronUp className="w-3.5 h-3.5" />
@@ -1505,7 +1505,7 @@ export default function ServicesManagementPage() {
                             size="sm"
                             disabled={index === executionSteps.length - 1}
                             onClick={() => moveExecutionStep(index, 1)}
-                            className="h-7 w-7 p-0 text-zinc-400 hover:text-white"
+                            className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
                             title="تحريك لأسفل"
                           >
                             <ChevronDown className="w-3.5 h-3.5" />
@@ -1515,7 +1515,7 @@ export default function ServicesManagementPage() {
                             variant="ghost"
                             size="sm"
                             onClick={() => removeExecutionStep(step.key)}
-                            className="h-7 w-7 p-0 text-rose-400 hover:text-rose-300 hover:bg-rose-500/10"
+                            className="h-7 w-7 p-0 text-destructive hover:text-destructive hover:bg-destructive-soft"
                             title="حذف المرحلة"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -1524,20 +1524,20 @@ export default function ServicesManagementPage() {
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                         <div>
-                          <Label className="text-[11px] text-zinc-400">العنوان (عربي)</Label>
+                          <Label className="text-[11px] text-muted-foreground">العنوان (عربي)</Label>
                           <Input
                             value={step.TitleAr}
                             onChange={(e) => updateExecutionStep(step.key, { TitleAr: e.target.value })}
-                            className="bg-zinc-800 border-zinc-700 text-white h-8 text-sm"
+                            className="bg-muted border-border text-foreground h-8 text-sm"
                             placeholder="مثال: غسيل الشعر"
                           />
                         </div>
                         <div>
-                          <Label className="text-[11px] text-zinc-400">Title (EN)</Label>
+                          <Label className="text-[11px] text-muted-foreground">Title (EN)</Label>
                           <Input
                             value={step.TitleEn}
                             onChange={(e) => updateExecutionStep(step.key, { TitleEn: e.target.value })}
-                            className="bg-zinc-800 border-zinc-700 text-white h-8 text-sm"
+                            className="bg-muted border-border text-foreground h-8 text-sm"
                             placeholder="e.g. Hair wash"
                             dir="ltr"
                           />
@@ -1545,27 +1545,27 @@ export default function ServicesManagementPage() {
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                         <div>
-                          <Label className="text-[11px] text-zinc-400">التفصيل (عربي)</Label>
+                          <Label className="text-[11px] text-muted-foreground">التفصيل (عربي)</Label>
                           <Textarea
                             value={step.DetailAr}
                             onChange={(e) => updateExecutionStep(step.key, { DetailAr: e.target.value })}
-                            className="bg-zinc-800 border-zinc-700 text-white text-sm min-h-18"
+                            className="bg-muted border-border text-foreground text-sm min-h-18"
                             placeholder="وصف تفصيلي لكيفية تنفيذ هذه المرحلة..."
                           />
                         </div>
                         <div>
-                          <Label className="text-[11px] text-zinc-400">Detail (EN)</Label>
+                          <Label className="text-[11px] text-muted-foreground">Detail (EN)</Label>
                           <Textarea
                             value={step.DetailEn}
                             onChange={(e) => updateExecutionStep(step.key, { DetailEn: e.target.value })}
-                            className="bg-zinc-800 border-zinc-700 text-white text-sm min-h-18"
+                            className="bg-muted border-border text-foreground text-sm min-h-18"
                             placeholder="Detailed description of this stage..."
                             dir="ltr"
                           />
                         </div>
                       </div>
                       <div className="max-w-40">
-                        <Label className="text-[11px] text-zinc-400 flex items-center gap-1">
+                        <Label className="text-[11px] text-muted-foreground flex items-center gap-1">
                           <Clock className="w-3 h-3" />
                           مدة تقديرية (د)
                         </Label>
@@ -1577,7 +1577,7 @@ export default function ServicesManagementPage() {
                           onChange={(e) =>
                             updateExecutionStep(step.key, { DurationMinutes: e.target.value })
                           }
-                          className="bg-zinc-800 border-zinc-700 text-white h-8 text-sm"
+                          className="bg-muted border-border text-foreground h-8 text-sm"
                           placeholder="اختياري"
                         />
                       </div>
@@ -1600,14 +1600,14 @@ export default function ServicesManagementPage() {
             <Button
               variant="outline"
               onClick={() => setServiceModalOpen(false)}
-              className="border-zinc-700 hover:bg-zinc-800"
+              className="border-border hover:bg-surface-muted"
             >
               إلغاء
             </Button>
             <Button
               onClick={saveService}
               disabled={serviceSaving || stepsLoading}
-              className="bg-amber-600 hover:bg-amber-700"
+              className="bg-primary hover:bg-primary/85 text-primary-foreground"
             >
               {serviceSaving ? (
                 <>
@@ -1624,47 +1624,47 @@ export default function ServicesManagementPage() {
 
       {/* Execution steps preview */}
       <Dialog open={stepsPreviewOpen} onOpenChange={setStepsPreviewOpen}>
-        <DialogContent className="bg-zinc-900 border-zinc-700 text-white max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogContent className="bg-card border-border text-foreground max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-xl flex items-center gap-2">
-              <ListOrdered className="w-5 h-5 text-amber-400" />
+              <ListOrdered className="w-5 h-5 text-warning" />
               استعراض خطوات التنفيذ
             </DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-zinc-400">
+          <p className="text-sm text-muted-foreground">
             {serviceFormData.ProNameAr?.trim() || serviceFormData.ProName || 'الخدمة'}
-            <span className="text-zinc-600 mx-1.5">·</span>
+            <span className="text-muted-foreground mx-1.5">·</span>
             {executionSteps.length} مرحلة
           </p>
           {executionSteps.length === 0 ? (
-            <p className="text-sm text-zinc-500 py-6 text-center">لا توجد مراحل للعرض</p>
+            <p className="text-sm text-muted-foreground py-6 text-center">لا توجد مراحل للعرض</p>
           ) : (
-            <ol className="relative space-y-0 border-r border-zinc-700 mr-3 pr-5">
+            <ol className="relative space-y-0 border-r border-border mr-3 pr-5">
               {executionSteps.map((step, index) => {
                 const title = step.TitleAr.trim() || step.TitleEn.trim() || `المرحلة ${index + 1}`;
                 const detail = step.DetailAr.trim() || step.DetailEn.trim();
                 return (
                   <li key={step.key} className="relative pb-6 last:pb-0">
-                    <span className="absolute -right-[1.4rem] top-0 flex h-6 w-6 items-center justify-center rounded-full bg-amber-600 text-[11px] font-bold text-white ring-4 ring-zinc-900">
+                    <span className="absolute -right-[1.4rem] top-0 flex h-6 w-6 items-center justify-center rounded-full bg-warning text-[11px] font-bold text-warning-foreground ring-4 ring-card">
                       {index + 1}
                     </span>
                     <div className="space-y-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <h4 className="font-semibold text-white text-sm">{title}</h4>
+                        <h4 className="font-semibold text-foreground text-sm">{title}</h4>
                         {step.DurationMinutes.trim() && (
-                          <Badge variant="outline" className="text-[10px] border-zinc-600 text-zinc-400">
+                          <Badge variant="outline" className="text-[10px] border-border text-muted-foreground">
                             <Clock className="w-3 h-3 ml-1" />
                             {step.DurationMinutes} د
                           </Badge>
                         )}
                       </div>
                       {step.TitleEn.trim() && step.TitleAr.trim() && (
-                        <p className="text-xs text-zinc-500" dir="ltr">{step.TitleEn}</p>
+                        <p className="text-xs text-muted-foreground" dir="ltr">{step.TitleEn}</p>
                       )}
                       {detail ? (
-                        <p className="text-sm text-zinc-300 leading-relaxed whitespace-pre-wrap">{detail}</p>
+                        <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">{detail}</p>
                       ) : (
-                        <p className="text-xs text-zinc-600">بدون تفصيل</p>
+                        <p className="text-xs text-muted-foreground">بدون تفصيل</p>
                       )}
                     </div>
                   </li>
@@ -1676,7 +1676,7 @@ export default function ServicesManagementPage() {
             <Button
               variant="outline"
               onClick={() => setStepsPreviewOpen(false)}
-              className="border-zinc-700 hover:bg-zinc-800"
+              className="border-border hover:bg-surface-muted"
             >
               إغلاق
             </Button>
@@ -1686,7 +1686,7 @@ export default function ServicesManagementPage() {
 
       {/* Category Modal */}
       <Dialog open={categoryModalOpen} onOpenChange={setCategoryModalOpen}>
-        <DialogContent className="bg-zinc-900 border-zinc-700 text-white max-w-md">
+        <DialogContent className="bg-card border-border text-foreground max-w-md">
           <DialogHeader>
             <DialogTitle className="text-xl">
               {editingCategory ? 'تعديل الفئة' : 'فئة جديدة'}
@@ -1699,7 +1699,7 @@ export default function ServicesManagementPage() {
                 id="categoryName"
                 value={categoryFormData.CatName}
                 onChange={(e) => setCategoryFormData({...categoryFormData, CatName: e.target.value})}
-                className="bg-zinc-800 border-zinc-700 text-white"
+                className="bg-muted border-border text-foreground"
                 placeholder="أدخل اسم الفئة"
               />
             </div>
@@ -1709,7 +1709,7 @@ export default function ServicesManagementPage() {
                 id="categoryDescription"
                 value={categoryFormData.Description}
                 onChange={(e) => setCategoryFormData({...categoryFormData, Description: e.target.value})}
-                className="bg-zinc-800 border-zinc-700 text-white"
+                className="bg-muted border-border text-foreground"
                 placeholder="وصف الفئة (اختياري)"
                 rows={3}
               />
@@ -1727,14 +1727,14 @@ export default function ServicesManagementPage() {
             <Button
               variant="outline"
               onClick={() => setCategoryModalOpen(false)}
-              className="border-zinc-700 hover:bg-zinc-800"
+              className="border-border hover:bg-surface-muted"
             >
               إلغاء
             </Button>
             <Button
               onClick={saveCategory}
               disabled={categorySaving}
-              className="bg-amber-600 hover:bg-amber-700"
+              className="bg-primary hover:bg-primary/85 text-primary-foreground"
             >
               {categorySaving ? (
                 <>
@@ -1758,21 +1758,21 @@ export default function ServicesManagementPage() {
           if (!open) setRestoreTarget(null);
         }}
       >
-        <DialogContent className="bg-zinc-900 border-zinc-700 text-white max-w-md">
+        <DialogContent className="bg-card border-border text-foreground max-w-md">
           <DialogHeader>
             <DialogTitle className="text-xl">استعادة الخدمة</DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-zinc-300 leading-relaxed">
+          <p className="text-sm text-foreground leading-relaxed">
             هل تريد استعادة الخدمة
             {restoreTarget ? (
-              <> «<span className="text-white font-medium">{restoreTarget.ProName}</span>» </>
+              <> «<span className="text-foreground font-medium">{restoreTarget.ProName}</span>» </>
             ) : (
               ' '
             )}
             وإعادتها إلى الحالة النشطة؟ لن يتم إنشاء سجل جديد.
           </p>
           {restoreTarget && !serviceDataQuality({ ...restoreTarget, isDeleted: false }).publicBookable && (
-            <p className="text-xs text-amber-300/90 mt-3 leading-relaxed border border-amber-800/50 rounded-md p-2 bg-amber-950/30">
+            <p className="text-xs text-warning mt-3 leading-relaxed border border-warning/50 rounded-md p-2 bg-warning-soft">
               الاستعادة لا تتجاوز قواعد الحجز العام. هذه الخدمة لن تظهر في كتالوج الحجز العام حتى تكتمل
               المدة والسعر والتصنيف كخدمة صالون (وليست منتجًا أو صف اختبار).
             </p>
@@ -1786,14 +1786,14 @@ export default function ServicesManagementPage() {
                 setRestoreTarget(null);
               }}
               disabled={restoreSaving}
-              className="border-zinc-700 hover:bg-zinc-800"
+              className="border-border hover:bg-surface-muted"
             >
               إلغاء
             </Button>
             <Button
               onClick={confirmRestoreService}
               disabled={restoreSaving}
-              className="bg-emerald-600 hover:bg-emerald-700"
+              className="bg-success hover:bg-success/85 text-success-foreground"
             >
               {restoreSaving ? (
                 <>
@@ -1818,8 +1818,8 @@ export default function ServicesManagementPage() {
             key={toast.id}
             className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm shadow-lg ${
               toast.type === 'success'
-                ? 'bg-emerald-950/90 border-emerald-500/40 text-emerald-300'
-                : 'bg-rose-950/90 border-rose-500/40 text-rose-300'
+                ? 'bg-success-soft border-success/40 text-success'
+                : 'bg-destructive-soft border-destructive/40 text-destructive'
             }`}
           >
             {toast.type === 'success' ? (
