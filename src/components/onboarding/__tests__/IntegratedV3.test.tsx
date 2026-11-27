@@ -45,6 +45,22 @@ describe('V3 registration interface',()=>{
     expect(body).not.toHaveProperty('confirmation');
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
+  it('preserves custom app choices when the owner revisits the same industry',()=>{
+    render(<PublicSignupFlow otpRequired={false}/>);
+    advanceSignup();
+    fireEvent.click(screen.getByRole('button',{name:'التطبيقات',exact:true}));
+    const option=screen.getAllByRole('button',{name:/اختياري/}).find(b=>!b.hasAttribute('disabled'));
+    expect(option).toBeDefined();
+    const name=option!.textContent!;
+    const selected=option!.getAttribute('aria-pressed');
+    fireEvent.click(option!);
+    fireEvent.click(screen.getByRole('button',{name:'نوع النشاط',exact:true}));
+    fireEvent.click(screen.getByRole('button',{name:/صالون \/ Barbershop/}));
+    fireEvent.click(screen.getByRole('button',{name:'متابعة'}));
+    const revisited=screen.getAllByRole('button',{name:/اختياري/}).find(b=>b.textContent===name);
+    expect(revisited).toBeDefined();
+    expect(revisited).toHaveAttribute('aria-pressed',selected==='true'?'false':'true');
+  });
   it('does not require an OTP or request one when the server flag is off',()=>{
     const fetchMock=vi.fn();vi.stubGlobal('fetch',fetchMock);
     render(<PublicSignupFlow otpRequired={false}/>);
