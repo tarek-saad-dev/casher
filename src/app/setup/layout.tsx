@@ -19,7 +19,7 @@ export default async function SetupLayout({ children }: { children: React.ReactN
       <Link href="/setup" className="font-black text-primary">رحلة التجهيز</Link>
       <Link href="/setup/identity" className="rounded-lg border border-border px-3 py-1.5 font-bold">هوية المنشأة</Link>
       <Link href="/setup/operating" className="rounded-lg border border-border px-3 py-1.5 font-bold">إعدادات التشغيل</Link>
-      <Link href="/setup/training" className="rounded-lg border border-primary/30 bg-primary-soft px-3 py-1.5 font-bold text-primary">مساحة التدريب</Link>
+      <Link href="/setup/training" className="rounded-lg border border-primary/30 bg-primary-soft px-3 py-1.5 font-bold text-foreground">مساحة التدريب</Link>
     </nav>
     {children}
   </div>;
