@@ -1,5 +1,4 @@
 import { cookies } from 'next/headers';
-import Script from 'next/script';
 import {
   DEFAULT_THEME_CONFIG,
   getThemeTokens,
@@ -16,25 +15,28 @@ import {
  *     Values come from `lib/theme.ts` — never duplicate them here.
  *  2. The html `light|dark` class is rendered by the root layout on the server.
  *     For `system` mode the server cannot know the OS preference, so a small
- *     next/script resolves it on the client (ThemeProvider then applies tokens).
+ *     synchronous inline head script resolves the class before body paint.
+ *     Both token sets are already available in the stylesheet for system mode.
  */
 export async function ThemeInit() {
   const jar = await cookies();
   const config = parseThemeCookie(jar.toString());
   const mode = resolveThemeMode(config.mode);
-  const css = themeTokensToCss(getThemeTokens(mode, config.palette));
   const followSystem = config.mode === 'system';
+  const css = `:root{${themeTokensToCss(getThemeTokens(mode, config.palette))}color-scheme:${mode};}`;
+  const systemDarkCss = followSystem
+    ? `:root.dark{${themeTokensToCss(getThemeTokens('dark', config.palette))}color-scheme:dark;}`
+    : '';
 
   return (
     <>
       <style
         id="theme-init"
-        dangerouslySetInnerHTML={{ __html: `:root{${css}color-scheme:${mode};}` }}
+        dangerouslySetInnerHTML={{ __html: css + systemDarkCss }}
       />
       {followSystem ? (
-        <Script
+        <script
           id="theme-init-script"
-          strategy="afterInteractive"
           dangerouslySetInnerHTML={{
             __html: `
               (function() {

@@ -64,10 +64,11 @@ export default function ThemeProvider({ children, initialConfig }: ThemeProvider
     setIsReady(true);
   }, [apply, initialConfig]);
 
-  // Keep colors in sync when config changes (covers initial server config too).
+  // Do not reapply the initial cookie configuration over the just-loaded
+  // local preference during the first effect pass.
   useEffect(() => {
-    apply(config);
-  }, [apply, config]);
+    if (isReady) apply(config);
+  }, [apply, config, isReady]);
 
   // Listen for system preference changes when mode is 'system'.
   useEffect(() => {

@@ -130,6 +130,11 @@ describe('DRVO Light V1 theme tokens (ADR-024 / ADR-041)', () => {
     const src = readFileSync(join(process.cwd(), 'src/components/theme/ThemeInit.tsx'), 'utf8');
     expect(src).toContain('getThemeTokens');
     expect(src).not.toMatch(/#[0-9A-Fa-f]{6}/);
+    expect(src).toContain("getThemeTokens('dark', config.palette)");
+    expect(src).toContain(':root.dark{');
+    expect(src).toContain('color-scheme:dark');
+    expect(src).toContain('<script');
+    expect(src).not.toContain('afterInteractive');
   });
 
   it('globals.css maps tokens but holds no colour values of its own', () => {
