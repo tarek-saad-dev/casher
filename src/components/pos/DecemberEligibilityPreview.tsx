@@ -20,10 +20,10 @@ export default function DecemberEligibilityPreview({clientId}:{clientId:number})
    {!data.active?<p>الحملة غير مفعلة.</p>:data.alreadyRedeemed?<p>العميل استهلك العرض.</p>:!data.registered?<p>{data.identityReview?'الرقم يحتاج مراجعة.':'اعتماد التسجيل مطلوب.'}</p>:<>
     <p>أول زيارة: {data.firstVisit?'مؤهل مبدئيًا':'غير مؤهل'}</p><p>كارنيه الطالب: {data.studentVerified?'معتمد':'غير معتمد'}</p>
     <p>الدعوات: {data.confirmed} مؤكدة · {data.pending} معلقة</p>
-    <p>ربط حساب CUT CLUB: {data.clubLinked?'موجود':'غير مثبت'} (الخصم غير محسوب)</p>
+    <p>عضوية CUT CLUB: {data.clubLinked?'مؤهلة مبدئيًا':'غير مؤهلة'}</p>
     <p className="font-bold">نسبة الشروط المفحوصة: {data.partialPercent}%</p>
    </>}
-   <p className="text-muted-foreground text-xs">لا يتم تطبيق خصم أو استهلاك العرض. قواعد الخدمات والعضوية والتسوية المالية قيد التكامل.</p>
+   <p className="text-muted-foreground text-xs">لا يتم تطبيق خصم أو استهلاك العرض. قواعد الخدمات تُحسب عند طلب عرض السعر.</p>
   </>}
  </section>;
 }
