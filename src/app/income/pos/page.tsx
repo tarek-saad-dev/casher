@@ -1068,7 +1068,7 @@ export default function PosPage() {
     onPaymentMethodSelect: handlePaymentMethodSelect,
     onPaymentAllocationsChange: setPaymentAllocations,
     onSave: handleSave,
-    decemberCheckout: process.env.NEXT_PUBLIC_DECEMBER_EXAM_STAGING_CHECKOUT_ENABLED==='true' && (editingSaleId===null||decemberQuote) ? {
+    decemberCheckout: (process.env.NEXT_PUBLIC_DECEMBER_EXAM_STAGING_CHECKOUT_ENABLED==='true'||process.env.NEXT_PUBLIC_DECEMBER_EXAM_PRODUCTION_CHECKOUT_ENABLED==='true') && (editingSaleId===null||decemberQuote) ? {
       active: !!decemberQuote, busy: decemberBusy, canApply: !!state.customer && state.items.length>0 && !state.items.some(i=>i.packageMeta) && state.discountPercent===0 && state.discountValue===0 && !saving,
       onApply: ()=>void applyDecember(), onClear: clearDecember,
     } : undefined,
