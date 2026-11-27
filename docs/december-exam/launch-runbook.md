@@ -33,3 +33,11 @@ Record exact PR SHA, CI and staging test outputs, approved migration ledger/back
 - Later expanded tests cover historical visits, active Club/student checks, pause. Review latest run before approval.
 - Reception permission: set DECEMBER_EXAM_RECEPTION_USER_IDS to approved numeric staff IDs (comma-separated) with existing /income/pos permission. Non-admins can search exact records and approve only; campaign configuration, lifecycle, analytics, recovery remain admin-only. No IDs assigned by default.
 - The special no-collection method must be configured only on isolated staging. Never make it a normal selectable payment type. POST /api/sales rejects its configured ID in ordinary allocations; review all other payment mutation routes before any launch.
+
+## VPS staging evidence — 2026-11-27
+- Run 46054616148: migrations 027–029 applied through the scoped migration runner to last132_agent. Six schema/ledger checks passed; no production connection.
+- Run 46054954065: actual extracted POS transaction adapter positive-payment and 100% checkout assertions passed on the existing staging legacy schema. Rollback proof passed (synthetic customers, invoice headers and campaign absent). Overall job was cancelled after pass markers, not an overall green CI result. No browser, legacy in-route adapter, post-commit effects, printing or payroll acceptance claimed.
+- Follow-up smoke closes application pools and explicitly verifies treasury trigger digest and dedicated payment-method count return to their pre-test values. Review latest run before claiming restoration verified.
+- Shared SQL phone normalization now recognizes Arabic/Persian digits and common formatting; duplicate canonical clients block reception approval and campaign quote. New disposable SQL regressions require latest green results.
+- Website participant session exposes only campaign redemption flag (no invoice amount or identifiers); after redemption the customer sees consumption state and cannot start another invitation share from that screen. Existing invitation links are not invalidated by this UI change.
+- Remaining production gates: commission policy, eligibility/rates, real browser journey, full treasury/legacy and post-commit checks, rate-limit ingress, production enablement design. Current staging-only code must not be treated as production-ready.
