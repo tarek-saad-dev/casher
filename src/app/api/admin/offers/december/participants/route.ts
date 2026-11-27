@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAdmin,isAuthResult } from '@/lib/api-auth';
+import { isAuthResult } from '@/lib/api-auth';
+import {requireDecemberReception} from '@/lib/campaigns/december-exam/receptionAuth';
 import { getPool,sql } from '@/lib/db';
 import { normalizeEgyptianMobile } from '@/lib/campaigns/december-exam/registration';
 import { DECEMBER_CAMPAIGN_CODE } from '@/lib/campaigns/december-exam/registrationRepository';
@@ -10,7 +11,7 @@ const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const enabled=(tenant:string)=>process.env.DECEMBER_EXAM_STAFF_ENABLED==='true' && tenant.toLowerCase()===process.env.DECEMBER_EXAM_TENANT_ID?.toLowerCase();
 
 export async function GET(req:NextRequest){
-  const staff=await requireAdmin();
+  const staff=await requireDecemberReception();
   if(!isAuthResult(staff))return staff;
   if(!enabled(staff.tenantId))return reply({ok:false,code:'CAMPAIGN_UNAVAILABLE'},503);
   const code=req.nextUrl.searchParams.get('code')?.trim().toUpperCase()||null;
@@ -18,6 +19,7 @@ export async function GET(req:NextRequest){
   let phone:string|null=null;
   try{if(rawPhone)phone=normalizeEgyptianMobile(rawPhone);}catch{return reply({ok:false,code:'INVALID_REQUEST'},400);}
   if((code&&!/^CUT-[A-F0-9]{16}$/.test(code))||(code&&phone))return reply({ok:false,code:'INVALID_REQUEST'},400);
+  if(!code&&!phone&&!staff.isSuperAdmin&&staff.userLevel!=='admin'&&!staff.roles.some(r=>r==='admin'||r==='super_admin'))return reply({ok:false,code:'EXACT_LOOKUP_REQUIRED'},400);
   try{
     const r=await (await getPool()).request().input('tenant',sql.UniqueIdentifier,staff.tenantId)
       .input('campaign',sql.VarChar(48),DECEMBER_CAMPAIGN_CODE).input('code',sql.VarChar(32),code).input('phone',sql.VarChar(16),phone)
@@ -39,7 +41,7 @@ export async function POST(req:NextRequest){
   const origin=process.env.DECEMBER_EXAM_CASHER_PUBLIC_ORIGIN || (process.env.NODE_ENV==='production'?'https://ops.cutsaloon.com':req.nextUrl.origin);
   if(req.headers.get('origin')!==origin||!req.headers.get('content-type')?.startsWith('application/json'))
     return reply({ok:false,code:'ORIGIN_REQUIRED'},403);
-  const staff=await requireAdmin();
+  const staff=await requireDecemberReception();
   if(!isAuthResult(staff))return staff;
   if(!enabled(staff.tenantId))return reply({ok:false,code:'CAMPAIGN_UNAVAILABLE'},503);
   const body=await req.json().catch(()=>null);
