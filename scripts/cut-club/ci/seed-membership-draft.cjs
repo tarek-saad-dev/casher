@@ -15,9 +15,18 @@ async function run(){
  CREATE USER drvo_agent FOR LOGIN drvo_agent; ALTER ROLE db_owner ADD MEMBER drvo_agent;
  CREATE TABLE dbo.Tenant(TenantId UNIQUEIDENTIFIER PRIMARY KEY,Code NVARCHAR(64) NOT NULL,Status NVARCHAR(16) NOT NULL);
  INSERT dbo.Tenant VALUES('413d433e-f36b-1410-8820-009ec495c7e1','CASHER_BOOT','active'),
- ('11111111-1111-4111-8111-111111111111','OTHER','active');`);}finally{await db.close();}
+ ('11111111-1111-4111-8111-111111111111','OTHER','active');
+ CREATE TABLE dbo.TblClient(ClientID INT PRIMARY KEY,TenantId UNIQUEIDENTIFIER NOT NULL,Mobile NVARCHAR(32) NOT NULL);
+ CREATE TABLE dbo.CutClubMemberAccount(AccountID UNIQUEIDENTIFIER PRIMARY KEY,TenantId UNIQUEIDENTIFIER NOT NULL,
+ PhoneNormalized NVARCHAR(20) NOT NULL,LegacyClientID INT NULL,LinkStatus VARCHAR(24) NOT NULL,AccessStatus VARCHAR(16) NOT NULL);
+ INSERT dbo.TblClient VALUES(7,'413d433e-f36b-1410-8820-009ec495c7e1','01000000000'),
+ (8,'413d433e-f36b-1410-8820-009ec495c7e1','01000000000'),
+ (9,'11111111-1111-4111-8111-111111111111','01000000001');
+ INSERT dbo.CutClubMemberAccount VALUES
+ ('22222222-2222-4222-8222-222222222222','413d433e-f36b-1410-8820-009ec495c7e1','201000000000',7,'ACTIVE','ENABLED'),
+ ('33333333-3333-4333-8333-333333333333','11111111-1111-4111-8111-111111111111','201000000001',9,'ACTIVE','ENABLED');`);}finally{await db.close();}
  const local=await connect(cfg('drvo_agent',agent,'last132_agent'));
- try{await local.request().query(fs.readFileSync('docs/cut-club/sql/membership-draft-staging-only.sql','utf8'));}finally{await local.close();}
+ try{await local.request().query(fs.readFileSync('docs/cut-club/sql/membership-draft-staging-only.sql','utf8'));await local.request().query(fs.readFileSync('docs/cut-club/sql/membership-proof-staging-only.sql','utf8'));}finally{await local.close();}
  console.log('Disposable membership draft schema ready');
 }
 run().catch(e=>{console.error(e.message);process.exitCode=1;});

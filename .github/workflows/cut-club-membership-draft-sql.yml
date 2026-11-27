@@ -8,6 +8,7 @@ on:
       - 'src/app/api/admin/cut-club/membership-*/**'
       - 'src/app/admin/cut-club/membership-*/**'
       - 'docs/cut-club/sql/membership-draft-staging-only.sql'
+      - 'docs/cut-club/sql/membership-proof-staging-only.sql'
       - 'scripts/cut-club/ci/seed-membership-draft.cjs'
       - '.github/workflows/cut-club-membership-draft-sql.yml'
 permissions:
@@ -45,4 +46,4 @@ jobs:
           test -z "${DB_SERVER:-}"
           test -z "${CLOUD_DB_SERVER:-}"
       - run: node scripts/cut-club/ci/seed-membership-draft.cjs
-      - run: npx vitest run src/lib/__tests__/cutClubMembershipPolicy.test.ts src/lib/__tests__/cutClubMembershipDraft.test.ts src/lib/__tests__/cutClubMembershipDraftRealSql.test.ts
+      - run: npx vitest run src/lib/__tests__/cutClubMembershipPolicy.test.ts src/lib/__tests__/cutClubMembershipDraft.test.ts src/lib/__tests__/cutClubMembershipDraftRealSql.test.ts src/lib/__tests__/cutClubMembershipProof.test.ts src/lib/__tests__/cutClubMembershipProofRealSql.test.ts
