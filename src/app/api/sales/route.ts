@@ -202,6 +202,13 @@ export async function POST(req: NextRequest) {
     // ──── Payment allocation validation ────
     const rawAllocations = body.paymentAllocations || [];
 
+    // The dedicated no-collection method must never be accepted as a regular
+    // payment allocation, even if it appears in the legacy selector.
+    const reservedZeroMethod=Number(process.env.DECEMBER_EXAM_ZERO_PAYMENT_METHOD_ID);
+    if(Number.isSafeInteger(reservedZeroMethod)&&reservedZeroMethod>0&&rawAllocations.some(pa=>Number(pa.paymentMethodId)===reservedZeroMethod)){
+      return NextResponse.json({error:'طريقة عدم التحصيل مخصصة لفواتير العرض المجانية فقط',code:'DECEMBER_RESERVED_PAYMENT_METHOD'},{status:400});
+    }
+
     // Reject if client attempts to submit the internal clearing method
     const clientSubmittedClearing = rawAllocations.some(
       (pa) => pa.paymentMethodId === splitCfg.clearingMethodId,
@@ -243,7 +250,7 @@ export async function POST(req: NextRequest) {
     ) / 100;
     const grandTotalRounded = Math.round(grandTotal * 100) / 100;
 
-    if (Math.abs(totalAllocated - grandTotalRounded) > 0.01) {
+    if (decemberClaim ? Math.round(totalAllocated*100)!==Math.round(grandTotalRounded*100) : Math.abs(totalAllocated - grandTotalRounded) > 0.01) {
       console.error(
         `[pos-api]   ❌ REJECTED: payment total mismatch. Allocated=${totalAllocated}, GrandTotal=${grandTotalRounded}`,
       );
