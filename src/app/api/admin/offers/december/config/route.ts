@@ -1,3 +1,4 @@
+import {decemberProductionConfigured} from '@/lib/campaigns/december-exam/releaseMode';
 import { NextRequest,NextResponse } from 'next/server';
 import { requireAdmin,isAuthResult } from '@/lib/api-auth';
 import { getPool,sql } from '@/lib/db';
@@ -16,7 +17,7 @@ export async function GET(){
    SELECT Code,Status,StartsAtUtc,EndsAtUtc,FirstVisitPct,StudentPct,ClubPct,MultiServicePct,Friend1Pct,Friend2Pct,Friend3Pct
    FROM dbo.CutOfferCampaign WHERE TenantId=@tenant AND Code=@code
   `);
-  return reply({ok:true,campaign:r.recordset[0]??null});
+  return reply({ok:true,campaign:r.recordset[0]??null,productionConfigured:decemberProductionConfigured()});
  }catch{return reply({ok:false,code:'CAMPAIGN_UNAVAILABLE'},503);}
 }
 export async function POST(req:NextRequest){
