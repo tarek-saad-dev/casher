@@ -1,0 +1,3 @@
+# Membership publication — staging only
+
+Explicit staff PUBLISH/WITHDRAW records append-only revisions, actor and reason. Publication pins an immutable draft revision; saving a newer draft never silently changes the catalog, and WITHDRAW immediately removes the last published revision. Shared tenant app lock serializes with draft edits. Catalog returns only explicitly published informational fields, no private notes, partner code, eligibility grants, enrollment or benefits. Exact staging database/login and default-off gate. No production migration or application queue. Next: account-bound application submission and review against the current publication, website integration, separate benefit approval.
