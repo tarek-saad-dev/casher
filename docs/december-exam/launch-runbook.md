@@ -27,3 +27,9 @@ DRVO training is not deployed: add only after actual campaign URL and rates are 
 
 ## Release evidence
 Record exact PR SHA, CI and staging test outputs, approved migration ledger/backup, final rules, finance sign-off and rollback owner. No production launch without these items.
+
+## Verified disposable SQL evidence
+- GitHub Actions run 46052873176: migrations 027–029 applied to localhost disposable SQL Server; 4/4 actual domain integration tests passed (registration, referral confirmation/reversal, concurrent cross-branch redemption, zero-payment rollback invariant). This is NOT the full legacy schema, treasury trigger, or actual VPS staging.
+- Later expanded tests cover historical visits, active Club/student checks, pause. Review latest run before approval.
+- Reception permission: set DECEMBER_EXAM_RECEPTION_USER_IDS to approved numeric staff IDs (comma-separated) with existing /income/pos permission. Non-admins can search exact records and approve only; campaign configuration, lifecycle, analytics, recovery remain admin-only. No IDs assigned by default.
+- The special no-collection method must be configured only on isolated staging. Never make it a normal selectable payment type. POST /api/sales rejects its configured ID in ordinary allocations; review all other payment mutation routes before any launch.
