@@ -52,6 +52,7 @@ describe('drvowa CRM sync validate + manifest', () => {
     expect(names).toEqual([
       'customer.list_changes',
       'invoice.list_changes',
+      'invoice.list_deletions',
       'catalog.list_services',
     ]);
     expect(listImplementedDrvowaCrmTools()).toEqual(names);
@@ -67,6 +68,11 @@ describe('drvowa CRM sync validate + manifest', () => {
     expect(invoice?.inputSchema?.properties).toHaveProperty('includeInactive');
     expect(invoice?.inputSchema?.properties).toHaveProperty('statusSweep');
     expect(invoice?.inputSchema?.properties).toHaveProperty('statusSweepSinceInvId');
+
+    const deletions = tools.find((t) => t.name === 'invoice.list_deletions');
+    expect(deletions?.mode).toBe('READ');
+    expect(deletions?.inputSchema?.properties).toHaveProperty('sinceAuditId');
+    expect(deletions?.description).toContain('physically removes a header');
 
     const catalog = tools.find((t) => t.name === 'catalog.list_services');
     expect(catalog?.description).toMatch(/identitySweep/i);

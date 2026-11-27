@@ -63,6 +63,23 @@ export function getDrvowaCrmSyncToolDefinitions(): DrvowaToolDefinition[] {
       },
     },
     {
+      name: 'invoice.list_deletions',
+      description:
+        'List successful audited hard-deletes of sales invoices by append-only sinceAuditId. Required in addition to invoice.list_changes/statusSweep: real DELETE /api/sales/:id physically removes a header, so header-based sweeps cannot emit cancellation. Return only invoice identity, cancelled status and audit cursor, never audit OldData or customer details. Composite key is invType+invID.',
+      mode: 'READ',
+      approval: 'AUTO',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          sinceAuditId: {
+            type: 'number',
+            description: 'Last processed deletion AuditID; not invoice ID. Start at 0 for existing audited history.',
+          },
+          limit: { type: 'number' },
+        },
+      },
+    },
+    {
       name: 'catalog.list_services',
       description:
         'List catalog services after an append-only sinceProId cursor. Pass identitySweep=true with identitySweepSinceProId to rotate through historical ProIDs so renames, category moves, and isDeleted flips are not permanently missed.',

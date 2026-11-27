@@ -44,6 +44,7 @@ type HeadRow = Record<string, unknown>;
 async function loadLinesForInvIds(
   db: Awaited<ReturnType<typeof getPool>>,
   invIds: number[],
+  tenantId: string,
 ): Promise<Map<number, Array<Record<string, unknown>>>> {
   const linesByInv = new Map<number, Array<Record<string, unknown>>>();
   if (!invIds.length) return linesByInv;
@@ -55,6 +56,7 @@ async function loadLinesForInvIds(
   }
 
   const detailReq = db.request().input('invType', sql.NVarChar(20), SALE_TYPE);
+  detailReq.input('tenantId', sql.UniqueIdentifier, tenantId);
   invIds.forEach((id, i) => {
     detailReq.input(`invId${i}`, sql.Int, id);
   });
@@ -72,8 +74,12 @@ async function loadLinesForInvIds(
         p.ProName AS proName,
         e.EmpName AS empName
       FROM dbo.TblinvServDetail d
-      LEFT JOIN dbo.TblPro p ON p.ProID = d.ProID
-      LEFT JOIN dbo.TblEmp e ON e.EmpID = d.EmpID
+      INNER JOIN dbo.TblinvServHead h
+        ON h.invID = d.invID AND h.invType = d.invType
+      INNER JOIN dbo.Location l
+        ON l.LegacyBranchId = h.BranchID AND l.TenantId = @tenantId
+      LEFT JOIN dbo.TblPro p ON p.ProID = d.ProID AND p.TenantId = @tenantId
+      LEFT JOIN dbo.TblEmp e ON e.EmpID = d.EmpID AND e.TenantId = @tenantId
       WHERE d.invType = @invType
         AND d.invID IN (${placeholders})
       ORDER BY d.invID ASC, d.ProID ASC
@@ -124,6 +130,7 @@ function mapInvoiceHeads(
 
 export async function executeInvoiceListChanges(
   input: Record<string, unknown>,
+  context: { tenantId: string },
 ): Promise<DrvowaToolResult> {
   try {
     const sinceInvId = parseOptionalNonNegativeInt(input.sinceInvId, 'sinceInvId');
@@ -145,6 +152,7 @@ export async function executeInvoiceListChanges(
         .request()
         .input('sinceInvId', sql.Int, statusSweepSinceInvId)
         .input('limit', sql.Int, limit)
+        .input('tenantId', sql.UniqueIdentifier, context.tenantId)
         .input('invType', sql.NVarChar(20), SALE_TYPE)
         .query(`
           SELECT TOP (@limit)
@@ -159,6 +167,8 @@ export async function executeInvoiceListChanges(
             h.DisVal AS disVal,
             h.isActive AS isActive
           FROM dbo.TblinvServHead h
+          INNER JOIN dbo.Location l ON l.LegacyBranchId = h.BranchID
+            AND l.TenantId = @tenantId
           WHERE h.invType = @invType
             AND h.invID > @sinceInvId
           ORDER BY h.invID ASC
@@ -172,6 +182,7 @@ export async function executeInvoiceListChanges(
           .request()
           .input('sinceInvId', sql.Int, 0)
           .input('limit', sql.Int, limit)
+        .input('tenantId', sql.UniqueIdentifier, context.tenantId)
           .input('invType', sql.NVarChar(20), SALE_TYPE)
           .query(`
             SELECT TOP (@limit)
@@ -186,6 +197,8 @@ export async function executeInvoiceListChanges(
               h.DisVal AS disVal,
               h.isActive AS isActive
             FROM dbo.TblinvServHead h
+          INNER JOIN dbo.Location l ON l.LegacyBranchId = h.BranchID
+            AND l.TenantId = @tenantId
             WHERE h.invType = @invType
               AND h.invID > @sinceInvId
             ORDER BY h.invID ASC
@@ -196,7 +209,7 @@ export async function executeInvoiceListChanges(
       const invIds = heads
         .map((row) => Number(row.invId))
         .filter((id) => Number.isFinite(id) && Number.isInteger(id) && id > 0);
-      const linesByInv = await loadLinesForInvIds(db, invIds);
+      const linesByInv = await loadLinesForInvIds(db, invIds, context.tenantId);
       const invoices = mapInvoiceHeads(heads, linesByInv);
       const lastId = invoices.length ? invoices[invoices.length - 1]!.invId : null;
 
@@ -223,6 +236,7 @@ export async function executeInvoiceListChanges(
       .request()
       .input('sinceInvId', sql.Int, sinceInvId)
       .input('limit', sql.Int, limit)
+        .input('tenantId', sql.UniqueIdentifier, context.tenantId)
       .input('invType', sql.NVarChar(20), SALE_TYPE)
       .query(`
         SELECT TOP (@limit)
@@ -237,6 +251,8 @@ export async function executeInvoiceListChanges(
           h.DisVal AS disVal,
           h.isActive AS isActive
         FROM dbo.TblinvServHead h
+          INNER JOIN dbo.Location l ON l.LegacyBranchId = h.BranchID
+            AND l.TenantId = @tenantId
         WHERE h.invType = @invType
           AND h.invID > @sinceInvId
           ${activeFilter}
@@ -256,7 +272,7 @@ export async function executeInvoiceListChanges(
       );
     }
 
-    const linesByInv = await loadLinesForInvIds(db, invIds);
+    const linesByInv = await loadLinesForInvIds(db, invIds, context.tenantId);
     const invoices = mapInvoiceHeads(heads, linesByInv);
     const lastId = invoices.length ? invoices[invoices.length - 1]!.invId : null;
 

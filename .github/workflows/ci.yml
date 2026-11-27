@@ -157,6 +157,14 @@ jobs:
       - name: Database integration safety guard (never last132)
         run: npx vitest run src/lib/__tests__/assertApprovedTestDatabase.test.ts --reporter=default
 
+      - name: DRVOWA CRM sync + audited deleted-sale tombstone regressions
+        run: >-
+          npx vitest run
+          src/modules/integrations/drvowa/__tests__/drvowaValidate.test.ts
+          src/modules/integrations/drvowa/__tests__/invoiceListDeletions.test.ts
+          src/modules/integrations/drvowa/__tests__/tenantScopedCrmTools.test.ts
+          scripts/drvo/__tests__/crmDrvowaStagingSafety.test.ts
+
       - name: Production build
         run: npm run build
 
