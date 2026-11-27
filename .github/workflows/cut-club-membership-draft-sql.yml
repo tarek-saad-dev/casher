@@ -4,6 +4,8 @@ on:
     branches: [main]
     paths:
       - 'src/lib/cut-club/membership*.ts'
+      - 'src/lib/cut-club/memberMembershipRead.ts'
+      - 'src/app/api/public/cut-club/memberships/**'
       - 'src/lib/__tests__/cutClubMembership*.test.ts'
       - 'src/app/api/admin/cut-club/membership-*/**'
       - 'src/app/admin/cut-club/membership-*/**'
@@ -47,4 +49,4 @@ jobs:
           test -z "${DB_SERVER:-}"
           test -z "${CLOUD_DB_SERVER:-}"
       - run: node scripts/cut-club/ci/seed-membership-draft.cjs
-      - run: npx vitest run src/lib/__tests__/cutClubMembershipPolicy.test.ts src/lib/__tests__/cutClubMembershipDraft.test.ts src/lib/__tests__/cutClubMembershipDraftRealSql.test.ts src/lib/__tests__/cutClubMembershipProof.test.ts src/lib/__tests__/cutClubMembershipProofRealSql.test.ts src/lib/__tests__/cutClubMembershipTrialRealSql.test.ts
+      - run: npx vitest run src/lib/__tests__/cutClubMembershipPolicy.test.ts src/lib/__tests__/cutClubMembershipDraft.test.ts src/lib/__tests__/cutClubMembershipDraftRealSql.test.ts src/lib/__tests__/cutClubMembershipProof.test.ts src/lib/__tests__/cutClubMembershipProofRealSql.test.ts src/lib/__tests__/cutClubMembershipTrialRealSql.test.ts src/lib/__tests__/cutClubMembershipMemberReadRealSql.test.ts
